@@ -16,12 +16,9 @@
 
 <br><br>
 
-<picture>
-  <source media="(prefers-color-scheme: dark)" srcset=".github/assets/hero-dark.png">
-  <img alt="A draw board: charts beside the service they describe, each saying where its data came from." src=".github/assets/hero-light.png" width="900">
-</picture>
+<a href="https://draw.redcrayon.ai/#s=0e265bfd5eee31353e7cc39ec824771e"><img alt="One checkout request replayed on a draw board: dots run from customers through the gateway, checkout and payments to Stripe, lighting each service as it is reached." src=".github/assets/trace-replay.gif" width="900"></a>
 
-<sub>By redcrayon</sub>
+<sub>One request replayed hop by hop (<code>play_trace</code>). By redcrayon.</sub>
 
 </div>
 
