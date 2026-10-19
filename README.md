@@ -8,7 +8,7 @@
 
 [![npm](https://img.shields.io/npm/v/@redcrayonai/draw?style=flat-square&color=2FA36B&label=npm)](https://www.npmjs.com/package/@redcrayonai/draw)
 [![Works with](https://img.shields.io/badge/works%20with-Claude%20Code%20·%20Cursor%20·%20Codex%20·%20claude.ai-555555?style=flat-square)](#install)
-[![MIT license](https://img.shields.io/badge/plugin-MIT-555555?style=flat-square)](plugin/LICENSE)
+[![Apache-2.0 license](https://img.shields.io/badge/license-Apache--2.0-555555?style=flat-square)](LICENSE)
 
 **[Install](#install) · [What to ask](#what-to-ask) · [Demos](#review-a-risky-change) · [What leaves your machine](#what-leaves-your-machine)**
 
@@ -142,4 +142,4 @@ Other clients take that URL in place of the hosted one. Self-hosting instruction
 
 ## License
 
-The plugin is MIT ([plugin/LICENSE](plugin/LICENSE)).
+Apache License 2.0. See [LICENSE](LICENSE).
