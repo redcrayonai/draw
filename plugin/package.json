@@ -1,0 +1,30 @@
+{
+  "name": "@redcrayonai/draw",
+  "version": "1.0.1",
+  "description": "The redcrayon Claude Code plugin and its capture helper: live boards of what your coding agent builds.",
+  "license": "MIT",
+  "type": "module",
+  "bin": {
+    "redcrayon": "bin/redcrayon.mjs"
+  },
+  "files": [
+    ".claude-plugin",
+    ".mcp.json",
+    "hooks",
+    "skills",
+    "bin/redcrayon.mjs",
+    "README.md",
+    "LICENSE"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/redcrayonai/draw.git",
+    "directory": "plugin"
+  },
+  "publishConfig": {
+    "access": "public"
+  }
+}
