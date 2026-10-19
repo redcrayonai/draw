@@ -181,4 +181,4 @@ so your agent draws boards without code refs or checkpoints.
 
 ## License
 
-MIT. See [LICENSE](LICENSE).
+Apache-2.0. See [LICENSE](LICENSE).
