@@ -100,6 +100,10 @@ Here is this morning's SIEM alert and the scanner report. Mark what they affect 
 
 Compromised and vulnerable services marked, each with its blast radius. Fix the widest one first.
 
+<a href="https://draw.redcrayon.ai/#s=0e265bfd5eee31353e7cc39ec824771e"><img alt="A compromised admin portal: its blast radius spreads to the services that reach it and the databases it reads." src=".github/assets/siem-blast-radius.png"></a>
+
+[Open the demo board →](https://draw.redcrayon.ai/#s=0e265bfd5eee31353e7cc39ec824771e) Click a ⚠ marker, then **play spread**.
+
 ## What leaves your machine
 
 Drawing sends what the agent draws: nodes, edges, labels. Code refs and checkpoints also send the files the board cites; draw keeps the cited lines, the path and the git hash, and deletes the file within 10 minutes.
