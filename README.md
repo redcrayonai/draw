@@ -1,35 +1,57 @@
-<p align="center">
-  <img src=".github/assets/logo.svg" width="72" alt="">
-</p>
+<div align="center">
 
-<h1 align="center">draw</h1>
+<img src=".github/assets/logo.svg" width="64" alt="">
 
-<p align="center">
-  By redcrayon. A live architecture board you and your coding agent draw on together.<br>
-  The agent draws what it builds. You read the board instead of a prose summary.
-</p>
+<h1>draw</h1>
+
+**A live architecture board you and your coding agent draw on together.<br>The agent draws what it builds. You read the board, not a prose summary.**
+
+[![npm](https://img.shields.io/npm/v/@redcrayonai/draw?style=flat-square&color=2FA36B&label=npm)](https://www.npmjs.com/package/@redcrayonai/draw)
+[![Works with](https://img.shields.io/badge/works%20with-Claude%20Code%20·%20Cursor%20·%20Codex%20·%20claude.ai-555555?style=flat-square)](#install)
+[![MIT license](https://img.shields.io/badge/plugin-MIT-555555?style=flat-square)](plugin/LICENSE)
+
+**[Install](#install) · [What to ask](#what-to-ask) · [Demo](#triage-security-findings) · [What leaves your machine](#what-leaves-your-machine)**
+
+<code>claude plugin marketplace add redcrayonai/draw && claude plugin install draw@redcrayonai</code>
+
+<br><br>
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset=".github/assets/hero-dark.png">
-  <img alt="A draw board: eight chart types beside the service they describe." src=".github/assets/hero-light.png">
+  <img alt="A draw board: charts beside the service they describe, each saying where its data came from." src=".github/assets/hero-light.png" width="900">
 </picture>
+
+<sub>By redcrayon</sub>
+
+</div>
+
+<br>
+
+Ask your agent in plain words:
+
+- *"Add rate limiting to the public API. Draw what you change on a redcrayon board."*
+- *"Draw how this repo fits together. Cite a line for every edge."*
+- *"Drop the unused customers.name column. Flag the migration and cite every reader."*
+- *"Pods in checkout keep restarting since 14:00. Lay out what you find on a scratch board."*
+- *"Mark what this SIEM alert and scanner report affect, and tell me what to fix first."*
+
+The agent opens a board named after your branch, posts the link, and keeps it current as it works.
+
+---
 
 ## Install
 
-**Server URL:** `https://mcp.redcrayon.ai/mcp`. Every client signs in once, in the browser.
+**Claude Code** (board tools, `/draw:navigate`, and code refs filled in for you):
 
-### Claude Code
-
-```sh
-claude plugin marketplace add redcrayonai/draw
-claude plugin install draw@redcrayonai
+```text
+/plugin marketplace add redcrayonai/draw
+/plugin install draw@redcrayonai
 ```
 
-Run `/mcp`, choose **redcrayon**, **Authenticate**. Then `/draw:navigate`: the agent opens a board named after your branch and posts its link.
+Then `/mcp` → **redcrayon** → **Authenticate**, and run `/draw:navigate`.
 
-The plugin fills in code refs for you. They need git and Node 20+; drawing works without.
-
-### Cursor
+<details>
+<summary><b>Cursor</b></summary>
 
 `~/.cursor/mcp.json`:
 
@@ -39,70 +61,55 @@ The plugin fills in code refs for you. They need git and Node 20+; drawing works
 
 **Cursor Settings → MCP**, click login next to redcrayon.
 
-### Codex
+</details>
+
+<details>
+<summary><b>Codex</b></summary>
 
 ```sh
 codex mcp add redcrayon --url https://mcp.redcrayon.ai/mcp
 codex mcp login redcrayon
 ```
 
-### claude.ai
+</details>
 
-**Customize → Connectors → Add custom connector**, name it redcrayon, paste the server URL, **Connect**.
+<details>
+<summary><b>claude.ai</b></summary>
 
-### Any other MCP client
+**Customize → Connectors → Add custom connector**, name it redcrayon, paste `https://mcp.redcrayon.ai/mcp`, **Connect**. claude.ai draws from the conversation; code refs need a coding agent in your project.
 
-Give it the server URL. For code refs outside Claude Code, the agent runs the capture helper when a tool asks; nothing to install:
+</details>
+
+<details>
+<summary><b>Any other MCP client</b></summary>
+
+Give it `https://mcp.redcrayon.ai/mcp`. Every client signs in once, in the browser.
+
+Code refs outside Claude Code: when a tool needs a capture of your checkout, it tells the agent the exact command, and the agent runs it. Nothing to install; Node 20+ and git on PATH.
 
 ```sh
 npx -y @redcrayonai/draw@1 doctor   # check node, git, repo, network
 ```
 
+</details>
+
 ## What to ask
 
-### Watch it build
-
-```text
-Add rate limiting to the public API. Draw what you change on a redcrayon board.
-```
-
-The components it is about to change, drawn before the first edit. Every edge cites the line that proves it; every symbol it touches has a code ref.
-
-### Review a risky change
-
-```text
-Drop the unused customers.name column. Flag the migration on the board and cite every reader of that column.
-```
-
-The migration is flagged on the database. A reader it did not update shows as one that will break.
-
-### Map an unfamiliar codebase
-
-```text
-Draw how this repo fits together: entry points, services, data stores and the calls between them. Cite a line for every edge.
-```
-
-An onboarding map, left to right, each box with a two-sentence doc. Share it as a view link.
-
-### Investigate an incident
-
-```text
-Pods in checkout keep restarting since 14:00. Pull the restarts and error rates, and lay out what you find on a scratch board.
-```
-
-Charts beside the services they describe, each saying where its data came from. Pairs with a Grafana or Kubernetes MCP server.
+| Ask | You get |
+|---|---|
+| **Watch it build**<br>*"Add rate limiting to the public API. Draw what you change."* | The components it is about to change, drawn before the first edit. Every edge cites the line that proves it; every symbol it touches has a code ref. |
+| **Review a risky change**<br>*"Drop customers.name. Flag the migration and cite every reader."* | The migration flagged on the database. A reader it did not update shows as one that will break. |
+| **Map a codebase**<br>*"Draw how this repo fits together. Cite a line for every edge."* | An onboarding map, left to right, each box with a two-sentence doc. Share it as a view link. |
+| **Investigate an incident**<br>*"Checkout pods keep restarting. Lay out what you find."* | Charts beside the services they describe, each saying where its data came from. Pairs with a Grafana or Kubernetes MCP server. |
+| **Triage security findings**<br>*"Mark what this alert and scan affect. What do I fix first?"* | Compromised and vulnerable services marked, each with its blast radius. Fix the widest one first. |
 
 ### Triage security findings
 
-```text
-Here is this morning's SIEM alert and the scanner report. Mark what they affect on the architecture board, and tell me what to fix first.
-```
+<a href="https://draw.redcrayon.ai/#s=0e265bfd5eee31353e7cc39ec824771e"><img alt="A compromised admin portal: its blast radius spreads to the services that reach it and the databases it reads." src=".github/assets/siem-blast-radius.png" width="900"></a>
 
-Compromised and vulnerable services marked, each with its blast radius. Fix the widest one first.
+A SIEM alert marks **admin-portal** compromised; scanner findings mark the gateway and a worker vulnerable. Open a ⚠ marker to see what it reaches and what trusts it, hop by hop.
 
-<a href="https://draw.redcrayon.ai/#s=0e265bfd5eee31353e7cc39ec824771e"><img alt="A compromised admin portal: its blast radius spreads to the services that reach it and the databases it reads." src=".github/assets/siem-blast-radius.png"></a>
-
-[Open the demo board →](https://draw.redcrayon.ai/#s=0e265bfd5eee31353e7cc39ec824771e) Click a ⚠ marker, then **play spread**.
+**[Open the demo board →](https://draw.redcrayon.ai/#s=0e265bfd5eee31353e7cc39ec824771e)** Click a ⚠ marker, then **play spread**.
 
 ## What leaves your machine
 
