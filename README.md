@@ -10,7 +10,7 @@
 [![Works with](https://img.shields.io/badge/works%20with-Claude%20Code%20·%20Cursor%20·%20Codex%20·%20claude.ai-555555?style=flat-square)](#install)
 [![MIT license](https://img.shields.io/badge/plugin-MIT-555555?style=flat-square)](plugin/LICENSE)
 
-**[Install](#install) · [What to ask](#what-to-ask) · [Demo](#triage-security-findings) · [What leaves your machine](#what-leaves-your-machine)**
+**[Install](#install) · [What to ask](#what-to-ask) · [Demos](#review-a-risky-change) · [What leaves your machine](#what-leaves-your-machine)**
 
 <code>claude plugin marketplace add redcrayonai/draw && claude plugin install draw@redcrayonai</code>
 
@@ -103,13 +103,31 @@ npx -y @redcrayonai/draw@1 doctor   # check node, git, repo, network
 | **Investigate an incident**<br>*"Checkout pods keep restarting. Lay out what you find."* | Charts beside the services they describe, each saying where its data came from. Pairs with a Grafana or Kubernetes MCP server. |
 | **Triage security findings**<br>*"Mark what this alert and scan affect. What do I fix first?"* | Compromised and vulnerable services marked, each with its blast radius. Fix the widest one first. |
 
+### Review a risky change
+
+<a href="https://draw.redcrayon.ai/#s=8a2555d85c7fe7728811f82770b9cedf"><img alt="Migration 0042 flagged on customers-db: display_name added, name dropped. The customers api is updated; the welcome email still reads customers.name and is marked as a reader that will break." src=".github/assets/migration-review.png" width="900"></a>
+
+Migration 0042 replaces `customers.name` with `display_name`. The board shows the table's new shape, the step that can't be undone, and the one reader the change missed: the welcome email still selects `name`. Code refs open the exact lines.
+
+**[Open the demo board →](https://draw.redcrayon.ai/#s=8a2555d85c7fe7728811f82770b9cedf)** <sub>Catppuccin Mocha theme</sub>
+
+### Investigate an incident
+
+<a href="https://draw.redcrayon.ai/#s=32b61159274bbf0f64f1d64bdd278234"><img alt="A scratch pad: the MCP Worker and its database, with a time series of request time against database time and p50/p95 bars per endpoint." src=".github/assets/incident-scratchpad.png" width="900"></a>
+
+A scratch pad beside the services it explains: 60 real requests to `/health`, total time against the database time it reports, and p50/p95 per endpoint. The slow tail isn't the database. Every chart says where its numbers came from.
+
+**[Open the demo board →](https://draw.redcrayon.ai/#s=32b61159274bbf0f64f1d64bdd278234)** <sub>Neo-brutalism theme</sub>
+
 ### Triage security findings
 
 <a href="https://draw.redcrayon.ai/#s=0e265bfd5eee31353e7cc39ec824771e"><img alt="A compromised admin portal: its blast radius spreads to the services that reach it and the databases it reads." src=".github/assets/siem-blast-radius.png" width="900"></a>
 
 A SIEM alert marks **admin-portal** compromised; scanner findings mark the gateway and a worker vulnerable. Open a ⚠ marker to see what it reaches and what trusts it, hop by hop.
 
-**[Open the demo board →](https://draw.redcrayon.ai/#s=0e265bfd5eee31353e7cc39ec824771e)** Click a ⚠ marker, then **play spread**.
+**[Open the demo board →](https://draw.redcrayon.ai/#s=0e265bfd5eee31353e7cc39ec824771e)** Click a ⚠ marker, then **play spread**. <sub>Dark theme</sub>
+
+Thirteen themes, from Neo-brutalism to Nord: pick one from the board header.
 
 ## What leaves your machine
 
