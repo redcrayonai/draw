@@ -1,0 +1,12 @@
+{
+  "name": "redcrayonai",
+  "description": "The redcrayon plugin: live boards of what your coding agent builds.",
+  "owner": { "name": "Red Crayon" },
+  "plugins": [
+    {
+      "name": "draw",
+      "source": { "source": "npm", "package": "@redcrayonai/draw", "version": "^1.0.0" },
+      "description": "Adds the redcrayon server, the /draw:navigate command, and code refs."
+    }
+  ]
+}

@@ -1,0 +1,29 @@
+{
+  "description": "Fills in redcrayon captures before code-ref calls, and records each session's base and cited files after them.",
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "^mcp__(plugin_draw_)?redcrayon(-dev)?__(start_session|add_code_ref|mark_checkpoint|create_edge|arrive)$",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "sh -c 'command -v node >/dev/null || exit 0; exec node \"${CLAUDE_PLUGIN_ROOT}/bin/redcrayon.mjs\" hook'",
+            "timeout": 45
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "^mcp__(plugin_draw_)?redcrayon(-dev)?__(start_session|add_code_ref|mark_checkpoint|create_edge|arrive)$",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "sh -c 'command -v node >/dev/null || exit 0; exec node \"${CLAUDE_PLUGIN_ROOT}/bin/redcrayon.mjs\" hook'",
+            "timeout": 45
+          }
+        ]
+      }
+    ]
+  }
+}
