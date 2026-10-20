@@ -10,7 +10,7 @@
 [![Works with](https://img.shields.io/badge/works%20with-Claude%20Code%20·%20Cursor%20·%20Codex%20·%20claude.ai-555555?style=flat-square)](#install)
 [![Apache-2.0 license](https://img.shields.io/badge/license-Apache--2.0-555555?style=flat-square)](LICENSE)
 
-**[Install](#install) · [What to ask](#what-to-ask) · [Demos](#review-a-risky-change) · [What leaves your machine](#what-leaves-your-machine)**
+**[Docs](docs/src/content/docs/index.md) · [Install](#install) · [What to ask](#what-to-ask) · [Demos](#review-a-risky-change) · [What leaves your machine](#what-leaves-your-machine)**
 
 <code>claude plugin marketplace add redcrayonai/draw && claude plugin install draw@redcrayonai</code>
 

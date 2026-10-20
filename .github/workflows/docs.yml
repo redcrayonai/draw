@@ -1,0 +1,43 @@
+# Docs site (docs/, Starlight): build it, and keep the database vendor and
+# server internals out of every page. Not deployed yet.
+
+name: docs
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: pnpm/action-setup@v4
+        with:
+          package_json_file: docs/package.json
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: pnpm
+          cache-dependency-path: docs/pnpm-lock.yaml
+
+      - name: Install
+        working-directory: docs
+        run: pnpm install --frozen-lockfile
+
+      - name: Build
+        working-directory: docs
+        run: pnpm run build
+
+      - name: No vendor or internals words in the pages
+        run: |
+          if grep -rniE 'spacetime|maincloud|bsatn|clockwork|\bstdb\b|\breducer|wasm|energy budget|SenderError|panic|clerk' docs/src docs/astro.config.mjs; then
+            echo "::error::a page names the database vendor, the auth vendor or a server internal"
+            exit 1
+          fi
