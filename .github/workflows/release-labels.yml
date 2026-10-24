@@ -1,0 +1,74 @@
+# Releases from PR labels (scripts/release-labels.mjs). A PR into main that
+# should ship carries release:plugin and exactly one of major, minor, patch:
+#
+#   1. while the PR is open, the check job fails on a half-labelled PR;
+#   2. on merge, the plugin gets the next tag after its last one (plugin-vX.Y.Z,
+#      or after plugin/package.json's version when higher) and a GitHub release
+#      with notes since that tag.
+#
+# npm publishing stays with the core repo until it moves here (RC-601).
+# No concurrency group: GitHub keeps one waiting run per group and cancels the
+# rest. Two merges racing for one tag fail loudly at gh release create instead.
+# Fork PRs get a read-only token: release those by hand.
+
+name: release-labels
+
+on:
+  pull_request:
+    types: [opened, reopened, synchronize, labeled, unlabeled, closed]
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    if: github.event.action != 'closed'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+      - name: Check the release labels
+        env:
+          LABELS: ${{ toJSON(github.event.pull_request.labels.*.name) }}
+        run: |
+          node --test scripts/release-labels.test.mjs
+          node scripts/release-labels.mjs check
+
+  release:
+    if: github.event.action == 'closed' && github.event.pull_request.merged
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+      SHA: ${{ github.event.pull_request.merge_commit_sha }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event.pull_request.merge_commit_sha }}
+          fetch-depth: 0
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+      - name: Plan the releases
+        env:
+          LABELS: ${{ toJSON(github.event.pull_request.labels.*.name) }}
+        run: |
+          # only tags from before this merge, so a re-run plans the same tags
+          TAGS=$(git tag --merged "$SHA^")
+          export TAGS
+          node scripts/release-labels.mjs plan | tee "$RUNNER_TEMP/plan"
+      - name: Tag and release
+        run: |
+          while read -r _ tag last; do
+            # a re-run skips what its first attempt made; a tag on another commit (a race) makes this fail
+            if [ "$(git rev-parse -q --verify "refs/tags/$tag^{commit}")" != "$SHA" ]; then
+              gh release create "$tag" --target "$SHA" --title "$tag" --generate-notes ${last:+--notes-start-tag "$last"}
+            fi
+          done < "$RUNNER_TEMP/plan"
