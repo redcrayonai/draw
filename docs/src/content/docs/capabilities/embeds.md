@@ -21,6 +21,10 @@ For Notion, use `/embed` and paste the URL. Use a publicly reachable HTTPS
 server. A localhost URL works only on devices that can reach that server.
 Notion web, desktop and mobile compatibility still needs platform verification.
 
+![Embed controls show a selected chart, enabled access, theme choice, URL and iframe HTML](../../../assets/embed-controls.png)
+
+The owner enables access and copies a separate embed link.
+
 ## What becomes readable
 
 | Embed | Published content |
@@ -49,6 +53,10 @@ included architecture comparison. Diagram playback starts paused.
 
 The viewer pauses motion while offscreen or in a hidden tab. Reduced-motion
 settings show a static result. Pausing animation does not pause live data updates.
+
+![A chart in its standalone viewer shows sample requests by region, source, View data and playback controls](../../../assets/chart-embed.png)
+
+The viewer uses sample data here. It does not expose the board editor or neighboring components.
 
 ## Revoke access
 

@@ -39,6 +39,10 @@ The strongest applicable board role wins. Workspace owners and admins can move
 boards between workspaces. A move also includes dependent branches or architecture
 history. It resets incompatible grants, so inspect access after the move.
 
+![The workspace Members panel shows a sample account and its Owner role](../../../assets/workspaces.png)
+
+Workspace membership has its own roles. Board grants determine access to individual boards.
+
 ## Give automation a scoped key
 
 In a shared workspace, an owner or admin can open **Service accounts**:

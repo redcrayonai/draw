@@ -9,6 +9,10 @@ A threat marks one service on the board as compromised or vulnerable. Open its
 marker to see the blast radius: what that service reaches and what trusts it,
 hop by hop, over the architecture you already know.
 
+![A compromised admin portal and the connected services and databases in its blast radius](../../../assets/siem-blast-radius.png)
+
+The security demo shows impact over the drawn dependencies.
+
 ## Ask your agent
 
 ```text

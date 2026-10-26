@@ -9,6 +9,10 @@ A board is a live canvas of components and the flows between them. You and your
 agent see each other's edits, cursor and selection. Notes and text blocks add
 explanations beside the diagram.
 
+![A checkout board with an API, rate limiter, shared Redis counter and payment provider](../../../assets/board-overview.png)
+
+A sample request path in the local app. Code-ref badges connect components to their code.
+
 ## Start a board
 
 ```text
@@ -59,6 +63,10 @@ With storage off, code access still exposes paths, symbols, line ranges and repo
 The header's exposure control opens the sharing choices so you can inspect
 what a link includes. Turning off link sharing revokes that link. It does not
 remove workspace grants, public access or separately enabled embeds.
+
+![The Share menu has Can view selected with Threats and Code unchecked](../../../assets/board-sharing.png)
+
+A view link with both sensitive layers excluded.
 
 ## Share less than the whole board
 

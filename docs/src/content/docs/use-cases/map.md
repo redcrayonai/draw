@@ -24,6 +24,10 @@ Draw how a checkout request moves through this repo: entry point, services, queu
 The board counts hidden nodes. You can show a group again when you need its detail.
 An uncited connection is a question to investigate, not evidence that a call exists.
 
+![A request-path map connects checkout to a shared limiter, Redis and an external payment provider](../../../assets/board-overview.png)
+
+A focused request path gives the reader a place to start.
+
 ## Turn the map into an explanation
 
 Ask a follow-up that starts at a specific component:

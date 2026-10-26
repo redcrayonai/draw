@@ -52,6 +52,10 @@ For Notion, paste the URL into an `/embed` block. For a webpage, use the iframe
 HTML. Notion compatibility across web, desktop and mobile is not yet verified.
 See [Embeds](/capabilities/embeds/) for access and playback details.
 
+![A standalone chart embed shows requests by region, its sample-data source and viewer controls](../../../assets/chart-embed.png)
+
+A chart embed shows the published chart without the board editor. These values are sample data.
+
 ## End access
 
 Turn off board link sharing to revoke that link. Turn off **Enable embed access**

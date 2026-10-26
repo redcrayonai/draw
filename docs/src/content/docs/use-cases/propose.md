@@ -24,6 +24,10 @@ Open this board: <board link>. Create a board branch named async-checkout. Propo
 The branch copies the graph, charts, code refs and change notes. Copied change
 notes need a fresh review. The branch does not inherit the base session, route or threats.
 
+![A submitted queue proposal shows the added Email queue and human review controls](../../../assets/branch-review.png)
+
+The sample proposal adds one component. The owner can inspect it before acceptance.
+
 ## Decide what to keep
 
 A branch of an ordinary board can merge into its base after review. The review

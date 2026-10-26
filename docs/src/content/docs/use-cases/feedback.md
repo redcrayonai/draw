@@ -9,6 +9,19 @@ Use the red crayon to point at the part of a diagram you want the agent to
 revisit. Each mark carries the node and your note, so you do not need to explain
 which component you mean in chat.
 
+## Watch a review round
+
+<video controls muted playsinline preload="none" poster="/red-crayon-poster.png" width="1280" height="800" style="width: 100%; height: auto;" aria-label="Red crayon demo: circle a node, write a note, send the mark and read the agent reply">
+  <source src="/red-crayon-review.mp4" type="video/mp4" />
+  <a href="/red-crayon-review.mp4">Watch the red crayon demo.</a>
+</video>
+
+The clip shows a draft mark, a note, **Send**, and the agent's `kept` reply.
+It uses the real local app with sample data and a scripted agent response.
+The steps below also describe the clip without motion.
+
+[Open the looping GIF](/red-crayon-review.gif) · [Open the still image](/red-crayon-poster.png)
+
 ## Start the review
 
 Ask your connected coding agent:

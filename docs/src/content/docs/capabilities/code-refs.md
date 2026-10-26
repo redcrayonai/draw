@@ -37,6 +37,10 @@ The owner can enable **Store code snippets on my boards** under dashboard
 [Your data and code consent](/data-and-consent/) explains temporary uploads,
 retention and deletion.
 
+![The rate limiter inspector shows checkLimit, its file and lines, and “No code stored for this reference”](../../../assets/code-refs.png)
+
+The inspector with snippet storage off: the location stays visible without inline code.
+
 ## Limits and setup
 
 - A stored snippet holds at most 60 lines and 4,000 characters.

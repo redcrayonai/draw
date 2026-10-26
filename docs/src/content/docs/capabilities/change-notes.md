@@ -10,6 +10,10 @@ change, data loss or a new dependency. It
 sits on the database node and on every node whose code reads what changed, so a
 reviewer sees the risk without reading the SQL.
 
+![A migration on customers-db shows the dropped name column and a reader that still depends on it](../../../assets/migration-review.png)
+
+The migration demo puts the schema change beside its affected readers.
+
 ## Ask your agent
 
 ```text

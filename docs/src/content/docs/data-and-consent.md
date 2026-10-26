@@ -33,6 +33,10 @@ pushed commit and no uncommitted change in the cited file. GitHub checks the
 reader's repository access. A draw link grants no GitHub access.
 Other refs show **not pushed yet** or **open in editor**.
 
+![Dashboard Code settings show “Store code snippets on my boards” switched off](../../assets/code-consent.png)
+
+Dashboard **Settings → Code**, with the default setting off.
+
 ## Opt in to inline snippets
 
 1. Open dashboard **Settings → Code**.

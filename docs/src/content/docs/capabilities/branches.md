@@ -19,6 +19,10 @@ It also copies change notes with their review state reset.
 The copy does not carry the base session, route or threats.
 The agent uses the returned id for edits and calls `submit_branch` when ready.
 
+![The Queue proposal review lists Email queue as an addition and offers Accept or Reject](../../../assets/branch-review.png)
+
+A submitted sample branch waits for a person's review.
+
 ## Review in the canvas
 
 Open **Branches** beside the board name. The review shows added, removed and

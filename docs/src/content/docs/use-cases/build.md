@@ -27,6 +27,10 @@ Add rate limiting to the public API. Open a draw board for this branch and post 
 The checkpoint describes coverage of the drawing. It does not prove that the
 change works or that tests pass.
 
+![A sample checkout request path connects the API, rate limiter, Redis and payment provider](../../../assets/board-overview.png)
+
+A sample board in the local app, before the review starts.
+
 ## What to look for
 
 For a limiter, ask where requests are counted, which requests bypass it, and
