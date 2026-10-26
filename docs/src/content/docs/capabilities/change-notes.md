@@ -19,18 +19,16 @@ Write the migration that drops customers.name. Flag it on the board and cite eve
 ## What the agent does
 
 - `add_code_ref` cites the migration file first; the note hangs off that ref.
-- `add_change_note` records the change: its kind, whether it is destructive
-  (drops or rewrites data, or cannot be undone), the migration's steps with the
-  one that cannot be undone, the table's columns (added, dropped or renamed),
-  and the readers it found.
+- `add_change_note` records the kind of change and whether it is destructive.
+  It lists the migration steps, including the irreversible step.
+  It also records changed columns and the readers the agent found.
 - `add_code_ref` cites each reader. A reader the agent did not update shows as
   one that will break.
 
 ## What you see
 
-The nodes the change touches are flagged on the board. Select one for the full
-change in the inspector: the code that reads it, the numbered steps, the line
-each stale reader will break on, and **mark reviewed**.
+The board flags nodes the change touches. Select one to inspect its readers,
+numbered steps and stale reader locations. Use **mark reviewed** to record your review.
 
 ## Limits
 

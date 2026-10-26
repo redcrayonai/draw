@@ -1,34 +1,50 @@
 ---
 title: Triage security findings
-description: Mark what an alert or CVE affects, and fix what exposes most first.
+description: Connect alerts and vulnerabilities to affected services, then explain the priority.
 sidebar:
-  order: 5
+  order: 7
 ---
+
+Use this when a scanner report or SIEM alert needs architectural context.
+The board connects the finding to what the affected service can reach and what trusts it.
 
 ## You ask
 
 ```text
-Here is this morning's SIEM alert and the scanner report. Mark what they affect on the architecture board, and tell me what to fix first.
+Use this SIEM alert and scanner report to mark affected services on the architecture board. Separate evidence of compromise from vulnerability findings. For each priority, explain reachability, sensitive data, exploit evidence and available fixes. Cite the source and list missing dependencies.
 ```
 
-## The agent does
+The agent needs your alert or access to your SIEM or scanner through another tool.
+The board does not scan your infrastructure itself.
 
-- Reads the alert and the findings through your SIEM or scanner MCP server.
-- Marks a service named by the alert as `compromised` (`add_threat`).
-- Marks scanner findings as `vulnerable`, only critical or high CVEs that have
-  a fix or are on KEV, so the board does not cry wolf.
+## What happens
 
-## You see
+- The agent marks services identified by SIEM alerts as `compromised` under the threat workflow.
+- It marks actionable critical or high scanner findings as `vulnerable` when a fix exists or the CVE appears in KEV.
+- It attaches the source, severity and context to each threat.
 
-![A compromised admin portal; its blast radius spreads to the services that reach it and the databases it reads](../../../assets/siem-blast-radius.png)
+The `compromised` marker records the agent's interpretation of the alert.
+It does not independently establish that an intrusion occurred.
+
+## Inspect the impact
+
+![A compromised admin portal with a blast radius across connected services and databases](../../../assets/siem-blast-radius.png)
 
 [Open the demo board →](https://draw.redcrayon.ai/#s=0e265bfd5eee31353e7cc39ec824771e)
 
-Open a threat's marker to see its blast radius: what the service reaches and
-what trusts it, hop by hop. Fix first the finding whose blast radius holds the
-most, or the most sensitive, services. **Mark contained** when it is dealt
-with.
+Open a threat marker to inspect its blast radius. Direction and depth controls
+help you follow the drawn dependencies. A missing connection can hide impact.
+A node marked clear is not a verified safe system.
 
-## Try it
+## Make the priority explicit
 
-[Connect your agent](/connect/) · [Threats](/capabilities/threats/)
+```text
+Compare these two findings. Which needs containment first, and which can wait for a patch window? Explain the decision using the alert evidence, exposure and sensitive downstream systems. Do not rank by node count alone.
+```
+
+Use a [red crayon mark](/use-cases/feedback/) to ask about a missing service or
+an unsupported priority. **Mark contained** records a decision in draw.
+It does not isolate a service, patch software or close the source alert.
+
+[Threats](/capabilities/threats/) · [Sharing threats](/capabilities/boards/#sharing) ·
+[Data and consent](/data-and-consent/)

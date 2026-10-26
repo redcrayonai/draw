@@ -76,6 +76,16 @@ The agent sends the key as a bearer token:
 claude mcp add --transport http redcrayon http://localhost:8788/mcp --header "Authorization: Bearer <key>"
 ```
 
+## Code storage and team access
+
+Code snippet storage starts off on your own stack too. Enable it under dashboard
+**Settings → Code** only if you want inline snippets. Cited files still pass
+through your server for checks. See [Data and consent](/data-and-consent/).
+
+With real sign-in configured, open dashboard **Workspaces** to create a workspace
+and invite collaborators. Board and workspace grants control access independently
+of snippet consent. See [Workspaces and access](/capabilities/workspaces/).
+
 ## Next
 
 Production images, with TLS and real hostnames, are coming to these docs.

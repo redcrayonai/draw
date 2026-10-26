@@ -1,47 +1,75 @@
 ---
 title: Boards and sharing
-description: What a board is, who can see it, and how to share it.
+description: Draw together, choose who has access, and control what a shared link includes.
 sidebar:
   order: 1
 ---
 
-A board is a live canvas of components (nodes) and the flows between them
-(edges). You and your agent draw on the same board at once; each of you sees the
-other's cursor and selection.
+A board is a live canvas of components and the flows between them. You and your
+agent see each other's edits, cursor and selection. Notes and text blocks add
+explanations beside the diagram.
 
-Every write, yours or the agent's, goes through the same rules: a 4px grid, at
-most two focal nodes, a fixed set of colours. A write that breaks a rule is
-refused with a sentence that says why.
-
-## Ask your agent
+## Start a board
 
 ```text
-Open a redcrayon board for this task and draw what you build on it as you go.
+Open a draw board for this task and post its link. Draw what you build as you go.
 ```
 
-The agent calls `start_session`, posts the board's link, and draws. Boards it
-opens are yours, and they show on your dashboard.
+The agent calls `start_session` and posts the board link. Boards opened by your
+linked agent belong to you. A drawing-only board works without a local checkout.
+Code refs and checkpoints need a session tied to your checkout.
 
-## Nothing is hidden silently
+Every write uses the same drawing rules: a 4px grid, at most two focal nodes,
+and a fixed set of colors. A refused write explains the rule it breaks.
 
-An agent cannot delete what was imported; it can only hide it in a named group
-("vendor libs", "schedulers"). The board counts everything, for example
-`55 nodes · 45 shown · 10 hidden`, and a chip per group shows the hidden nodes
-again. Edges the agent could not cite are drawn dotted, as unverified.
+## Read the evidence
+
+An agent can hide imported components in named groups. The board counts hidden
+nodes and provides controls to show them again. It does not silently delete
+imported architecture. Connections without current evidence remain visible as
+unverified claims.
+
+Use the [red crayon](/use-cases/feedback/) to send feedback on a node.
+Use a [branch](/capabilities/branches/) to propose a different design.
 
 ## Sharing
 
-A board is private until you share it: only people with access can open it.
+A personal board starts private. Workspace boards follow their
+[workspace and board grants](/capabilities/workspaces/).
+The access line under the board name describes your current access.
 
-1. Click **Share** and turn on **Share with link**. Anyone with the link can
-   then view the board.
-2. Choose **Can view** or **Can edit**. With **Can edit**, signed-in people
-   can edit too. Turning sharing off ends access for everyone.
-3. Choose what the link includes. **Threats** (markers, details and blast
-   radius) and **Code** (code refs and source snippets) are off by default.
-   Edit links always include code, so undo can restore what an edit removes.
+1. Open **Share** and enable **Share with link**.
+2. Choose **Can view** or **Can edit**.
+3. Choose whether to include **Threats** or **Code**.
+4. Copy the share link to the intended reader.
 
-Give an edit link to an agent to have it draw on your board.
+| Link | What readers can do |
+|---|---|
+| Can view | Anyone holding the link can view included content, without sign-in. |
+| Can edit | Anyone holding the link can view. Signed-in readers can also edit. |
 
-Tools: `start_session`, `get_board`, `create_node`, `create_edge`,
-`layout_board`, `hide_node`. See [MCP tools](/reference/mcp-tools/).
+New view links exclude **Threats** and **Code** by default. Threats includes
+markers, details and blast radius. Code includes ref metadata and any stored
+snippets. **Edit links always include code**, because undo can restore edited content.
+
+Code sharing does not enable snippet storage. The owner's
+[code consent](/data-and-consent/) controls whether snippet text exists.
+With storage off, code access still exposes paths, symbols, line ranges and repository names.
+
+The header's exposure control opens the sharing choices so you can inspect
+what a link includes. Turning off link sharing revokes that link. It does not
+remove workspace grants, public access or separately enabled embeds.
+
+## Share less than the whole board
+
+A [chart embed](/capabilities/embeds/) publishes one chart without granting board
+access. A board embed publishes the visible diagram through a separate link.
+Disabling a board share link does not disable either embed.
+
+## Keep or delete a board
+
+Keep a scratch board for a write-up, or delete it from the dashboard. Boards do
+not expire automatically. The command palette also provides deletion where your
+access allows it. Saved library items need separate deletion.
+
+[Share an explanation](/use-cases/share/) · [MCP tools](/reference/mcp-tools/)

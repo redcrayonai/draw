@@ -78,21 +78,36 @@ PATH. To check your setup:
 npx -y @redcrayonai/draw@1 doctor
 ```
 
-## What leaves your machine
+## Code storage is your choice
 
-Drawing sends what the agent draws: nodes, edges and labels. Code refs and
-checkpoints also send a capture of your checkout:
+Code snippet storage is **off by default**. A code ref keeps paths, symbols,
+line numbers and hashes without code text. For pushed GitHub code, readers can
+open the source with their own repository access.
 
-- At the start: the checkout's absolute path and its HEAD commit.
-- For each code ref or cited line: that one file. draw keeps the cited
-  lines, the path and the git hash, and deletes the file within 10 minutes.
-- At a checkpoint: the base and HEAD commits, the changed and deleted paths,
-  the line numbers of each change (numbers only, no diff text), and every file
-  the board cites.
+Code refs and checkpoints still upload each cited file temporarily so the server
+can check it. The server reads it in memory. Captures expire within ten minutes
+and cannot be read again after the call claims them.
 
-It never uploads your file list, uncited files, diff text, files git ignores, or
-secrets such as `.env` and key files. The full list is in the
-[plugin README](https://github.com/redcrayonai/draw/blob/main/plugin/README.md#what-leaves-your-machine).
+To enable inline snippets, open dashboard **Settings → Code → Store code snippets
+on my boards**. The next ref or checkpoint can then store code text. Disabling
+this setting deletes stored snippets after a warning, without deleting ref metadata.
+
+Sharing is a separate choice. View links exclude **Code** and **Threats** by
+default. Edit links always include code refs, with snippet text only if the
+owner consents to storage.
+
+[Your data and code consent](/data-and-consent/) explains uploads, operator
+access, deletion and backups. Hosted board data is not end-to-end encrypted.
+
+## Try a first task
+
+```text
+Draw one request path through this repo. Cite each connection, post the board link, and listen for my red crayon marks.
+```
+
+Then [review with the red crayon](/use-cases/feedback/),
+[investigate an incident](/use-cases/investigate/), or
+[propose an architecture change](/use-cases/propose/).
 
 ## Your own server
 

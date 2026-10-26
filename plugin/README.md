@@ -95,7 +95,16 @@ they are.
 
 ## What leaves your machine
 
-To check code refs, redcrayon uploads each file your agent cites, keeps only the cited lines, paths and git hashes, and deletes the file within 10 minutes.
+Code snippet storage is **off by default**. Code refs keep paths, symbols, line
+numbers and hashes. To check them, the helper still uploads each cited file.
+Captures expire within ten minutes and cannot be read again after the call claims them.
+
+Enable **Store code snippets on my boards** in dashboard **Settings → Code** to
+store code text. Later refs and checkpoints fill in snippets. Disabling this
+setting deletes stored snippets after a warning. Ref metadata remains.
+Board sharing is a separate choice. Hosted operators can read stored board data,
+including opted-in snippets. Board data is not end-to-end encrypted.
+See [Your data and code consent](../docs/src/content/docs/data-and-consent.md).
 
 Drawing needs only the server URL: nodes, edges and their labels go to the
 server as your agent writes them. Code refs, `source:` citations and checkpoints
@@ -105,10 +114,10 @@ upload:
 
 | kind | Uploads | Claimed by |
 |---|---|---|
-| start | The absolute path of the checkout; HEAD (the empty-tree hash in a repo with no commits); the object format | `start_session` |
+| start | The absolute checkout path, HEAD, object format and GitHub repository address when available | `start_session` |
 | ref | The above, plus one file: its path as git spells it, its bytes, git's blob hash, and whether git tracks it | `add_code_ref` |
 | cite | The same, for the cited file | `create_edge` with `source:` evidence |
-| checkpoint | The session's base commit, HEAD, the changed and deleted paths, the line numbers of each change (numbers only, no diff text), and the bytes and git hash of every file this board cites | `mark_checkpoint`, `arrive` |
+| checkpoint | Base and HEAD commits, changed and deleted paths, changed line ranges without diff text, cited files and their hashes, pushed status and cited files that differ from HEAD | `mark_checkpoint`, `arrive` |
 
 Never uploaded: the list of files in your repo, files not cited on that board,
 diff text, files git ignores, and files on the secret list.
@@ -119,11 +128,24 @@ Refused on your machine, with no network request: files git would not list
 `*.p12`, `*.pfx`, `.npmrc` or `.netrc`; symlinks that leave the repo; binary
 files; files over 1 MB; checkpoint captures over 8 MB.
 
-On the server, a capture can be claimed once, by the call it was made for, and
-is deleted 10 minutes after upload. File bytes are deleted when the call that
-claims them ends; redcrayon keeps only what the board shows: snippets (at most 60 lines and 4,000 characters each), cited
-lines, paths, coverage counts, git hashes and the checkout path. Each snippet is
-checked for secrets such as private keys and access tokens before it is stored.
+The helper refuses known secret filenames but does not scan file contents before
+upload. A permitted source file can still contain sensitive text.
+
+On the server, a capture works once, for the call it was made for. The server
+reads the file in memory. Captures use encryption with a key derived from the
+upload id, which the service does not store. They cannot be read again after
+claim or expiry.
+
+Without consent, the board keeps code-ref metadata, hashes, coverage and session
+metadata, including the checkout path. With consent, it also keeps snippets
+(at most 60 lines and 4,000 characters each) and cited source lines.
+The server checks cited source lines for secrets and checks snippets before storage.
+Text the agent writes into labels, docs or charts stays as written.
+
+A view link excludes code and threats by default. An edit link always includes
+code refs, with snippet text only on boards whose owner consents to storage.
+Turning off consent deletes stored text from the live database. Backups can
+retain deleted text until they expire.
 
 On your machine, the helper keeps two small files in `<git-common-dir>/redcrayon/`
 (shared by your worktrees): `cited/<board id>`, the files a board cites, and
@@ -158,8 +180,10 @@ Boards your agent opens are private to your account until you share them from yo
    from the client (`codex mcp remove redcrayon`, the `redcrayon` entry in
    `~/.cursor/mcp.json`, the claude.ai connector).
 
-To delete your boards or your account, write to support@redcrayon.ai. We
-delete them within 30 days.
+Delete boards from the dashboard to delete their related data from the live
+database. Saved library items need separate deletion. For account deletion,
+write to support@redcrayon.ai. We delete your account and boards within 30 days.
+Backups can retain deleted data until they expire.
 
 ## Windows
 

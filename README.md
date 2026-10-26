@@ -95,10 +95,12 @@ npx -y @redcrayonai/draw@1 doctor   # check node, git, repo, network
 | Ask | You get |
 |---|---|
 | **Watch it build**<br>*"Add rate limiting to the public API. Draw what you change."* | The components it is about to change, drawn before the first edit. Every edge cites the line that proves it; every symbol it touches has a code ref. |
+| **Give feedback**<br>*"Listen for my red crayon marks and answer each one on the board."* | Circle a node, add a note and press Send. The agent replies with changed files or a reason to keep the code. [Walkthrough](docs/src/content/docs/use-cases/feedback.md). |
+| **Propose a design**<br>*"Branch this board, draw the queue proposal, and submit it for review."* | A separate diagram to review before a person merges it. [Walkthrough](docs/src/content/docs/use-cases/propose.md). |
 | **Review a risky change**<br>*"Drop customers.name. Flag the migration and cite every reader."* | The migration flagged on the database. A reader it did not update shows as one that will break. |
 | **Map a codebase**<br>*"Draw how this repo fits together. Cite a line for every edge."* | An onboarding map, left to right, each box with a two-sentence doc. Share it as a view link. |
 | **Investigate an incident**<br>*"Checkout pods keep restarting. Lay out what you find."* | Charts beside the services they describe, each saying where its data came from. Pairs with a Grafana or Kubernetes MCP server. |
-| **Triage security findings**<br>*"Mark what this alert and scan affect. What do I fix first?"* | Compromised and vulnerable services marked, each with its blast radius. Fix the widest one first. |
+| **Triage security findings**<br>*"Mark what this alert and scan affect. What do I fix first?"* | Compromised and vulnerable services marked, each with its blast radius. Explain the priority using exposure, evidence and sensitive downstream systems. |
 
 ### Review a risky change
 
@@ -128,9 +130,11 @@ Thirteen themes, from Neo-brutalism to Nord: pick one from the board header.
 
 ## What leaves your machine
 
-Drawing sends what the agent draws: nodes, edges, labels. Code refs and checkpoints also send the files the board cites; draw keeps the cited lines, the path and the git hash, and deletes the file within 10 minutes.
+**Code snippet storage is off by default.** Code refs keep paths, symbols, line numbers and hashes. Code text stays on the board only if you enable **Store code snippets on my boards** in dashboard **Settings → Code**.
 
-Never sent: your file list, uncited files, diff text, files git ignores, secrets such as `.env` and key files. Full list: [plugin/README.md](plugin/README.md#what-leaves-your-machine).
+The helper still uploads cited files for checks. Captures expire within ten minutes and cannot be read again after the call claims them. Known secret filenames and ignored files are refused, but the helper does not scan file contents before upload.
+
+Board content is not end-to-end encrypted. Hosted operators can read stored data. Sharing a board or including code refs in a link is a separate choice from snippet storage. [Data and consent](docs/src/content/docs/data-and-consent.md) · [Upload details](plugin/README.md#what-leaves-your-machine).
 
 ## Your own server
 

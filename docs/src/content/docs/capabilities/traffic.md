@@ -5,9 +5,8 @@ sidebar:
   order: 6
 ---
 
-Edges can carry how a request moves through the system: how long each hop
-takes, one request replayed span by span, or live traffic from your app while
-you run it.
+Edges show how a request moves through the system. They can show latency per
+hop, replay a request span by span, or show live traffic from your local app.
 
 ## Ask your agent
 
@@ -17,9 +16,9 @@ Replay the slowest checkout trace from the last hour on the board.
 
 ## What the agent does
 
-- `set_edge_latency` sets a hop's latency and where the number came from:
-  `prod` (production traces), `local` (measured on your machine) or `estimate`
-  (read from the code). Estimates are drawn differently.
+- `set_edge_latency` sets a hop's latency and its source.
+  Sources are `prod` (production traces), `local` (measurements on your machine)
+  or `estimate` (an estimate from the code). Estimates look different from measurements.
 - `play_trace` replays one request: dots run from each span's parent node to
   its own, timed by the spans and slowed down to watch. Error spans turn red. A
   trace carries only span ids, nodes, timings and status: no attributes, URLs
