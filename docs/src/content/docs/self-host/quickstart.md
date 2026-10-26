@@ -19,11 +19,16 @@ docker compose up --build
 | canvas | http://localhost:5173 |
 | dashboard | http://localhost:5174 |
 | MCP server | http://localhost:8788/mcp |
-| board server | ws://localhost:3000 |
+| SpacetimeDB | ws://localhost:3000 |
 
-The stack also runs Postgres and the import runner. The first build takes a few
-minutes. Ports 3000, 5173, 5174 and 8788 must be free; they listen on
-127.0.0.1 only. Data stays in Docker volumes until `docker compose down -v`.
+The board database is **SpacetimeDB**. The stack also runs the canvas, dashboard,
+MCP server and repository import runner. The first build takes a few minutes.
+Ports 3000, 5173, 5174 and 8788 must be free. They listen on 127.0.0.1 only. Data stays in Docker volumes until `docker compose down -v`.
+
+:::note
+The current core Compose files also include Postgres for dashboard activity
+setup. That service is separate from SpacetimeDB board storage.
+:::
 
 ## Have an agent draw
 
@@ -42,18 +47,73 @@ the MCP server treats every caller on localhost as one dev user
 machine.
 :::
 
+## Environment variables
+
+For the local stack, put optional settings in a `.env` file beside
+`docker-compose.yml`. No `.env` file is needed for guest drawing.
+After a change, run `docker compose up --build` again.
+
+### Settings you supply
+
+| Variable | Default | Purpose |
+|---|---|---|
+| `VITE_AUTH_PROVIDER` | `anonymous` | Use `oidc` to enable account sign-in. |
+| `VITE_OIDC_ISSUER` | Empty | Your OIDC issuer, exactly as the `iss` in its tokens. Required with `oidc`. |
+| `VITE_OIDC_CLIENT_ID` | Empty | A public OIDC client with authorization code flow and PKCE. Required with `oidc`. |
+| `OIDC_ISSUER` | Empty | The MCP server's sign-in issuer. Set it to the same value as `VITE_OIDC_ISSUER`. |
+| `MCP_API_KEYS` | Empty | Optional static agent keys: comma-separated `<sha256 hex of the key>:<user id>` pairs. |
+
+For an OIDC issuer, each agent key's user id is the person's `sub` at that issuer.
+Keep keys and private tokens out of `VITE_*` settings. Those values are public
+in the browser. Do not commit your `.env` file.
+
+Example for sign-in:
+
+```dotenv
+VITE_AUTH_PROVIDER=oidc
+VITE_OIDC_ISSUER=https://auth.example.com/realms/draw
+VITE_OIDC_CLIENT_ID=draw-browser
+OIDC_ISSUER=https://auth.example.com/realms/draw
+```
+
+The issuer must be reachable from your browser and the containers. Inside a
+container, `localhost` refers to that container's network, not an external identity server.
+
+### Settings Compose supplies
+
+These values describe the supplied local stack. Compose fixes the connection
+values or generates them during setup. Adding overrides to `.env` alone does
+not change them. A custom topology needs matching Compose and application settings.
+
+| Variable | Local value | Used by |
+|---|---|---|
+| `SPACETIME_DB` | `redcrayon-local` | Setup: the SpacetimeDB database name. |
+| `VITE_SPACETIME_URI` | `ws://localhost:3000` | Canvas and dashboard browser connections. |
+| `VITE_SPACETIME_DB` | `redcrayon-local` | Canvas and dashboard database selection. |
+| `DB_URL` | `http://localhost:3000` | MCP server connection to SpacetimeDB. |
+| `DB_NAME` | `redcrayon-local` | MCP server database selection. |
+| `SPACETIMEDB_URL` | `http://localhost:3000` | Dashboard server connection. |
+| `SPACETIMEDB_DB` | `redcrayon-local` | Dashboard server database selection. |
+| `SPACETIMEDB_SERVICE_TOKEN` | Generated during setup | Private dashboard service credential. Keep it on the server. |
+| `VITE_CANVAS_URL` | `http://localhost:5173` | Dashboard links to the canvas. |
+| `VITE_DASHBOARD_URL` | `http://localhost:5174` | Canvas links to the dashboard. |
+| `VITE_MCP_URL` | `http://localhost:8788/mcp` | Agent connection instructions in both apps. |
+| `DEV_AUTH` | Automatic | The local MCP startup script enables it only while both `OIDC_ISSUER` and `MCP_API_KEYS` are empty. |
+
+For the Claude Code plugin, `REDCRAYON_MCP_URL` selects your server. Set it in
+the shell that starts Claude Code, not in the Compose `.env` file:
+
+```sh
+REDCRAYON_MCP_URL=http://localhost:8788/mcp claude
+```
+
+This reference covers `docker-compose.yml`. The prebuilt production stack uses
+`compose.prod.yml` and the core checkout's `.env.example`, with additional domain,
+version and secret settings.
+
 ## Real sign-in
 
-Put these in a `.env` file next to `docker-compose.yml`, then run
-`docker compose up --build` again:
-
-| Variable | Value |
-|---|---|
-| `VITE_AUTH_PROVIDER` | `oidc` |
-| `VITE_OIDC_ISSUER` | your OpenID Connect issuer, exactly as the `iss` of its tokens |
-| `VITE_OIDC_CLIENT_ID` | a public client at that issuer (authorization code with PKCE) |
-| `OIDC_ISSUER` | the same issuer, byte for byte. The MCP server accepts the access tokens it issues for `http://localhost:8788/mcp` |
-| `MCP_API_KEYS` | static agent keys, comma-separated `<sha256 hex of the key>:<user id>` pairs. The user id is your `sub` at the issuer, so the agent's boards are yours |
+After you set the OIDC values above:
 
 - Register `http://localhost:5173/` and `http://localhost:5174/` as the
   client's redirect URIs.

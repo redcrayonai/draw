@@ -1,5 +1,5 @@
-# Docs site (docs/, Starlight): build it, and keep the database vendor and
-# server internals out of every page. Not deployed yet.
+# Build the docs and keep server internals out of the pages. The self-host
+# quickstart may name SpacetimeDB and its documented connection settings.
 
 name: docs
 
@@ -35,9 +35,15 @@ jobs:
         working-directory: docs
         run: pnpm run build
 
-      - name: No vendor or internals words in the pages
+      - name: Test page vocabulary rules
+        run: node --test docs/scripts/check-vocabulary.test.mjs
+
+      - name: Check page vocabulary
         run: |
-          if grep -rniE 'spacetime|maincloud|bsatn|clockwork|\bstdb\b|\breducer|wasm|energy budget|SenderError|panic|clerk' docs/src docs/astro.config.mjs; then
-            echo "::error::a page names the database vendor, the auth vendor or a server internal"
+          pattern='spacetime|maincloud|bsatn|clockwork|\bstdb\b|\breducer|wasm|energy budget|SenderError|panic|clerk'
+          if grep -rniE "$pattern" docs/src docs/astro.config.mjs |
+            perl -pe 'if (m{^docs/src/content/docs/self-host/quickstart\.md:}) { s/\b(SpacetimeDB|VITE_SPACETIME_URI|VITE_SPACETIME_DB|SPACETIME_DB|SPACETIMEDB_URL|SPACETIMEDB_DB|SPACETIMEDB_SERVICE_TOKEN)\b/[documented database setting]/g; }' |
+            grep -iE "$pattern"; then
+            echo "::error::a page names an undocumented vendor or a server internal"
             exit 1
           fi
