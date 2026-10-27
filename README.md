@@ -138,7 +138,7 @@ Never sent: your file list, uncited files, diff text, files git ignores, secrets
 REDCRAYON_MCP_URL=http://localhost:8788/mcp claude
 ```
 
-Other clients take that URL in place of the hosted one. Run the whole stack from this repository with `docker compose up --build`; [CONTRIBUTING.md](CONTRIBUTING.md) has the package checks.
+Other clients take that URL in place of the hosted one. To run the whole stack yourself, see [SELF_HOSTING.md](SELF_HOSTING.md).
 
 ## License
 

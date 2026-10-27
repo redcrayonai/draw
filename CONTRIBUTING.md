@@ -1,7 +1,7 @@
 # Contributing
 
-Run the application with Docker Compose: `docker compose up --build`.
-After a source change, run it again.
+Run the application with [Docker Compose](SELF_HOSTING.md#run-it-with-docker-compose).
+After a source change, run `docker compose up --build` again.
 
 Keep pull requests focused on one change. Describe the problem, the resulting
 behavior, and the checks that you ran. List any checks that you did not run.

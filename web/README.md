@@ -3,7 +3,7 @@
 The dashboard lists boards and provides profile, settings, and agent-link pages.
 It uses SvelteKit pages and server routes. The canvas lives in `client/`.
 
-Run the complete local stack with [Docker Compose](../README.md#run-it-with-docker-compose).
+Run the complete local stack with [Docker Compose](../SELF_HOSTING.md#run-it-with-docker-compose).
 The dashboard opens at `http://localhost:5174`.
 Compose supplies Postgres, the import runner, and the local service identity.
 
@@ -11,7 +11,7 @@ Compose supplies Postgres, the import runner, and the local service identity.
 
 Compose sets the database and application origins for the local stack.
 Optional OIDC sign-in uses the variables in the
-[root README](../README.md#real-sign-in-optional).
+[self-hosting guide](../SELF_HOSTING.md#real-sign-in-optional).
 
 | Variable | Purpose |
 | --- | --- |

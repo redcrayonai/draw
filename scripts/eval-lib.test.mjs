@@ -12,7 +12,6 @@ import * as evalLib from './eval-lib.mjs';
 // has no extensionless relative imports (Node 22.18+ strips types by default).
 import { symbolNeedle, RESOLVABLE_EXTENSIONS } from '../agent/src/resolver.ts';
 // The chart contracts have zero imports, so plain `node` loads them too.
-import * as chartContracts from '../module/src/chart-contracts.ts';
 import {
   splitNul,
   parseHunks,

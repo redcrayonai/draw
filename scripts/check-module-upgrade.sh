@@ -10,7 +10,8 @@ if [ -n "$baseline" ]; then
   [ -s "$baseline" ] || { echo "Missing schema baseline: $baseline" >&2; exit 1; }
   baseline="$(node -e 'console.log(require("node:path").resolve(process.argv[1]))' "$baseline")"
 fi
-if [ -z "$baseline" ] && ! git -C "$repo" cat-file -e origin/main:module 2>/dev/null; then
+# origin/main itself must exist: a missing ref fails below instead of skipping the check.
+if [ -z "$baseline" ] && git -C "$repo" rev-parse -q --verify origin/main >/dev/null && ! git -C "$repo" cat-file -e origin/main:module 2>/dev/null; then
   echo 'origin/main has no module/ yet (the first import): nothing to compare.'
   exit 0
 fi
