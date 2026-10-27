@@ -764,140 +764,45 @@ test('SKILL.md (G39): node sizing follows the server label-fit estimate', () => 
   assert.ok(flat.includes('at least 64×48'));
 });
 
-test('guide (G40): result texts and coverage wording match the server', () => {
-  const readme = readFileSync(join(repoRoot, 'docs/guide.md'), 'utf8').replace(/\s+/g, ' ');
-  assert.ok(readme.includes('`committed board=<name>`, or `committed id=<n> board=<name>`'));
-  assert.ok(readme.includes('which changed files have an `ok` ref intersecting a diff hunk (stale and ambiguous refs never cover)'));
+test('start_session (G40): the tool text names the result shape', () => {
   assert.ok(hosted.includes('Returns JSON { board, id, url, seat, session, checkpoint?, repoRoot?, baseSha?, note?, dashboard?, dashboardNote? }'));
-  assert.ok(readme.includes('Returns JSON `{ board, id, url, seat, session, checkpoint?, repoRoot?, baseSha?, note?, dashboard?, dashboardNote? }`'));
-  // e2b10ff bounds add_code_ref and create_edge too, so the 15 s claim holds again
-  assert.ok(readme.includes('Every tool answers within 15s, or says why.'));
-  assert.doesNotMatch(readme, /one the resolver does not cover, is left untouched/);
 });
-
-test('spec (G38): the amended contract matches the server', () => {
-  const spec = readFileSync(join(repoRoot, 'docs/superpowers/specs/2026-10-02-session-companion-design.md'), 'utf8');
-  assert.match(spec, /^> \*\*Amended 2026-10-03\*\*/m);
-  assert.ok(spec.includes('Returns `{ board, id, repoRoot, checkpoint, url }`'));
-  assert.ok(spec.includes('**`remove_code_ref({ refId })`**'));
-  assert.ok(spec.includes('`status: ok` on this board'));
-  assert.ok(spec.includes('stale and ambiguous refs never cover'));
-  assert.doesNotMatch(spec, /When the model supplies a range, it is used as given/);
-  assert.doesNotMatch(spec, /untracked files: any ref counts\)/);
-  assert.ok(spec.includes('a second rail switch (`code overlay · ⌥C`'));
-});
-
-test('spec §8 (G53): the definition of done records the 2026-10-03 rulings', () => {
-  const spec = readFileSync(join(repoRoot, 'docs/superpowers/specs/2026-10-02-session-companion-design.md'), 'utf8');
-  const dod = spec.slice(spec.indexOf('## 8. Definition of done'), spec.indexOf('## Caveats to carry forward'));
-  assert.match(dod, /^> \*\*Amended 2026-10-03 \(Alan's rulings on design questions Q1, Q5, Q7 and Q8\)\.\*\*/m);
-  assert.ok(dod.includes('`svelte` and `jsonc` are added as separate chunks, each loaded on the first ref that needs it (Q8)'));
-  assert.ok(dod.includes('The code overlay starts on for a session board with at least one ref'));
-  assert.ok(dod.includes('an edge with refs shows a muted ` · N refs` suffix on its label'));
-  assert.ok(dod.includes('**Node text.** The drawn node box is the stored box'));
-});
-
-
 
 // ---- e2b10ff: add_code_ref and create_edge answer within 15 s ------------------
-// The out-of-time texts are quoted in docs/guide.md exactly as agent/src/session.ts
-// builds them; SKILL.md names the rule they share.
+// agent/src/session.ts builds the out-of-time texts; SKILL.md names the rule they share.
 
-test('guide quotes the add_code_ref / create_edge out-of-time texts; SKILL.md says to call again', () => {
-  const readme = readFileSync(join(repoRoot, 'docs/guide.md'), 'utf8').replace(/\s+/g, ' ');
+test('add_code_ref / create_edge out-of-time texts; SKILL.md says to call again', () => {
   const nothingAtAll = 'add_code_ref ran out of time before writing anything (git was slow); nothing was written, so calling again is safe';
   assert.ok(sessionTs.includes(`'${nothingAtAll}'`));
   assert.ok(sessionTs.includes('`ran out of time (git was slow) before registering ${p}; nothing was written, so calling again is safe`'));
   assert.ok(sessionTs.includes('`${path} is registered for this board, but time ran out before ${what} was written; nothing else was written, so calling again is safe`'));
   assert.ok(sessionTs.includes("registeredButOutOfTime(path, 'the code ref')"));
   assert.ok(sessionTs.includes("registeredButOutOfTime(path, 'the edge')"));
-  assert.ok(readme.includes(nothingAtAll));
-  assert.ok(readme.includes('ran out of time (git was slow) before registering <path>; nothing was written, so calling again is safe'));
-  assert.ok(readme.includes('<path> is registered for this board, but time ran out before the code ref was written; nothing else was written, so calling again is safe'));
-  assert.ok(readme.includes('or `… the edge was written; …` from `create_edge`'));
   assert.ok(flat.includes('one from `add_code_ref` or `create_edge` that ends with `calling again is safe`'));
   assert.ok(flat.includes('Call the same tool again with the same arguments until it returns its result.'));
 });
 
-test('SKILL.md and guide: every tool answers within 15 s; the budget covers add_code_ref and create_edge', () => {
-  const readme = readFileSync(join(repoRoot, 'docs/guide.md'), 'utf8').replace(/\s+/g, ' ');
+test('SKILL.md: every tool answers within 15 s; the budget covers add_code_ref and create_edge', () => {
   assert.match(sessionTs, /start_session, mark_checkpoint, add_code_ref, and create_edge with\s+\* source evidence on a session board/);
   assert.ok(hosted.includes('export const TOOL_BUDGET_MS = 15_000;'));
   assert.ok(flat.includes('Every tool answers within 15 s, or says why.'));
-  assert.ok(readme.includes('`start_session`, `mark_checkpoint`, `add_code_ref`, and `create_edge` with `source:` evidence on a session board.'));
 });
 
-test('SKILL.md and guide explain mark_checkpoint notes as the server writes them', () => {
-  const readme = readFileSync(join(repoRoot, 'docs/guide.md'), 'utf8').replace(/\s+/g, ' ');
+test('SKILL.md explains mark_checkpoint notes as the server writes them', () => {
   assert.ok(hosted.includes('citedPaths, notes? }'));
   assert.ok(sessionTs.includes('`${p}: ${reason}; its changed lines are unknown, so it counts as uncovered`'));
   assert.ok(sessionTs.includes('`${p}: ${v.reason}; counted as changed`'));
   assert.ok(flat.includes('`<path>: <reason>; its changed lines are unknown, so it counts as uncovered`'));
   assert.ok(flat.includes('`<path>: <reason>; counted as changed`'));
-  assert.ok(readme.includes('optional `notes` list'));
-  assert.ok(readme.includes('`<path>: <reason>; its changed lines are unknown, so it counts as uncovered`'));
 });
 
+// ---- chart library: the product brief and the code agree ----
 
-
-test('spec §8: quoted client strings match what the client renders', () => {
-  const spec = readFileSync(join(repoRoot, 'docs/superpowers/specs/2026-10-02-session-companion-design.md'), 'utf8');
-  const dod = spec.slice(spec.indexOf('## 8. Definition of done'), spec.indexOf('## Caveats to carry forward'));
-  const rail = readFileSync(join(repoRoot, 'client/src/session-rail.ts'), 'utf8');
-  const chrome = readFileSync(join(repoRoot, 'client/src/chrome.ts'), 'utf8');
-  for (const s of ['nothing changed since the session started', 'no code refs yet — the agent adds them at checkpoints']) {
-    assert.ok(rail.includes(`'${s}'`), `session-rail.ts: ${s}`);
-    assert.ok(dod.includes(`\`${s}\``), `§8: ${s}`);
-  }
-  assert.doesNotMatch(dod, /`nothing changed yet`/);
-  for (const s of ['symbol not found at the last checkpoint', 'more than one match at the last checkpoint', 'file deleted since the session started', 'lines are as last seen']) {
-    assert.ok(chrome.includes(`'${s}'`), `chrome.ts: ${s}`);
-    assert.ok(dod.includes(`\`${s}\``), `§8: ${s}`);
-  }
-  assert.ok(chrome.includes("btn('ctl strong', 'copy ref'"));
-  assert.ok(chrome.includes("done = 'copied'"));
-  assert.ok(chrome.includes('const FLASH_MS = 1200;'));
-  assert.ok(dod.includes('`copy ref` flips to `copied` for 1.2 s'));
-});
-
-test('README and spec quote the code overlay zoom hint the client renders', () => {
-  const rail = readFileSync(join(repoRoot, 'client/src/session-rail.ts'), 'utf8');
-  const readme = readFileSync(join(repoRoot, 'docs/guide.md'), 'utf8').replace(/\s+/g, ' ');
-  const spec = readFileSync(join(repoRoot, 'docs/superpowers/specs/2026-10-02-session-companion-design.md'), 'utf8');
-  assert.ok(rail.includes("'ref badges show at 60% zoom and up'"));
-  assert.ok(readme.includes('`ref badges show at 60% zoom and up`'));
-  assert.ok(spec.includes('`ref badges show at 60% zoom and up`'));
-});
-
-// ---- chart library (plan Task O1): the docs quote what the contracts and the server enforce ----
-
-test('chart docs: guide names the types, rules, limits, keys and tools the code defines', () => {
-  const readme = readFileSync(join(repoRoot, 'docs/guide.md'), 'utf8').replace(/\s+/g, ' ');
-  for (const type of chartContracts.CHART_TYPES) assert.ok(readme.includes(`\`${type}\``), `README names chart type ${type}`);
-  const size = `${chartContracts.CHART_MIN_W}x${chartContracts.CHART_MIN_H}`;
+test('chart contracts: the module states the size rule and the server registers the chart tools', () => {
   assert.ok(moduleTs.includes('chart size rule: charts must be at least '), 'module/src/index.ts states the chart size rule');
-  assert.ok(readme.includes(`\`chart size rule: charts must be at least ${size}; got <w>x<h>\``));
-  assert.ok(readme.includes(`the minimum is 64x48 for every kind except a chart (${size}) and free text (16x16)`));
-  assert.ok(readme.includes(`at most 32 KB (${chartContracts.MAX_CSV_BYTES} bytes, counted as UTF-8), with at most ${chartContracts.MAX_SERIES} series`));
-  assert.ok(readme.includes(`at most 256 KB (${chartContracts.MAX_LIBRARY_PAYLOAD_BYTES} bytes, counted as UTF-8)`));
-  for (const rule of [
-    chartContracts.AGENT_SOURCE_RULE,
-    chartContracts.CHART_KIND_RULE,
-    chartContracts.ARCHITECTURE_CHART_RULE,
-    chartContracts.SAMPLE_NEEDS_SOURCE,
-    chartContracts.HUMAN_DATA_NEEDS_SOURCE,
-    chartContracts.HUMAN_SOURCE_RESERVED,
-  ]) {
-    assert.ok(readme.includes(`\`${rule}\``), `README quotes: ${rule}`);
-  }
-  assert.ok(readme.includes(`(source \`${chartContracts.SAMPLE_SOURCE}\`)`));
   for (const tool of ['describe_charts', 'create_chart', 'set_chart_data', 'get_chart']) {
     assert.ok(hosted.includes(`\n  ${tool}: {`), `mcp/src/tools.ts registers ${tool}`);
-    assert.ok(readme.includes(`\`${tool}\``), `README names ${tool}`);
   }
-  assert.ok(readme.includes('| L (or the library button in the dock) | L opens the library; Esc closes it.'));
-  assert.doesNotMatch(readme, /Open or close the library/);
-  assert.ok(readme.includes('| ⇧L (or **Add to library** on the selection toolbar or in ⌘K) |'));
 });
 
 test('chart docs: PRODUCT.md lists every node kind the server allows, chart included', () => {
@@ -913,8 +818,7 @@ test('chart docs: PRODUCT.md lists every node kind the server allows, chart incl
   assert.ok(product.includes('Terminology: board, node, edge, evidence, code ref, session, checkpoint, coverage, focal, hidden set, overlay, inspector, rail, chart, source, library.'));
 });
 
-test('chart docs: fork-board refuses boards with charts before writing, as the guide says', () => {
-  const readme = readFileSync(join(repoRoot, 'docs/guide.md'), 'utf8').replace(/\s+/g, ' ');
+test('chart docs: fork-board refuses boards with charts before writing', () => {
   // latin1 keeps the two NUL bytes in fork-board.ts from mattering; the strings checked are ASCII.
   const fork = readFileSync(join(repoRoot, 'importer/src/fork-board.ts'), 'latin1');
   // The sentence Task A2 shipped: `FATAL: <n> chart node(s) on this board; fork-board does not copy chart data yet, so nothing was written`.
@@ -922,31 +826,5 @@ test('chart docs: fork-board refuses boards with charts before writing, as the g
   const guard = fork.indexOf(sentence);
   assert.ok(guard >= 0, 'fork-board.ts refuses boards with charts (Task A2)');
   assert.ok(guard > fork.indexOf('function auditReplicable(') && guard < fork.indexOf('function run('), 'the refusal sits in auditReplicable, before run() writes anything');
-  assert.ok(readme.includes('It refuses a board that holds charts before it writes anything, because it does not copy chart data yet.'));
 });
 
-test('chart docs: the spec records the planning decisions', () => {
-  const spec = readFileSync(join(repoRoot, 'docs/superpowers/specs/2026-10-09-chart-library-design.md'), 'utf8');
-  const flatSpec = spec.replace(/\s+/g, ' ');
-  assert.match(spec, /^> \*\*Amended 2026-10-09 \(planning\)\.\*\*/m);
-  assert.match(spec, /^## Planning decisions$/m);
-  assert.ok(flatSpec.includes('`createChart(boardId, label, sublabel, x, y, w, h, type, csv, options?, source?)`'));
-  assert.doesNotMatch(spec, /--status-good|--status-crit/);
-  assert.doesNotMatch(spec, /context menu on a saved tile/);
-  assert.doesNotMatch(spec, /`ops\.batch`/);
-  assert.ok(flatSpec.includes('The options JSON is at most 4096 UTF-8 bytes.'), 'the spec records the options cap');
-  for (const s of [
-    chartContracts.AGENT_SOURCE_RULE,
-    chartContracts.SAMPLE_RESERVED,
-    chartContracts.SAMPLE_NEEDS_SOURCE,
-    chartContracts.HUMAN_DATA_NEEDS_SOURCE,
-    chartContracts.HUMAN_SOURCE_RESERVED,
-  ]) {
-    assert.ok(flatSpec.includes(`\`${s}\``), `spec quotes: ${s}`);
-  }
-  assert.match(spec, /^> \*\*Amended 2026-10-09 \(final review\)\.\*\*/m);
-  // the shipped card shell: a pill type tag, and a plot key that carries the font epoch
-  assert.doesNotMatch(spec, /monospace type tag/);
-  assert.ok(flatSpec.includes('a pill type tag'));
-  assert.ok(flatSpec.includes('`type|updatedAt|w|h|dense|font epoch`'));
-});

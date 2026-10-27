@@ -1,7 +1,7 @@
 import type { Page } from '@playwright/test';
 import { test, expect, openBoard, drawNode, shareBoard, signIn, signOut, signInOnRequest, boardIdOf, linkedAgent, palette, guestToken, tryPlace, type Stack } from '../fixtures';
 
-// Guest to account handoff and sign-out (docs/e2e-access-cases.md TR01, TR02, TR03, TR11, TR13).
+// Guest to account handoff and sign-out.
 const WIDE = { viewport: { width: 1440, height: 900 } };
 const NONE = { none: [] };
 const SHA = '4b825dc642cb6eb9a060e54bf8d69288fbee4904';

@@ -1,5 +1,4 @@
-// Module integration suite for deletion (RC-690, spec
-// docs/superpowers/specs/2026-10-21-code-consent-design.md, Decision 8): deleting
+// Module integration suite for deletion (RC-690): deleting
 // a board, or a history with its boards, leaves no row about them. The tables come
 // from the published schema, so a board table added later fails `seeded` until
 // the seed reaches it, and `swept` until deleteBoard removes it. Talks to an

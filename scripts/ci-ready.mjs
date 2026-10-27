@@ -10,12 +10,12 @@ export const requiredJobs = [
 /** The jobs a docs, GitHub config or scripts-only PR skips; workflow-checks and secret-scan always run, main runs everything. */
 export const fullJobs = [
   'bindings-check', 'test-node', 'session-flows', 'build-client', 'build-web',
-  'module-tests', 'security-scan', 'e2e', 'compose-smoke', 'cloud-variant',
+  'module-tests', 'security-scan', 'e2e', 'compose-smoke',
 ];
 
 // Markdown (plugin/ ships its skill texts, so not there), .github and workflow YAML (not
-// .github/actions: composite steps the jobs run), and any scripts/ directory (scripts/ and
-// cloud/scripts/ tests run in workflow-checks; mcp/scripts/ is covered on main only).
+// .github/actions: composite steps the jobs run), and any scripts/ directory (scripts/ tests
+// run in workflow-checks; mcp/scripts/ is covered on main only).
 const light = file => /(?:^|\/)scripts\/|^\.github\/(?:workflows\/|ISSUE_TEMPLATE\/)?[^/]+\.ya?ml$/.test(file)
   || (file.endsWith('.md') && !file.startsWith('plugin/'));
 

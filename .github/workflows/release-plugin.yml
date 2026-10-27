@@ -13,12 +13,11 @@
 #      the packed npm package and the marketplace file;
 #   4. publishes plugin/ to npm with provenance, by trusted publishing (the
 #      id-token below; no npm token). npm accepts provenance only from a public
-#      repo equal to plugin/package.json's repository (redcrayonai/draw), so this
-#      step fails here until the workflow runs there (RC-601); publish by hand.
+#      repo equal to plugin/package.json's repository (this one), so this step
+#      fails until the repo is public; publish by hand until then.
 #
-# It does not touch redcrayonai/draw. Its .claude-plugin/marketplace.json points
-# Claude Code at npm @redcrayonai/draw ^1.0.0, so a 1.x release reaches users
-# without it; changes to marketplace/ go to that repo by PR (its main is protected).
+# .claude-plugin/marketplace.json points Claude Code at npm @redcrayonai/draw
+# ^1.0.0, so a 1.x release reaches users without changing it.
 
 name: release-plugin
 
@@ -121,7 +120,7 @@ jobs:
         env:
           PLUGIN_RELEASE_SCAN: '1'
         run: |
-          printf 'tree %s\ntree marketplace\n' "$RUNNER_TEMP/pack/package" > "$RUNNER_TEMP/release.targets"
+          printf 'tree %s\ntree .claude-plugin\n' "$RUNNER_TEMP/pack/package" > "$RUNNER_TEMP/release.targets"
           scripts/vendor-scan.sh "$RUNNER_TEMP/release.targets" --hosted-plugin
           node --test scripts/plugin.test.mjs
 

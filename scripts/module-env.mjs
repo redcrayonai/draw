@@ -21,8 +21,7 @@
 //                         iss claim ('' = none)
 //   BROWSER_SESSION_CLAIM a claim every browser session token carries and other tokens
 //                         of that issuer lack ('' = no such check). An identity provider
-//                         whose OAuth tokens share the issuer needs it: cloud/scripts/
-//                         module-env.mjs sets it for the hosted service.
+//                         whose OAuth tokens share the issuer needs it.
 //   APP_ORIGINS           comma-separated canvas and dashboard origins (a session token's azp)
 //                         (local default http://localhost:5173,http://localhost:5174)
 //   BROWSER_CLIENT_IDS    comma-separated OIDC client ids (VITE_OIDC_CLIENT_ID): a session

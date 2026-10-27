@@ -1,5 +1,4 @@
-// Owner's share control in the header: #act-share opens #share-pop
-// (docs/superpowers/specs/2026-10-15-link-sharing-design.md).
+// Owner's share control in the header: #act-share opens #share-pop.
 import { copyText, dismissible, flashLabel } from './chrome';
 import { newShareToken, shareHref } from '../../shared/share-link';
 

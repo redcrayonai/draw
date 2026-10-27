@@ -506,7 +506,7 @@ test('fail closed: the committed none variant refuses a browser session, an agen
   for (const iss of [BROWSER_ISSUER, OURS]) assert.ok(logs.includes(`issuer rule: refused ${iss}`), `the log names ${iss}`);
 });
 
-// --- Link sharing (docs/superpowers/specs/2026-10-15-link-sharing-design.md) ----
+// --- Link sharing ----
 
 const linkToken = () => randomBytes(16).toString('hex');
 const nodeArgs = (boardId, label) => [boardId, label, '', 0, 0, 160, 80, 'ink', false, ...Array(7).fill(NONE)];

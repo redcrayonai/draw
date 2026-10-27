@@ -1,4 +1,4 @@
-// Rules for anyone-with-the-link sharing (docs/superpowers/specs/2026-10-15-link-sharing-design.md).
+// Rules for anyone-with-the-link sharing.
 // Pure, so module/src/link-share.test.mjs can pin them; index.ts wires them in.
 
 export type LinkMode = 'view' | 'edit';

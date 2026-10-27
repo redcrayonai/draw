@@ -95,7 +95,7 @@ export const agentSubject = (userId: string) => `agent:${userId}`;
 export const principalSubject = (principal: Principal) => principal.machine ? `machine:${principal.machine.keyId}` : agentSubject(principal.userId);
 export const SERVICE_SUBJECT = 'service:mcp';
 
-// ---- live tap publish tokens (docs/superpowers/specs/2026-10-16-live-tap-design.md T8) ----
+// ---- live tap publish tokens ----
 // Signed with the same key, but under their own issuer and audience: the
 // database fetches keys only for origins(env).issuer, so a tap token can never
 // open a database connection, and a database token is never a tap token.

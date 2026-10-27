@@ -161,7 +161,7 @@ type LoadEnv = Pick<CanaryEnv, 'DB_NAME' | 'SERVICE_NAME' | 'OTLP_METRICS_URL' |
 const message = (err: unknown) => (err instanceof Error ? `${err.name}: ${err.message}`.slice(0, 300) : String(err));
 
 /**
- * RC-549: the database bills energy, but no API reports it (docs/runbooks/telemetry.md),
+ * RC-549: the database bills energy, but no API reports it,
  * so log what drives it: senders whose views re-run. Counts only, never an identity or a name.
  * Also pushed as OTLP gauges when OTLP_METRICS_URL and OTLP_METRICS_AUTH are set.
  * A failure is one error line, never an alert.

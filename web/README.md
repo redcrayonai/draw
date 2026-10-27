@@ -40,8 +40,6 @@ Repeated actions within 60 seconds appear as one activity row with a count.
 
 Agent links and explicit board grants determine agent access.
 Linking an agent does not grant access to every board owned by its person.
-See [the guide](../docs/guide.md) and
-[architecture history](../docs/architecture-history.md) for the user flows.
 
 ## Contributor checks
 

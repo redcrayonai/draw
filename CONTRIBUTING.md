@@ -1,7 +1,7 @@
 # Contributing
 
-Use [Docker Compose](README.md#run-it-with-docker-compose) to run the application.
-After a source change, run `docker compose up --build` again.
+Run the application with Docker Compose: `docker compose up --build`.
+After a source change, run it again.
 
 Keep pull requests focused on one change. Describe the problem, the resulting
 behavior, and the checks that you ran. List any checks that you did not run.
@@ -59,6 +59,6 @@ out of contributions. Keep generated bundles free of infrastructure vendor names
 Source can name a dependency when it explains the actual integration.
 Report security concerns through [SECURITY.md](SECURITY.md).
 
-The repository-wide license and copyright holder are pending.
-Package manifests use `UNLICENSED` until that decision.
-The existing [plugin license](plugin/LICENSE) applies to the plugin.
+## License
+
+Contributions are licensed under the [Apache License 2.0](LICENSE).

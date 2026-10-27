@@ -32,7 +32,7 @@ test('ci-ready requires every prerequisite, including missing and skipped result
 });
 
 test('a PR touching only markdown, GitHub YAML or scripts runs the light jobs; anything else, or main, runs everything', () => {
-  for (const files of [['.github/workflows/release-labels.yml', 'scripts/release-labels.mjs'], ['README.md', 'cloud/docs/runbook.md'], ['.github/dependabot.yml'], ['scripts/stdb-test.sh'], ['cloud/scripts/link-core.mjs', 'mcp/scripts/smoke.mjs']]) {
+  for (const files of [['.github/workflows/release-labels.yml', 'scripts/release-labels.mjs'], ['README.md', 'docs/src/content/docs/index.md'], ['.github/dependabot.yml'], ['scripts/stdb-test.sh'], ['helper/scripts/x.mjs', 'mcp/scripts/smoke.mjs']]) {
     assert.equal(needsFull(files), false, files.join(', '));
   }
   for (const files of [[], ['client/src/main.ts'], ['scripts/x.mjs', 'client/src/main.ts'], ['plugin/skills/draw/SKILL.md'], ['.github/actions/spacetime/action.yml'], ['docker/compose.yml'], ['pnpm-lock.yaml']]) {
@@ -76,8 +76,8 @@ test('every PR and main commit runs the reusable quality gate', () => {
   assert.match(checks, /node --test scripts\/ci-workflows\.test\.mjs/);
   assert.match(checks, /scripts\/check-wire-compat\.test\.mjs/);
   assert.match(checks, /scripts\/module-env\.test\.mjs/);
-  // A scripts-only PR runs no other job, so every scripts/ and cloud/scripts/ test runs here.
-  for (const dir of ['scripts', 'cloud/scripts']) {
+  // A scripts-only PR runs no other job, so every scripts/ test runs here.
+  for (const dir of ['scripts']) {
     for (const file of readdirSync(new URL(`../${dir}`, import.meta.url)).filter(file => file.endsWith('.test.mjs'))) {
       assert.ok(checks.split(/\s+/).includes(`${dir}/${file}`), `${dir}/${file} must run in workflow-checks`);
     }

@@ -1,4 +1,4 @@
-// Module integration suite for red crayon review marks (spec cloud/docs/superpowers/specs/2026-10-19-red-crayon-review-design.md).
+// Module integration suite for red crayon review marks.
 // Talks to an ISOLATED database over the HTTP API only, like scripts/verify-threats-local.mjs:
 //
 //   nix develop --command scripts/stdb-test.sh run

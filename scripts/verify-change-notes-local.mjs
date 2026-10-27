@@ -1,5 +1,4 @@
-// Module integration suite for change notes (spec
-// docs/superpowers/specs/2026-10-16-change-notes-design.md, "Data" and D3-D9c).
+// Module integration suite for change notes.
 // Talks to an ISOLATED database over the HTTP API only, like
 // scripts/verify-charts-local.mjs. scripts/stdb-test.sh sets it up:
 //

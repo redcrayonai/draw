@@ -1,6 +1,5 @@
 #!/usr/bin/env node
-// Writes the logo drawings of the library's AI logos and Cloud logos (spec
-// docs/superpowers/specs/2026-10-18-component-library-design.md, D14-D18) from
+// Writes the logo drawings of the library's AI logos and Cloud logos from
 // each brand's own SVG files: client/src/logos/<id>.ts, one module per logo, and
 // client/src/node-logos.ts, their loaders (each logo is its own chunk, fetched
 // when a board shows it or the library opens). Nothing is redrawn: each file is

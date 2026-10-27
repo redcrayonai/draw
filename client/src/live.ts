@@ -1,5 +1,5 @@
 /**
- * The canvas side of the live tap (docs/superpowers/specs/2026-10-16-live-tap-design.md):
+ * The canvas side of the live tap:
  * a viewer connection to the board's live channel, opened only while Live is on.
  */
 import type { Edge } from './module_bindings/types';

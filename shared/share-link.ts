@@ -1,4 +1,4 @@
-// Anyone-with-the-link URLs (docs/superpowers/specs/2026-10-15-link-sharing-design.md).
+// Anyone-with-the-link URLs.
 import { setDb } from './db-target';
 
 // The token rides in the fragment, which browsers never send to a server.

@@ -4,7 +4,7 @@ import { test, expect, openBoard, drawNode, shareBoard, signInOnRequest, boardId
 
 // A hosted-style build: the Connect dialog and its account gate, the dashboard link and
 // redirects, the privacy link, and OIDC client ids (azp or aud) under issuer enforcement.
-// The module requires the session claim 'sid', as the hosted service does (cloud/scripts/module-env.mjs);
+// The module requires the session claim 'sid', as a hosted service with such an issuer does;
 // every stack.accountToken() carries one unless a test drops it.
 test.use({
   clientEnv: { VITE_MCP_URL: 'https://mcp.e2e.invalid/mcp', VITE_DASHBOARD_URL: 'https://dash.e2e.invalid', VITE_PRIVACY_URL: 'https://example.test/privacy' },

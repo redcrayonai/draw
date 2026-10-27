@@ -5001,7 +5001,7 @@ export const openBoardEmbed = reducer({ token: t.string() }, (ctx, { token }) =>
   else ctx.db.boardEmbedVisit.insert(row);
 });
 
-// Anyone-with-the-link sharing (docs/superpowers/specs/2026-10-15-link-sharing-design.md).
+// Anyone-with-the-link sharing.
 // A new link takes the caller's token; an existing link keeps its token and
 // changes only its mode.
 export const setLinkShare = reducer(

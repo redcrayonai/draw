@@ -3,7 +3,7 @@ import type { Page } from '@playwright/test';
 import { setDb } from '../../shared/db-target';
 import { test, expect, openBoard, drawNode, drawEdge, shareBoard, boardIdOf, linkedAgent, serverCaughtUp, palette, guestToken, marker, type Stack } from '../fixtures';
 
-// Who can open a board: the canvas screen and the reducer verdict for the same identity (docs/e2e-access-cases.md).
+// Who can open a board: the canvas screen and the reducer verdict for the same identity.
 const NONE = { none: [] };
 const SHA = '4b825dc642cb6eb9a060e54bf8d69288fbee4904';
 const HEAD = 'a'.repeat(40);

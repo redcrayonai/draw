@@ -995,7 +995,7 @@ async function boot(conn: DbConnection, identityHex: string, signedIn: boolean):
           return n ? { x: n.x + n.w / 2, y: n.y + n.h / 2 } : null;
         };
       };
-      // ---- live tap (docs/superpowers/specs/2026-10-16-live-tap-design.md): connected only while Live is on ----
+      // ---- live tap: connected only while Live is on ----
       let liveMap: ReadonlyMap<bigint, LiveEdge> | undefined;
       let liveSession: LiveSession | null = null;
       let liveState: LiveState | null = null;

@@ -5,7 +5,6 @@ updates:
     directories:
       - /agent
       - /client
-      - /cloud
       - /e2e
       - /helper
       - /importer

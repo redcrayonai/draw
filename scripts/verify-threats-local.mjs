@@ -1,4 +1,4 @@
-// Module integration suite for threats (spec docs/superpowers/specs/2026-10-16-threat-blast-radius-design.md).
+// Module integration suite for threats.
 // Talks to an ISOLATED database over the HTTP API only, like scripts/verify-change-notes-local.mjs:
 //
 //   nix develop --command scripts/stdb-test.sh run scripts/verify-threats-local.mjs

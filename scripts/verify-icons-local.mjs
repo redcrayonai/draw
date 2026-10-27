@@ -1,4 +1,4 @@
-// Module integration suite for node icons (spec docs/superpowers/specs/2026-10-18-component-library-design.md).
+// Module integration suite for node icons.
 // Talks to an ISOLATED SpacetimeDB over the HTTP API only, like scripts/verify-charts-local.mjs:
 //
 //   nix develop --command scripts/stdb-test.sh run scripts/verify-icons-local.mjs

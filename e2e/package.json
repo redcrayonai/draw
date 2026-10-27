@@ -11,5 +11,5 @@
     "@playwright/test": "^1.61.1"
   },
   "packageManager": "pnpm@10.34.5",
-  "license": "UNLICENSED"
+  "license": "Apache-2.0"
 }

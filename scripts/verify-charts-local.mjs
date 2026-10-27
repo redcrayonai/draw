@@ -1,5 +1,4 @@
-// Module integration suite for chart objects and the chart library (spec
-// docs/superpowers/specs/2026-10-09-chart-library-design.md, "Reducers").
+// Module integration suite for chart objects and the chart library.
 // Talks to an ISOLATED SpacetimeDB over the HTTP API only, like
 // scripts/verify-dashboard-local.mjs. scripts/stdb-test.sh sets it up:
 //

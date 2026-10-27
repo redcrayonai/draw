@@ -10,8 +10,9 @@ on:
   workflow_call:
 
 env:
-  VITE_SPACETIME_URI: ${{ vars.VITE_SPACETIME_URI }}
-  VITE_SPACETIME_DB: ${{ vars.VITE_SPACETIME_DB }}
+  # Local defaults: these are check builds; the hosted build is the private deploy's.
+  VITE_SPACETIME_URI: ${{ vars.VITE_SPACETIME_URI || 'ws://127.0.0.1:3000' }}
+  VITE_SPACETIME_DB: ${{ vars.VITE_SPACETIME_DB || 'redcrayon-local' }}
   VITE_CANVAS_URL: ${{ vars.VITE_CANVAS_URL }}
 
 jobs:

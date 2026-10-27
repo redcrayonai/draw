@@ -37,7 +37,7 @@ REPO="$(cd "$(dirname "$0")/.." && pwd)"
 ISSUER_PORT="${STDB_TEST_ISSUER_PORT:-$((PORT + 1))}"
 export MODULE_ENV="${MODULE_ENV:-local}"
 export MCP_ORIGIN="http://127.0.0.1:$ISSUER_PORT"
-# The browser issuer, with the session claim the hosted service sets (cloud/scripts/module-env.mjs).
+# The browser issuer, with the session claim the hosted service sets.
 export BROWSER_ISSUER="http://127.0.0.1:$ISSUER_PORT/browser"
 export BROWSER_SESSION_CLAIM=sid
 export OIDC_ISSUER="$BROWSER_ISSUER" # the mcp Worker's name for the browser issuer

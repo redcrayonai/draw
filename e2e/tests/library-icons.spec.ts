@@ -1,7 +1,7 @@
 import { test, expect, openBoard, shareBoard, exportSvg } from '../fixtures';
 import type { Page } from '@playwright/test';
 
-// Library icons (docs/superpowers/specs/2026-10-18-component-library-design.md):
+// Library icons:
 // found by search, placed with the existing interactions, saved, drawn for a
 // collaborator and written into Export SVG.
 

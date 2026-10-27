@@ -34,17 +34,17 @@ test('tools.ts parses into the hosted tool list', () => {
   assert.ok(!TOOL_NAMES.includes('link_dashboard'));
 });
 
-test('plugin.json: name draw, a semver version, MIT', () => {
+test('plugin.json: name draw, a semver version, Apache-2.0', () => {
   const p = json('plugin/.claude-plugin/plugin.json');
   assert.equal(p.name, 'draw');
   assert.match(p.version, /^\d+\.\d+\.\d+$/);
-  assert.equal(p.license, 'MIT');
+  assert.equal(p.license, 'Apache-2.0');
 });
 
 test('package.json: @redcrayonai/draw ships the plugin and runs the helper as bin redcrayon, one version everywhere', () => {
   const p = json('plugin/package.json');
   assert.equal(p.name, '@redcrayonai/draw');
-  assert.equal(p.license, 'MIT');
+  assert.equal(p.license, 'Apache-2.0');
   assert.deepEqual(p.bin, { redcrayon: 'bin/redcrayon.mjs' });
   for (const f of ['.claude-plugin', '.mcp.json', 'hooks', 'skills', 'references', 'bin/redcrayon.mjs', 'README.md', 'LICENSE']) assert.ok(p.files.includes(f), f);
   assert.equal(p.publishConfig?.access, 'public');
@@ -55,7 +55,7 @@ test('package.json: @redcrayonai/draw ships the plugin and runs the helper as bi
 });
 
 test('marketplace.json: marketplace redcrayonai lists plugin draw from npm, major 1, unversioned', () => {
-  const m = json('marketplace/.claude-plugin/marketplace.json');
+  const m = json('.claude-plugin/marketplace.json');
   assert.equal(m.name, 'redcrayonai');
   assert.ok(m.owner?.name);
   assert.equal(m.plugins.length, 1);
@@ -317,7 +317,7 @@ test('hosted plugin release configures and scans the packed plugin and marketpla
     return result.stdout;
   };
   try {
-    for (const name of ['plugin', 'marketplace', 'helper/src', 'helper/build.mjs', 'helper/package.json', 'agent/src', 'shared']) {
+    for (const name of ['plugin', '.claude-plugin', 'helper/src', 'helper/build.mjs', 'helper/package.json', 'agent/src', 'shared']) {
       mkdirSync(dirname(join(dir, name)), { recursive: true });
       cpSync(join(root, name), join(dir, name), {
         recursive: true,
@@ -343,7 +343,7 @@ test('hosted plugin release configures and scans the packed plugin and marketpla
     const [{ filename }] = JSON.parse(run('npm', ['pack', '--ignore-scripts', '--json', '--pack-destination', pack], join(dir, 'plugin')));
     run('tar', ['-xzf', join(pack, filename), '-C', pack]);
     const targets = join(dir, 'release.targets');
-    writeFileSync(targets, `tree ${join(pack, 'package')}\ntree marketplace\n`);
+    writeFileSync(targets, `tree ${join(pack, 'package')}\ntree .claude-plugin\n`);
     const strict = scan(targets, dir);
     assert.equal(strict.length, 3, strict.join('\n'));
     for (const file of ['pack/package/.mcp.json', 'pack/package/README.md', 'pack/package/bin/redcrayon.mjs']) {

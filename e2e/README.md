@@ -25,7 +25,7 @@ The workspace cases also run the real generic OIDC adapter against a local test 
 
 Workspace cases cover native membership, teams, one-use invitations, guest board access, workspace creation destinations, explicit moves, and live permission revocation. Focused cases verify member-to-guest demotion, removal of open-board manager controls, guest manager access without roster disclosure, independent edit-link permissions, and account-switch/sign-out isolation of workspace data and cached permissions.
 
-The service-account browser case creates a selected-board account and read/edit keys, checks digest-only storage and show-once secret clearing across account switches and reloads, rotates and revokes a key, disables an account, and verifies that ordinary members cannot manage accounts. Real database cases separately check live scope changes, expiry and revocation on existing connections. Actual MCP Worker cases authenticate managed keys through the shared cloud/open-source entry and verify scoped reads/writes and cached-token revocation.
+The service-account browser case creates a selected-board account and read/edit keys, checks digest-only storage and show-once secret clearing across account switches and reloads, rotates and revokes a key, disables an account, and verifies that ordinary members cannot manage accounts. Real database cases separately check live scope changes, expiry and revocation on existing connections. Actual MCP Worker cases authenticate managed keys through the shared Worker entry and verify scoped reads/writes and cached-token revocation.
 
 The suite covers drawing persistence, private locator denial, SVG export, eight sharing combinations,
 live link downgrade/revocation, and branching a hand-drawn board (fork, review, reject, merge, viewer limits, palette). The schema-upgrade drill adds retained edge data and a temporary appended column.
@@ -35,7 +35,6 @@ Actual MCP Worker integration tests cover native workspace delegation, viewer an
 The 2026-10-23 true-up added cases for code consent (RC-690), agent grants, guest sign-in claims, provider outage, presence, hide sets, charts and the library, routes, threats, branches and snapshots, undo and drag, and phones.
 Each case cites the decided behavior it checks; cases where main does not yet do what was decided are marked `test.fail()` with a `divergent (<id>)` comment, so fixing the product flips them red until the mark is removed.
 `signIn`, `signOut`, `signInOnRequest` and `providerDown` drive the test auth provider per browser context, and `test.use({ clientEnv })` builds a file's own canvas (for example with `VITE_MCP_URL`).
-See the [journey map](../docs/e2e-user-journeys.md) and [access cases](../docs/e2e-access-cases.md) for the remaining scope.
 
 To test an existing canvas, set its URL:
 

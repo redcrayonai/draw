@@ -1,5 +1,4 @@
-// Module integration suite for code consent (RC-690, spec
-// docs/superpowers/specs/2026-10-21-code-consent-design.md, Decisions 1-3): a
+// Module integration suite for code consent (RC-690): a
 // board stores code text (code ref snippets, source citation lines) only when its
 // owner opted in; line hashes and the repo remote live in side tables. Talks to an ISOLATED database over the HTTP API only;
 // scripts/stdb-test.sh sets it up:

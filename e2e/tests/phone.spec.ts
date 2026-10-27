@@ -1,7 +1,7 @@
 import type { Locator, Page } from '@playwright/test';
 import { test, expect, drawNode, openBoard, shareBoard, fingers, view, settledBox } from '../fixtures';
 
-// A phone from the first load (cloud/docs/investor-demo-user-journeys.md, PR #149).
+// A phone from the first load.
 const PHONE = { viewport: { width: 390, height: 844 }, hasTouch: true };
 
 type Point = { x: number; y: number };

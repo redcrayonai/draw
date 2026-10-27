@@ -1,7 +1,6 @@
 /**
  * redcrayon tap: OTLP/HTTP traces in on 127.0.0.1, per-edge summaries out to
  * the board's live channel, only while someone on the board has Live on.
- * docs/superpowers/specs/2026-10-16-live-tap-design.md
  */
 import { readFileSync, statSync } from 'node:fs';
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http';

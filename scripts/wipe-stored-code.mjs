@@ -1,7 +1,5 @@
-// One-time rollout step for code consent (RC-690, spec
-// docs/superpowers/specs/2026-10-21-code-consent-design.md, Decision 7). Every board
-// has no consent when the release ships, so the code text stored before it must go
-// (docs/runbook.md, "Code consent rollout"). Two passes:
+// One-time rollout step for code consent (RC-690). Every board
+// has no consent when the release ships, so the code text stored before it must go. Two passes:
 //
 //   1. Hashes: for every code ref and source citation that holds text, write the line
 //      hashes of that text. Refs and citations keep tracking their code without it.

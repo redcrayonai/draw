@@ -32,8 +32,6 @@ export const PRIVATE = /clerk|(?:pk|sk)_(?:live|test)_|maincloud|account_id|\b(?
 // Each exception is source-only, with an exact file and a reason. Never exempt
 // an entire integration file: a new import or hosted URL must still fail.
 export const SOURCE_ALLOW = [
-  [".gitleaks.toml", "regexes = ['''pk_test_ZXhhbXBsZS50ZXN0JA==''']", "exact public-key fixture needed to scan private history; remove at the fresh-history split"],
-  [".gitleaks.toml", "regexes = ['''pk_live_Y2xlcmsucmVkY3JheW9uLmFpJA''']", "exact public-key fixture needed to scan private history; remove at the fresh-history split"],
   ["client/src/connect.test.ts", "expect(s).not.toMatch(/spacetime|maincloud|bsatn|clockwork|\\bstdb\\b/i);", "regression assertion that connection errors disclose no backend names"],
   ["mcp/src/scrub.test.ts", "const VENDOR = /spacetime|maincloud|bsatn|clockwork|\\bstdb\\b/i;", "backend-error redaction regression fixture; never shipped in a bundle"],
   ["mcp/src/scrub.test.ts", "['402 energy', new DbError(402, 'the database answered 402 to call/x: out of energy on maincloud'), true, 'UNAVAILABLE: redcrayon is unavailable. Nothing was written.'],", "backend-error redaction regression fixture; never shipped in a bundle"],

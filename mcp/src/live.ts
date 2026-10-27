@@ -1,5 +1,5 @@
 /**
- * One board's live channel (docs/superpowers/specs/2026-10-16-live-tap-design.md):
+ * One board's live channel:
  * a tap publishes per-edge summaries, viewers who turned Live on receive them,
  * and the tap is told whether anyone is watching. Nothing here is stored.
  *
