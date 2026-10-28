@@ -18,7 +18,7 @@ Claude Code you can also run `/plugin marketplace add redcrayonai/draw`, then
 claude plugin marketplace add redcrayonai/draw && claude plugin install draw@redcrayonai
 ```
 
-1. Start Claude Code in your project, run `/mcp`, choose **redcrayon**, then
+1. Start Claude Code in your project, run `/mcp`, choose **draw**, then
    **Authenticate**. Approve in the browser tab that opens.
 2. Run `/draw:navigate`. The agent opens a board named after your branch
    and posts its link. `/draw:navigate <board link>` draws on a board you
@@ -34,24 +34,24 @@ Add the server to `~/.cursor/mcp.json`:
 ```json
 {
   "mcpServers": {
-    "redcrayon": { "url": "https://mcp.redcrayon.ai/mcp" }
+    "draw": { "url": "https://mcp.redcrayon.ai/mcp" }
   }
 }
 ```
 
-In **Cursor Settings → MCP**, click the login button next to redcrayon and
+In **Cursor Settings → MCP**, click the login button next to draw and
 approve in the browser.
 
 ## Codex
 
 ```sh
-codex mcp add redcrayon --url https://mcp.redcrayon.ai/mcp
-codex mcp login redcrayon
+codex mcp add draw --url https://mcp.redcrayon.ai/mcp
+codex mcp login draw
 ```
 
 ## claude.ai
 
-**Customize → Connectors → Add custom connector.** Name it redcrayon, paste the
+**Customize → Connectors → Add custom connector.** Name it draw, paste the
 server URL, then click **Connect**. claude.ai draws from the conversation; code
 refs need a coding agent in your project.
 
@@ -59,6 +59,12 @@ refs need a coding agent in your project.
 
 Any MCP client with remote servers and sign-in works: give it the server URL.
 VS Code uses `"servers"` and `"type": "http"`.
+
+## Existing connections
+
+If you connected before the rename, your `redcrayon` connection still works.
+To rename it to `draw`, remove that server entry in your client, add it again
+with the name above, and sign in again.
 
 ## The prompt
 

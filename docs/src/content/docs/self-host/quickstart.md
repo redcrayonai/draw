@@ -133,7 +133,7 @@ Without an issuer any user id works: give the agent an edit link, as above.
 The agent sends the key as a bearer token:
 
 ```sh
-claude mcp add --transport http redcrayon http://localhost:8788/mcp --header "Authorization: Bearer <key>"
+claude mcp add --transport http draw http://localhost:8788/mcp --header "Authorization: Bearer <key>"
 ```
 
 ## Code storage and team access

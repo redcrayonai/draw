@@ -1,5 +1,5 @@
 {
   "mcpServers": {
-    "redcrayon": { "type": "http", "url": "${REDCRAYON_MCP_URL:-https://mcp.redcrayon.ai/mcp}" }
+    "draw": { "type": "http", "url": "${REDCRAYON_MCP_URL:-https://mcp.redcrayon.ai/mcp}" }
   }
 }

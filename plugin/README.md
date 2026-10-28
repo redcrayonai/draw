@@ -5,7 +5,7 @@ touched, the flows between them, each one citing a line the agent read, and code
 refs that point into the exact symbols. You read the board instead of a prose
 summary, and you find it again on your dashboard.
 
-This plugin adds three things to Claude Code: the redcrayon server, the
+This plugin adds three things to Claude Code: the draw server, the
 `/draw:navigate` command, and code refs (a hook that reads the files your
 agent cites). Other agents connect to the same server by its URL.
 
@@ -23,7 +23,7 @@ agent cites). Other agents connect to the same server by its URL.
 
    Or, inside Claude Code, run `/plugin marketplace add redcrayonai/draw`,
    then `/plugin install draw@redcrayonai`.
-2. Sign in: start Claude Code in your project, run `/mcp`, choose redcrayon, then
+2. Sign in: start Claude Code in your project, run `/mcp`, choose draw, then
    Authenticate. Approve in the browser tab that opens.
 3. Start drawing: run `/draw:navigate`. Your agent opens a board named after
    your branch and posts its link. `/draw:navigate <name>` names the board;
@@ -39,32 +39,32 @@ Node, drawing still works.
    ```json
    {
      "mcpServers": {
-       "redcrayon": {
+       "draw": {
          "url": "<server URL>"
        }
      }
    }
    ```
 
-2. Sign in: in Cursor Settings → MCP, redcrayon shows a login button. Click it
+2. Sign in: in Cursor Settings → MCP, draw shows a login button. Click it
    and approve in the browser.
 3. Give your agent the prompt below. For code refs the agent runs
    `npx -y @redcrayonai/draw@1 capture` in your project (git, Node 20+).
 
 ### Codex
 
-1. `codex mcp add redcrayon --url <server URL>`
-2. `codex mcp login redcrayon`. A browser tab opens. Approve, then start codex in
+1. `codex mcp add draw --url <server URL>`
+2. `codex mcp login draw`. A browser tab opens. Approve, then start codex in
    your project.
 3. Give your agent the prompt below. For code refs the agent runs
    `npx -y @redcrayonai/draw@1 capture`. Allow network access when Codex asks.
 
 ### claude.ai
 
-1. In claude.ai: Customize → Connectors → Add custom connector. Name it redcrayon
+1. In claude.ai: Customize → Connectors → Add custom connector. Name it draw
    and paste the server URL. On Team and Enterprise plans an owner adds it once
    for everyone.
-2. Click Connect next to redcrayon and approve in the tab that opens.
+2. Click Connect next to draw and approve in the tab that opens.
 3. Give Claude the prompt below. claude.ai draws from the conversation. Code refs
    and checkpoints need a coding agent in your project.
 
@@ -117,11 +117,15 @@ Record measured rates, median latencies and error counts for the same workload b
 
 ## Sign-in
 
+If you connected before the rename, your `redcrayon` connection still works.
+To rename it to `draw`, remove that server entry in your client, add it again
+with the name above, and sign in again.
+
 Each client signs in once, in the browser, and stays signed in. Your agent shows
 on the board as `agent of <your name>`. To sign a client out:
 
-- Claude Code: `/mcp` → redcrayon → clear authentication
-- Codex: `codex mcp logout redcrayon`
+- Claude Code: `/mcp` → draw → clear authentication
+- Codex: `codex mcp logout draw`
 - Cursor: Settings → MCP → log out
 - claude.ai: Connectors → Disconnect
 
@@ -210,9 +214,9 @@ Boards your agent opens are private to your account until you share them from yo
    `rm -rf "$(git rev-parse --git-common-dir)/redcrayon"`.
 3. Clear the npx cache entry for the helper:
    `for d in ~/.npm/_npx/*/; do [ -d "$d/node_modules/@redcrayonai/draw" ] && rm -rf "$d"; done`.
-4. Disconnect redcrayon in each client you connected, which drops its sign-in
+4. Disconnect draw in each client you connected, which drops its sign-in
    grant: the sign-out steps under [Sign-in](#sign-in), then remove the server
-   from the client (`codex mcp remove redcrayon`, the `redcrayon` entry in
+   from the client (`codex mcp remove draw`, the `draw` entry in
    `~/.cursor/mcp.json`, the claude.ai connector).
 
 Delete boards from the dashboard to delete their related data from the live

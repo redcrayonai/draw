@@ -45,7 +45,7 @@ The agent opens a board named after your branch, posts the link, and keeps it cu
 /plugin install draw@redcrayonai
 ```
 
-Then `/mcp` → **redcrayon** → **Authenticate**, and run `/draw:navigate`.
+Then `/mcp` → **draw** → **Authenticate**, and run `/draw:navigate`.
 
 <details>
 <summary><b>Cursor</b></summary>
@@ -53,10 +53,10 @@ Then `/mcp` → **redcrayon** → **Authenticate**, and run `/draw:navigate`.
 `~/.cursor/mcp.json`:
 
 ```json
-{ "mcpServers": { "redcrayon": { "url": "https://mcp.redcrayon.ai/mcp" } } }
+{ "mcpServers": { "draw": { "url": "https://mcp.redcrayon.ai/mcp" } } }
 ```
 
-**Cursor Settings → MCP**, click login next to redcrayon.
+**Cursor Settings → MCP**, click login next to draw.
 
 </details>
 
@@ -64,8 +64,8 @@ Then `/mcp` → **redcrayon** → **Authenticate**, and run `/draw:navigate`.
 <summary><b>Codex</b></summary>
 
 ```sh
-codex mcp add redcrayon --url https://mcp.redcrayon.ai/mcp
-codex mcp login redcrayon
+codex mcp add draw --url https://mcp.redcrayon.ai/mcp
+codex mcp login draw
 ```
 
 </details>
@@ -73,7 +73,7 @@ codex mcp login redcrayon
 <details>
 <summary><b>claude.ai</b></summary>
 
-**Customize → Connectors → Add custom connector**, name it redcrayon, paste `https://mcp.redcrayon.ai/mcp`, **Connect**. claude.ai draws from the conversation; code refs need a coding agent in your project.
+**Customize → Connectors → Add custom connector**, name it draw, paste `https://mcp.redcrayon.ai/mcp`, **Connect**. claude.ai draws from the conversation; code refs need a coding agent in your project.
 
 </details>
 
