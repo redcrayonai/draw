@@ -33,10 +33,14 @@ jobs:
 
       - name: Build
         working-directory: docs
+        env:
+          PUBLIC_ALGOLIA_APP_ID: ${{ vars.PUBLIC_ALGOLIA_APP_ID }}
+          PUBLIC_ALGOLIA_SEARCH_API_KEY: ${{ vars.PUBLIC_ALGOLIA_SEARCH_API_KEY }}
+          PUBLIC_ALGOLIA_INDEX_NAME: ${{ vars.PUBLIC_ALGOLIA_INDEX_NAME }}
         run: pnpm run build
 
-      - name: Test page vocabulary rules
-        run: node --test docs/scripts/check-vocabulary.test.mjs
+      - name: Test docs configuration
+        run: node --test docs/scripts/*.test.mjs
 
       - name: Check page vocabulary
         run: |
