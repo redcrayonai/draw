@@ -16,6 +16,8 @@ Without Algolia settings, it uses Starlight's built-in search.
 
 1. Set up a DocSearch index and crawler for the published docs URL in
    [Algolia DocSearch](https://docsearch.algolia.com/docs/docsearch-program/).
+   Use `draw-docs` as the index name. Publish the docs before starting the
+   crawler; the local dev server is not a public crawl target.
    The index must contain crawled pages before searches can return results.
 2. Copy `.env.example` to `.env` and fill in the application ID, **search-only**
    API key, and index name. These values are public and appear in the built site.
