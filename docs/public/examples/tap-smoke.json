@@ -1,0 +1,61 @@
+{
+  "resourceSpans": [
+    {
+      "resource": {
+        "attributes": [
+          {
+            "key": "service.name",
+            "value": {
+              "stringValue": "gateway"
+            }
+          }
+        ]
+      },
+      "scopeSpans": [
+        {
+          "spans": [
+            {
+              "traceId": "0123456789abcdef0123456789abcdef",
+              "spanId": "1111111111111111",
+              "name": "synthetic gateway request",
+              "startTimeUnixNano": "1000000000",
+              "endTimeUnixNano": "1100000000",
+              "status": {
+                "code": 1
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "resource": {
+        "attributes": [
+          {
+            "key": "service.name",
+            "value": {
+              "stringValue": "checkout-api"
+            }
+          }
+        ]
+      },
+      "scopeSpans": [
+        {
+          "spans": [
+            {
+              "traceId": "0123456789abcdef0123456789abcdef",
+              "spanId": "2222222222222222",
+              "parentSpanId": "1111111111111111",
+              "name": "synthetic checkout request",
+              "startTimeUnixNano": "1010000000",
+              "endTimeUnixNano": "1074000000",
+              "status": {
+                "code": 1
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

@@ -25,6 +25,7 @@ hero:
 | Understand a repository or onboard a teammate | [Map an unfamiliar codebase](/use-cases/map/) |
 | Find callers that a migration can break | [Review a risky change](/use-cases/review/) |
 | Compare a design before changing the shared diagram | [Propose an architecture change](/use-cases/propose/) |
+| Watch your instrumented app while you run it locally | [Watch local traffic with tap](/use-cases/tap/) |
 | Explain pod churn, errors or latency | [Investigate an incident](/use-cases/investigate/) |
 | Understand the impact of an alert or vulnerability | [Triage security findings](/use-cases/security/) |
 | Put a chart or diagram in a handover | [Share an explanation or report](/use-cases/share/) |

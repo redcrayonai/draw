@@ -45,7 +45,7 @@ The database time is flat while request duration rises. Compare queue wait and a
 ```
 
 With trace data, the agent can set measured edge latency or
-[replay one request](/capabilities/traffic/). For a local reproduction, use a live traffic tap.
+[replay one request](/capabilities/traffic/). For a local reproduction, [watch traffic with tap](/use-cases/tap/).
 Chart values update when the agent or a person supplies new data. They do not poll your metrics automatically.
 
 Before you share the report, inspect chart data and source labels for sensitive

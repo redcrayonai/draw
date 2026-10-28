@@ -80,6 +80,41 @@ opens a browser to sign in the first time it connects.
 Open a redcrayon board for this task and draw what you build on it as you go.
 ```
 
+## Watch local traffic with tap
+
+In your instrumented project, run `/draw:navigate`, then ask:
+
+```text
+Draw gateway → checkout-api → payments-api. Start a live tap, write the service-to-node mapping, and run the returned helper command in the background while I exercise checkout locally.
+```
+
+Tap needs **Node 22+**. The agent calls `start_tap`, writes `.redcrayon/tap.json`,
+and runs `npx -y @redcrayonai/draw@1 tap --token 'TOKEN_FROM_START_TAP'`. Configure each
+service's OpenTelemetry trace exporter, then turn on **Live traffic** on the board:
+
+```sh
+export OTEL_SERVICE_NAME=checkout-api
+export OTEL_EXPORTER_OTLP_TRACES_ENDPOINT=http://127.0.0.1:4318/v1/traces
+export OTEL_EXPORTER_OTLP_TRACES_PROTOCOL=http/protobuf
+```
+
+Change the service name for each process. An SDK must already produce and export
+spans. Both ends of a hop need related spans from different services.
+The helper sends only per-edge summaries, and only while someone watches.
+
+Ask for an error reproduction or a before/after comparison:
+
+```text
+Keep the tap on while I reproduce the checkout error. Show which observed hop has errors and inspect that component's code.
+```
+
+```text
+Record measured rates, median latencies and error counts for the same workload before and after this change. Keep the comparison in a chart with each run's command and commit.
+```
+
+[Use-case examples](../docs/src/content/docs/use-cases/tap.md) ·
+[Setup, synthetic smoke test and troubleshooting](../docs/src/content/docs/capabilities/traffic.md)
+
 ## Sign-in
 
 Each client signs in once, in the browser, and stays signed in. Your agent shows

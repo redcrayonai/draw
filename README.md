@@ -99,6 +99,7 @@ npx -y @redcrayonai/draw@1 doctor   # check node, git, repo, network
 | **Propose a design**<br>*"Branch this board, draw the queue proposal, and submit it for review."* | A separate diagram to review before a person merges it. [Walkthrough](docs/src/content/docs/use-cases/propose.md). |
 | **Review a risky change**<br>*"Drop customers.name. Flag the migration and cite every reader."* | The migration flagged on the database. A reader it did not update shows as one that will break. |
 | **Map a codebase**<br>*"Draw how this repo fits together. Cite a line for every edge."* | An onboarding map, left to right, each box with a two-sentence doc. Share it as a view link. |
+| **Watch local traffic**<br>*"Start a tap while I exercise checkout locally."* | Measured traffic, latency and errors on the request path. Needs Node 22 and OpenTelemetry traces. [Examples](docs/src/content/docs/use-cases/tap.md). |
 | **Investigate an incident**<br>*"Checkout pods keep restarting. Lay out what you find."* | Charts beside the services they describe, each saying where its data came from. Pairs with a Grafana or Kubernetes MCP server. |
 | **Triage security findings**<br>*"Mark what this alert and scan affect. What do I fix first?"* | Compromised and vulnerable services marked, each with its blast radius. Explain the priority using exposure, evidence and sensitive downstream systems. |
 
