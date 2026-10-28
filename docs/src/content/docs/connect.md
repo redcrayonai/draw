@@ -3,7 +3,11 @@ title: Connect your agent
 description: Add the draw MCP server to Claude Code, Cursor, Codex, claude.ai or any MCP client.
 ---
 
-**Server URL:** `https://mcp.redcrayon.ai/mcp`
+**Server URL** — use the copy icon to copy it to your clipboard.
+
+```text
+https://mcp.redcrayon.ai/mcp
+```
 
 Every client signs in once, in the browser. Your agent then shows on the board
 as `agent of <your name>`, and the boards it draws are yours.
