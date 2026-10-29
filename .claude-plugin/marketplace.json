@@ -6,7 +6,7 @@
     {
       "name": "draw",
       "source": { "source": "npm", "package": "@redcrayonai/draw", "version": "^1.0.0" },
-      "description": "Adds the redcrayon server, the /draw:navigate command, and code refs."
+      "description": "Adds the draw server, the /draw:navigate command, and code refs."
     }
   ]
 }

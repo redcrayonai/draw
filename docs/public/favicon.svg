@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="draw">
+  <defs>
+    <linearGradient id="bear" x1="0.7" y1="0" x2="0.2" y2="1">
+      <stop offset="0" stop-color="#FFC400"/>
+      <stop offset="0.45" stop-color="#8DC21F"/>
+      <stop offset="0.75" stop-color="#2FA36B"/>
+      <stop offset="1" stop-color="#2E8C8C"/>
+    </linearGradient>
+  </defs>
+  <path fill="none" stroke="url(#bear)" stroke-width="2.6" stroke-linejoin="round" stroke-linecap="round"
+    d="M22 24V17.5C22 14.5 24 13.2 26.3 14.3L28.4 15.3C31.4 14.3 34.8 14.3 37.6 15.3L39.7 14.3C42 13.2 43.6 14.6 43.6 17.5V25L46.2 27.6C50.6 32 52.2 37 52 42.2C55 42.6 56.6 46.6 54.6 50C52.6 53.6 48.6 55 44.2 54C36.6 52.2 26.6 52.4 18.6 55C14.4 56.4 10.4 54.4 10 50.6C9.6 46.8 11.8 44.4 14.6 44.6C13.6 38 15.6 31.6 19.8 27.2Z"/>
+  <g transform="rotate(22 47 33)">
+    <path fill="#FF3300" stroke="#000" stroke-width="1.6" paint-order="stroke"
+      d="M43 18.5L46.6 8.2C46.9 7.4 47.1 7.4 47.4 8.2L51 18.5V54.5C51 55.6 50.1 56.5 49 56.5H45C43.9 56.5 43 55.6 43 54.5Z"/>
+    <path fill="none" stroke="#000" stroke-width="1.2" stroke-linecap="round" d="M44 21.5Q45.5 20.5 47 21.5T50 21.5M44 23.8Q45.5 22.8 47 23.8T50 23.8M44 49Q45.5 48 47 49T50 49M44 51.3Q45.5 50.3 47 51.3T50 51.3"/>
+    <rect x="45.7" y="28" width="2.6" height="15" rx="1.3" fill="#000"/>
+  </g>
+</svg>

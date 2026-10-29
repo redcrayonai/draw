@@ -2,7 +2,7 @@
 name: navigate
 description: Use when the user types /draw:navigate [session-name | board link], or asks to open a live board, diagram, or whiteboard for the current task.
 argument-hint: [session-name | board link]
-allowed-tools: mcp__redcrayon__*, mcp__plugin_draw_redcrayon__*, Bash(git:*), Read
+allowed-tools: mcp__draw__*, mcp__plugin_draw_draw__*, Bash(git:*), Read
 ---
 
 # redcrayon — draw what you build
@@ -16,9 +16,9 @@ the chrome.
 
 One-way: you draw, the user reads. Feedback comes back through chat, not the board.
 
-**Tool names.** The redcrayon tools carry a prefix: `mcp__plugin_draw_redcrayon__`
-when the redcrayon plugin provides the server, `mcp__redcrayon__` when the user added
-it by hand, or another prefix with redcrayon in it. This skill names each tool
+**Tool names.** The draw tools carry a prefix: `mcp__plugin_draw_draw__`
+when the draw plugin provides the server, `mcp__draw__` when the user added
+it by hand, or another prefix chosen for the server. This skill names each tool
 without its prefix (`start_session`). Use one prefix for the whole session.
 
 **`board` on every call.** Every tool except `start_session` and `describe_charts`
@@ -27,9 +27,9 @@ takes `board`: the `id` that `start_session` returned, as a string of digits
 
 ## 0. Preflight — before anything else
 
-Look for `start_session` and `get_board` under a redcrayon prefix in your tool
-list. If they are not there, say exactly
-`The redcrayon server is not connected. Run /mcp, choose redcrayon, and sign in.`
+Look for `start_session` and `get_board` under the configured server's prefix in
+your tool list. If they are not there, say exactly
+`The draw server is not connected. Run /mcp, choose draw, and sign in.`
 and stop. Never carry on without a board and never pretend one exists.
 
 ## 1. Start

@@ -5,7 +5,7 @@ touched, the flows between them, each one citing a line the agent read, and code
 refs that point into the exact symbols. You read the board instead of a prose
 summary, and you find it again on your dashboard.
 
-This plugin adds three things to Claude Code: the redcrayon server, the
+This plugin adds three things to Claude Code: the draw server, the
 `/draw:navigate` command, and code refs (a hook that reads the files your
 agent cites). Other agents connect to the same server by its URL.
 
@@ -23,7 +23,7 @@ agent cites). Other agents connect to the same server by its URL.
 
    Or, inside Claude Code, run `/plugin marketplace add redcrayonai/draw`,
    then `/plugin install draw@redcrayonai`.
-2. Sign in: start Claude Code in your project, run `/mcp`, choose redcrayon, then
+2. Sign in: start Claude Code in your project, run `/mcp`, choose draw, then
    Authenticate. Approve in the browser tab that opens.
 3. Start drawing: run `/draw:navigate`. Your agent opens a board named after
    your branch and posts its link. `/draw:navigate <name>` names the board;
@@ -39,32 +39,32 @@ Node, drawing still works.
    ```json
    {
      "mcpServers": {
-       "redcrayon": {
+       "draw": {
          "url": "<server URL>"
        }
      }
    }
    ```
 
-2. Sign in: in Cursor Settings → MCP, redcrayon shows a login button. Click it
+2. Sign in: in Cursor Settings → MCP, draw shows a login button. Click it
    and approve in the browser.
 3. Give your agent the prompt below. For code refs the agent runs
    `npx -y @redcrayonai/draw@1 capture` in your project (git, Node 20+).
 
 ### Codex
 
-1. `codex mcp add redcrayon --url <server URL>`
-2. `codex mcp login redcrayon`. A browser tab opens. Approve, then start codex in
+1. `codex mcp add draw --url <server URL>`
+2. `codex mcp login draw`. A browser tab opens. Approve, then start codex in
    your project.
 3. Give your agent the prompt below. For code refs the agent runs
    `npx -y @redcrayonai/draw@1 capture`. Allow network access when Codex asks.
 
 ### claude.ai
 
-1. In claude.ai: Customize → Connectors → Add custom connector. Name it redcrayon
+1. In claude.ai: Customize → Connectors → Add custom connector. Name it draw
    and paste the server URL. On Team and Enterprise plans an owner adds it once
    for everyone.
-2. Click Connect next to redcrayon and approve in the tab that opens.
+2. Click Connect next to draw and approve in the tab that opens.
 3. Give Claude the prompt below. claude.ai draws from the conversation. Code refs
    and checkpoints need a coding agent in your project.
 
@@ -80,13 +80,52 @@ opens a browser to sign in the first time it connects.
 Open a redcrayon board for this task and draw what you build on it as you go.
 ```
 
+## Watch local traffic with tap
+
+In your instrumented project, run `/draw:navigate`, then ask:
+
+```text
+Draw gateway → checkout-api → payments-api. Start a live tap, write the service-to-node mapping, and run the returned helper command in the background while I exercise checkout locally.
+```
+
+Tap needs **Node 22+**. The agent calls `start_tap`, writes `.redcrayon/tap.json`,
+and runs `npx -y @redcrayonai/draw@1 tap --token 'TOKEN_FROM_START_TAP'`. Configure each
+service's OpenTelemetry trace exporter, then turn on **Live traffic** on the board:
+
+```sh
+export OTEL_SERVICE_NAME=checkout-api
+export OTEL_EXPORTER_OTLP_TRACES_ENDPOINT=http://127.0.0.1:4318/v1/traces
+export OTEL_EXPORTER_OTLP_TRACES_PROTOCOL=http/protobuf
+```
+
+Change the service name for each process. An SDK must already produce and export
+spans. Both ends of a hop need related spans from different services.
+The helper sends only per-edge summaries, and only while someone watches.
+
+Ask for an error reproduction or a before/after comparison:
+
+```text
+Keep the tap on while I reproduce the checkout error. Show which observed hop has errors and inspect that component's code.
+```
+
+```text
+Record measured rates, median latencies and error counts for the same workload before and after this change. Keep the comparison in a chart with each run's command and commit.
+```
+
+[Use-case examples](https://docs.redcrayon.ai/use-cases/tap/) ·
+[Setup, synthetic smoke test and troubleshooting](https://docs.redcrayon.ai/capabilities/traffic/)
+
 ## Sign-in
+
+If you connected before the rename, your `redcrayon` connection still works.
+To rename it to `draw`, remove that server entry in your client, add it again
+with the name above, and sign in again.
 
 Each client signs in once, in the browser, and stays signed in. Your agent shows
 on the board as `agent of <your name>`. To sign a client out:
 
-- Claude Code: `/mcp` → redcrayon → clear authentication
-- Codex: `codex mcp logout redcrayon`
+- Claude Code: `/mcp` → draw → clear authentication
+- Codex: `codex mcp logout draw`
 - Cursor: Settings → MCP → log out
 - claude.ai: Connectors → Disconnect
 
@@ -95,7 +134,16 @@ they are.
 
 ## What leaves your machine
 
-To check code refs, redcrayon uploads each file your agent cites, keeps only the cited lines, paths and git hashes, and deletes the file within 10 minutes.
+Code snippet storage is **off by default**. Code refs keep paths, symbols, line
+numbers and hashes. To check them, the helper still uploads each cited file.
+Captures expire within ten minutes and cannot be read again after the call claims them.
+
+Enable **Store code snippets on my boards** in dashboard **Settings → Code** to
+store code text. Later refs and checkpoints fill in snippets. Disabling this
+setting deletes stored snippets after a warning. Ref metadata remains.
+Board sharing is a separate choice. Hosted operators can read stored board data,
+including opted-in snippets. Board data is not end-to-end encrypted.
+See [Your data and code consent](https://docs.redcrayon.ai/data-and-consent/).
 
 Drawing needs only the server URL: nodes, edges and their labels go to the
 server as your agent writes them. Code refs, `source:` citations and checkpoints
@@ -105,10 +153,10 @@ upload:
 
 | kind | Uploads | Claimed by |
 |---|---|---|
-| start | The absolute path of the checkout; HEAD (the empty-tree hash in a repo with no commits); the object format | `start_session` |
+| start | The absolute checkout path, HEAD, object format and GitHub repository address when available | `start_session` |
 | ref | The above, plus one file: its path as git spells it, its bytes, git's blob hash, and whether git tracks it | `add_code_ref` |
 | cite | The same, for the cited file | `create_edge` with `source:` evidence |
-| checkpoint | The session's base commit, HEAD, the changed and deleted paths, the line numbers of each change (numbers only, no diff text), and the bytes and git hash of every file this board cites | `mark_checkpoint`, `arrive` |
+| checkpoint | Base and HEAD commits, changed and deleted paths, changed line ranges without diff text, cited files and their hashes, pushed status and cited files that differ from HEAD | `mark_checkpoint`, `arrive` |
 
 Never uploaded: the list of files in your repo, files not cited on that board,
 diff text, files git ignores, and files on the secret list.
@@ -119,11 +167,24 @@ Refused on your machine, with no network request: files git would not list
 `*.p12`, `*.pfx`, `.npmrc` or `.netrc`; symlinks that leave the repo; binary
 files; files over 1 MB; checkpoint captures over 8 MB.
 
-On the server, a capture can be claimed once, by the call it was made for, and
-is deleted 10 minutes after upload. File bytes are deleted when the call that
-claims them ends; redcrayon keeps only what the board shows: snippets (at most 60 lines and 4,000 characters each), cited
-lines, paths, coverage counts, git hashes and the checkout path. Each snippet is
-checked for secrets such as private keys and access tokens before it is stored.
+The helper refuses known secret filenames but does not scan file contents before
+upload. A permitted source file can still contain sensitive text.
+
+On the server, a capture works once, for the call it was made for. The server
+reads the file in memory. Captures use encryption with a key derived from the
+upload id, which the service does not store. They cannot be read again after
+claim or expiry.
+
+Without consent, the board keeps code-ref metadata, hashes, coverage and session
+metadata, including the checkout path. With consent, it also keeps snippets
+(at most 60 lines and 4,000 characters each) and cited source lines.
+The server checks cited source lines for secrets and checks snippets before storage.
+Text the agent writes into labels, docs or charts stays as written.
+
+A view link excludes code and threats by default. An edit link always includes
+code refs, with snippet text only on boards whose owner consents to storage.
+Turning off consent deletes stored text from the live database. Backups can
+retain deleted text until they expire.
 
 On your machine, the helper keeps two small files in `<git-common-dir>/redcrayon/`
 (shared by your worktrees): `cited/<board id>`, the files a board cites, and
@@ -153,13 +214,15 @@ Boards your agent opens are private to your account until you share them from yo
    `rm -rf "$(git rev-parse --git-common-dir)/redcrayon"`.
 3. Clear the npx cache entry for the helper:
    `for d in ~/.npm/_npx/*/; do [ -d "$d/node_modules/@redcrayonai/draw" ] && rm -rf "$d"; done`.
-4. Disconnect redcrayon in each client you connected, which drops its sign-in
+4. Disconnect draw in each client you connected, which drops its sign-in
    grant: the sign-out steps under [Sign-in](#sign-in), then remove the server
-   from the client (`codex mcp remove redcrayon`, the `redcrayon` entry in
+   from the client (`codex mcp remove draw`, the `draw` entry in
    `~/.cursor/mcp.json`, the claude.ai connector).
 
-To delete your boards or your account, write to support@redcrayon.ai. We
-delete them within 30 days.
+Delete boards from the dashboard to delete their related data from the live
+database. Saved library items need separate deletion. For account deletion,
+write to support@redcrayon.ai. We delete your account and boards within 30 days.
+Backups can retain deleted data until they expire.
 
 ## Windows
 
