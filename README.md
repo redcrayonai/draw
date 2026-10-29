@@ -10,7 +10,7 @@
 [![Works with](https://img.shields.io/badge/works%20with-Claude%20Code%20·%20Cursor%20·%20Codex%20·%20claude.ai-555555?style=flat-square)](#install)
 [![Apache-2.0 license](https://img.shields.io/badge/license-Apache--2.0-555555?style=flat-square)](LICENSE)
 
-**[Docs](docs/src/content/docs/index.md) · [Install](#install) · [What to ask](#what-to-ask) · [Demos](#review-a-risky-change) · [What leaves your machine](#what-leaves-your-machine)**
+**[Docs](https://docs.redcrayon.ai/) · [Install](#install) · [What to ask](#what-to-ask) · [Demos](#review-a-risky-change) · [What leaves your machine](#what-leaves-your-machine)**
 
 <code>claude plugin marketplace add redcrayonai/draw && claude plugin install draw@redcrayonai</code>
 
@@ -95,11 +95,11 @@ npx -y @redcrayonai/draw@1 doctor   # check node, git, repo, network
 | Ask | You get |
 |---|---|
 | **Watch it build**<br>*"Add rate limiting to the public API. Draw what you change."* | The components it is about to change, drawn before the first edit. Every edge cites the line that proves it; every symbol it touches has a code ref. |
-| **Give feedback**<br>*"Listen for my red crayon marks and answer each one on the board."* | Circle a node, add a note and press Send. The agent replies with changed files or a reason to keep the code. [Walkthrough](docs/src/content/docs/use-cases/feedback.md). |
-| **Propose a design**<br>*"Branch this board, draw the queue proposal, and submit it for review."* | A separate diagram to review before a person merges it. [Walkthrough](docs/src/content/docs/use-cases/propose.md). |
+| **Give feedback**<br>*"Listen for my red crayon marks and answer each one on the board."* | Circle a node, add a note and press Send. The agent replies with changed files or a reason to keep the code. [Walkthrough](https://docs.redcrayon.ai/use-cases/feedback/). |
+| **Propose a design**<br>*"Branch this board, draw the queue proposal, and submit it for review."* | A separate diagram to review before a person merges it. [Walkthrough](https://docs.redcrayon.ai/use-cases/propose/). |
 | **Review a risky change**<br>*"Drop customers.name. Flag the migration and cite every reader."* | The migration flagged on the database. A reader it did not update shows as one that will break. |
 | **Map a codebase**<br>*"Draw how this repo fits together. Cite a line for every edge."* | An onboarding map, left to right, each box with a two-sentence doc. Share it as a view link. |
-| **Watch local traffic**<br>*"Start a tap while I exercise checkout locally."* | Measured traffic, latency and errors on the request path. Needs Node 22 and OpenTelemetry traces. [Examples](docs/src/content/docs/use-cases/tap.md). |
+| **Watch local traffic**<br>*"Start a tap while I exercise checkout locally."* | Measured traffic, latency and errors on the request path. Needs Node 22 and OpenTelemetry traces. [Examples](https://docs.redcrayon.ai/use-cases/tap/). |
 | **Investigate an incident**<br>*"Checkout pods keep restarting. Lay out what you find."* | Charts beside the services they describe, each saying where its data came from. Pairs with a Grafana or Kubernetes MCP server. |
 | **Triage security findings**<br>*"Mark what this alert and scan affect. What do I fix first?"* | Compromised and vulnerable services marked, each with its blast radius. Explain the priority using exposure, evidence and sensitive downstream systems. |
 
@@ -135,7 +135,7 @@ Thirteen themes, from Neo-brutalism to Nord: pick one from the board header.
 
 The helper still uploads cited files for checks. Captures expire within ten minutes and cannot be read again after the call claims them. Known secret filenames and ignored files are refused, but the helper does not scan file contents before upload.
 
-Board content is not end-to-end encrypted. Hosted operators can read stored data. Sharing a board or including code refs in a link is a separate choice from snippet storage. [Data and consent](docs/src/content/docs/data-and-consent.md) · [Upload details](plugin/README.md#what-leaves-your-machine).
+Board content is not end-to-end encrypted. Hosted operators can read stored data. Sharing a board or including code refs in a link is a separate choice from snippet storage. [Data and consent](https://docs.redcrayon.ai/data-and-consent/) · [Upload details](plugin/README.md#what-leaves-your-machine).
 
 ## Your own server
 

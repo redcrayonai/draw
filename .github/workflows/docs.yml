@@ -1,4 +1,4 @@
-# Build the docs and keep server internals out of the pages. The self-host
+# Build the docs, publish checked main builds, and keep internals out of pages. The self-host
 # quickstart may name SpacetimeDB and its documented connection settings.
 
 name: docs
@@ -7,6 +7,11 @@ on:
   pull_request:
   push:
     branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: docs-${{ github.ref }}
+  cancel-in-progress: false
 
 permissions:
   contents: read
@@ -51,3 +56,27 @@ jobs:
             echo "::error::a page names an undocumented vendor or a server internal"
             exit 1
           fi
+
+      - name: Upload Pages artifact
+        if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+        uses: actions/upload-pages-artifact@v4
+        with:
+          path: docs/dist
+
+  deploy:
+    if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Configure Pages
+        uses: actions/configure-pages@v5
+
+      - name: Deploy Pages
+        id: deployment
+        uses: actions/deploy-pages@v5

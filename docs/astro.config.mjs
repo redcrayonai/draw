@@ -16,6 +16,7 @@ if (hasSearchSettings && !Object.values(docSearch).every(Boolean)) {
 }
 
 export default defineConfig({
+	site: 'https://docs.redcrayon.ai',
 	server: { allowedHosts: ['.trycloudflare.com'] },
 	integrations: [
 		starlight({

@@ -112,8 +112,8 @@ Keep the tap on while I reproduce the checkout error. Show which observed hop ha
 Record measured rates, median latencies and error counts for the same workload before and after this change. Keep the comparison in a chart with each run's command and commit.
 ```
 
-[Use-case examples](../docs/src/content/docs/use-cases/tap.md) ·
-[Setup, synthetic smoke test and troubleshooting](../docs/src/content/docs/capabilities/traffic.md)
+[Use-case examples](https://docs.redcrayon.ai/use-cases/tap/) ·
+[Setup, synthetic smoke test and troubleshooting](https://docs.redcrayon.ai/capabilities/traffic/)
 
 ## Sign-in
 
@@ -143,7 +143,7 @@ store code text. Later refs and checkpoints fill in snippets. Disabling this
 setting deletes stored snippets after a warning. Ref metadata remains.
 Board sharing is a separate choice. Hosted operators can read stored board data,
 including opted-in snippets. Board data is not end-to-end encrypted.
-See [Your data and code consent](../docs/src/content/docs/data-and-consent.md).
+See [Your data and code consent](https://docs.redcrayon.ai/data-and-consent/).
 
 Drawing needs only the server URL: nodes, edges and their labels go to the
 server as your agent writes them. Code refs, `source:` citations and checkpoints

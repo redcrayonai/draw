@@ -7,7 +7,7 @@ import test from 'node:test';
 
 // Exercise the actual CI command so the exception cannot expand unnoticed.
 const workflow = readFileSync(new URL('../../.github/workflows/docs.yml', import.meta.url), 'utf8');
-const scan = workflow.split('run: |').at(-1).replace(/^ {10}/gm, '');
+const scan = workflow.match(/      - name: Check page vocabulary\n        run: \|\n((?: {10}[^\n]*\n|\n)*)/)[1].replace(/^ {10}/gm, '');
 const cases = [
   ['self-host/quickstart.md', 'SpacetimeDB and VITE_SPACETIME_URI', true],
   ['self-host/quickstart.md', 'SPACETIME_DB SPACETIMEDB_SERVICE_TOKEN', true],
