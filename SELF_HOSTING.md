@@ -2,7 +2,8 @@
 
 Run the whole draw stack (canvas, dashboard, MCP server and database) on your
 own machine. For a server with a domain and TLS, use `compose.prod.yml` and the
-settings in [.env.example](.env.example).
+settings in [.env.example](.env.example). The docs site has the same steps:
+[Self-host](https://docs.redcrayon.ai/self-host/quickstart/).
 
 ## Run it with Docker Compose
 
@@ -29,7 +30,7 @@ To have an agent draw on a board:
 1. Open the canvas. It makes you a board.
 2. Click **Share**, turn on **Share with link**, choose **Can edit**, and copy
    the link.
-3. Connect your agent to `http://localhost:8788/mcp` ([plugin](#install-the-plugin))
+3. Connect your agent to `http://localhost:8788/mcp` ([plugin](README.md#install))
    and give it the link, for example `/draw:navigate <link>`. Its nodes
    appear on your board as it draws.
 
@@ -71,25 +72,14 @@ echo "MCP_API_KEYS=$(printf %s "$key" | openssl dgst -sha256 | awk '{print $NF}'
 Without an issuer any user id works: give the agent an edit link, as above.
 
 The agent sends it as a bearer token, for example
-`claude mcp add --transport http redcrayon http://localhost:8788/mcp --header "Authorization: Bearer <key>"`.
+`claude mcp add --transport http draw http://localhost:8788/mcp --header "Authorization: Bearer <key>"`.
 
-## Install the plugin
-
-The Claude Code plugin adds the MCP server, a skill that tells the agent when
-and what to draw, and a hook that fills in code refs:
-
-```sh
-claude plugin marketplace add redcrayonai/draw && claude plugin install draw@redcrayonai
-```
-
-Set `REDCRAYON_MCP_URL` to your local stack before you start Claude Code:
+For the plugin to use your local stack, start Claude Code with:
 
 ```sh
 REDCRAYON_MCP_URL=http://localhost:8788/mcp claude
 ```
 
-The variable moves both the plugin's server and its helper, which uploads the
-cited lines for code refs. Then run `/draw:navigate <board link>`. Other
-MCP clients take the URL directly; for code refs their agent runs
-`REDCRAYON_MCP_URL=http://localhost:8788/mcp npx -y @redcrayonai/draw@1 capture` in the
-project.
+This sets the server and the code-ref helper to the same local endpoint.
+Other MCP clients use the URL directly. For their code refs, run
+`REDCRAYON_MCP_URL=http://localhost:8788/mcp npx -y @redcrayonai/draw@1 capture`.

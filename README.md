@@ -10,7 +10,7 @@
 [![Works with](https://img.shields.io/badge/works%20with-Claude%20Code%20·%20Cursor%20·%20Codex%20·%20claude.ai-555555?style=flat-square)](#install)
 [![Apache-2.0 license](https://img.shields.io/badge/license-Apache--2.0-555555?style=flat-square)](LICENSE)
 
-**[Install](#install) · [What to ask](#what-to-ask) · [Demos](#review-a-risky-change) · [What leaves your machine](#what-leaves-your-machine)**
+**[Docs](https://docs.redcrayon.ai/) · [Install](#install) · [What to ask](#what-to-ask) · [Demos](#review-a-risky-change) · [What leaves your machine](#what-leaves-your-machine)**
 
 <code>claude plugin marketplace add redcrayonai/draw && claude plugin install draw@redcrayonai</code>
 
@@ -45,7 +45,7 @@ The agent opens a board named after your branch, posts the link, and keeps it cu
 /plugin install draw@redcrayonai
 ```
 
-Then `/mcp` → **redcrayon** → **Authenticate**, and run `/draw:navigate`.
+Then `/mcp` → **draw** → **Authenticate**, and run `/draw:navigate`.
 
 <details>
 <summary><b>Cursor</b></summary>
@@ -53,10 +53,10 @@ Then `/mcp` → **redcrayon** → **Authenticate**, and run `/draw:navigate`.
 `~/.cursor/mcp.json`:
 
 ```json
-{ "mcpServers": { "redcrayon": { "url": "https://mcp.redcrayon.ai/mcp" } } }
+{ "mcpServers": { "draw": { "url": "https://mcp.redcrayon.ai/mcp" } } }
 ```
 
-**Cursor Settings → MCP**, click login next to redcrayon.
+**Cursor Settings → MCP**, click login next to draw.
 
 </details>
 
@@ -64,8 +64,8 @@ Then `/mcp` → **redcrayon** → **Authenticate**, and run `/draw:navigate`.
 <summary><b>Codex</b></summary>
 
 ```sh
-codex mcp add redcrayon --url https://mcp.redcrayon.ai/mcp
-codex mcp login redcrayon
+codex mcp add draw --url https://mcp.redcrayon.ai/mcp
+codex mcp login draw
 ```
 
 </details>
@@ -73,7 +73,7 @@ codex mcp login redcrayon
 <details>
 <summary><b>claude.ai</b></summary>
 
-**Customize → Connectors → Add custom connector**, name it redcrayon, paste `https://mcp.redcrayon.ai/mcp`, **Connect**. claude.ai draws from the conversation; code refs need a coding agent in your project.
+**Customize → Connectors → Add custom connector**, name it draw, paste `https://mcp.redcrayon.ai/mcp`, **Connect**. claude.ai draws from the conversation; code refs need a coding agent in your project.
 
 </details>
 
@@ -95,10 +95,13 @@ npx -y @redcrayonai/draw@1 doctor   # check node, git, repo, network
 | Ask | You get |
 |---|---|
 | **Watch it build**<br>*"Add rate limiting to the public API. Draw what you change."* | The components it is about to change, drawn before the first edit. Every edge cites the line that proves it; every symbol it touches has a code ref. |
+| **Give feedback**<br>*"Listen for my red crayon marks and answer each one on the board."* | Circle a node, add a note and press Send. The agent replies with changed files or a reason to keep the code. [Walkthrough](https://docs.redcrayon.ai/use-cases/feedback/). |
+| **Propose a design**<br>*"Branch this board, draw the queue proposal, and submit it for review."* | A separate diagram to review before a person merges it. [Walkthrough](https://docs.redcrayon.ai/use-cases/propose/). |
 | **Review a risky change**<br>*"Drop customers.name. Flag the migration and cite every reader."* | The migration flagged on the database. A reader it did not update shows as one that will break. |
 | **Map a codebase**<br>*"Draw how this repo fits together. Cite a line for every edge."* | An onboarding map, left to right, each box with a two-sentence doc. Share it as a view link. |
+| **Watch local traffic**<br>*"Start a tap while I exercise checkout locally."* | Measured traffic, latency and errors on the request path. Needs Node 22 and OpenTelemetry traces. [Examples](https://docs.redcrayon.ai/use-cases/tap/). |
 | **Investigate an incident**<br>*"Checkout pods keep restarting. Lay out what you find."* | Charts beside the services they describe, each saying where its data came from. Pairs with a Grafana or Kubernetes MCP server. |
-| **Triage security findings**<br>*"Mark what this alert and scan affect. What do I fix first?"* | Compromised and vulnerable services marked, each with its blast radius. Fix the widest one first. |
+| **Triage security findings**<br>*"Mark what this alert and scan affect. What do I fix first?"* | Compromised and vulnerable services marked, each with its blast radius. Explain the priority using exposure, evidence and sensitive downstream systems. |
 
 ### Review a risky change
 
@@ -128,9 +131,11 @@ Thirteen themes, from Neo-brutalism to Nord: pick one from the board header.
 
 ## What leaves your machine
 
-Drawing sends what the agent draws: nodes, edges, labels. Code refs and checkpoints also send the files the board cites; draw keeps the cited lines, the path and the git hash, and deletes the file within 10 minutes.
+**Code snippet storage is off by default.** Code refs keep paths, symbols, line numbers and hashes. Code text stays on the board only if you enable **Store code snippets on my boards** in dashboard **Settings → Code**.
 
-Never sent: your file list, uncited files, diff text, files git ignores, secrets such as `.env` and key files. Full list: [plugin/README.md](plugin/README.md#what-leaves-your-machine).
+The helper still uploads cited files for checks. Captures expire within ten minutes and cannot be read again after the call claims them. Known secret filenames and ignored files are refused, but the helper does not scan file contents before upload.
+
+Board content is not end-to-end encrypted. Hosted operators can read stored data. Sharing a board or including code refs in a link is a separate choice from snippet storage. [Data and consent](https://docs.redcrayon.ai/data-and-consent/) · [Upload details](plugin/README.md#what-leaves-your-machine).
 
 ## Your own server
 
@@ -138,7 +143,7 @@ Never sent: your file list, uncited files, diff text, files git ignores, secrets
 REDCRAYON_MCP_URL=http://localhost:8788/mcp claude
 ```
 
-Other clients take that URL in place of the hosted one. To run the whole stack yourself, see [SELF_HOSTING.md](SELF_HOSTING.md).
+Other clients take that URL in place of the hosted one. Self-hosting instructions ship with the open-source core.
 
 ## License
 
