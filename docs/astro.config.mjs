@@ -27,7 +27,7 @@ export default defineConfig({
 			expressiveCode: { defaultProps: { wrap: true } },
 			social: [{ icon: 'github', label: 'GitHub', href: 'https://github.com/redcrayonai/draw' }],
 			sidebar: [
-				{ label: 'Start', items: [{ label: 'Overview', link: '/' }, { label: 'Connect your agent', slug: 'connect' }, { label: 'Your data and code consent', slug: 'data-and-consent' }] },
+				{ label: 'Start', items: [{ label: 'Overview', link: '/' }, { label: 'Connect your agent', slug: 'connect' }, { label: 'Find and manage your boards', slug: 'dashboard' }, { label: 'Your data and code consent', slug: 'data-and-consent' }] },
 				{ label: 'Use cases', items: [{ autogenerate: { directory: 'use-cases' } }] },
 				{ label: 'Capabilities', items: [{ autogenerate: { directory: 'capabilities' } }] },
 				{ label: 'Reference', items: [{ autogenerate: { directory: 'reference' } }] },

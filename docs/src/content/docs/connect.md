@@ -98,7 +98,7 @@ Code refs and checkpoints still upload each cited file temporarily so the server
 can check it. The server reads it in memory. Captures expire within ten minutes
 and cannot be read again after the call claims them.
 
-To enable inline snippets, open dashboard **Settings → Code → Store code snippets
+To enable inline snippets, open dashboard **Account settings → Code → Store code snippets
 on my boards**. The next ref or checkpoint can then store code text. Disabling
 this setting deletes stored snippets after a warning, without deleting ref metadata.
 

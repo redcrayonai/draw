@@ -11,7 +11,7 @@ Board content is not end-to-end encrypted. Hosted operators can read stored data
 
 | Choice | Where | What it controls |
 |---|---|---|
-| Store captured code text | Dashboard → Settings → Code | Whether your boards keep snippets and cited source lines |
+| Store captured code text | Dashboard → Account settings → Code | Whether your boards keep snippets and cited source lines |
 | Let people read or edit a board | Board → Share, or workspace access controls | Who can open the board |
 | Include sensitive layers in a link | Board → Share → Code / Threats | Whether link visitors see those layers |
 
@@ -21,7 +21,7 @@ in a link exposes code-ref metadata even when the board stores no snippet text.
 
 ## Use code refs without stored snippets
 
-Leave **Store code snippets on my boards** off in dashboard **Settings → Code**.
+Leave **Store code snippets on my boards** off in dashboard **Account settings → Code**.
 This is also the default for self-hosted stacks.
 
 The board keeps the file path, symbol, line range, git blob hash and hashes of
@@ -33,13 +33,13 @@ pushed commit and no uncommitted change in the cited file. GitHub checks the
 reader's repository access. A draw link grants no GitHub access.
 Other refs show **not pushed yet** or **open in editor**.
 
-![Dashboard Code settings show “Store code snippets on my boards” switched off](../../assets/code-consent.png)
+![The Code section in Account settings shows “Store code snippets on my boards” switched off](../../assets/code-consent.png)
 
-Dashboard **Settings → Code**, with the default setting off.
+Choose **Account settings** at the bottom of the dashboard sidebar, then find **Code**. The default setting is off.
 
 ## Opt in to inline snippets
 
-1. Open dashboard **Settings → Code**.
+1. Open dashboard **Account settings → Code**.
 2. Enable **Store code snippets on my boards**.
 3. Ask your agent to refresh its refs or make another checkpoint.
 

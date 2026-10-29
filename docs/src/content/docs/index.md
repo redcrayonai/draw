@@ -38,6 +38,7 @@ embed are separate choices. [Your data and code consent](/data-and-consent/)
 explains each choice and who can read stored data.
 
 - [Connect your agent](/connect/): Claude Code, Cursor, Codex, claude.ai or another MCP client.
+- [Find and manage your boards](/dashboard/): the dashboard sidebar, board gallery and details panel.
 - [Capabilities](/capabilities/boards/): boards, code refs, charts, threats, branches, embeds and workspace access.
 - [MCP tools](/reference/mcp-tools/): every board tool your agent can call.
 - [Self-host](/self-host/quickstart/): begin with a local Docker Compose stack.

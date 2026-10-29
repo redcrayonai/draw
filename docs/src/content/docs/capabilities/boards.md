@@ -76,6 +76,10 @@ Disabling a board share link does not disable either embed.
 
 ## Keep or delete a board
 
+In the [dashboard](/dashboard/), click a board tile to open its details panel.
+Use the board name or **Open in canvas** to open the drawing. Rename, delete,
+sharing and workspace access controls appear in the details panel when your role permits them.
+
 Keep a scratch board for a write-up, or delete it from the dashboard. Boards do
 not expire automatically. The command palette also provides deletion where your
 access allows it. Saved library items need separate deletion.

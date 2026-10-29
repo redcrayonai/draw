@@ -139,12 +139,13 @@ claude mcp add --transport http draw http://localhost:8788/mcp --header "Authori
 ## Code storage and team access
 
 Code snippet storage starts off on your own stack too. Enable it under dashboard
-**Settings → Code** only if you want inline snippets. Cited files still pass
+**Account settings → Code** only if you want inline snippets. Cited files still pass
 through your server for checks. See [Data and consent](/data-and-consent/).
 
-With real sign-in configured, open dashboard **Workspaces** to create a workspace
-and invite collaborators. Board and workspace grants control access independently
-of snippet consent. See [Workspaces and access](/capabilities/workspaces/).
+With real sign-in configured, choose the **+** beside **Workspaces** in the
+dashboard sidebar to create a workspace. Invite collaborators under that
+workspace’s **Settings → Members & access → Invitations**.
+Board and workspace grants control access independently of snippet consent. See [Workspaces and access](/capabilities/workspaces/).
 
 ## Next
 

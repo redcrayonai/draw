@@ -33,7 +33,7 @@ GitHub checks the reader's repository access. Otherwise the ref shows **not push
 **open in editor**.
 
 The owner can enable **Store code snippets on my boards** under dashboard
-**Settings → Code**. Later refs and checkpoints can then store inline snippets.
+**Account settings → Code**. Later refs and checkpoints can then store inline snippets.
 [Your data and code consent](/data-and-consent/) explains temporary uploads,
 retention and deletion.
 
