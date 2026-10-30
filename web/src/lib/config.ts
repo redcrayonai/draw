@@ -52,7 +52,7 @@ export const config = {
   mcpUrl: readMcpUrl(import.meta.env.VITE_MCP_URL, import.meta.env.PROD),
   // The hosted privacy policy, linked under the code setting. Unset = no link.
   privacyUrl: readPrivacyUrl(import.meta.env.VITE_PRIVACY_URL),
-  // Hosted builds (cloud/scripts/deploy-worker.sh) tag the logo Preview.
+  // A hosted build sets VITE_PREVIEW=1 to tag the logo Preview.
   preview: import.meta.env.VITE_PREVIEW === '1',
   previewNote: 'Draw is in preview. The hosted version is free while it lasts.',
 };

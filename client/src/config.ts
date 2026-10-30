@@ -47,6 +47,6 @@ export const config = {
   mcpUrl: readMcpUrl(import.meta.env.VITE_MCP_URL, import.meta.env.PROD),
   // The hosted privacy policy, linked from the code panel and the Connect dialog. Unset = no link.
   privacyUrl: readPrivacyUrl(import.meta.env.VITE_PRIVACY_URL),
-  // Hosted builds (cloud/scripts/deploy-worker.sh) tag the header Preview.
+  // A hosted build sets VITE_PREVIEW=1 to tag the header Preview.
   preview: import.meta.env.VITE_PREVIEW === '1',
 };
