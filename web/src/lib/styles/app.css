@@ -1,0 +1,105 @@
+@import './tokens.css';
+
+* { box-sizing: border-box; }
+html, body { margin: 0; }
+body {
+  background: var(--rc-page);
+  color: var(--rc-ink);
+  font: 400 13px/1.5 var(--rc-sans);
+  -webkit-font-smoothing: antialiased;
+}
+button, input, select { font: inherit; }
+a { color: var(--rc-ink); text-underline-offset: 3px; }
+
+/* Browser surfaces carry the palette (the canvas pattern). */
+:root { scrollbar-color: var(--rc-border) transparent; }
+::selection {
+  background: color-mix(in srgb, var(--rc-sel) 30%, transparent);
+  color: inherit;
+}
+:where(button, summary, a, input, select, [tabindex]):focus-visible {
+  outline: 2px solid var(--rc-sel);
+  outline-offset: 2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+/* Section labels and panel titles: the canvas eyebrow. */
+.eyebrow {
+  font: 500 11px/1 var(--rc-mono);
+  color: var(--rc-muted);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  margin: 0;
+}
+
+/* Counts, times and other numbers line up. */
+.num { font-variant-numeric: tabular-nums; }
+
+/* Errors: no error hue in the palette (accent is for focal nodes); the words
+   carry it, the dashed border marks it (canvas .copy-failed). */
+.alert {
+  font: 400 13px/1.5 var(--rc-sans);
+  color: var(--rc-ink);
+  border: 1px dashed var(--rc-muted);
+  border-radius: var(--rc-r-md);
+  padding: 10px 12px;
+  margin: 0;
+}
+
+/* Loading placeholders: a slow opacity pulse, off under reduced motion. */
+.skel {
+  display: block;
+  height: 10px;
+  border-radius: var(--rc-r-xs);
+  background: var(--rc-hover);
+}
+@media (prefers-reduced-motion: no-preference) {
+  .skel { animation: rc-pulse 1.6s var(--rc-ease) infinite alternate; }
+}
+@keyframes rc-pulse { to { opacity: 0.45; } }
+
+/* Read by assistive tech, not drawn. */
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+#auth-gate:not([hidden]) {
+  position: fixed; inset: 0; z-index: 50;
+  display: flex; align-items: center; justify-content: center;
+  background: color-mix(in srgb, var(--rc-page) 70%, transparent);
+}
+#auth-card {
+  max-width: 400px;
+  width: 100%;
+}
+/* The generic OIDC provider's gate (shared/oidc.ts). */
+.auth-oidc {
+  display: grid; gap: 16px; justify-items: start; padding: 24px;
+  border: 1px solid var(--rc-border); border-radius: var(--rc-r-md);
+  background: var(--rc-card); color: var(--rc-ink); font: 400 14px/1.4 var(--rc-sans);
+}
+.auth-oidc p { margin: 0; }
+.auth-oidc button {
+  min-height: 36px; padding: 8px 14px; cursor: pointer;
+  border: 1px solid var(--rc-border); border-radius: var(--rc-r-md);
+  background: var(--rc-ink); color: var(--rc-page); font: 500 12px/1 var(--rc-sans);
+}
+#auth-close {
+  position: fixed; top: max(20px, env(safe-area-inset-top)); right: max(20px, env(safe-area-inset-right));
+  min-height: 36px; padding: 8px 14px;
+  border: 1px solid var(--rc-border); border-radius: var(--rc-r-md);
+  background: var(--rc-card); color: var(--rc-ink); cursor: pointer;
+  font: 500 12px/1 var(--rc-sans);
+}

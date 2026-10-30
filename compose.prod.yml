@@ -1,0 +1,196 @@
+# Self-hosting redcrayon from prebuilt images (RC-608). Put this file and a
+# filled-in .env (from .env.example) on a machine whose ports 80 and 443 are
+# open, point DOMAIN, dash.DOMAIN and mcp.DOMAIN at it, then:
+#
+#   docker compose -f compose.prod.yml up -d
+#
+#   canvas     https://DOMAIN
+#   dashboard  https://dash.DOMAIN
+#   mcp        https://mcp.DOMAIN/mcp
+#
+# Caddy holds the only published ports and gets the certificates. Each app has
+# its own hostname because sign-in returns to the app origin's root. The setup
+# job publishes the module (an update, never a data reset) and seeds on every
+# `up`. Data lives in the named volumes; docker/prod/README.md says which to
+# back up. For trying it out locally, use docker-compose.yml instead.
+
+x-auth: &auth
+  VITE_AUTH_PROVIDER: ${VITE_AUTH_PROVIDER:-anonymous}
+  VITE_REQUIRE_AUTH: ${VITE_REQUIRE_AUTH:-}
+  VITE_OIDC_ISSUER: ${VITE_OIDC_ISSUER:-}
+  VITE_OIDC_CLIENT_ID: ${VITE_OIDC_CLIENT_ID:-}
+  # passed so that an .env with DEV_AUTH set is refused, not silently ignored
+  DEV_AUTH: ${DEV_AUTH:-}
+
+x-browser: &browser
+  VITE_SPACETIME_URI: wss://${DOMAIN:?set DOMAIN in .env}
+  VITE_SPACETIME_DB: redcrayon
+  VITE_CANVAS_URL: https://${DOMAIN}
+  VITE_DASHBOARD_URL: https://dash.${DOMAIN}
+  VITE_MCP_URL: https://mcp.${DOMAIN}/mcp
+
+services:
+  caddy:
+    image: caddy:2.11.7-alpine
+    restart: unless-stopped
+    ports: ["80:80", "443:443", "443:443/udp"]
+    configs: [{ source: caddyfile, target: /etc/caddy/Caddyfile }]
+    volumes: [caddy-data:/data, caddy-config:/config]
+    networks:
+      default:
+        # The database fetches the mcp Worker's keys from https://mcp.DOMAIN:
+        # inside the stack these names reach Caddy without leaving the machine.
+        aliases: ["${DOMAIN}", "dash.${DOMAIN}", "mcp.${DOMAIN}"]
+    depends_on: [canvas, dashboard, mcp]
+
+  spacetimedb:
+    image: clockworklabs/spacetime:v2.8.1
+    restart: unless-stopped
+    command: start --listen-addr 0.0.0.0:3000 --non-interactive
+    # the image's user owns its home, so the volume inherits that ownership
+    volumes: [stdb:/home/spacetime]
+    healthcheck:
+      test: curl -sf http://localhost:3000/v1/ping
+      interval: 2s
+      retries: 60
+
+  postgres:
+    image: postgres:17
+    restart: unless-stopped
+    environment:
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
+      POSTGRES_DB: redcrayon
+    volumes: [pg:/var/lib/postgresql/data]
+    healthcheck:
+      test: pg_isready -U postgres -d redcrayon
+      interval: 2s
+      retries: 60
+
+  module-setup:
+    image: ghcr.io/redcrayonai/redcrayon-module-setup:${REDCRAYON_VERSION:?set REDCRAYON_VERSION in .env}
+    environment:
+      <<: *auth
+      DOMAIN: ${DOMAIN}
+      SPACETIME_DB: redcrayon
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      # read when the module is published (scripts/module-env.mjs)
+      REDCRAYON_LIMITS: ${REDCRAYON_LIMITS:-}
+    volumes:
+      - state:/state
+      # the CLI identity that owns the database; a new one could not publish again
+      - stdb-cli:/root/.config/spacetime
+    depends_on:
+      spacetimedb: { condition: service_healthy }
+      postgres: { condition: service_healthy }
+
+  mcp:
+    image: ghcr.io/redcrayonai/redcrayon-mcp:${REDCRAYON_VERSION}
+    restart: unless-stopped
+    environment:
+      MCP_ORIGIN: https://mcp.${DOMAIN}
+      APP_ORIGIN: https://${DOMAIN}
+      # agents sign in where the browser does: owner identities hash this issuer with each sub
+      OIDC_ISSUER: ${VITE_OIDC_ISSUER:-}
+      MCP_API_KEYS: ${MCP_API_KEYS:-}
+      DB_URL: http://spacetimedb:3000
+      DB_NAME: redcrayon
+      VERSION: ${REDCRAYON_VERSION}
+      DEV_AUTH: ${DEV_AUTH:-}
+    volumes:
+      - state:/state:ro
+      # Durable Objects (usage counters, captures): back this up
+      - mcp-data:/data
+    depends_on:
+      module-setup: { condition: service_completed_successfully }
+
+  dashboard:
+    image: ghcr.io/redcrayonai/redcrayon-dashboard:${REDCRAYON_VERSION}
+    restart: unless-stopped
+    environment:
+      <<: [*auth, *browser]
+      SPACETIMEDB_URL: http://spacetimedb:3000
+      SPACETIMEDB_DB: redcrayon
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      IMPORT_RUNNER_URL: http://importer:8788
+      IMPORT_RUNNER_SECRET: &import-secret ${IMPORT_RUNNER_SECRET:?set IMPORT_RUNNER_SECRET in .env}
+      IMPORT_CALLBACK_URL: &import-callback http://dashboard:5174/api/imports/complete
+      IMPORTS_ANONYMOUS: ${IMPORTS_ANONYMOUS:-}
+    volumes: [state:/state:ro]
+    depends_on:
+      module-setup: { condition: service_completed_successfully }
+
+  # Drains the dashboard's activity outbox into Postgres every 5 minutes (the
+  # hosted service does this with a cron, which workerd has not).
+  drain:
+    image: curlimages/curl:8.23.0
+    restart: unless-stopped
+    user: "10001"
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - |
+        while sleep 300; do
+          curl -fsS -o /dev/null -X POST -H "authorization: Bearer $$(cat /state/service-token)" http://dashboard:5174/api/activity/drain || echo "drain: failed"
+        done
+    volumes: [state:/state:ro]
+    depends_on: [dashboard]
+
+  canvas:
+    image: ghcr.io/redcrayonai/redcrayon-canvas:${REDCRAYON_VERSION}
+    restart: unless-stopped
+    environment:
+      <<: [*auth, *browser]
+    # an upgrade's client must not load before its module is published (RC-603)
+    depends_on:
+      module-setup: { condition: service_completed_successfully }
+
+  importer:
+    image: ghcr.io/redcrayonai/redcrayon-importer:${REDCRAYON_VERSION}
+    restart: unless-stopped
+    environment:
+      PORT: "8788"
+      IMPORT_RUNNER_SECRET: *import-secret
+      IMPORT_CALLBACK_URL: *import-callback
+      REDCRAYON_LIMITS: ${REDCRAYON_LIMITS:-}
+      IMPORT_MAX_REPO_MB: ${IMPORT_MAX_REPO_MB:-}
+    # Untrusted repositories are checked out and their Go modules downloaded under
+    # /tmp: a sized tmpfs keeps one import from filling the disk the databases share.
+    tmpfs:
+      - /tmp:size=${IMPORTER_TMP_SIZE:-2g}
+    # the tmpfs counts toward this: room for a full /tmp plus node, git and go list
+    mem_limit: ${IMPORTER_MEM_LIMIT:-6g}
+
+configs:
+  caddyfile:
+    content: |
+      {
+        ${CADDY_GLOBAL_OPTIONS:-}
+      }
+      ${DOMAIN} {
+        # The realtime socket: only the two routes browsers use. Publishing,
+        # SQL and reducer calls over HTTP stay inside the stack.
+        @realtime path_regexp ^/v1/(database/[^/]+/subscribe|identity/websocket-token)$$
+        handle @realtime {
+          reverse_proxy spacetimedb:3000
+        }
+        handle {
+          reverse_proxy canvas:8080
+        }
+      }
+      dash.${DOMAIN} {
+        reverse_proxy dashboard:5174
+      }
+      mcp.${DOMAIN} {
+        # mcp keeps the Host (it must equal MCP_ORIGIN's) and keys its per-IP limits on this header
+        reverse_proxy mcp:8788 {
+          header_up Cf-Connecting-Ip {remote_host}
+        }
+      }
+
+volumes:
+  stdb:
+  stdb-cli:
+  pg:
+  state:
+  mcp-data:
+  caddy-data:
+  caddy-config:

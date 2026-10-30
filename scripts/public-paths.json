@@ -1,0 +1,12 @@
+[
+  "module", "client", "mcp", "agent", "web", "shared", "scripts", "importer", "helper", "e2e", "plugin", "marketplace",
+  "docker", "docs", "docker-compose.yml", "compose.prod.yml",
+  ".dockerignore", ".env.example", ".gitignore", ".gitleaks.toml", ".mcp.json",
+  "flake.nix", "flake.lock", "README.md", "PRODUCT.md", "DESIGN.md", "CONTRIBUTING.md", "SECURITY.md", "THIRD_PARTY_NOTICES.md",
+  ".github/actions", ".github/ISSUE_TEMPLATE", ".github/dependabot.yml",
+  ".github/workflows/bindings-check.yml", ".github/workflows/build-client.yml", ".github/workflows/build-web.yml",
+  ".github/workflows/compose-smoke.yml", ".github/workflows/compose-prod-smoke.yml", ".github/workflows/e2e.yml",
+  ".github/workflows/module-tests.yml", ".github/workflows/test-node.yml", ".github/workflows/session-flows.yml",
+  ".github/workflows/security-scan.yml", ".github/workflows/secret-scan.yml",
+  ".github/workflows/release-images.yml", ".github/workflows/release-plugin.yml"
+]

@@ -1,0 +1,35 @@
+{
+  "name": "redcrayon-agent",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "elkjs": "^0.12.0",
+    "spacetimedb": "2.10.*",
+    "zod": "^4.6.5"
+  },
+  "devDependencies": {
+    "@types/node": "^26.6.4",
+    "tsx": "^4.23.15",
+    "typescript": "~5.6.3",
+    "vite": "^8.3.3",
+    "vitest": "^4.1.11"
+  },
+  "pnpm": {
+    "ignoredBuiltDependencies": [
+      "esbuild"
+    ],
+    "patchedDependencies": {
+      "elkjs@0.12.0": "patches/elkjs@0.12.0.patch"
+    },
+    "overrides": {
+      "zod": "^4.6.6"
+    }
+  },
+  "packageManager": "pnpm@10.34.5",
+  "license": "UNLICENSED"
+}

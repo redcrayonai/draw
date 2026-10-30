@@ -1,0 +1,26 @@
+// Cloudflare Worker for the dashboard, here for local `wrangler dev`: the
+// SvelteKit SPA as static assets plus SvelteKit server routes under /api/*
+// (adapter-cloudflare). Deployment settings live outside this file.
+//
+// Navigation requests are answered from the assets (the adapter writes the SPA
+// fallback index.html) and never invoke the Worker; only requests that miss an
+// asset (fetch('/api/...')) run server code.
+//
+// VITE_* are build variables (public, inlined into the bundle). Server values
+// (DATABASE_URL, SPACETIMEDB_*, OIDC_*) are runtime secrets, read locally from
+// .dev.vars. A route whose secret is missing answers 503 with a plain sentence.
+{
+  "name": "redcrayon-dashboard-local",
+  // worker.js wraps the generated worker to add the cron (see adapter.wrangler.jsonc)
+  "main": "worker.js",
+  "compatibility_date": "2026-08-21",
+  // the handler worker.js asks before SvelteKit; this one is empty
+  "alias": { "redcrayon-worker-extra": "./worker-extra.js" },
+  // drains the activity outbox (worker.js)
+  "triggers": { "crons": ["*/5 * * * *"] },
+  "assets": {
+    "binding": "ASSETS",
+    "directory": ".svelte-kit/cloudflare",
+    "not_found_handling": "single-page-application"
+  }
+}

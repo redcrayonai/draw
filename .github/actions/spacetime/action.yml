@@ -1,0 +1,22 @@
+# The SpacetimeDB CLI (and the standalone server module-tests runs), pinned and
+# checksum-verified. Bump the version and the tarball's SHA-256 together.
+name: SpacetimeDB CLI
+description: Install the pinned SpacetimeDB CLI and standalone server onto PATH
+runs:
+  using: composite
+  steps:
+    - name: Install the pinned SpacetimeDB CLI (checksum verified)
+      shell: bash
+      env:
+        SPACETIME_VERSION: '2.8.1'
+        SPACETIME_SHA256: 4ec3e769342035ec5bb1b8252d62536f66e430cf7c989c683d123a4e9c59f7b0
+      run: |
+        curl -sSfL -o /tmp/spacetime.tar.gz \
+          "https://github.com/clockworklabs/SpacetimeDB/releases/download/v${SPACETIME_VERSION}/spacetime-x86_64-unknown-linux-gnu.tar.gz"
+        echo "${SPACETIME_SHA256}  /tmp/spacetime.tar.gz" | sha256sum -c -
+        mkdir -p "$HOME/.local/bin"
+        tar -xzf /tmp/spacetime.tar.gz -C /tmp spacetimedb-cli spacetimedb-standalone
+        install /tmp/spacetimedb-cli "$HOME/.local/bin/spacetime"
+        install /tmp/spacetimedb-standalone "$HOME/.local/bin/spacetimedb-standalone"
+        echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+        "$HOME/.local/bin/spacetime" --version

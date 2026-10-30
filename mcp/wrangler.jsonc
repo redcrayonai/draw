@@ -1,0 +1,58 @@
+// The hosted MCP server (spec §1, §9): one stateless Worker, here for local
+// `wrangler dev` on :8788. Deployment settings live outside this file.
+//
+// Secrets (`wrangler secret put`, per environment): DB_URL, DB_NAME,
+// AGENT_JWK (+ AGENT_JWK_NEXT / AGENT_JWK_PREV during a rotation), MCP_API_KEYS
+// (hashed static keys, see src/auth.ts). Local dev reads them from .dev.vars
+// (gitignored).
+{
+  "name": "redcrayon-mcp-local",
+  "main": "src/worker.ts",
+  "compatibility_date": "2026-08-21",
+  "compatibility_flags": ["nodejs_compat"],
+  // the built bundle carries no source map (scripts/vendor-scan.mjs)
+  "upload_source_maps": false,
+  // TypeScript (the symbol resolver) thinks it runs in Node and sets up its
+  // file-system layer at load, which crashes in workerd; and wrangler would
+  // turn its internal requires into node:fs imports (Phase 0 P0.7).
+  "define": { "process.browser": "true" },
+  "alias": {
+    "fs": "./src/empty.ts",
+    "os": "./src/empty.ts",
+    "inspector": "./src/empty.ts",
+    "perf_hooks": "./src/empty.ts"
+  },
+  "durable_objects": {
+    "bindings": [
+      { "name": "USER", "class_name": "User" },
+      { "name": "CAPTURE", "class_name": "Capture" },
+      // one per board: the live tap channel (docs/superpowers/specs/2026-10-16-live-tap-design.md)
+      { "name": "LIVE", "class_name": "Live" }
+    ]
+  },
+  "migrations": [
+    { "tag": "v1", "new_sqlite_classes": ["User"] },
+    { "tag": "v2", "new_sqlite_classes": ["Capture"] },
+    { "tag": "v3", "new_sqlite_classes": ["Live"] }
+  ],
+  "ratelimits": [
+    { "name": "CALLS_RL", "namespace_id": "1", "simple": { "limit": 120, "period": 60 } },
+    { "name": "IP_RL", "namespace_id": "2", "simple": { "limit": 60, "period": 60 } },
+    { "name": "ANTHROPIC_RL", "namespace_id": "3", "simple": { "limit": 600, "period": 60 } },
+    { "name": "FACTS_RL", "namespace_id": "4", "simple": { "limit": 120, "period": 60 } }
+  ],
+  "analytics_engine_datasets": [{ "binding": "CALLS", "dataset": "rc_calls" }],
+  // The canary and the outcome check (src/canary.ts). Secrets: CANARY_API_KEY,
+  // ALERT_WEBHOOK, CF_ANALYTICS_TOKEN; var ANALYTICS_ACCOUNT. The hourly database
+  // load (dbLoad) is also pushed as OTLP metrics when the optional secrets
+  // OTLP_METRICS_URL and OTLP_METRICS_AUTH are set; SERVICE_NAME is the Worker's name.
+  "triggers": { "crons": ["*/5 * * * *"] },
+  "vars": {
+    "MCP_ORIGIN": "http://localhost:8788",
+    "APP_ORIGIN": "http://localhost:5173",
+    "OIDC_ISSUER": "https://auth.example.invalid",
+    "CALLS_DATASET": "rc_calls",
+    "SERVICE_NAME": "redcrayon-mcp"
+  },
+  "dev": { "port": 8788 }
+}

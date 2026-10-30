@@ -1,0 +1,61 @@
+# Canvas tests, types, build and configuration checks, reused by the complete
+# CI gate. deploy.yml handles production deployment after module publication.
+# VITE_* values are public bundle configuration, supplied from repository vars.
+# Main builds require the dashboard link; PRs can run without deploy settings.
+
+name: build-client
+
+on:
+  workflow_call:
+
+env:
+  VITE_SPACETIME_URI: ${{ vars.VITE_SPACETIME_URI }}
+  VITE_SPACETIME_DB: ${{ vars.VITE_SPACETIME_DB }}
+  VITE_DASHBOARD_URL: ${{ vars.VITE_DASHBOARD_URL }}
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Require build-time config
+        run: |
+          fail=0
+          if [ -z "$VITE_SPACETIME_URI" ]; then
+            echo "::error::Repository variable VITE_SPACETIME_URI is not set (e.g. ws://127.0.0.1:3000)."
+            fail=1
+          fi
+          if [ -z "$VITE_SPACETIME_DB" ]; then
+            echo "::error::Repository variable VITE_SPACETIME_DB is not set (e.g. redcrayon)."
+            fail=1
+          fi
+          # Production builds require configured links; PR builds work without them.
+          if [ "$GITHUB_EVENT_NAME" = push ] && [ -z "$VITE_DASHBOARD_URL" ]; then
+            echo "::error::Repository variable VITE_DASHBOARD_URL is not set (the deployed dashboard origin; the canvas's Boards link opens it)."
+            fail=1
+          fi
+          exit "$fail"
+
+      - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
+        with:
+          package_json_file: client/package.json
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: pnpm
+          cache-dependency-path: client/pnpm-lock.yaml
+
+      - name: Install client dependencies
+        working-directory: client
+        run: pnpm install --frozen-lockfile
+
+      - name: Test
+        working-directory: client
+        run: pnpm test
+
+      # The core's default: VITE_AUTH_PROVIDER unset is anonymous.
+      - name: Build
+        working-directory: client
+        run: pnpm run build

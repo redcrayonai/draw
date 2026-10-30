@@ -1,0 +1,13 @@
+.git
+**/node_modules
+**/dist
+**/.svelte-kit
+**/.wrangler
+.postgres
+.direnv
+.context
+docs
+# local secrets: identity keys, service tokens, signing keys
+**/.env*
+**/.dev.vars
+agent/.agent-token*

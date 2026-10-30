@@ -1,0 +1,10 @@
+# The smoke test's overrides (smoke.sh): with CADDY_GLOBAL_OPTIONS=local_certs
+# the database must trust Caddy's own CA to fetch the mcp Worker's keys. Caddy
+# keeps it root-only, so the database runs as root here. Test only.
+services:
+  spacetimedb:
+    user: root
+    environment:
+      HOME: /home/spacetime
+      SSL_CERT_FILE: /caddy/caddy/pki/authorities/local/root.crt
+    volumes: [caddy-data:/caddy:ro]

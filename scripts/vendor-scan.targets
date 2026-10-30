@@ -1,0 +1,6 @@
+# What M1 ships (spec §12): the Worker, its texts, the helper and the plugin. M2 adds
+# the canvas and dashboard builds. A tree target scans every file under it with the text rules.
+bundle mcp/dist/worker.js
+text mcp/dist/surface.txt
+bundle helper/dist/redcrayon.mjs
+tree plugin

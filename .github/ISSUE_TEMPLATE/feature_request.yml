@@ -1,0 +1,16 @@
+name: Feature request
+description: Describe a problem and the behavior that solves it.
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: What problem do you need to solve?
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed behavior
+      description: Include an example and any alternatives that you considered.
+    validations:
+      required: true

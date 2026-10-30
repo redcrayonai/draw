@@ -1,150 +1,139 @@
 <div align="center">
 
-<img src=".github/assets/logo.svg" width="64" alt="">
+<img src="docs/hero/logo.svg" alt="" width="72"><br>
 
-<h1>draw</h1>
+# draw
 
-**A live architecture board you and your coding agent draw on together.<br>The agent draws what it builds. You read the board, not a prose summary.**
+*by redcrayon*
 
-[![npm](https://img.shields.io/npm/v/@redcrayonai/draw?style=flat-square&color=2FA36B&label=npm)](https://www.npmjs.com/package/@redcrayonai/draw)
-[![Works with](https://img.shields.io/badge/works%20with-Claude%20Code%20·%20Cursor%20·%20Codex%20·%20claude.ai-555555?style=flat-square)](#install)
-[![Apache-2.0 license](https://img.shields.io/badge/license-Apache--2.0-555555?style=flat-square)](LICENSE)
+**A live architecture board you and your coding agent draw on together.**<br>
+The agent draws what it builds, with code refs to the exact lines. You read the board, not a prose summary.
 
-**[Docs](https://docs.redcrayon.ai/) · [Install](#install) · [What to ask](#what-to-ask) · [Demos](#review-a-risky-change) · [What leaves your machine](#what-leaves-your-machine)**
+[Docs](https://docs.redcrayon.ai/) · [Use cases](https://docs.redcrayon.ai/use-cases/build/) · [Connect](https://docs.redcrayon.ai/connect/) · [Self-host](https://docs.redcrayon.ai/self-host/quickstart/) · [Contributing](CONTRIBUTING.md)
 
 <code>claude plugin marketplace add redcrayonai/draw && claude plugin install draw@redcrayonai</code>
 
 <br><br>
 
-<a href="https://draw.redcrayon.ai/#s=0e265bfd5eee31353e7cc39ec824771e"><img alt="One checkout request replayed on a draw board: dots run from customers through the gateway, checkout and payments to Stripe, lighting each service as it is reached." src=".github/assets/trace-replay.gif" width="900"></a>
-
-<sub>One request replayed hop by hop (<code>play_trace</code>). By redcrayon.</sub>
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/hero/hero-dark.png">
+  <img alt="A draw board: charts drawn beside the service they describe" src="docs/hero/hero-light.png" width="900">
+</picture>
 
 </div>
 
-<br>
-
-Ask your agent in plain words:
+## Ask your agent in plain words
 
 - *"Add rate limiting to the public API. Draw what you change on a redcrayon board."*
-- *"Draw how this repo fits together. Cite a line for every edge."*
-- *"Drop the unused customers.name column. Flag the migration and cite every reader."*
-- *"Pods in checkout keep restarting since 14:00. Lay out what you find on a scratch board."*
+- *"Drop customers.name. Flag the migration and cite every reader of that column."*
+- *"Checkout pods keep restarting since 14:00. Chart restarts and error rates on a scratch board."*
 - *"Mark what this SIEM alert and scanner report affect, and tell me what to fix first."*
 
-The agent opens a board named after your branch, posts the link, and keeps it current as it works.
-
----
+Every write, yours or the agent's, goes through the same rules. An invalid write
+is refused with a sentence that says why.
 
 ## Install
 
-**Claude Code** (board tools, `/draw:navigate`, and code refs filled in for you):
-
-```text
-/plugin marketplace add redcrayonai/draw
-/plugin install draw@redcrayonai
-```
-
-Then `/mcp` → **draw** → **Authenticate**, and run `/draw:navigate`.
-
-<details>
-<summary><b>Cursor</b></summary>
-
-`~/.cursor/mcp.json`:
-
-```json
-{ "mcpServers": { "draw": { "url": "https://mcp.redcrayon.ai/mcp" } } }
-```
-
-**Cursor Settings → MCP**, click login next to draw.
-
-</details>
-
-<details>
-<summary><b>Codex</b></summary>
+Claude Code, with the plugin (server, `/draw:navigate`, code refs):
 
 ```sh
-codex mcp add draw --url https://mcp.redcrayon.ai/mcp
-codex mcp login draw
+claude plugin marketplace add redcrayonai/draw && claude plugin install draw@redcrayonai
 ```
 
-</details>
+Run `/mcp` → draw → **Authenticate**, then `/draw:navigate`. Cursor,
+Codex, claude.ai and other MCP clients use the server URL in
+[Connect](https://docs.redcrayon.ai/connect/).
 
-<details>
-<summary><b>claude.ai</b></summary>
+## Run it with Docker Compose
 
-**Customize → Connectors → Add custom connector**, name it draw, paste `https://mcp.redcrayon.ai/mcp`, **Connect**. claude.ai draws from the conversation; code refs need a coding agent in your project.
-
-</details>
-
-<details>
-<summary><b>Any other MCP client</b></summary>
-
-Give it `https://mcp.redcrayon.ai/mcp`. Every client signs in once, in the browser.
-
-Code refs outside Claude Code: when a tool needs a capture of your checkout, it tells the agent the exact command, and the agent runs it. Nothing to install; Node 20+ and git on PATH.
+You need Docker with Compose and nothing else:
 
 ```sh
-npx -y @redcrayonai/draw@1 doctor   # check node, git, repo, network
+docker compose up --build
 ```
 
-</details>
-
-## What to ask
-
-| Ask | You get |
+| | |
 |---|---|
-| **Watch it build**<br>*"Add rate limiting to the public API. Draw what you change."* | The components it is about to change, drawn before the first edit. Every edge cites the line that proves it; every symbol it touches has a code ref. |
-| **Give feedback**<br>*"Listen for my red crayon marks and answer each one on the board."* | Circle a node, add a note and press Send. The agent replies with changed files or a reason to keep the code. [Walkthrough](https://docs.redcrayon.ai/use-cases/feedback/). |
-| **Propose a design**<br>*"Branch this board, draw the queue proposal, and submit it for review."* | A separate diagram to review before a person merges it. [Walkthrough](https://docs.redcrayon.ai/use-cases/propose/). |
-| **Review a risky change**<br>*"Drop customers.name. Flag the migration and cite every reader."* | The migration flagged on the database. A reader it did not update shows as one that will break. |
-| **Map a codebase**<br>*"Draw how this repo fits together. Cite a line for every edge."* | An onboarding map, left to right, each box with a two-sentence doc. Share it as a view link. |
-| **Watch local traffic**<br>*"Start a tap while I exercise checkout locally."* | Measured traffic, latency and errors on the request path. Needs Node 22 and OpenTelemetry traces. [Examples](https://docs.redcrayon.ai/use-cases/tap/). |
-| **Investigate an incident**<br>*"Checkout pods keep restarting. Lay out what you find."* | Charts beside the services they describe, each saying where its data came from. Pairs with a Grafana or Kubernetes MCP server. |
-| **Triage security findings**<br>*"Mark what this alert and scan affect. What do I fix first?"* | Compromised and vulnerable services marked, each with its blast radius. Explain the priority using exposure, evidence and sensitive downstream systems. |
+| canvas | http://localhost:5173 |
+| dashboard | http://localhost:5174 |
+| MCP server | http://localhost:8788/mcp |
+| database | ws://localhost:3000, database `redcrayon-local` |
 
-### Review a risky change
+The stack also runs Postgres and the import runner. The first build takes a few
+minutes. Ports 3000, 5173, 5174 and 8788 must be free; they listen on
+127.0.0.1 only. Data stays in Docker volumes until `docker compose down -v`.
+After a source change, run `docker compose up --build` again.
 
-<a href="https://draw.redcrayon.ai/#s=8a2555d85c7fe7728811f82770b9cedf"><img alt="Migration 0042 flagged on customers-db: display_name added, name dropped. The customers api is updated; the welcome email still reads customers.name and is marked as a reader that will break." src=".github/assets/migration-review.png" width="900"></a>
+To have an agent draw on a board:
 
-Migration 0042 replaces `customers.name` with `display_name`. The board shows the table's new shape, the step that can't be undone, and the one reader the change missed: the welcome email still selects `name`. Code refs open the exact lines.
+1. Open the canvas. It makes you a board.
+2. Click **Share**, turn on **Share with link**, choose **Can edit**, and copy
+   the link.
+3. Connect your agent to `http://localhost:8788/mcp` ([plugin](#install))
+   and give it the link, for example `/draw:navigate <link>`. Its nodes
+   appear on your board as it draws.
 
-**[Open the demo board →](https://draw.redcrayon.ai/#s=8a2555d85c7fe7728811f82770b9cedf)** <sub>Catppuccin Mocha theme</sub>
+With no settings nobody signs in. The canvas and dashboard run as guests, and
+the MCP server treats every caller on localhost as one dev user (`DEV_AUTH=1`),
+so an agent needs no key. Keep it that way only on your own machine.
+If a board your agent made shows as unavailable, open the dashboard link its
+`start_session` returns, once, in the browser you use for the canvas, and press
+"Link this agent to your dashboard".
+If an older board has no creator history, linking keeps existing access and
+reports that the database owner must recover its ownership before retrying.
 
-### Investigate an incident
+### Real sign-in (optional)
 
-<a href="https://draw.redcrayon.ai/#s=32b61159274bbf0f64f1d64bdd278234"><img alt="A scratch pad: the MCP Worker and its database, with a time series of request time against database time and p50/p95 bars per endpoint." src=".github/assets/incident-scratchpad.png" width="900"></a>
+For shared installations, see [workspaces, memberships, and self-hosted OIDC](docs/workspaces.md).
 
-A scratch pad beside the services it explains: 60 real requests to `/health`, total time against the database time it reports, and p50/p95 per endpoint. The slow tail isn't the database. Every chart says where its numbers came from.
+Put these in a `.env` file next to `docker-compose.yml`, then run
+`docker compose up --build`:
 
-**[Open the demo board →](https://draw.redcrayon.ai/#s=32b61159274bbf0f64f1d64bdd278234)** <sub>Neo-brutalism theme</sub>
+| Variable | Value |
+|---|---|
+| `VITE_AUTH_PROVIDER` | `oidc` |
+| `VITE_OIDC_ISSUER` | your OpenID Connect issuer, exactly as the `iss` of its tokens |
+| `VITE_OIDC_CLIENT_ID` | a public client at that issuer (authorization code with PKCE) |
+| `OIDC_ISSUER` | the same issuer, byte for byte. The MCP server accepts the access tokens it issues for `http://localhost:8788/mcp` |
+| `MCP_API_KEYS` | static agent keys, comma-separated `<sha256 hex of the key>:<user id>` pairs. The user id is your `sub` at the issuer, so the agent's boards are yours |
 
-### Triage security findings
+- Register `http://localhost:5173/` and `http://localhost:5174/` as the
+  client's redirect URIs.
+- With `OIDC_ISSUER` or `MCP_API_KEYS` set, `DEV_AUTH` is off. An agent then
+  needs a key or a token from your issuer.
 
-<a href="https://draw.redcrayon.ai/#s=0e265bfd5eee31353e7cc39ec824771e"><img alt="A compromised admin portal: its blast radius spreads to the services that reach it and the databases it reads." src=".github/assets/siem-blast-radius.png" width="900"></a>
+Make a key for your `sub` (the `sub` claim of your tokens at the issuer) and add it:
 
-A SIEM alert marks **admin-portal** compromised; scanner findings mark the gateway and a worker vulnerable. Open a ⚠ marker to see what it reaches and what trusts it, hop by hop.
+```sh
+sub=YOUR_SUB
+key="$(openssl rand -hex 32)"; echo "agent key: $key"
+echo "MCP_API_KEYS=$(printf %s "$key" | openssl dgst -sha256 | awk '{print $NF}'):$sub" >>.env
+```
 
-**[Open the demo board →](https://draw.redcrayon.ai/#s=0e265bfd5eee31353e7cc39ec824771e)** Click a ⚠ marker, then **play spread**. <sub>Dark theme</sub>
+Without an issuer any user id works: give the agent an edit link, as above.
 
-Thirteen themes, from Neo-brutalism to Nord: pick one from the board header.
+The agent sends it as a bearer token, for example
+`claude mcp add --transport http draw http://localhost:8788/mcp --header "Authorization: Bearer <key>"`.
 
-## What leaves your machine
-
-**Code snippet storage is off by default.** Code refs keep paths, symbols, line numbers and hashes. Code text stays on the board only if you enable **Store code snippets on my boards** in dashboard **Settings → Code**.
-
-The helper still uploads cited files for checks. Captures expire within ten minutes and cannot be read again after the call claims them. Known secret filenames and ignored files are refused, but the helper does not scan file contents before upload.
-
-Board content is not end-to-end encrypted. Hosted operators can read stored data. Sharing a board or including code refs in a link is a separate choice from snippet storage. [Data and consent](https://docs.redcrayon.ai/data-and-consent/) · [Upload details](plugin/README.md#what-leaves-your-machine).
-
-## Your own server
+For the plugin to use your local stack, start Claude Code with:
 
 ```sh
 REDCRAYON_MCP_URL=http://localhost:8788/mcp claude
 ```
 
-Other clients take that URL in place of the hosted one. Self-hosting instructions ship with the open-source core.
+This sets the server and the code-ref helper to the same local endpoint.
+Other MCP clients use the URL directly. For their code refs, run
+`REDCRAYON_MCP_URL=http://localhost:8788/mcp npx -y @redcrayonai/draw@1 capture`.
+
+## More
+
+- [docs/guide.md](docs/guide.md): what the canvas, agent tools and dashboard do, in full.
+- [DESIGN.md](DESIGN.md): the interface's colors, typography, spacing and component rules.
+- [CONTRIBUTING.md](CONTRIBUTING.md): the dev loop, bindings and module checks.
+
+What the hosted service stores and how to delete it is in [docs/data-handling.md](docs/data-handling.md).
 
 ## License
 
-Apache License 2.0. See [LICENSE](LICENSE).
+The repository-wide license and copyright holder are pending.
+The existing [plugin license](plugin/LICENSE) applies to the plugin.

@@ -1,9 +1,9 @@
 {
   "name": "draw",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "description": "Live redcrayon boards for coding agents: a map of what the agent builds, with code refs into the exact symbols.",
   "author": { "name": "Red Crayon" },
   "repository": "https://github.com/redcrayonai/draw",
-  "license": "Apache-2.0",
+  "license": "MIT",
   "keywords": ["architecture", "diagram", "board", "code refs", "mcp"]
 }

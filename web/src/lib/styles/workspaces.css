@@ -1,0 +1,42 @@
+.settings { padding: 24px 28px 40px; }
+.settings > header { margin-bottom: 20px; }
+.settings h1 { margin: 0; font: 600 22px/1.2 var(--rc-sans); letter-spacing: -0.01em; color: var(--rc-ink); }
+.settings .sub { margin: 6px 0 0; font: 400 13px/1.5 var(--rc-sans); color: var(--rc-muted); max-width: 80ch; }
+.settings .crumb { margin: 0 0 10px; font: 500 12px/1 var(--rc-sans); color: var(--rc-muted); }
+.settings > .alert { margin-bottom: 16px; }
+.settings :is(input:not([type='checkbox']), select) { min-height: 34px; border: 1px solid var(--rc-border); border-radius: var(--rc-r-md); background: var(--rc-raised); padding: 6px 10px; font: 400 13px/1.4 var(--rc-sans); color: var(--rc-ink); max-width: 100%; }
+.workspace-panel h2 { margin: 0 0 12px; font: 600 15px/1.3 var(--rc-sans); color: var(--rc-ink); }
+.workspace-panel h3 { margin: 0; font: 500 14px/1.4 var(--rc-sans); color: var(--rc-ink); }
+.workspace-fields, .workspace-row { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }
+.workspace-fields { align-items: flex-end; }
+.workspace-field { display: flex; flex-direction: column; gap: 6px; font: 500 12px/1.3 var(--rc-sans); color: var(--rc-muted); }
+.workspace-panel input:not([type='checkbox']), .workspace-panel select, .workspace-control select { min-height: 36px; border: 1px solid var(--rc-border); border-radius: var(--rc-r-md); background: var(--rc-raised); padding: 6px 10px; font: 400 13px/1.4 var(--rc-sans); color: var(--rc-ink); max-width: 100%; }
+.workspace-panel input:not([type='checkbox']) { width: 240px; }
+.workspace-panel input[type='checkbox'] { accent-color: var(--rc-ink); }
+.workspace-list { display: flex; flex-direction: column; gap: 14px; margin-top: 16px; }
+.workspace-list > .workspace-row { padding-top: 12px; border-top: 1px solid var(--rc-divider); }
+.workspace-name { flex: 1; min-width: 100px; overflow-wrap: anywhere; font: 400 13px/1.5 var(--rc-sans); color: var(--rc-ink); }
+.workspace-hint { font: 400 12px/1.5 var(--rc-sans); color: var(--rc-muted); margin: 8px 0; }
+.workspace-panel details { margin-top: 16px; }
+.workspace-panel summary { cursor: pointer; font: 500 13px/1.5 var(--rc-sans); color: var(--rc-ink); }
+.workspace-panel .alert { margin: 12px 0 0; }
+.workspace-check { display: flex; gap: 8px; align-items: center; font: 400 13px/1.5 var(--rc-sans); color: var(--rc-ink); }
+.workspace-control { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; font: 400 13px/1.4 var(--rc-sans); color: var(--rc-muted); }
+.workspace-invite-url { width: 100% !important; font-family: var(--rc-mono) !important; font-size: 11px !important; }
+@media (max-width: 600px) { .settings { padding: 20px 16px 32px; } .workspace-fields > .workspace-field { width: 100%; } .workspace-panel input:not([type='checkbox']) { width: 100%; } }
+/* Dense admin tables (members, teams, invitations, keys); narrow screens scroll the table, not the page */
+.workspace-panel:has(> .workspace-table) { position: relative; overflow-x: auto; }
+.workspace-table { width: 100%; border-collapse: collapse; font: 400 13px/1.4 var(--rc-sans); color: var(--rc-ink); }
+.workspace-table th { text-align: left; font: 500 12px/1 var(--rc-sans); color: var(--rc-muted); padding: 10px 12px; background: var(--rc-page);
+  border-top: 1px solid var(--rc-divider); border-bottom: 1px solid var(--rc-divider); }
+.workspace-table td { padding: 8px 12px; height: 50px; border-bottom: 1px solid var(--rc-divider); vertical-align: middle; }
+.workspace-table tbody tr:hover td { background: color-mix(in srgb, var(--rc-hover) 40%, transparent); }
+.settings-tabs { display: flex; gap: 4px; margin: 0 -28px 16px; padding: 0 28px; border-bottom: 1px solid var(--rc-divider); overflow-x: auto; }
+.settings-tabs [role='tab'] { display: inline-flex; gap: 6px; align-items: baseline; padding: 10px 10px 11px; margin-bottom: -1px; border: 0; border-bottom: 2px solid transparent;
+  background: none; font: 500 13px/1 var(--rc-sans); color: var(--rc-muted); cursor: pointer; white-space: nowrap; }
+.settings-tabs [role='tab']:hover { color: var(--rc-ink); }
+.settings-tabs [role='tab'][aria-selected='true'] { color: var(--rc-ink); border-bottom-color: var(--rc-ink); }
+.settings-tabs .n { font: 400 11px/1 var(--rc-mono); color: var(--rc-faint); }
+.settings-toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-bottom: 14px; }
+.settings-toolbar .grow { flex: 1; }
+@media (max-width: 600px) { .settings-tabs { margin: 0 -16px 16px; padding: 0 16px; } }

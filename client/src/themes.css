@@ -1,0 +1,599 @@
+/* Editor themes, one block per theme, imported at the top of style.css.
+
+   Each block starts from the theme's published palette. A text, accent or
+   freeform token moves only when it fails WCAG AA on a surface it sits on,
+   and then only in OKLCH lightness (hue and chroma held); each comment names
+   what moved. The canvas surface (--paper) and the code surface (--inset)
+   are the theme's editor background; dark themes lift cards (--panel) a step
+   toward their selection colour.
+
+   Chart series take the theme's own hues, stepped into the dataviz lightness
+   band and chroma floor and ordered to pass its validator (adjacent CVD and
+   normal-vision separation). Series 1 is always the theme's blue; red and
+   green stay status colours and the accent is never a series.
+
+   --tint is what hover and pressed fills step toward: --ink, unless that
+   would drop text below AA (a dim ink like One Dark's), and then the theme's
+   darkest surface (dark) or white (light), so the fill steps away from it.
+
+   [data-swatch] lets the theme picker paint a chip in any theme's tokens.
+   Every block defines every token the dark theme does (themes.test.ts). */
+
+/* Catppuccin Mocha (catppuccin/palette v1). Source values throughout. */
+:root[data-theme='catppuccin-mocha'],
+[data-swatch='catppuccin-mocha'] {
+  --paper: #1E1E2E;
+  --app: #11111B;
+  --panel: #262637;
+  --panel-2: #28293A;
+  --panel-hi: #313244;
+  --inset: #1E1E2E;
+  --ink: #CDD6F4;
+  --muted: #A6ADC8;
+  --faint: #9399B2;
+  --hairline: rgba(205, 214, 244, 0.14);
+  --border: rgba(205, 214, 244, 0.08);
+  --edge: #585B70;
+  --accent: #FAB387;
+  --accent-soft: #443A42;
+  --sel: #89B4FA;
+  --sel-strong: #89B4FA;
+  --sel-soft: rgba(137, 180, 250, 0.14);
+  --on-sel: #11111B;
+  --ok: #A6E3A1;
+  --dot: rgba(205, 214, 244, 0.06);
+  --on-accent: #11111B;
+  --shadow: 0 1px 2px rgb(0 0 0 / 0.4), 0 8px 24px rgb(0 0 0 / 0.36);
+  --shadow-lg: 0 2px 4px rgb(0 0 0 / 0.5), 0 16px 48px rgb(0 0 0 / 0.5);
+  --external-stroke: var(--muted);
+  --tint: var(--ink);
+  --c-ink: #CDD6F4;
+  --c-blue: #89B4FA;
+  --c-red: #F38BA8;
+  --c-green: #A6E3A1;
+  --c-purple: #CBA6F7;
+  --c-gray: #9399B2;
+  --c-ink-fill: #29293A;
+  --c-blue-fill: #2D334B;
+  --c-red-fill: #3C2D3F;
+  --c-green-fill: #313A3E;
+  --c-purple-fill: #36314A;
+  --c-gray-fill: #2E2F40;
+  --series-1: #4E76B7;
+  --series-2: #29A293;
+  --series-3: #9E7AC8;
+  --series-4: #AA893A;
+  --series-5: #9C5D8D;
+  --on-series-1: #FFFFFF;
+  --on-series-2: #11111B;
+  --on-series-3: #11111B;
+  --on-series-4: #11111B;
+  --on-series-5: #FFFFFF;
+  --on-other: #11111B;
+  --c-amber: #F9E2AF;
+  --c-amber-fill: #3F3D45;
+  color-scheme: dark;
+}
+
+/* Catppuccin Latte (catppuccin/palette v1). Lifted to AA: --muted, --faint,
+   --accent (peach), --sel, --ok, --c-blue, --c-green, --c-gray, --c-amber;
+   --c-red and --c-purple by a rounding step. */
+:root[data-theme='catppuccin-latte'],
+[data-swatch='catppuccin-latte'] {
+  --paper: #E6E9EF;
+  --app: #DCE0E8;
+  --panel: #EFF1F5;
+  --panel-2: #EFF1F5;
+  --panel-hi: #CCD0DA;
+  --inset: #E6E9EF;
+  --ink: #4C4F69;
+  --muted: #555870;
+  --faint: #606278;
+  --hairline: rgba(76, 79, 105, 0.22);
+  --border: rgba(76, 79, 105, 0.1);
+  --edge: #ACB0BE;
+  --accent: #A23F0C;
+  --accent-soft: #E7DFDE;
+  --sel: #0D57E5;
+  --sel-strong: #0D57E5;
+  --sel-soft: rgba(13, 87, 229, 0.1);
+  --on-sel: #FFFFFF;
+  --ok: #227F03;
+  --dot: rgba(76, 79, 105, 0.09);
+  --on-accent: #FFFFFF;
+  --shadow: 0 1px 2px rgb(0 0 0 / 0.06), 0 8px 24px rgb(0 0 0 / 0.08);
+  --shadow-lg: 0 2px 4px rgb(0 0 0 / 0.08), 0 16px 48px rgb(0 0 0 / 0.14);
+  --external-stroke: var(--ink);
+  --tint: #FFFFFF;
+  --c-ink: #4C4F69;
+  --c-blue: #155DEC;
+  --c-red: #D10D38;
+  --c-green: #227908;
+  --c-purple: #8738EE;
+  --c-gray: #65687E;
+  --c-ink-fill: #EFF1F5;
+  --c-blue-fill: #D1DBEF;
+  --c-red-fill: #E4D3DD;
+  --c-green-fill: #D2DED8;
+  --c-purple-fill: #DDD7EF;
+  --c-gray-fill: #D9DCE4;
+  --series-1: #1D65F4;
+  --series-2: #D260B4;
+  --series-3: #8839EF;
+  --series-4: #139DA5;
+  --series-5: #DF8E1E;
+  --on-series-1: #FFFFFF;
+  --on-series-2: #131313;
+  --on-series-3: #FFFFFF;
+  --on-series-4: #131313;
+  --on-series-5: #131313;
+  --on-other: #FFFFFF;
+  --c-amber: #C67A00;
+  --c-amber-fill: #E8DECE;
+  color-scheme: light;
+}
+
+/* One Dark (Atom One Dark; the comment grey is One Dark Pro's). Lifted to AA:
+   --muted, --faint, --accent, --sel, --c-red, --c-purple, --c-gray; --sel-soft
+   is thinned so ink reads on it. The magenta series has no One Dark swatch. */
+:root[data-theme='one-dark'],
+[data-swatch='one-dark'] {
+  --paper: #282C34;
+  --app: #21252B;
+  --panel: #313640;
+  --panel-2: #343944;
+  --panel-hi: #3E4451;
+  --inset: #282C34;
+  --ink: #ABB2BF;
+  --muted: #A9B1C0;
+  --faint: #9DA2AC;
+  --hairline: rgba(171, 178, 191, 0.14);
+  --border: rgba(171, 178, 191, 0.08);
+  --edge: #4B5263;
+  --accent: #D69F6B;
+  --accent-soft: #3E3E43;
+  --sel: #7DC2FD;
+  --sel-strong: #7DC2FD;
+  --sel-soft: rgba(125, 194, 253, 0.09);
+  --on-sel: #131313;
+  --ok: #98C379;
+  --dot: rgba(171, 178, 191, 0.06);
+  --on-accent: #131313;
+  --shadow: 0 1px 2px rgb(0 0 0 / 0.4), 0 8px 24px rgb(0 0 0 / 0.36);
+  --shadow-lg: 0 2px 4px rgb(0 0 0 / 0.5), 0 16px 48px rgb(0 0 0 / 0.5);
+  --external-stroke: var(--muted);
+  --tint: #21252B;
+  --c-ink: #ABB2BF;
+  --c-blue: #61AFEF;
+  --c-red: #F07A83;
+  --c-green: #98C379;
+  --c-purple: #CF80E6;
+  --c-gray: #999EA8;
+  --c-ink-fill: #30343C;
+  --c-blue-fill: #303E4E;
+  --c-red-fill: #44373F;
+  --c-green-fill: #38413E;
+  --c-purple-fill: #3F384D;
+  --c-gray-fill: #383C44;
+  --series-1: #2A7BB8;
+  --series-2: #AB4485;
+  --series-3: #1D9FAD;
+  --series-4: #AD873A;
+  --series-5: #B669CD;
+  --on-series-1: #FFFFFF;
+  --on-series-2: #FFFFFF;
+  --on-series-3: #131313;
+  --on-series-4: #131313;
+  --on-series-5: #131313;
+  --on-other: #131313;
+  --c-amber: #E5C07B;
+  --c-amber-fill: #474747;
+  color-scheme: dark;
+}
+
+/* One Light (Atom One Light). Lifted to AA: --muted, --faint, --accent,
+   --sel, --ok, --c-blue, --c-red, --c-green. The violet series has no One
+   Light swatch. */
+:root[data-theme='one-light'],
+[data-swatch='one-light'] {
+  --paper: #FAFAFA;
+  --app: #EAEAEB;
+  --panel: #FFFFFF;
+  --panel-2: #FFFFFF;
+  --panel-hi: #E5E5E6;
+  --inset: #FAFAFA;
+  --ink: #383A42;
+  --muted: #636671;
+  --faint: #68696F;
+  --hairline: rgba(56, 58, 66, 0.22);
+  --border: rgba(56, 58, 66, 0.1);
+  --edge: #C2C2C3;
+  --accent: #8D600A;
+  --accent-soft: #F4EFE7;
+  --sel: #2F65DD;
+  --sel-strong: #2F65DD;
+  --sel-soft: rgba(47, 101, 221, 0.1);
+  --on-sel: #FFFFFF;
+  --ok: #348635;
+  --dot: rgba(56, 58, 66, 0.09);
+  --on-accent: #FFFFFF;
+  --shadow: 0 1px 2px rgb(0 0 0 / 0.06), 0 8px 24px rgb(0 0 0 / 0.08);
+  --shadow-lg: 0 2px 4px rgb(0 0 0 / 0.08), 0 16px 48px rgb(0 0 0 / 0.14);
+  --external-stroke: var(--ink);
+  --tint: var(--ink);
+  --c-ink: #383A42;
+  --c-blue: #356CE5;
+  --c-red: #CE4136;
+  --c-green: #318332;
+  --c-purple: #A626A4;
+  --c-gray: #696C77;
+  --c-ink-fill: #FFFFFF;
+  --c-blue-fill: #E6ECF8;
+  --c-red-fill: #F6E8E6;
+  --c-green-fill: #E6EEE6;
+  --c-purple-fill: #F2E5F1;
+  --c-gray-fill: #EBECED;
+  --series-1: #447CF7;
+  --series-2: #9D199B;
+  --series-3: #7158D9;
+  --series-4: #0E88C0;
+  --series-5: #BE8418;
+  --on-series-1: #131313;
+  --on-series-2: #FFFFFF;
+  --on-series-3: #FFFFFF;
+  --on-series-4: #131313;
+  --on-series-5: #131313;
+  --on-other: #FFFFFF;
+  --c-amber: #C18401;
+  --c-amber-fill: #F5EBD6;
+  color-scheme: light;
+}
+
+/* Oceanic Next (base16 Oceanic Next); --app is a step below base00. Lifted to
+   AA: --faint, --sel, --c-blue, --c-red. The violet series has no Oceanic
+   swatch. */
+:root[data-theme='oceanic-next'],
+[data-swatch='oceanic-next'] {
+  --paper: #1B2B34;
+  --app: #152229;
+  --panel: #25323B;
+  --panel-2: #29353E;
+  --panel-hi: #343D46;
+  --inset: #1B2B34;
+  --ink: #CDD3DE;
+  --muted: #A7ADBA;
+  --faint: #8E9DA9;
+  --hairline: rgba(205, 211, 222, 0.14);
+  --border: rgba(205, 211, 222, 0.08);
+  --edge: #4F5B66;
+  --accent: #F99157;
+  --accent-soft: #433F3F;
+  --sel: #84B8ED;
+  --sel-strong: #84B8ED;
+  --sel-soft: rgba(132, 184, 237, 0.14);
+  --on-sel: #131313;
+  --ok: #99C794;
+  --dot: rgba(205, 211, 222, 0.06);
+  --on-accent: #131313;
+  --shadow: 0 1px 2px rgb(0 0 0 / 0.4), 0 8px 24px rgb(0 0 0 / 0.36);
+  --shadow-lg: 0 2px 4px rgb(0 0 0 / 0.5), 0 16px 48px rgb(0 0 0 / 0.5);
+  --external-stroke: var(--muted);
+  --tint: var(--ink);
+  --c-ink: #CDD3DE;
+  --c-blue: #699CCF;
+  --c-red: #F76970;
+  --c-green: #99C794;
+  --c-purple: #C594C5;
+  --c-gray: #A7ADBA;
+  --c-ink-fill: #26353E;
+  --c-blue-fill: #263B4A;
+  --c-red-fill: #3A343C;
+  --c-green-fill: #2D4141;
+  --c-purple-fill: #333A48;
+  --c-gray-fill: #2F3D47;
+  --series-1: #5392D0;
+  --series-2: #B4850E;
+  --series-3: #8771C4;
+  --series-4: #1CA1A2;
+  --series-5: #8A528B;
+  --on-series-1: #131313;
+  --on-series-2: #131313;
+  --on-series-3: #131313;
+  --on-series-4: #131313;
+  --on-series-5: #FFFFFF;
+  --on-other: #131313;
+  --c-amber: #FAC863;
+  --c-amber-fill: #3F4440;
+  color-scheme: dark;
+}
+
+/* Gruvbox Material (sainnhe, dark, medium, material). Lifted to AA: --muted,
+   --faint, --accent, --sel, --c-red. Gruvbox's blue is a teal, so the blue and
+   violet series have no swatch. */
+:root[data-theme='gruvbox-material'],
+[data-swatch='gruvbox-material'] {
+  --paper: #282828;
+  --app: #1B1B1B;
+  --panel: #32302F;
+  --panel-2: #383533;
+  --panel-hi: #45403D;
+  --inset: #282828;
+  --ink: #D4BE98;
+  --muted: #BAAA95;
+  --faint: #AA9B8B;
+  --hairline: rgba(212, 190, 152, 0.14);
+  --border: rgba(212, 190, 152, 0.08);
+  --edge: #5A524C;
+  --accent: #EA8D51;
+  --accent-soft: #433832;
+  --sel: #8EC0B4;
+  --sel-strong: #8EC0B4;
+  --sel-soft: rgba(142, 192, 180, 0.14);
+  --on-sel: #131313;
+  --ok: #A9B665;
+  --dot: rgba(212, 190, 152, 0.06);
+  --on-accent: #131313;
+  --shadow: 0 1px 2px rgb(0 0 0 / 0.4), 0 8px 24px rgb(0 0 0 / 0.36);
+  --shadow-lg: 0 2px 4px rgb(0 0 0 / 0.5), 0 16px 48px rgb(0 0 0 / 0.5);
+  --external-stroke: var(--muted);
+  --tint: #1B1B1B;
+  --c-ink: #D4BE98;
+  --c-blue: #7DAEA3;
+  --c-red: #F16F68;
+  --c-green: #A9B665;
+  --c-purple: #D3869B;
+  --c-gray: #A89984;
+  --c-ink-fill: #32312F;
+  --c-blue-fill: #343B39;
+  --c-red-fill: #443231;
+  --c-green-fill: #3A3C31;
+  --c-purple-fill: #403538;
+  --c-gray-fill: #3A3835;
+  --series-1: #4E95C8;
+  --series-2: #B48432;
+  --series-3: #987EC6;
+  --series-4: #2EA28F;
+  --series-5: #A1546B;
+  --on-series-1: #131313;
+  --on-series-2: #131313;
+  --on-series-3: #131313;
+  --on-series-4: #131313;
+  --on-series-5: #FFFFFF;
+  --on-other: #131313;
+  --c-amber: #D8A657;
+  --c-amber-fill: #463E34;
+  color-scheme: dark;
+}
+
+/* Nord (nord0-nord15); --app is a step below nord0 and --muted sits between
+   nord4 and nord3. Nord's aurora is dim on Polar Night, so these are lifted to
+   AA: --faint, --accent, --sel, --c-blue, --c-red, --c-purple, --c-gray. The
+   magenta series has no Nord swatch. */
+:root[data-theme='nord'],
+[data-swatch='nord'] {
+  --paper: #2E3440;
+  --app: #272C36;
+  --panel: #3B4252;
+  --panel-2: #3D4556;
+  --panel-hi: #434C5E;
+  --inset: #2E3440;
+  --ink: #D8DEE9;
+  --muted: #B9C1CF;
+  --faint: #A4B2CF;
+  --hairline: rgba(216, 222, 233, 0.14);
+  --border: rgba(216, 222, 233, 0.08);
+  --edge: #4C566A;
+  --accent: #ECA089;
+  --accent-soft: #404554;
+  --sel: #A0D9E9;
+  --sel-strong: #A0D9E9;
+  --sel-soft: rgba(160, 217, 233, 0.14);
+  --on-sel: #131313;
+  --ok: #A3BE8C;
+  --dot: rgba(216, 222, 233, 0.06);
+  --on-accent: #131313;
+  --shadow: 0 1px 2px rgb(0 0 0 / 0.4), 0 8px 24px rgb(0 0 0 / 0.36);
+  --shadow-lg: 0 2px 4px rgb(0 0 0 / 0.5), 0 16px 48px rgb(0 0 0 / 0.5);
+  --external-stroke: var(--muted);
+  --tint: #272C36;
+  --c-ink: #D8DEE9;
+  --c-blue: #90B1D1;
+  --c-red: #F59199;
+  --c-green: #A3BE8C;
+  --c-purple: #C9A2C1;
+  --c-gray: #A5AEBF;
+  --c-ink-fill: #383E4A;
+  --c-blue-fill: #3C4654;
+  --c-red-fill: #4A414C;
+  --c-green-fill: #3E474B;
+  --c-purple-fill: #444352;
+  --c-gray-fill: #3F4552;
+  --series-1: #4B86BE;
+  --series-2: #9B557D;
+  --series-3: #1CA1A1;
+  --series-4: #AC883A;
+  --series-5: #B475A9;
+  --on-series-1: #131313;
+  --on-series-2: #FFFFFF;
+  --on-series-3: #131313;
+  --on-series-4: #131313;
+  --on-series-5: #131313;
+  --on-other: #131313;
+  --c-amber: #EBCB8B;
+  --c-amber-fill: #505259;
+  color-scheme: dark;
+}
+
+/* Material Dark (vsc-material-theme, Default). Lifted to AA: --faint,
+   --accent, --sel, --c-red. */
+:root[data-theme='material-dark'],
+[data-swatch='material-dark'] {
+  --paper: #263238;
+  --app: #1E272C;
+  --panel: #2E3C43;
+  --panel-2: #304146;
+  --panel-hi: #314549;
+  --inset: #263238;
+  --ink: #EEFFFF;
+  --muted: #B0BEC5;
+  --faint: #91ADBA;
+  --hairline: rgba(238, 255, 255, 0.14);
+  --border: rgba(238, 255, 255, 0.08);
+  --edge: #465A64;
+  --accent: #FE9C7F;
+  --accent-soft: #45474A;
+  --sel: #86D1CA;
+  --sel-strong: #86D1CA;
+  --sel-soft: rgba(134, 209, 202, 0.14);
+  --on-sel: #131313;
+  --ok: #C3E88D;
+  --dot: rgba(238, 255, 255, 0.06);
+  --on-accent: #131313;
+  --shadow: 0 1px 2px rgb(0 0 0 / 0.4), 0 8px 24px rgb(0 0 0 / 0.36);
+  --shadow-lg: 0 2px 4px rgb(0 0 0 / 0.5), 0 16px 48px rgb(0 0 0 / 0.5);
+  --external-stroke: var(--muted);
+  --tint: var(--ink);
+  --c-ink: #EEFFFF;
+  --c-blue: #82AAFF;
+  --c-red: #FC7C82;
+  --c-green: #C3E88D;
+  --c-purple: #C792EA;
+  --c-gray: #B0BEC5;
+  --c-ink-fill: #323E44;
+  --c-blue-fill: #334354;
+  --c-red-fill: #443C42;
+  --c-green-fill: #3C4B44;
+  --c-purple-fill: #3D3F51;
+  --c-gray-fill: #39464C;
+  --series-1: #658BDD;
+  --series-2: #B58415;
+  --series-3: #A874C9;
+  --series-4: #A94F61;
+  --series-5: #1B88AB;
+  --on-series-1: #131313;
+  --on-series-2: #131313;
+  --on-series-3: #131313;
+  --on-series-4: #FFFFFF;
+  --on-series-5: #131313;
+  --on-other: #131313;
+  --c-amber: #FFCB6B;
+  --c-amber-fill: #474D48;
+  color-scheme: dark;
+}
+
+/* Material Light (vsc-material-theme, Lighter). --ink is Material's blue-grey
+   800: Lighter's own #90A4AE text is 2.6:1 on its background. Lifted to AA:
+   --muted, --faint, --accent, --sel, --ok, --c-blue, --c-red, --c-green,
+   --c-gray, --c-amber. */
+:root[data-theme='material-light'],
+[data-swatch='material-light'] {
+  --paper: #FAFAFA;
+  --app: #EEEEEE;
+  --panel: #FFFFFF;
+  --panel-2: #FFFFFF;
+  --panel-hi: #E7E7E8;
+  --inset: #FAFAFA;
+  --ink: #37474F;
+  --muted: #526C78;
+  --faint: #5C6F79;
+  --hairline: rgba(55, 71, 79, 0.22);
+  --border: rgba(55, 71, 79, 0.1);
+  --edge: #CFD8DC;
+  --accent: #C0390C;
+  --accent-soft: #F9EBE7;
+  --sel: #0B787F;
+  --sel-strong: #0B787F;
+  --sel-soft: rgba(11, 120, 127, 0.1);
+  --on-sel: #FFFFFF;
+  --ok: #5D811D;
+  --dot: rgba(55, 71, 79, 0.09);
+  --on-accent: #FFFFFF;
+  --shadow: 0 1px 2px rgb(0 0 0 / 0.06), 0 8px 24px rgb(0 0 0 / 0.08);
+  --shadow-lg: 0 2px 4px rgb(0 0 0 / 0.08), 0 16px 48px rgb(0 0 0 / 0.14);
+  --external-stroke: var(--ink);
+  --tint: var(--ink);
+  --c-ink: #37474F;
+  --c-blue: #5474A9;
+  --c-red: #DB2D2C;
+  --c-green: #5B7E19;
+  --c-purple: #9C3EDA;
+  --c-gray: #637680;
+  --c-ink-fill: #FFFFFF;
+  --c-blue-fill: #E9EDF2;
+  --c-red-fill: #F7E6E5;
+  --c-green-fill: #EAEEE3;
+  --c-purple-fill: #F1E7F7;
+  --c-gray-fill: #EBEDEE;
+  --series-1: #597FBD;
+  --series-2: #FB4F6D;
+  --series-3: #9F41DD;
+  --series-4: #21A3AC;
+  --series-5: #CE8410;
+  --on-series-1: #131313;
+  --on-series-2: #131313;
+  --on-series-3: #FFFFFF;
+  --on-series-4: #131313;
+  --on-series-5: #131313;
+  --on-other: #FFFFFF;
+  --c-amber: #CE840F;
+  --c-amber-fill: #F7EBD9;
+  color-scheme: light;
+}
+
+/* Monokai Pro (Pro filter). Lifted to AA: --faint, --c-red, --c-gray. Monokai
+   Pro has no blue or magenta: those two series turn its cyan and its red. */
+:root[data-theme='monokai-pro'],
+[data-swatch='monokai-pro'] {
+  --paper: #2D2A2E;
+  --app: #19181A;
+  --panel: #353236;
+  --panel-2: #373538;
+  --panel-hi: #403E41;
+  --inset: #2D2A2E;
+  --ink: #FCFCFA;
+  --muted: #C1C0C0;
+  --faint: #9F9E9F;
+  --hairline: rgba(252, 252, 250, 0.14);
+  --border: rgba(252, 252, 250, 0.08);
+  --edge: #5B595C;
+  --accent: #FC9867;
+  --accent-soft: #51403D;
+  --sel: #78DCE8;
+  --sel-strong: #78DCE8;
+  --sel-soft: rgba(120, 220, 232, 0.14);
+  --on-sel: #131313;
+  --ok: #A9DC76;
+  --dot: rgba(252, 252, 250, 0.06);
+  --on-accent: #131313;
+  --shadow: 0 1px 2px rgb(0 0 0 / 0.4), 0 8px 24px rgb(0 0 0 / 0.36);
+  --shadow-lg: 0 2px 4px rgb(0 0 0 / 0.5), 0 16px 48px rgb(0 0 0 / 0.5);
+  --external-stroke: var(--muted);
+  --tint: var(--ink);
+  --c-ink: #FCFCFA;
+  --c-blue: #78DCE8;
+  --c-red: #FD688B;
+  --c-green: #A9DC76;
+  --c-purple: #AB9DF2;
+  --c-gray: #9B9A9B;
+  --c-ink-fill: #39373A;
+  --c-blue-fill: #384348;
+  --c-red-fill: #4A333B;
+  --c-green-fill: #3E4338;
+  --c-purple-fill: #3F3A49;
+  --c-gray-fill: #3C3A3D;
+  --series-1: #608CDE;
+  --series-2: #D35BA6;
+  --series-3: #AC8900;
+  --series-4: #1C9FAD;
+  --series-5: #7767B7;
+  --on-series-1: #131313;
+  --on-series-2: #131313;
+  --on-series-3: #131313;
+  --on-series-4: #131313;
+  --on-series-5: #FFFFFF;
+  --on-other: #131313;
+  --c-amber: #FFD866;
+  --c-amber-fill: #4D463C;
+  color-scheme: dark;
+}
+

@@ -1,0 +1,33 @@
+{
+  "name": "redcrayon",
+  "private": true,
+  "version": "1.0.2",
+  "type": "module",
+  "bin": {
+    "redcrayon": "dist/redcrayon.mjs"
+  },
+  "files": [
+    "dist/redcrayon.mjs"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "build": "node build.mjs",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
+  },
+  "devDependencies": {
+    "@types/node": "^26.6.4",
+    "esbuild": "^0.28.2",
+    "typescript": "~5.6.3",
+    "vitest": "^4.1.11"
+  },
+  "pnpm": {
+    "ignoredBuiltDependencies": [
+      "esbuild"
+    ]
+  },
+  "packageManager": "pnpm@10.34.5",
+  "license": "UNLICENSED"
+}

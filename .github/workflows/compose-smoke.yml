@@ -1,0 +1,44 @@
+# The self-host path from a clean checkout (RC-599): Docker Compose only, no
+# repo secrets. An agent with a static key (MCP_API_KEYS, so DEV_AUTH is off)
+# creates a board and draws on it.
+name: compose-smoke
+
+on:
+  workflow_call:
+
+permissions:
+  contents: read
+
+jobs:
+  compose:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7
+      - name: A key for the agent
+        run: |
+          key="$(openssl rand -hex 32)"
+          echo "::add-mask::$key"
+          {
+            echo "SMOKE_KEY=$key"
+            echo "MCP_API_KEYS=$(printf %s "$key" | sha256sum | cut -d' ' -f1):user_smoke"
+            echo "STARTED=$(date +%s)"
+          } >>"$GITHUB_ENV"
+      - name: docker compose up --build -d
+        run: docker compose up --build -d
+      - name: The agent creates a board and draws on it
+        # scripts/smoke.mjs waits for /health, then start_session, get_board, create_node, move_node
+        run: docker compose exec -T -e MCP_URL=http://localhost:8788/mcp -e CANARY_API_KEY="$SMOKE_KEY" mcp node scripts/smoke.mjs
+      - name: No key is refused; the canvas and dashboard serve
+        run: |
+          code="$(curl -s -o /dev/null -w '%{http_code}' -X POST -H 'content-type: application/json' -d '{}' http://localhost:8788/mcp)"
+          [ "$code" = 401 ] || { echo "::error::POST /mcp without a key answered $code, not 401"; exit 1; }
+          curl -sf --retry 30 --retry-connrefused --retry-delay 2 -o /dev/null http://localhost:5173/
+          curl -sf --retry 30 --retry-connrefused --retry-delay 2 -o /dev/null http://localhost:5174/
+          echo "Clean checkout to an agent-drawn node: $(( ($(date +%s) - STARTED) / 60 )) min $(( ($(date +%s) - STARTED) % 60 )) s" | tee -a "$GITHUB_STEP_SUMMARY"
+      - name: Logs
+        if: failure()
+        run: docker compose ps -a && docker compose logs --no-color --tail 200
+      - name: docker compose down -v
+        if: always()
+        run: docker compose down -v

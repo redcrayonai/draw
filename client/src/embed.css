@@ -1,0 +1,37 @@
+body.chart-embed { display: block; margin: 0; height: 100dvh; overflow: auto; background: var(--panel); color: var(--ink); }
+.chart-embed #embed-card { display: flex; flex-direction: column; height: 100%; min-height: 220px; padding: 16px; gap: 12px; box-sizing: border-box; }
+.chart-embed .embed-header { display: flex; align-items: start; justify-content: space-between; gap: 8px; padding: 0; border: 0; background: transparent; flex-shrink: 0; }
+.embed-header > div { min-width: 0; }
+.chart-embed h1 { margin: 0; font-size: 16px; line-height: 1.3; overflow-wrap: anywhere; }
+.chart-embed #embed-subtitle { margin: 4px 0 0; color: var(--muted); font-size: 12px; overflow-wrap: anywhere; }
+.chart-embed select, .chart-embed button { padding: 5px 7px; border: 1px solid var(--hairline); border-radius: 6px; background: var(--panel); color: var(--muted); font: inherit; font-size: 11px; }
+.chart-embed :focus-visible { outline: 2px solid var(--sel); outline-offset: 2px; }
+.chart-embed #embed-plot-host { flex: 1; min-height: 110px; position: relative; }
+.chart-embed #embed-chart { display: block; width: 100%; height: 100%; min-height: 110px; overflow: hidden; touch-action: pan-y; }
+.chart-embed [hidden] { display: none !important; }
+.chart-embed .embed-footer { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; font-size: 11px; color: var(--faint); }
+.chart-embed #embed-source { flex: 1 1 100%; overflow-wrap: anywhere; }
+.chart-embed #embed-playback { display: flex; gap: 6px; }
+.chart-embed #embed-open { color: var(--muted); margin-left: auto; }
+.chart-embed #embed-data { flex: 1 1 100%; }
+.chart-embed #embed-data summary { cursor: pointer; width: fit-content; color: var(--muted); }
+.chart-embed .embed-data-scroll { max-height: 160px; overflow: auto; margin-top: 8px; }
+.chart-embed table { width: 100%; border-collapse: collapse; font-size: 11px; }
+.chart-embed :is(th, td) { padding: 5px 8px; text-align: left; border-bottom: 1px solid var(--border); white-space: nowrap; }
+.chart-embed #embed-status { color: var(--muted); padding: 16px 0; font-size: 13px; }
+.chart-embed #chart-tip { max-width: calc(100% - 16px); overflow-wrap: anywhere; }
+@media (max-width: 360px) { .chart-embed #embed-card { padding: 12px; gap: 8px; } }
+.board-embed #embed-chart { touch-action: none; cursor: grab; }
+.board-embed #embed-chart:active { cursor: grabbing; }
+.board-embed #embed-source { display: none; }
+#embed-board-tools { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+#embed-mode { max-width: min(260px, calc(100vw - 40px)); }
+#embed-loop-label { display: flex; align-items: center; gap: 4px; }
+#embed-progress { align-self: center; font-variant-numeric: tabular-nums; }
+.board-embed #embed-playback { flex-wrap: wrap; align-items: center; }
+.board-embed .embed-flow-dot { fill: var(--sel); stroke: var(--panel); stroke-width: 1.5; pointer-events: none; }
+.board-embed #world .embed-reached .node-rect { stroke: var(--sel); stroke-width: 2.5; }
+.board-embed #world .embed-path .edge-line { stroke: var(--sel); stroke-width: 2.5; }
+.chart-embed.motion-paused *, .chart-embed.motion-paused *::before, .chart-embed.motion-paused *::after { animation-play-state: paused !important; }
+.board-embed #world * { transition: none !important; }
+@media (prefers-reduced-motion: reduce) { .chart-embed * { animation: none !important; transition: none !important; } }
