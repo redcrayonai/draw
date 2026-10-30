@@ -234,3 +234,10 @@ test('no tracked public text file holds a raw NUL byte', () => {
   );
   assert.deepEqual(hidden, []);
 });
+
+test('no tracked file points into the hosted service repo (cloud/<dir>/)', () => {
+  const root = fileURLToPath(new URL('..', import.meta.url));
+  // git grep exits 1 when nothing matches
+  const { status, stdout } = spawnSync('git', ['grep', '-nE', '(^|[^[:alnum:]_])cloud/(auth|docs|e2e|mcp|scripts|web|wrangler)/', '--', '.', ':!scripts/vendor-scan.test.mjs'], { cwd: root, encoding: 'utf8' });
+  assert.equal(status, 1, `private repo paths in the core:\n${stdout}`);
+});
