@@ -1,6 +1,6 @@
 {
   "name": "redcrayonai",
-  "description": "The redcrayon plugin: live boards of what your coding agent builds.",
+  "description": "The draw by redcrayon plugin",
   "owner": { "name": "Red Crayon" },
   "plugins": [
     {
