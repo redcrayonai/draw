@@ -24,13 +24,23 @@ app with an OpenTelemetry trace SDK or exporter. Setting environment variables
 alone does not add instrumentation. Managed service accounts cannot start taps.
 
 1. Draw the services and connections on the board.
-2. Ask the agent to call `start_tap` for that board.
-3. Have it write `.redcrayon/tap.json` in your project root.
-4. Run the exact helper command that `start_tap` returns from that directory.
-5. Start your instrumented app with the exporter settings below.
-6. Turn on **Live traffic** in the board's left rail.
+2. Ask the agent to call `start_tap` for that board, with each service mapped to its node.
+3. Run the exact helper command that `start_tap` returns, from your project directory.
+   A coding agent runs it for you. In a chat client such as claude.ai, paste it into a terminal.
+4. Start your instrumented app with the exporter settings below.
+5. Turn on **Live traffic** in the board's left rail.
 
-Example mapping, with illustrative ids:
+The command carries the mapping as `--service` flags. With illustrative ids:
+
+```sh
+npx -y @redcrayonai/draw@1 tap --token 'TOKEN_FROM_START_TAP' \
+  --service gateway=10 --service checkout-api=11 --service payments-api=12
+```
+
+Each name must match the resource's `service.name`, not a hostname, route or
+display label. To change mappings without restarting the helper, put them in
+`.redcrayon/tap.json` in the directory it runs in. The helper rereads this file
+after edits, and `--service` flags win over it:
 
 ```json
 {
@@ -43,18 +53,13 @@ Example mapping, with illustrative ids:
 }
 ```
 
-Replace the board and node ids with the ones your agent draws. Each key must
-match the resource's `service.name`, not a hostname, route or display label.
-The helper rereads this file after edits, so you can correct mappings without restarting it.
+Replace the board and node ids with the ones your agent draws.
 
-The returned command includes a board-scoped token:
-
-```sh
-npx -y @redcrayonai/draw@1 tap --token 'TOKEN_FROM_START_TAP'
-```
-
-The token lasts 12 hours. Keep it out of committed files and shared logs.
-One tap can connect to a board at a time.
+The token in the command is board-scoped and lasts 12 hours. To keep it out of
+the process list, set it in `REDCRAYON_TAP_TOKEN` instead of passing `--token`.
+Keep it out of committed files and shared logs. One tap can connect to a board
+at a time. Ask the agent to call `tap_status` to check that the tap connected,
+and `stop_tap` to disconnect it and revoke its token.
 
 ## Configure an instrumented service
 
@@ -132,7 +137,7 @@ This local capture uses the synthetic smoke-test payload and a simulated channel
 | No live source | Start the helper with a fresh `start_tap` token for this board. |
 | Tap waits for a viewer | Open the same board and turn on Live traffic. |
 | Receiver gets no traces | Check SDK setup, HTTP protocol, endpoint path and the app's network. |
-| Unmapped services | Match names in the helper's periodic log to keys in `tap.json`. |
+| Unmapped services | Match names in the helper's periodic log to the `--service` names or the keys in `tap.json`. |
 | Spans arrive but no hop appears | Check parent/child context, export from both services, their node ids and the drawn edge. |
 | Port 4318 is busy | Add `--port 4320` to the helper command and use port 4320 in the exporter endpoint. |
 | Another tap is already live | Stop that helper before starting a replacement. |

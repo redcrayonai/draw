@@ -113,20 +113,21 @@ export async function mintTap(env: Env, sub: string, board: bigint, now = Date.n
   return `${header}.${payload}.${b64url(signature)}`;
 }
 
-/** The tap token's subject and board, or null for anything not minted by mintTap and still valid. */
-export async function verifyTap(env: Env, token: string, now = Date.now()): Promise<{ sub: string; board: bigint } | null> {
+/** The tap token's subject, board, issue time and expiry (seconds), or null for anything not minted by mintTap and still valid. */
+export async function verifyTap(env: Env, token: string, now = Date.now()): Promise<{ sub: string; board: bigint; iat: number; exp: number } | null> {
   try {
     const { payload, protectedHeader } = await jwtVerify(token, createLocalJWKSet(jwks(env)), {
       issuer: tapIssuer(env),
       audience: TAP_AUDIENCE,
       algorithms: ['ES256'],
-      requiredClaims: ['exp'],
+      requiredClaims: ['exp', 'iat'],
       currentDate: new Date(now),
     });
     // mintTap always names its key; jose would otherwise try the only key that fits.
     if (!protectedHeader.kid || typeof payload.sub !== 'string') return null;
     if (typeof payload.board !== 'string' || !/^\d{1,20}$/.test(payload.board)) return null;
-    return { sub: payload.sub, board: BigInt(payload.board) };
+    // requiredClaims guarantees iat and exp
+    return { sub: payload.sub, board: BigInt(payload.board), iat: payload.iat!, exp: payload.exp! };
   } catch {
     return null;
   }

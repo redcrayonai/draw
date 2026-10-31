@@ -195,6 +195,8 @@ so your agent draws boards without code refs or checkpoints.
   run yourself, e.g. `REDCRAYON_MCP_URL=https://mcp.example.com/mcp claude`.
 - `REDCRAYON_ORIGIN` points the helper at another server origin, for development
   only.
+- `REDCRAYON_TAP_TOKEN` gives `redcrayon tap` its token instead of `--token`, so
+  the token stays out of the process list.
 
 ## License
 

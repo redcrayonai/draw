@@ -66,6 +66,7 @@ import { sha256, type Principal, type UserInfo } from './auth';
 import { principalSubject, mintMarks, mintTap } from './issuer';
 import { boardText, readBoard } from './board';
 import { groupByFiles, newSeat } from './marks';
+import type { LiveStub } from './live';
 import {
   boardNotFound,
   captureNeeded,
@@ -159,6 +160,10 @@ const grid = z.number().int().describe('integer, must be divisible by 4');
 const CAPTURE_DESCRIPTION =
   'Leave empty when the redcrayon plugin is installed; it fills this in. Otherwise run npx -y @redcrayonai/draw@1 capture … in the project and pass the id it prints.';
 const capture = z.string().regex(/^cap_[A-Za-z0-9]{22}$/).optional().describe(CAPTURE_DESCRIPTION);
+/** start_tap's service names: characters a shell passes through unquoted. */
+const SERVICE_NAME_RE = /^[A-Za-z0-9._:/@-]{1,128}$/;
+const SERVICE_NAME_RULE = 'a service name is 1-128 letters, digits and . _ : / @ -';
+const MAX_TAP_SERVICES = 100;
 
 function u64(value: string): SafeU64 {
   const n = safeU64(value);
@@ -174,6 +179,12 @@ async function assertWriter(t: T, b: { id: bigint; name: string }, what: string)
   if (!mine.some(r => r.boardId === b.id && ['owner', 'grant', 'team', 'agent'].includes(String(r.access)))) {
     throw new Refusal(`REJECTED: you cannot edit this board, so you cannot ${what} board=${b.name}`);
   }
+}
+
+/** The board's Live Durable Object, or null with no live channel bound (tests): then no tap can connect. */
+function liveOf(t: T, board: bigint): LiveStub | null {
+  const { LIVE } = t.ctx.env;
+  return LIVE ? (LIVE.get(LIVE.idFromName(String(board))) as unknown as LiveStub) : null;
 }
 
 async function boardOf(t: T, board: string): Promise<{ id: SafeU64; name: string }> {
@@ -641,14 +652,82 @@ export const TOOLS: Record<string, ToolDef> = {
   start_tap: {
     title: 'Start live tap',
     scope: 'board:write',
-    description: "Let the user watch live traffic on this board while they run their app locally. Returns a token and the command to run: npx -y @redcrayonai/draw@1 tap --token <token>, in the background, from the project root. Before running it, write .redcrayon/tap.json as { \"board\": \"<id>\", \"services\": { \"<service.name>\": \"<node id>\" } }, mapping each OpenTelemetry service to the node that draws it. Then tell the user to point their app's OTLP exporter at http://127.0.0.1:4318 (HTTP, not gRPC) and press Live on the board. The tap keeps raw telemetry on their machine and sends only per-edge rates, latencies and error counts while someone watches. The token lasts 12 hours." + BOARD_SUFFIX,
-    input: z.object({ board: boardArg }).strict(),
-    async run({ board }, t) {
+    description:
+      'Let the user watch live traffic on this board while they run their app locally. Pass services: { "<service.name>": "<node id>" }, mapping each OpenTelemetry service to the node that draws it; the returned command carries the mapping, so no file is needed. Returns JSON { board, token, command, otlp, expires_in_hours }. ' +
+      'If you can run shell commands in the project, run the command in the background; otherwise give the user the command to paste into a terminal on the machine that runs their app (Node 22 or later). Then tell the user to point their app\'s OTLP exporter at http://127.0.0.1:4318 (HTTP, not gRPC) and press Live on the board, and call tap_status to confirm the tap connected. ' +
+      'Without services, the tap reads .redcrayon/tap.json { "board": "<id>", "services": { … } } from the directory it runs in. The tap keeps raw telemetry on their machine and sends only per-edge rates, latencies and error counts while someone watches. The token lasts 12 hours; stop_tap ends it sooner.' +
+      BOARD_SUFFIX,
+    input: z
+      .object({
+        board: boardArg,
+        // The names go into a command the user pastes into a shell: no quoting, no shell metacharacters.
+        services: z
+          .record(z.string().regex(SERVICE_NAME_RE, SERVICE_NAME_RULE), id)
+          .refine(s => Object.keys(s).length <= MAX_TAP_SERVICES, `at most ${MAX_TAP_SERVICES} services`)
+          .optional()
+          .describe('OpenTelemetry service.name -> the node id that draws it'),
+      })
+      .strict(),
+    async run({ board, services }, t) {
       if (t.ctx.principal.machine) throw new Refusal('REJECTED: service accounts cannot start a live tap. Nothing was written.');
       const b = await boardOf(t, board);
       await assertWriter(t, b, 'start a live tap on it');
+      const mapping = Object.entries((services ?? {}) as Record<string, string>);
+      if (mapping.length > 0) {
+        const nodes = new Set((await t.ctx.db.read<Row>(sql`SELECT * FROM visible_node WHERE board_id = ${b.id}`, t.signal)).map(n => String(n.id)));
+        const missing = mapping.find(([, node]) => !nodes.has(node));
+        if (missing) throw new Refusal(targetNotFound('node', missing[1], b.name));
+      }
       const token = await mintTap(t.ctx.env, principalSubject(t.ctx.principal), b.id);
-      return okResult(JSON.stringify({ board: String(b.id), token, command: `npx -y @redcrayonai/draw@1 tap --token ${token}`, otlp: 'http://127.0.0.1:4318', expires_in_hours: 12 }, null, 1));
+      const command = `npx -y @redcrayonai/draw@1 tap --token ${token}${mapping.map(([name, node]) => ` --service ${name}=${node}`).join('')}`;
+      return okResult(JSON.stringify({ board: String(b.id), token, command, otlp: 'http://127.0.0.1:4318', expires_in_hours: 12 }, null, 1));
+    },
+  },
+
+  tap_status: {
+    title: 'Live tap status',
+    scope: 'board:read',
+    annotations: { readOnlyHint: true },
+    description:
+      'Check the live tap on this board: whether one is connected and since when, when it last sent numbers, and whether anyone has Live on. Call it after the user runs the start_tap command, to confirm it connected. ' +
+      'Returns JSON { board, tap: "connected" | "none", connected_since, last_sent, watching, started_by_you }; times are ISO 8601 or null. A tap sends nothing while nobody watches, so last_sent stays null until someone turns Live on.' +
+      BOARD_SUFFIX,
+    input: z.object({ board: boardArg }).strict(),
+    async run({ board }, t) {
+      const b = await boardOf(t, board);
+      const s = (await liveOf(t, b.id)?.status()) ?? null;
+      const iso = (ms: number | null | undefined) => (ms == null ? null : new Date(ms).toISOString());
+      return okResult(
+        JSON.stringify(
+          {
+            board: String(b.id),
+            tap: s?.tap ? 'connected' : 'none',
+            connected_since: iso(s?.since),
+            last_sent: iso(s?.lastPublish),
+            watching: s?.watching ?? false,
+            started_by_you: s?.sub ? s.sub === principalSubject(t.ctx.principal) : null,
+          },
+          null,
+          1
+        )
+      );
+    },
+  },
+
+  stop_tap: {
+    title: 'Stop live tap',
+    scope: 'board:write',
+    annotations: { idempotentHint: true },
+    description:
+      "Stop the live tap on this board when the user is done watching: the board's tap disconnects and its command exits, and every tap token issued for this board so far stops working, including ones not run yet. Call start_tap for a new one. " +
+      'Returns JSON { board, stopped }: stopped is true when a tap was connected.' +
+      BOARD_SUFFIX,
+    input: z.object({ board: boardArg }).strict(),
+    async run({ board }, t) {
+      const b = await boardOf(t, board);
+      await assertWriter(t, b, 'stop its live tap');
+      const stopped = (await liveOf(t, b.id)?.stop()) ?? false;
+      return okResult(JSON.stringify({ board: String(b.id), stopped }, null, 1));
     },
   },
 
