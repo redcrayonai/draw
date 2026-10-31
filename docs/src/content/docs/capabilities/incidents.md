@@ -81,6 +81,16 @@ Browsers cannot call the endpoint.
 
 ## Work the incident
 
+With [the draw plugin](/connect/#claude-code), hand the board to your agent:
+
+```text
+/draw:triage <incident board link> checkout errors since the deploy
+```
+
+The agent reads the board, pulls measurements from the monitoring tools you
+connected, charts them beside the hops they describe and pins each chart there.
+It may narrow the time window and says when it does. It does not mark suspects.
+
 - Mark at most two suspects with focal. Demote one before naming another.
 - Narrow the window: hold **Alt** and drag across any time chart.
 - Turn on [Live traffic](/capabilities/traffic/) with a local tap, and save the
