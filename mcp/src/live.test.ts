@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { mint, mintMarks, mintTap, verifyMarks, verifyTap } from './issuer';
-import { ACCESS_TTL_MS, AUTH_MS, CLOSE, LiveHub, MAX_EDGES, MAX_MESSAGE_BYTES, MAX_STRIKES, MIN_INTERVAL_MS, REAUTH_MS, type Attachment, type LiveSocket } from './live';
+import { ACCESS_TTL_MS, AUTH_MS, CLOSE, LiveHub, TAP_EXPIRED, MAX_EDGES, MAX_MESSAGE_BYTES, MAX_STRIKES, MIN_INTERVAL_MS, REAUTH_MS, type Attachment, type LiveSocket } from './live';
 import { newJwk, testEnv } from './test/env';
 
 class FakeSocket implements LiveSocket {
@@ -21,6 +21,9 @@ class FakeSocket implements LiveSocket {
   }
 }
 
+// Tap tokens the fake verifier knows: exp in seconds, as in a JWT.
+const TAPS: Record<string, { board: bigint; exp: number }> = { 'tap-5': { board: 5n, exp: 12 * 3600 }, 'tap-6': { board: 6n, exp: 12 * 3600 }, 'tap-5-short': { board: 5n, exp: 60 } };
+
 function hub(opts: { readers?: string[]; now?: () => number } = {}) {
   const sockets: FakeSocket[] = [];
   const readers = opts.readers ?? ['viewer'];
@@ -28,7 +31,7 @@ function hub(opts: { readers?: string[]; now?: () => number } = {}) {
   const now = opts.now ?? (() => clock);
   const h = new LiveHub(
     {
-      verifyTap: async t => (t === 'tap-5' ? { board: 5n, sub: 'agent:user_ada' } : t === 'tap-6' ? { board: 6n, sub: 'agent:user_ada' } : null),
+      verifyTap: async t => (TAPS[t] ? { ...TAPS[t], sub: 'agent:user_ada' } : null),
       canRead: async t => readers.includes(t),
       now,
     },
@@ -214,6 +217,42 @@ describe('LiveHub', () => {
     expect(h.status()).toEqual({ tap: true, since: 7, lastPublish: null, sub: null, watching: false });
   });
 
+  it('closes a tap once its token expires, and lets a fresh tap take its place', async () => {
+    const { h, open, tick } = hub();
+    const t = open();
+    await h.message(t, JSON.stringify({ auth: 'tap-5-short', role: 'tap' }));
+    const v = open();
+    await h.message(v, JSON.stringify({ auth: 'viewer', role: 'viewer' }));
+    await h.message(v, JSON.stringify({ live: true }));
+    tick(59_000);
+    await h.message(t, summary());
+    tick(1_000);
+    await h.message(t, summary());
+    expect(t.closedWith).toEqual([CLOSE.auth, TAP_EXPIRED]);
+    expect(v.sent.filter(m => (m as { edges?: unknown }).edges)).toHaveLength(1);
+    const fresh = open();
+    await h.message(fresh, JSON.stringify({ auth: 'tap-5', role: 'tap' }));
+    expect(fresh.sent[0]).toEqual({ ok: true, role: 'tap' });
+  });
+
+  it('closes an idle expired tap when a viewer arrives or the status is asked', async () => {
+    const a = hub();
+    const idle = a.open();
+    await a.h.message(idle, JSON.stringify({ auth: 'tap-5-short', role: 'tap' }));
+    a.tick(60_000);
+    const v = a.open();
+    await a.h.message(v, JSON.stringify({ auth: 'viewer', role: 'viewer' }));
+    expect(v.sent.at(-1)).toEqual({ tap: 'gone' });
+    expect(idle.closedWith).toEqual([CLOSE.auth, TAP_EXPIRED]);
+
+    const b = hub();
+    const asked = b.open();
+    await b.h.message(asked, JSON.stringify({ auth: 'tap-5-short', role: 'tap' }));
+    b.tick(60_000);
+    expect(b.h.status().tap).toBe(false);
+    expect(asked.closedWith).toEqual([CLOSE.auth, TAP_EXPIRED]);
+  });
+
   it('closes connections that never authenticate', async () => {
     const { h, open, tick } = hub();
     const s = open();
@@ -228,7 +267,7 @@ describe('tap tokens', () => {
   it('verify for their board until they expire', async () => {
     const env = await testEnv();
     const token = await mintTap(env, 'agent:user_ada', 42n, 1_000_000);
-    expect(await verifyTap(env, token, 1_000_000)).toEqual({ sub: 'agent:user_ada', board: 42n });
+    expect(await verifyTap(env, token, 1_000_000)).toEqual({ sub: 'agent:user_ada', board: 42n, exp: 1_000 + 12 * 3600 });
     expect(await verifyTap(env, token, 1_000_000 + 12 * 3600 * 1000)).toBeNull();
   });
 
@@ -269,7 +308,7 @@ describe('tap tokens', () => {
     const signed = new Uint8Array(await crypto.subtle.sign({ name: 'ECDSA', hash: 'SHA-256' }, key, new TextEncoder().encode(`${bare}.${p}`)));
     const s64 = btoa(String.fromCharCode(...signed)).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
     expect(await verifyTap(env, `${bare}.${p}.${s64}`)).toBeNull();
-    expect(await verifyTap(env, `${h}.${p}.${sig}`)).toEqual({ sub: 'agent:user_ada', board: 42n });
+    expect(await verifyTap(env, `${h}.${p}.${sig}`)).toMatchObject({ sub: 'agent:user_ada', board: 42n });
   });
 
   it('still verify during a key rotation (signed by the previous key)', async () => {
@@ -277,7 +316,7 @@ describe('tap tokens', () => {
     const before = await testEnv({ AGENT_JWK: old });
     const token = await mintTap(before, 'agent:user_ada', 42n);
     const after = await testEnv({ AGENT_JWK: await newJwk('k1'), AGENT_JWK_PREV: old });
-    expect(await verifyTap(after, token)).toEqual({ sub: 'agent:user_ada', board: 42n });
+    expect(await verifyTap(after, token)).toMatchObject({ sub: 'agent:user_ada', board: 42n });
   });
 });
 

@@ -475,7 +475,7 @@ describe('start_tap and watch_marks on the hosted server', () => {
     const body = JSON.parse(text(await out));
     expect(body).toMatchObject({ board: '5', otlp: 'http://127.0.0.1:4318', expires_in_hours: 12 });
     expect(body.command).toBe(`npx -y @redcrayonai/draw@1 tap --token ${body.token}`);
-    expect(await verifyTap(env, body.token)).toEqual({ sub: 'agent:user_ada', board: 5n });
+    expect(await verifyTap(env, body.token)).toMatchObject({ sub: 'agent:user_ada', board: 5n });
   });
 
   it('refuses a board the agent can only read', async () => {
