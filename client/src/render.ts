@@ -5,6 +5,7 @@ import { drawTextBlock } from './text-block';
 import { layoutNodeText, ellipsize, labelFontSize, labelLineHeight, BADGE_GAP, BOUNDARY_ICON, iconPlacement, type NodeTextLayout } from './node-layout';
 import { drawableIcon, iconGroup } from './node-icons';
 import { renderPlot, parsedChart } from './charts/index';
+import { clipToWindow, type TimeWindow } from './time-window';
 import { SAMPLE_SOURCE } from '../../module/src/chart-contracts';
 import type { RouteMarker } from './route';
 import { routeEdges, placeLabels, type Route } from './edge-route';
@@ -445,6 +446,10 @@ export interface RenderState {
   edgeDiff?: ReadonlyMap<bigint, 'added' | 'removed' | 'changed'>;
   /** Chart rows by node id; absent (or no row) draws a chart's 'no data' state. */
   charts?: ReadonlyMap<bigint, Chart>;
+  /** The board's shared time window (visible_board_window): time series show only this range. */
+  window?: TimeWindow | null;
+  /** Chart pins by chart node id (visible_chart_anchor): a dashed lead from the chart to what it measures. */
+  anchors?: ReadonlyMap<bigint, { targetKind: string; targetId: bigint }>;
   /** Hand-set line weight by edge id (visible_edge_weight, RC-688); absent means regular. */
   edgeWeights?: ReadonlyMap<bigint, string>;
   /** Hand-set traffic animation by edge id (visible_edge_motion); absent means static. */
@@ -866,6 +871,7 @@ interface OverlayEntry {
 interface WorldState {
   containers: SVGGElement;
   edgesLayer: SVGGElement;
+  anchorsLayer: SVGGElement;
   nodesLayer: SVGGElement;
   edgeLabelsLayer: SVGGElement;
   outlineLayer: SVGGElement;
@@ -908,6 +914,7 @@ function bind(world: SVGGElement): WorldState {
   // persist across renders instead of being recreated empty.
   const containers = el('g', { class: 'layer-containers' });
   const edgesLayer = el('g', { class: 'layer-edges' });
+  const anchorsLayer = el('g', { class: 'layer-anchors' });
   const nodesLayer = el('g', { class: 'layer-nodes' });
   const edgeLabelsLayer = el('g', { class: 'layer-edge-labels' });
   const outlineLayer = el('g', { class: 'layer-outlines' });
@@ -917,6 +924,7 @@ function bind(world: SVGGElement): WorldState {
     defs,
     containers,
     edgesLayer,
+    anchorsLayer,
     nodesLayer,
     edgeLabelsLayer,
     outlineLayer,
@@ -930,6 +938,7 @@ function bind(world: SVGGElement): WorldState {
   st = {
     containers,
     edgesLayer,
+    anchorsLayer,
     nodesLayer,
     edgeLabelsLayer,
     outlineLayer,
@@ -1247,7 +1256,7 @@ function drawNodeIcon(e: NodeEntry, iconId: string | undefined, place: { x: numb
  * code-ref badge sits bottom right (badgeAnchor) and shows its count alone
  * on a chart, and the footnote stops short of it.
  */
-function drawChart(e: NodeEntry, n: Node, r: Rect, row: Chart | undefined, badge: RefBadge | undefined, dense: boolean): void {
+function drawChart(e: NodeEntry, n: Node, r: Rect, row: Chart | undefined, badge: RefBadge | undefined, dense: boolean, window?: TimeWindow | null): void {
   const type = row?.type ?? 'chart';
   const source = row?.source ?? '';
   const countPx = badge === undefined ? 0 : `${badge.count} ref${badge.count === 1 ? '' : 's'}`.length * BADGE_CHAR_PX;
@@ -1308,7 +1317,7 @@ function drawChart(e: NodeEntry, n: Node, r: Rect, row: Chart | undefined, badge
   // Charts measure their text: a web font that finishes loading lays the plot out again.
   const plotKey = row === undefined
     ? `none|${r.w}|${r.h}|${dense}`
-    : `${row.type}|${row.updatedAt.microsSinceUnixEpoch}|${r.w}|${r.h}|${dense}|${textEpoch()}`;
+    : `${row.type}|${row.updatedAt.microsSinceUnixEpoch}|${r.w}|${r.h}|${dense}|${textEpoch()}|${window ? `${window.startMs}-${window.endMs}` : ''}`;
   if (plotKey !== e.plotKey) {
     // Dense drops the subtitle, the axes and the footnote: the plot takes the card's height.
     const top = dense ? CHART_DENSE_TOP : CHART_PLOT_TOP;
@@ -1316,9 +1325,37 @@ function drawChart(e: NodeEntry, n: Node, r: Rect, row: Chart | undefined, badge
     put(e.plot!, 'transform', `translate(${CHART_PAD} ${top})`);
     const box = { x: 0, y: 0, w: Math.max(0, r.w - 2 * CHART_PAD), h: Math.max(0, r.h - top - bottom) };
     const parsed = row === undefined ? null : parsedChart(row);
-    e.plot!.replaceChildren(...(parsed?.ok ? renderPlot(parsed.data, box, dense) : [noData(box, parsed?.error ?? '')]));
+    const data = parsed?.ok ? clipToWindow(parsed.data, window) : null;
+    e.plot!.replaceChildren(...(data ? renderPlot(data, box, dense) : [noData(box, parsed?.ok ? 'no data in the board\'s time window' : parsed?.error ?? '')]));
     e.plotKey = plotKey;
   }
+}
+
+/**
+ * Chart pins: a dashed lead from the chart's border to the middle of the edge
+ * (its label segment) or the centre of the component it measures, which the
+ * node layer above covers. A pin whose chart or target is not drawn draws
+ * nothing. Rebuilt only when a lead moves.
+ */
+function drawAnchors(layer: SVGGElement, anchors: RenderState['anchors'], rects: ReadonlyMap<bigint, Rect>, routes: ReadonlyMap<bigint, Route>): void {
+  const leads: string[][] = [];
+  for (const [chartId, a] of anchors ?? []) {
+    const r = rects.get(chartId);
+    const seg = a.targetKind === 'edge' ? routes.get(a.targetId)?.seg : undefined;
+    const t = a.targetKind === 'node' ? rects.get(a.targetId) : undefined;
+    const to = seg ? { x: (seg.a.x + seg.b.x) / 2, y: (seg.a.y + seg.b.y) / 2 } : t ? { x: t.x + t.w / 2, y: t.y + t.h / 2 } : null;
+    if (!r || !to) continue;
+    const from = { x: Math.min(Math.max(to.x, r.x), r.x + r.w), y: Math.min(Math.max(to.y, r.y), r.y + r.h) };
+    if (from.x === to.x && from.y === to.y) continue; // the target sits under the chart
+    leads.push([from.x, from.y, to.x, to.y].map(v => String(Math.round(v))));
+  }
+  const key = leads.join(' ');
+  if (layer.dataset.key === key) return;
+  layer.dataset.key = key;
+  layer.replaceChildren(...leads.flatMap(([x1, y1, x2, y2]) => [
+    el('line', { class: 'chart-pin', x1, y1, x2, y2 }),
+    el('circle', { class: 'chart-pin-dot', cx: x2, cy: y2, r: '3' }),
+  ]));
 }
 
 /** The quiet state of a chart without a row, or whose data no longer parses. */
@@ -1394,6 +1431,7 @@ export function renderBoard(
   // every edge at once); put() keeps an unchanged frame write-free. Routed
   // here, before the nodes, because neighbour focus follows the drawn edges.
   const routes = routeEdges(edges.map(e => ({ id: e.id, from: e.fromNode, to: e.toNode })), rects, shapes);
+  drawAnchors(st.anchorsLayer, state.anchors, rects, routes);
 
   // Neighbour focus: the focused node, every node a drawn edge joins it to,
   // and those edges. A focus id that is not drawn focuses nothing; nor does a
@@ -1549,7 +1587,7 @@ export function renderBoard(
       put(e.label!, 'x', String(icon ? icon.labelX : 16));
       drawNodeIcon(e, state.icons?.get(n.id), icon);
     } else if (kind === 'chart') {
-      drawChart(e, n, r, state.charts?.get(n.id), badge, state.scale < 0.6);
+      drawChart(e, n, r, state.charts?.get(n.id), badge, state.scale < 0.6, state.window);
     } else if (schema) {
       drawSchemaCard(e, n, r, schema, tagInside ? noteTagText(anchorNotes!) : '');
     } else {
