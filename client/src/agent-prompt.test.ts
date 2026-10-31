@@ -1,33 +1,36 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { copyIconButton } from './chrome';
+import { agentPromptButton } from './chrome';
 
 const clipboard = (writeText: (text: string) => Promise<void>) =>
   Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText } });
 
-describe('copyIconButton', () => {
+describe('agentPromptButton', () => {
   afterEach(() => vi.useRealTimers());
 
-  it('is named for assistive tech, copies, shows a check, then the copy icon again', async () => {
+  it('names the hand-off, copies, says to paste it to the agent, then reads as before', async () => {
     vi.useFakeTimers();
     const writeText = vi.fn((_t: string) => Promise.resolve());
     clipboard(writeText);
     const onFail = vi.fn();
-    const b = copyIconButton('Copy a prompt', () => 'start a tap', onFail);
-    expect([b.getAttribute('aria-label'), b.title, b.textContent]).toEqual(['Copy a prompt', 'Copy a prompt', '']);
-    const idle = b.innerHTML;
+    const b = agentPromptButton(() => 'start a tap', onFail);
+    expect(b.textContent).toBe('Copy prompt for agent');
+    expect(b.querySelector('svg')).not.toBeNull();
     b.click();
     await vi.waitFor(() => expect(b.classList.contains('copied')).toBe(true));
     expect(writeText).toHaveBeenCalledWith('start a tap');
-    expect(b.innerHTML).not.toBe(idle);
-    vi.advanceTimersByTime(1200);
-    expect(b.innerHTML).toBe(idle);
+    expect(b.textContent).toBe('Copied · paste to agent');
+    vi.advanceTimersByTime(2400);
+    expect(b.textContent).toBe('Copy prompt for agent');
+    expect(b.classList.contains('copied')).toBe(false);
     expect(onFail).not.toHaveBeenCalled();
   });
 
   it('hands the text to onFail when the clipboard refuses it', async () => {
     clipboard(() => Promise.reject(new Error('denied')));
     const onFail = vi.fn();
-    copyIconButton('Copy', () => 'the prompt', onFail).click();
+    const b = agentPromptButton(() => 'the prompt', onFail);
+    b.click();
     await vi.waitFor(() => expect(onFail).toHaveBeenCalledWith('the prompt'));
+    expect(b.textContent).toBe('Copy prompt for agent');
   });
 });
