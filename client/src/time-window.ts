@@ -36,14 +36,14 @@ export function zoomOut(w: TimeWindow): TimeWindow {
   return { startMs, endMs: startMs + span };
 }
 
-/** `Oct 31 14:30–14:45`, or both dates when the window crosses midnight. */
-export function formatWindow(w: TimeWindow, timeZone?: string): string {
-  const day = new Intl.DateTimeFormat('en-US', { month: 'short', day: 'numeric', timeZone });
-  const time = new Intl.DateTimeFormat('en-GB', { hour: '2-digit', minute: '2-digit', timeZone });
+/** `Oct 31 14:30–14:45 UTC`, or both dates when the window crosses midnight. UTC, as every chart axis (charts/scale.ts formatX). */
+export function formatWindow(w: TimeWindow): string {
+  const day = new Intl.DateTimeFormat('en-US', { month: 'short', day: 'numeric', timeZone: 'UTC' });
+  const time = new Intl.DateTimeFormat('en-GB', { hour: '2-digit', minute: '2-digit', timeZone: 'UTC' });
   const a = new Date(w.startMs), b = new Date(w.endMs);
   return day.format(a) === day.format(b)
-    ? `${day.format(a)} ${time.format(a)}–${time.format(b)}`
-    : `${day.format(a)} ${time.format(a)} – ${day.format(b)} ${time.format(b)}`;
+    ? `${day.format(a)} ${time.format(a)}–${time.format(b)} UTC`
+    : `${day.format(a)} ${time.format(a)} – ${day.format(b)} ${time.format(b)} UTC`;
 }
 
 const HIT = 'rect.chart-hit[data-t]';

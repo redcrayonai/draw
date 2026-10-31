@@ -4456,6 +4456,8 @@ textarea#inline-edit {
 .chart-brush { fill: var(--ink); fill-opacity: 0.08; }
 .chart-pin { stroke: var(--muted); stroke-width: 1; stroke-dasharray: 3 3; vector-effect: non-scaling-stroke; fill: none; }
 .chart-pin-dot { fill: var(--muted); }
+#window-row .live-action,
+#live-status .live-action { margin: 4px 6px 0 0; }
 /* Status is never a series colour, and always comes with a glyph. */
 .chart-crit,
 .chart-bad { fill: var(--c-red); color: var(--c-red); }

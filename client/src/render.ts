@@ -1326,7 +1326,7 @@ function drawChart(e: NodeEntry, n: Node, r: Rect, row: Chart | undefined, badge
     const box = { x: 0, y: 0, w: Math.max(0, r.w - 2 * CHART_PAD), h: Math.max(0, r.h - top - bottom) };
     const parsed = row === undefined ? null : parsedChart(row);
     const data = parsed?.ok ? clipToWindow(parsed.data, window) : null;
-    e.plot!.replaceChildren(...(data ? renderPlot(data, box, dense) : [noData(box, parsed?.ok ? 'no data in the board\'s time window' : parsed?.error ?? '')]));
+    e.plot!.replaceChildren(...(data ? renderPlot(data, box, dense) : [parsed?.ok ? noData(box, '', 'outside the time window') : noData(box, parsed?.error ?? '')]));
     e.plotKey = plotKey;
   }
 }
@@ -1359,7 +1359,7 @@ function drawAnchors(layer: SVGGElement, anchors: RenderState['anchors'], rects:
 }
 
 /** The quiet state of a chart without a row, or whose data no longer parses. */
-function noData(box: Rect, error: string): SVGTextElement {
+function noData(box: Rect, error: string, text = 'no data'): SVGTextElement {
   const t = el('text', {
     class: 'chart-empty chart-faint',
     x: String(box.w / 2),
@@ -1372,7 +1372,7 @@ function noData(box: Rect, error: string): SVGTextElement {
     tip.textContent = error;
     t.append(tip);
   }
-  t.append('no data');
+  t.append(text);
   return t;
 }
 
