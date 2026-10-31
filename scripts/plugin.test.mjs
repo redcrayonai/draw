@@ -209,7 +209,8 @@ test('triage skill: links only shared modules, names only registered tools, and 
   for (const [, f] of triageMd.matchAll(/\]\(\.\.\/\.\.\/references\/([\w-]+\.md)\)/g)) assert.ok(modules.includes(f), f);
   const words = new Set(triageMd.replace(/mcp__[\w-]*?__/g, ' ').match(/\b[a-z]+(?:_[a-z]+)+\b/g));
   for (const w of words) assert.ok(TOOL_NAMES.includes(w), `triage names ${w}, which mcp/src/tools.ts does not register`);
-  for (const t of ['pin_chart', 'set_time_window', 'create_chart', 'get_board']) assert.ok(words.has(t), t);
+  for (const t of ['open_incident', 'pin_chart', 'set_time_window', 'create_chart', 'get_board']) assert.ok(words.has(t), t);
+  assert.match(triageMd, /never on the lasting one/);
   assert.match(triageMd, /Do not set or\s+clear `focal`/);
   assert.doesNotMatch(triageMd, VENDOR);
   assert.doesNotMatch(triageMd, INTERNALS);

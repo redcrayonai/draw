@@ -3249,7 +3249,10 @@ export const openIncident = reducer(
     } else {
       initCallerBoard(ctx, board.id, title, 'incident');
     }
-    inheritWorkspaceBoard(ctx, sourceBoardId, board.id, ctx.db.agentLink.agent.find(ctx.sender)?.owner ?? ctx.sender);
+    const link = ctx.db.agentLink.agent.find(ctx.sender);
+    inheritWorkspaceBoard(ctx, sourceBoardId, board.id, link?.owner ?? ctx.sender);
+    // A workspace drops agent grants (assignBoardWorkspace): a linked agent keeps editing the board it opened, as with branches.
+    if (link && !findAgentGrant(ctx, board.id, ctx.sender)) ctx.db.agentGrant.insert({ id: 0n, boardId: board.id, agent: ctx.sender, grantedBy: link.owner });
     ctx.db.boardLifetime.insert({ boardId: board.id, isEphemeral: true, createdAt: ctx.timestamp });
     ctx.db.incident.insert({ boardId: board.id, sourceBoardId, groupKey, title, status, openedAt: ctx.timestamp, updatedAt: ctx.timestamp });
     alertWindow(ctx, board.id, startsAtMs);
