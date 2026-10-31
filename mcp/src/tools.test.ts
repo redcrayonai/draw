@@ -508,6 +508,48 @@ describe('start_tap and watch_marks on the hosted server', () => {
   });
 });
 
+describe('start_tap with a service mapping', () => {
+  const run = async (services: Record<string, string>) => {
+    const env = await testEnv();
+    const reads: string[] = [];
+    const db = {
+      stats: { dbCalls: 0, dbMs: 0, writes: 0 },
+      async read(q: { text: string }) {
+        reads.push(q.text);
+        if (q.text.includes('visible_board')) return [{ id: 5n, name: 'main' }];
+        if (q.text.includes('my_boards')) return [{ boardId: 5n, access: 'owner' }];
+        if (q.text.includes('visible_node')) return [{ id: 12n }, { id: 13n }];
+        throw new Error(`unexpected read ${q.text}`);
+      },
+      async call() {
+        throw new Error('start_tap writes nothing');
+      },
+    };
+    const t = { ctx: { db, env, principal: { userId: 'user_ada' } }, signal: new AbortController().signal, named: () => {}, deadline: Date.now() + 15_000 } as never;
+    return { reads, out: TOOLS.start_tap.run({ board: '5', services }, t) };
+  };
+
+  it('puts the mapping in the command, so no file is needed', async () => {
+    const { reads, out } = await run({ gateway: '12', 'checkout-api.v2': '13' });
+    const body = JSON.parse(text(await out));
+    expect(body.command).toBe(`npx -y @redcrayonai/draw@1 tap --token ${body.token} --service gateway=12 --service checkout-api.v2=13`);
+    expect(reads).toContain('SELECT * FROM visible_node WHERE board_id = 5');
+  });
+
+  it('refuses a node that is not on the board', async () => {
+    await expect((await run({ gateway: '99' })).out).rejects.toThrow(/node 99 not found on board "main"/);
+  });
+
+  it('refuses service names a shell would read, and too many services, before any call', () => {
+    for (const name of ['a b', 'x;rm -rf ~', '$(id)', "it's", 'a=b', '']) {
+      expect(TOOLS.start_tap.input.safeParse({ board: '5', services: { [name]: '12' } }).success, name).toBe(false);
+    }
+    expect(TOOLS.start_tap.input.safeParse({ board: '5', services: { gateway: 'node-12' } }).success).toBe(false);
+    const many = Object.fromEntries(Array.from({ length: 101 }, (_, i) => [`svc-${i}`, '12']));
+    expect(TOOLS.start_tap.input.safeParse({ board: '5', services: many }).success).toBe(false);
+  });
+});
+
 describe('tap_status', () => {
   const run = async (status: LiveStatus | null) => {
     const ids: string[] = [];

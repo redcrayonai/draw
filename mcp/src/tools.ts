@@ -160,6 +160,10 @@ const grid = z.number().int().describe('integer, must be divisible by 4');
 const CAPTURE_DESCRIPTION =
   'Leave empty when the redcrayon plugin is installed; it fills this in. Otherwise run npx -y @redcrayonai/draw@1 capture … in the project and pass the id it prints.';
 const capture = z.string().regex(/^cap_[A-Za-z0-9]{22}$/).optional().describe(CAPTURE_DESCRIPTION);
+/** start_tap's service names: characters a shell passes through unquoted. */
+const SERVICE_NAME_RE = /^[A-Za-z0-9._:/@-]{1,128}$/;
+const SERVICE_NAME_RULE = 'a service name is 1-128 letters, digits and . _ : / @ -';
+const MAX_TAP_SERVICES = 100;
 
 function u64(value: string): SafeU64 {
   const n = safeU64(value);
@@ -642,14 +646,35 @@ export const TOOLS: Record<string, ToolDef> = {
   start_tap: {
     title: 'Start live tap',
     scope: 'board:write',
-    description: "Let the user watch live traffic on this board while they run their app locally. Returns a token and the command to run: npx -y @redcrayonai/draw@1 tap --token <token>, in the background, from the project root. Before running it, write .redcrayon/tap.json as { \"board\": \"<id>\", \"services\": { \"<service.name>\": \"<node id>\" } }, mapping each OpenTelemetry service to the node that draws it. Then tell the user to point their app's OTLP exporter at http://127.0.0.1:4318 (HTTP, not gRPC) and press Live on the board. The tap keeps raw telemetry on their machine and sends only per-edge rates, latencies and error counts while someone watches. The token lasts 12 hours." + BOARD_SUFFIX,
-    input: z.object({ board: boardArg }).strict(),
-    async run({ board }, t) {
+    description:
+      'Let the user watch live traffic on this board while they run their app locally. Pass services: { "<service.name>": "<node id>" }, mapping each OpenTelemetry service to the node that draws it; the returned command carries the mapping, so no file is needed. Returns JSON { board, token, command, otlp, expires_in_hours }. ' +
+      'If you can run shell commands in the project, run the command in the background; otherwise give the user the command to paste into a terminal on the machine that runs their app (Node 22 or later). Then tell the user to point their app\'s OTLP exporter at http://127.0.0.1:4318 (HTTP, not gRPC) and press Live on the board, and call tap_status to confirm the tap connected. ' +
+      'Without services, the tap reads .redcrayon/tap.json { "board": "<id>", "services": { … } } from the directory it runs in. The tap keeps raw telemetry on their machine and sends only per-edge rates, latencies and error counts while someone watches. The token lasts 12 hours; stop_tap ends it sooner.' +
+      BOARD_SUFFIX,
+    input: z
+      .object({
+        board: boardArg,
+        // The names go into a command the user pastes into a shell: no quoting, no shell metacharacters.
+        services: z
+          .record(z.string().regex(SERVICE_NAME_RE, SERVICE_NAME_RULE), id)
+          .refine(s => Object.keys(s).length <= MAX_TAP_SERVICES, `at most ${MAX_TAP_SERVICES} services`)
+          .optional()
+          .describe('OpenTelemetry service.name -> the node id that draws it'),
+      })
+      .strict(),
+    async run({ board, services }, t) {
       if (t.ctx.principal.machine) throw new Refusal('REJECTED: service accounts cannot start a live tap. Nothing was written.');
       const b = await boardOf(t, board);
       await assertWriter(t, b, 'start a live tap on it');
+      const mapping = Object.entries((services ?? {}) as Record<string, string>);
+      if (mapping.length > 0) {
+        const nodes = new Set((await t.ctx.db.read<Row>(sql`SELECT * FROM visible_node WHERE board_id = ${b.id}`, t.signal)).map(n => String(n.id)));
+        const missing = mapping.find(([, node]) => !nodes.has(node));
+        if (missing) throw new Refusal(targetNotFound('node', missing[1], b.name));
+      }
       const token = await mintTap(t.ctx.env, principalSubject(t.ctx.principal), b.id);
-      return okResult(JSON.stringify({ board: String(b.id), token, command: `npx -y @redcrayonai/draw@1 tap --token ${token}`, otlp: 'http://127.0.0.1:4318', expires_in_hours: 12 }, null, 1));
+      const command = `npx -y @redcrayonai/draw@1 tap --token ${token}${mapping.map(([name, node]) => ` --service ${name}=${node}`).join('')}`;
+      return okResult(JSON.stringify({ board: String(b.id), token, command, otlp: 'http://127.0.0.1:4318', expires_in_hours: 12 }, null, 1));
     },
   },
 

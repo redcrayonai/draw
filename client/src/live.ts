@@ -175,4 +175,4 @@ export class LiveSession {
 
 /** What to paste into the agent's chat when no tap runs: the board stays one-way. */
 export const tapPrompt = (board: bigint) =>
-  `Start a live tap for board ${board} (call start_tap, write .redcrayon/tap.json, run the command it returns) so I can watch live traffic.`;
+  `Start a live tap for board ${board} (call start_tap with each service mapped to its node, run the command it returns) so I can watch live traffic.`;

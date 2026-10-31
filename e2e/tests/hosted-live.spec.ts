@@ -83,7 +83,7 @@ test('the live switch shows with a hosted server, and with no tap offers a promp
   await expect(statusLine(page)).toHaveText('No live source on this board yet.');
   await liveStatus(page).getByRole('button', { name: 'Copy a prompt for your agent' }).click();
   await expect.poll(() => page.evaluate(() => navigator.clipboard.readText())).toBe(
-    `Start a live tap for board ${B} (call start_tap, write .redcrayon/tap.json, run the command it returns) so I can watch live traffic.`,
+    `Start a live tap for board ${B} (call start_tap with each service mapped to its node, run the command it returns) so I can watch live traffic.`,
   );
   // The person pastes the prompt; the board itself never asks the channel for a tap.
   // Live off sends {live:false} last on the same socket, so anything the copy sent arrived before it.

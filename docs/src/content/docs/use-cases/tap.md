@@ -26,8 +26,8 @@ Start in your project with [the draw plugin](/connect/#claude-code), then ask:
 Draw gateway → checkout-api → payments-api on this board. Start a live tap, map the services to their node ids, and run the returned helper command in the background. Show me the exporter settings so I can watch a checkout request locally.
 ```
 
-The agent draws the components and their connections, calls `start_tap`, and
-writes `.redcrayon/tap.json`. You start your instrumented app and turn on
+The agent draws the components and their connections, calls `start_tap` with
+each service mapped to its node, and runs the command it returns. You start your instrumented app and turn on
 **Live traffic** in the board's left rail. Hover a node or edge to inspect its measurements.
 
 A request must produce related spans from different services. A drawn connection
