@@ -28,7 +28,7 @@ function hub(opts: { readers?: string[]; now?: () => number } = {}) {
   const now = opts.now ?? (() => clock);
   const h = new LiveHub(
     {
-      verifyTap: async t => (t === 'tap-5' ? { board: 5n } : t === 'tap-6' ? { board: 6n } : null),
+      verifyTap: async t => (t === 'tap-5' ? { board: 5n, sub: 'agent:user_ada' } : t === 'tap-6' ? { board: 6n, sub: 'agent:user_ada' } : null),
       canRead: async t => readers.includes(t),
       now,
     },
@@ -192,6 +192,26 @@ describe('LiveHub', () => {
     clock += REAUTH_MS / 2;
     await h.message(v, JSON.stringify({ auth: 'viewer' }));
     expect(reads).toHaveLength(2);
+  });
+
+  it('reports its tap, when it last published, and whether anyone watches (tap_status)', async () => {
+    const { h, open, tick } = hub();
+    expect(h.status()).toEqual({ tap: false, since: null, lastPublish: null, sub: null, watching: false });
+    tick(1000);
+    const t = open();
+    await h.message(t, JSON.stringify({ auth: 'tap-5', role: 'tap' }));
+    const v = open();
+    await h.message(v, JSON.stringify({ auth: 'viewer', role: 'viewer' }));
+    await h.message(v, JSON.stringify({ live: true }));
+    tick(1000);
+    await h.message(t, summary());
+    expect(h.status()).toEqual({ tap: true, since: 1000, lastPublish: 2000, sub: 'agent:user_ada', watching: true });
+  });
+
+  it('reports a tap that connected before its subject was recorded', () => {
+    const sockets = [new FakeSocket({ role: 'tap', board: '5', at: 7, last: 0, strikes: 0 })];
+    const h = new LiveHub({ verifyTap: async () => null, canRead: async () => false, now: () => 0 }, () => sockets);
+    expect(h.status()).toEqual({ tap: true, since: 7, lastPublish: null, sub: null, watching: false });
   });
 
   it('closes connections that never authenticate', async () => {
