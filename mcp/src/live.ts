@@ -23,8 +23,11 @@ export interface LiveSocket {
 }
 
 export interface LiveDeps {
-  /** The board a publish token is for, who it was minted for and its expiry (seconds), or null when it is not a valid tap token. */
-  verifyTap(token: string): Promise<{ board: bigint; sub: string; exp: number } | null>;
+  /** The board a publish token is for, who it was minted for and its issue and expiry times (seconds), or null when it is not a valid tap token. */
+  verifyTap(token: string): Promise<{ board: bigint; sub: string; iat: number; exp: number } | null>;
+  /** Tap tokens issued at or before this time (seconds) were stopped (stop_tap); 0 when none were. */
+  revokedBefore(): Promise<number>;
+  revoke(at: number): Promise<void>;
   /** Whether this canvas token can read the board. */
   canRead(token: string, board: bigint): Promise<boolean>;
   now(): number;
@@ -48,6 +51,7 @@ export const ACCESS_TTL_MS = 3 * REAUTH_MS;
 /** Close codes (application range): the reason is a sentence the tap or canvas shows. */
 export const CLOSE = { auth: 4001, conflict: 4009, abuse: 4008, full: 4013 } as const;
 export const TAP_EXPIRED = 'This tap token expired. Ask your agent for a new one (start_tap).';
+export const TAP_STOPPED = 'This tap was stopped. Ask your agent for a new one (start_tap).';
 
 type TapAttachment = Extract<Attachment, { role: 'tap' }>;
 
@@ -57,7 +61,7 @@ const json = (v: unknown) => JSON.stringify(v);
 export type LiveStatus = { tap: boolean; since: number | null; lastPublish: number | null; sub: string | null; watching: boolean };
 
 /** The Live Durable Object as the tools call it. */
-export type LiveStub = { status(): Promise<LiveStatus> };
+export type LiveStub = { status(): Promise<LiveStatus>; stop(): Promise<boolean> };
 
 export class LiveHub {
   /** Sockets whose auth frame is being checked: a DO delivers frames during the check's fetch, so others are dropped. */
@@ -178,6 +182,8 @@ export class LiveHub {
     if (msg.role === 'tap') {
       const claims = await this.deps.verifyTap(msg.auth);
       if (!claims || claims.board !== board) return fail('This tap token is not valid for this board. Ask your agent for a new one (start_tap).');
+      // shortcut: whole seconds, so a token minted in the second of a stop is refused too; a jti would tell them apart.
+      if (claims.iat <= (await this.deps.revokedBefore())) return fail(TAP_STOPPED);
       if (this.taps(ws).length > 0) return ws.close(CLOSE.conflict, 'Another tap is already live for this board.');
       ws.setAttachment({ role: 'tap', board: a.board, at, last: 0, strikes: 0, sub: claims.sub, exp: claims.exp * 1000 });
       ws.send(json({ ok: true, role: 'tap' }));
@@ -190,6 +196,14 @@ export class LiveHub {
     ws.setAttachment({ role: 'viewer', board: a.board, at, live: false, checked: at });
     ws.send(json({ ok: true, role: 'viewer' }));
     ws.send(json({ tap: this.taps().length > 0 ? 'connected' : 'gone' }));
+  }
+
+  /** stop_tap: refuse every tap token issued up to now and close the tap; whether one was connected. */
+  async stop(): Promise<boolean> {
+    await this.deps.revoke(Math.floor(this.deps.now() / 1000));
+    const taps = this.role('tap');
+    for (const t of taps) t.close(CLOSE.auth, TAP_STOPPED);
+    return taps.length > 0;
   }
 
   status(): LiveStatus {

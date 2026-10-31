@@ -91,6 +91,8 @@ export class Live extends DurableObject<Env> {
   private readonly hub = new LiveHub(
     {
       verifyTap: token => verifyTap(this.env, token),
+      revokedBefore: async () => (await this.ctx.storage.get<number>('revokedBefore')) ?? 0,
+      revoke: at => this.ctx.storage.put('revokedBefore', at),
       canRead: (token, board) => canReadBoard(this.env, token, board),
       now: () => Date.now(),
     },
@@ -136,6 +138,11 @@ export class Live extends DurableObject<Env> {
   /** tap_status, by RPC from the tools: reads the sockets, changes nothing. */
   async status(): Promise<LiveStatus> {
     return this.hub.status();
+  }
+
+  /** stop_tap, by RPC from the tools. */
+  async stop(): Promise<boolean> {
+    return this.hub.stop();
   }
 
   async webSocketMessage(ws: WebSocket, message: string | ArrayBuffer): Promise<void> {
