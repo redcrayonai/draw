@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { mint, mintMarks, mintTap, verifyMarks, verifyTap } from './issuer';
-import { ACCESS_TTL_MS, AUTH_MS, CLOSE, LiveHub, TAP_EXPIRED, MAX_EDGES, MAX_MESSAGE_BYTES, MAX_STRIKES, MIN_INTERVAL_MS, REAUTH_MS, type Attachment, type LiveSocket } from './live';
+import { ACCESS_TTL_MS, AUTH_MS, CLOSE, LiveHub, TAP_EXPIRED, TAP_STOPPED, MAX_EDGES, MAX_MESSAGE_BYTES, MAX_STRIKES, MIN_INTERVAL_MS, REAUTH_MS, type Attachment, type LiveSocket } from './live';
 import { newJwk, testEnv } from './test/env';
 
 class FakeSocket implements LiveSocket {
@@ -21,18 +21,26 @@ class FakeSocket implements LiveSocket {
   }
 }
 
-// Tap tokens the fake verifier knows: exp in seconds, as in a JWT.
-const TAPS: Record<string, { board: bigint; exp: number }> = { 'tap-5': { board: 5n, exp: 12 * 3600 }, 'tap-6': { board: 6n, exp: 12 * 3600 }, 'tap-5-short': { board: 5n, exp: 60 } };
+// Tap tokens the fake verifier knows: iat and exp in seconds, as in a JWT.
+const TAPS: Record<string, { board: bigint; iat: number; exp: number }> = {
+  'tap-5': { board: 5n, iat: 1, exp: 12 * 3600 },
+  'tap-6': { board: 6n, iat: 1, exp: 12 * 3600 },
+  'tap-5-short': { board: 5n, iat: 1, exp: 60 },
+  'tap-5-later': { board: 5n, iat: 100, exp: 12 * 3600 },
+};
 
 function hub(opts: { readers?: string[]; now?: () => number } = {}) {
   const sockets: FakeSocket[] = [];
   const readers = opts.readers ?? ['viewer'];
   let clock = 0;
+  let revoked = 0;
   const now = opts.now ?? (() => clock);
   const h = new LiveHub(
     {
       verifyTap: async t => (TAPS[t] ? { ...TAPS[t], sub: 'agent:user_ada' } : null),
       canRead: async t => readers.includes(t),
+      revokedBefore: async () => revoked,
+      revoke: async at => void (revoked = at),
       now,
     },
     () => sockets.filter(s => s.closedWith === null)
@@ -54,7 +62,7 @@ describe('LiveHub', () => {
     const held = new Promise<boolean>(r => (release = r));
     const reads: string[] = [];
     const sockets: FakeSocket[] = [];
-    const h = new LiveHub({ verifyTap: async () => null, canRead: t => (reads.push(t), held), now: () => 0 }, () => sockets);
+    const h = new LiveHub({ verifyTap: async () => null, canRead: t => (reads.push(t), held), revokedBefore: async () => 0, revoke: async () => {}, now: () => 0 }, () => sockets);
     const v = new FakeSocket({ role: 'pending', board: '5', at: 0 });
     sockets.push(v);
     const frames = [h.message(v, JSON.stringify({ auth: 'viewer', role: 'viewer' })), h.message(v, JSON.stringify({ auth: 'viewer', role: 'viewer' }))];
@@ -187,7 +195,7 @@ describe('LiveHub', () => {
     const reads: string[] = [];
     const sockets: FakeSocket[] = [];
     let clock = 0;
-    const h = new LiveHub({ verifyTap: async () => null, canRead: async t => (reads.push(t), true), now: () => clock }, () => sockets);
+    const h = new LiveHub({ verifyTap: async () => null, canRead: async t => (reads.push(t), true), revokedBefore: async () => 0, revoke: async () => {}, now: () => clock }, () => sockets);
     const v = new FakeSocket({ role: 'pending', board: '5', at: 0 });
     sockets.push(v);
     await h.message(v, JSON.stringify({ auth: 'viewer', role: 'viewer' }));
@@ -213,7 +221,7 @@ describe('LiveHub', () => {
 
   it('reports a tap that connected before its subject was recorded', () => {
     const sockets = [new FakeSocket({ role: 'tap', board: '5', at: 7, last: 0, strikes: 0 })];
-    const h = new LiveHub({ verifyTap: async () => null, canRead: async () => false, now: () => 0 }, () => sockets);
+    const h = new LiveHub({ verifyTap: async () => null, canRead: async () => false, revokedBefore: async () => 0, revoke: async () => {}, now: () => 0 }, () => sockets);
     expect(h.status()).toEqual({ tap: true, since: 7, lastPublish: null, sub: null, watching: false });
   });
 
@@ -256,6 +264,31 @@ describe('LiveHub', () => {
     expect(asked.closedWith).toEqual([CLOSE.auth, TAP_EXPIRED]);
   });
 
+  it('stops the tap and refuses every token issued up to the stop (stop_tap)', async () => {
+    const { h, open, tick } = hub();
+    const t = open();
+    await h.message(t, JSON.stringify({ auth: 'tap-5', role: 'tap' }));
+    tick(10_000);
+    expect(await h.stop()).toBe(true);
+    expect(t.closedWith).toEqual([CLOSE.auth, TAP_STOPPED]);
+    const again = open();
+    await h.message(again, JSON.stringify({ auth: 'tap-5', role: 'tap' }));
+    expect(again.closedWith).toEqual([CLOSE.auth, TAP_STOPPED]);
+    const later = open();
+    await h.message(later, JSON.stringify({ auth: 'tap-5-later', role: 'tap' }));
+    expect(later.sent[0]).toEqual({ ok: true, role: 'tap' });
+    expect(h.status().tap).toBe(true);
+  });
+
+  it('revokes tokens on a stop even when no tap is connected', async () => {
+    const { h, open, tick } = hub();
+    tick(10_000);
+    expect(await h.stop()).toBe(false);
+    const t = open();
+    await h.message(t, JSON.stringify({ auth: 'tap-5', role: 'tap' }));
+    expect(t.closedWith).toEqual([CLOSE.auth, TAP_STOPPED]);
+  });
+
   it('closes connections that never authenticate', async () => {
     const { h, open, tick } = hub();
     const s = open();
@@ -270,7 +303,7 @@ describe('tap tokens', () => {
   it('verify for their board until they expire', async () => {
     const env = await testEnv();
     const token = await mintTap(env, 'agent:user_ada', 42n, 1_000_000);
-    expect(await verifyTap(env, token, 1_000_000)).toEqual({ sub: 'agent:user_ada', board: 42n, exp: 1_000 + 12 * 3600 });
+    expect(await verifyTap(env, token, 1_000_000)).toEqual({ sub: 'agent:user_ada', board: 42n, iat: 1_000, exp: 1_000 + 12 * 3600 });
     expect(await verifyTap(env, token, 1_000_000 + 12 * 3600 * 1000)).toBeNull();
   });
 

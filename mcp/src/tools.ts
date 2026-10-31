@@ -685,6 +685,25 @@ export const TOOLS: Record<string, ToolDef> = {
     },
   },
 
+  stop_tap: {
+    title: 'Stop live tap',
+    scope: 'board:write',
+    annotations: { idempotentHint: true },
+    description:
+      "Stop the live tap on this board when the user is done watching: the board's tap disconnects and its command exits, and every tap token issued for this board so far stops working, including ones not run yet. Call start_tap for a new one. " +
+      'Returns JSON { board, stopped }: stopped is true when a tap was connected.' +
+      BOARD_SUFFIX,
+    input: z.object({ board: boardArg }).strict(),
+    async run({ board }, t) {
+      const b = await boardOf(t, board);
+      await assertWriter(t, b, 'stop its live tap');
+      const { LIVE } = t.ctx.env;
+      // No live channel bound (tests): no tap can be connected, and no token can connect.
+      const stopped = LIVE ? await (LIVE.get(LIVE.idFromName(String(b.id))) as unknown as LiveStub).stop() : false;
+      return okResult(JSON.stringify({ board: String(b.id), stopped }, null, 1));
+    },
+  },
+
   set_edge_latency: {
     title: 'Set edge latency',
     scope: 'board:write',

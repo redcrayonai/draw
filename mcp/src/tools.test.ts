@@ -37,7 +37,7 @@ vi.mock('../../agent/src/routes', async importOriginal => {
 
 const VENDOR = /spacetime|maincloud|bsatn|clockwork|\bstdb\b/i;
 const HOSTED = [
-  'get_board', 'create_node', 'move_node', 'update_node', 'resize_node', 'delete_node', 'create_edge', 'hide_node', 'hide_edge', 'set_edge_latency', 'play_trace', 'start_tap', 'tap_status', 'create_branch', 'submit_branch',
+  'get_board', 'create_node', 'move_node', 'update_node', 'resize_node', 'delete_node', 'create_edge', 'hide_node', 'hide_edge', 'set_edge_latency', 'play_trace', 'start_tap', 'tap_status', 'stop_tap', 'create_branch', 'submit_branch',
   'delete_edge', 'describe_charts', 'create_chart', 'set_chart_data', 'get_chart', 'start_session', 'add_code_ref',
   'mark_checkpoint', 'plan_route', 'arrive', 'reroute', 'remove_code_ref', 'set_node_doc', 'set_selection', 'layout_board',
   'add_change_note', 'update_change_note', 'remove_change_note',
@@ -544,6 +544,38 @@ describe('tap_status', () => {
     expect((await run(null)).body).toEqual(none);
   });
 });
+describe('stop_tap', () => {
+  const run = async (access: string, live: boolean) => {
+    const ids: string[] = [];
+    const LIVE = live && { idFromName: (n: string) => (ids.push(n), n), get: () => ({ stop: async () => true }) };
+    const env = await testEnv(LIVE ? { LIVE: LIVE as never } : {});
+    const db = {
+      stats: { dbCalls: 0, dbMs: 0, writes: 0 },
+      async read(q: { text: string }) {
+        if (q.text.includes('visible_board')) return [{ id: 5n, name: 'main' }];
+        if (q.text.includes('my_boards')) return [{ boardId: 5n, access }];
+        throw new Error(`unexpected read ${q.text}`);
+      },
+      async call() {
+        throw new Error('stop_tap writes nothing to the database');
+      },
+    };
+    const t = { ctx: { db, env, principal: { userId: 'user_ada' } }, signal: new AbortController().signal, named: () => {}, deadline: Date.now() + 15_000 } as never;
+    return { ids, out: TOOLS.stop_tap.run({ board: '5' }, t) };
+  };
+
+  it("stops a writer's board's tap through its live channel", async () => {
+    const { ids, out } = await run('owner', true);
+    expect(JSON.parse(text(await out))).toEqual({ board: '5', stopped: true });
+    expect(ids).toEqual(['5']);
+  });
+
+  it('refuses a board the agent can only read, and stops nothing without a live channel', async () => {
+    await expect((await run('public', true)).out).rejects.toThrow(/cannot edit this board, so you cannot stop its live tap/);
+    expect(JSON.parse(text(await (await run('owner', false)).out))).toEqual({ board: '5', stopped: false });
+  });
+});
+
 
 
 describe('red crayon review marks', () => {
