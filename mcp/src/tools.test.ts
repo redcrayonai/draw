@@ -42,6 +42,7 @@ const HOSTED = [
   'add_change_note', 'update_change_note', 'remove_change_note',
   'add_threat', 'update_threat', 'remove_threat',
   'wait_for_marks', 'watch_marks', 'reply_to_mark', 'list_marks',
+  'pin_chart', 'set_time_window',
 ];
 const keysOf = (schema: z.ZodType): string[] => {
   const json = z.toJSONSchema(schema) as { properties?: Record<string, unknown> };
@@ -297,6 +298,59 @@ describe('set_edge_latency on the hosted server', () => {
 
   it('accepts only prod, local or estimate as a source', () => {
     expect(TOOLS.set_edge_latency.input.safeParse({ board: '1', edgeId: '30', latencyMs: 5, source: 'guess' }).success).toBe(false);
+  });
+});
+
+describe('set_time_window and pin_chart on the hosted server', () => {
+  const run = async (tool: 'set_time_window' | 'pin_chart', input: Record<string, unknown>) => {
+    const calls: { reducer: string; args: Record<string, any> }[] = [];
+    const db = {
+      stats: { dbCalls: 0, dbMs: 0, writes: 0 },
+      async read(q: { text: string }) {
+        if (q.text.includes('visible_board')) return [{ id: 1n, name: 'main' }];
+        if (q.text.includes('visible_chart')) return [{ nodeId: 40n, boardId: 1n }];
+        if (q.text.includes('visible_edge')) return [{ id: 30n, boardId: 1n }];
+        if (q.text.includes('visible_node')) return [{ id: 7n, boardId: q.text.includes('= 8') ? 2n : 1n }];
+        throw new Error(`unexpected read ${q.text}`);
+      },
+      async call(reducer: string, args: Record<string, any>) {
+        calls.push({ reducer, args });
+      },
+    };
+    const t = { ctx: { db }, signal: new AbortController().signal, named: () => {}, deadline: Date.now() + 15_000 } as never;
+    const def = TOOLS[tool];
+    try {
+      return { calls, out: text(await def.run(def.input.parse(input) as never, t)) };
+    } catch (err) {
+      return { calls, out: scrub(err, { write: true }).text };
+    }
+  };
+
+  it('sets the window from ISO or epoch ms, and clears it', async () => {
+    expect(await run('set_time_window', { board: '1', start: '2026-10-09T14:30:00Z', end: '1760021400000' })).toEqual({
+      calls: [{ reducer: 'set_board_window', args: { boardId: 1n, startMs: Date.parse('2026-10-09T14:30:00Z'), endMs: 1760021400000 } }],
+      out: 'committed board=main',
+    });
+    expect((await run('set_time_window', { board: '1', clear: true })).calls).toEqual([{ reducer: 'clear_board_window', args: { boardId: 1n } }]);
+    const bad = await run('set_time_window', { board: '1', start: 'yesterday', end: '1' });
+    expect(bad.calls).toEqual([]);
+    expect(bad.out).toMatch(/^REJECTED: pass start and end/);
+  });
+
+  it('pins a chart to one edge or node, refuses both or neither, and unpins', async () => {
+    expect(await run('pin_chart', { board: '1', chart: '40', edge: '30' })).toEqual({
+      calls: [{ reducer: 'anchor_chart', args: { nodeId: 40n, targetKind: 'edge', targetId: 30n } }],
+      out: 'committed board=main',
+    });
+    expect((await run('pin_chart', { board: '1', chart: '40', node: '7' })).calls[0].args).toEqual({ nodeId: 40n, targetKind: 'node', targetId: 7n });
+    for (const input of [{ edge: '30', node: '7' }, {}]) {
+      const r = await run('pin_chart', { board: '1', chart: '40', ...input });
+      expect(r.calls).toEqual([]);
+      expect(r.out).toMatch(/^REJECTED: pass exactly one of edge or node/);
+    }
+    // a node on another board is not found, and nothing is written
+    expect((await run('pin_chart', { board: '1', chart: '40', node: '8' })).calls).toEqual([]);
+    expect((await run('pin_chart', { board: '1', chart: '40', unpin: true })).calls).toEqual([{ reducer: 'unanchor_chart', args: { nodeId: 40n } }]);
   });
 });
 
