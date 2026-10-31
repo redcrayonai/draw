@@ -1058,6 +1058,10 @@ async function boot(conn: DbConnection, identityHex: string, signedIn: boolean):
       const saveLiveCharts = async () => {
         const nodesById = new Map(getAllNodes().map(n => [n.id, n]));
         const placeBoard = boardId, actionOps = ops;
+        // New charts go in a row under the drawing, each under its edge where there is room.
+        const W = 320, H = 176, at = (v: number) => Math.round(v / 4) * 4;
+        const y = at(Math.max(0, ...getAllNodes().map(n => n.y + n.h)) + 48);
+        const placed: number[] = [];
         await actionOps.history.batch('save live charts', async () => {
           for (const [edgeId, points] of liveHistory) {
             const edge = getEdges().find(e => e.id === edgeId);
@@ -1071,15 +1075,17 @@ async function boot(conn: DbConnection, identityHex: string, signedIn: boolean):
             }
             const a = nodesById.get(edge.fromNode), b = nodesById.get(edge.toNode);
             if (!a || !b) continue;
-            const at = (v: number) => Math.round(v / 4) * 4;
+            let x = at((a.x + a.w / 2 + b.x + b.w / 2) / 2 - W / 2);
+            while (placed.some(p => Math.abs(p - x) < W + 24)) x += W + 24;
+            placed.push(x);
             const id = await actionOps.createChartAction({
               boardId: placeBoard,
-              label: `${a.label} → ${b.label} latency`,
-              sublabel: '',
-              x: at((a.x + a.w / 2 + b.x + b.w / 2) / 2 + 40),
-              y: at((a.y + a.h / 2 + b.y + b.h / 2) / 2 + 40),
-              w: 240,
-              h: 160,
+              label: `${a.label} → ${b.label}`,
+              sublabel: 'live p50 / p95',
+              x,
+              y,
+              w: W,
+              h: H,
               type: 'timeseries',
               csv,
               options: '{"unit":"ms"}',

@@ -40,8 +40,8 @@ describe('zoomOut and formatWindow', () => {
     expect(wide.endMs - wide.startMs).toBe(WINDOW_MAX_MS);
   });
 
-  it('names the day once inside a day, and both days across midnight', () => {
-    expect(formatWindow({ startMs: T('14:30'), endMs: T('14:45') }, 'UTC')).toBe('Oct 31 14:30–14:45');
-    expect(formatWindow({ startMs: T('23:30'), endMs: T('23:30') + 3600_000 }, 'UTC')).toBe('Oct 31 23:30 – Nov 1 00:30');
+  it('names the day once inside a day, and both days across midnight, in UTC like the chart axes', () => {
+    expect(formatWindow({ startMs: T('14:30'), endMs: T('14:45') })).toBe('Oct 31 14:30–14:45 UTC');
+    expect(formatWindow({ startMs: T('23:30'), endMs: T('23:30') + 3600_000 })).toBe('Oct 31 23:30 – Nov 1 00:30 UTC');
   });
 });

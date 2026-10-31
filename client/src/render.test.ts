@@ -2647,7 +2647,7 @@ describe('incident triage: the time window and chart pins', () => {
     renderBoard(world, [chartNode], [], mkState({ charts, window: { startMs: T('14:05'), endMs: T('14:25') } }));
     expect([...world.querySelectorAll<SVGRectElement>('rect.chart-hit')].map(r => Number(r.dataset.t))).toEqual([T('14:10'), T('14:20')]);
     renderBoard(world, [chartNode], [], mkState({ charts, window: { startMs: T('15:00'), endMs: T('16:00') } }));
-    expect(world.querySelector('.chart-plot > .chart-empty title')!.textContent).toBe("no data in the board's time window");
+    expect(world.querySelector('.chart-plot > .chart-empty')!.textContent).toBe('outside the time window');
   });
 
   it('leads a pinned chart to the middle of its edge or the centre of its node, and drops a pin whose target is gone', () => {
