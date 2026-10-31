@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import type { DbConnection } from './module_bindings';
-import type { Edge, EdgeWeight, Node } from './module_bindings/types';
+import type { Edge, EdgeMotion, EdgeWeight, Node } from './module_bindings/types';
 import { showError } from './chrome';
 import { DEFAULT_EDGE_STYLE, History, Ops } from './ops';
 import type { LibraryPayloadV1 } from './library';
@@ -33,12 +33,13 @@ function fakeConn() {
   };
   const node = table<Node>(), edge = table<Edge>();
   const weights = new Map<bigint, EdgeWeight>();
+  const motions = new Map<bigint, EdgeMotion>();
   const live = (id: bigint) => {
     const e = edge.rows.get(id);
     if (!e) throw new Error(`edge ${id} does not exist`);
     return e;
   };
-  const dropEdge = (id: bigint) => { edge.rows.delete(id); weights.delete(id); };
+  const dropEdge = (id: bigint) => { edge.rows.delete(id); weights.delete(id); motions.delete(id); };
   const reducers = {
     createNode: vi.fn(async (f: Partial<Node>) => {
       node.insert({ token: 'ink', focal: false, doc: '', hidden: false, imported: false, shape: 'rect', color: '', strokeStyle: 'solid', size: 'm', sourceKey: '', ...f } as Node);
@@ -55,6 +56,11 @@ function fakeConn() {
       if (weight === 'regular') weights.delete(edgeId);
       else weights.set(edgeId, { edgeId, boardId: e.boardId, weight });
     }),
+    setEdgeMotion: vi.fn(async ({ edgeId, motion, speed }: { edgeId: bigint; motion: string; speed: string }) => {
+      const e = live(edgeId);
+      if (motion === 'none') motions.delete(edgeId);
+      else motions.set(edgeId, { edgeId, boardId: e.boardId, motion, speed });
+    }),
     deleteEdge: vi.fn(async ({ edgeId }: { edgeId: bigint }) => { live(edgeId); dropEdge(edgeId); }),
     deleteNode: vi.fn(async ({ nodeId }: { nodeId: bigint }) => {
       for (const e of [...edge.rows.values()]) if (e.fromNode === nodeId || e.toNode === nodeId) dropEdge(e.id);
@@ -65,10 +71,11 @@ function fakeConn() {
     visibleNode: node,
     visibleEdge: edge,
     visibleEdgeWeight: { iter: () => weights.values(), edgeId: { find: (id: bigint) => weights.get(id) } },
+    visibleEdgeMotion: { iter: () => motions.values(), edgeId: { find: (id: bigint) => motions.get(id) } },
     visibleCodeRef: { iter: () => [].values() },
   };
   const ops = new Ops({ db, reducers } as unknown as DbConnection, 'me', new History());
-  return { ops, reducers, node, edge, weights };
+  return { ops, reducers, node, edge, weights, motions };
 }
 
 async function drawn(f: ReturnType<typeof fakeConn>) {
@@ -98,15 +105,15 @@ describe('edge style actions (RC-688)', () => {
     expect(f.reducers.updateEdgeStyle).not.toHaveBeenCalled();
     await f.ops.updateEdgeStyleAction(id, { strokeStyle: 'dotted' });
     expect(f.reducers.updateEdgeStyle).toHaveBeenCalledWith({ edgeId: id, color: undefined, strokeStyle: 'dotted' });
-    expect(style()).toEqual({ color: '', strokeStyle: 'dotted', weight: 'bold' });
+    expect(style()).toEqual({ ...DEFAULT_EDGE_STYLE, color: '', strokeStyle: 'dotted', weight: 'bold' });
     await f.ops.history.undo();
-    expect(style()).toEqual({ color: '', strokeStyle: 'solid', weight: 'bold' });
+    expect(style()).toEqual({ ...DEFAULT_EDGE_STYLE, color: '', strokeStyle: 'solid', weight: 'bold' });
     await f.ops.history.undo();
     expect(style()).toEqual(DEFAULT_EDGE_STYLE);
     expect(f.weights.size).toBe(0);
     await f.ops.history.redo();
     await f.ops.history.redo();
-    expect(style()).toEqual({ color: '', strokeStyle: 'dotted', weight: 'bold' });
+    expect(style()).toEqual({ ...DEFAULT_EDGE_STYLE, color: '', strokeStyle: 'dotted', weight: 'bold' });
     expect(showError).not.toHaveBeenCalled();
   });
 
@@ -138,7 +145,34 @@ describe('edge style actions (RC-688)', () => {
     expect(f.reducers.setEdgeWeight.mock.calls).toEqual([[{ edgeId: id, weight: 'regular' }]]);
     expect(style()).toEqual(DEFAULT_EDGE_STYLE);
     await f.ops.history.undo();
-    expect(style()).toEqual({ color: 'red', strokeStyle: 'solid', weight: 'bold' });
+    expect(style()).toEqual({ ...DEFAULT_EDGE_STYLE, color: 'red', strokeStyle: 'solid', weight: 'bold' });
+  });
+
+  it('motion and speed go through set_edge_motion, which keeps the one not named; none is no row; undo puts each back', async () => {
+    const f = fakeConn();
+    const { id, style } = await drawn(f);
+    await f.ops.updateEdgeStyleAction(id, { motion: 'threat' });
+    expect(f.reducers.setEdgeMotion).toHaveBeenLastCalledWith({ edgeId: id, motion: 'threat', speed: 'normal' });
+    await f.ops.updateEdgeStyleAction(id, { motionSpeed: 'fast' });
+    expect(f.reducers.setEdgeMotion).toHaveBeenLastCalledWith({ edgeId: id, motion: 'threat', speed: 'fast' });
+    expect(style()).toEqual({ ...DEFAULT_EDGE_STYLE, motion: 'threat', motionSpeed: 'fast' });
+    expect(f.reducers.updateEdgeStyle).not.toHaveBeenCalled();
+    await f.ops.history.undo();
+    expect(style()).toEqual({ ...DEFAULT_EDGE_STYLE, motion: 'threat' });
+    await f.ops.history.undo();
+    expect(style()).toEqual(DEFAULT_EDGE_STYLE);
+    expect(f.motions.size).toBe(0);
+  });
+
+  it('undo of an edge delete brings back its motion', async () => {
+    const f = fakeConn();
+    const { id, row } = await drawn(f);
+    await f.ops.updateEdgeStyleAction(id, { motion: 'dots', motionSpeed: 'slow' });
+    await f.ops.deleteEdgeAction(row());
+    expect(f.motions.size).toBe(0);
+    await f.ops.history.undo();
+    const [restored] = [...f.edge.rows.values()];
+    expect(f.ops.edgeStyle(restored)).toEqual({ ...DEFAULT_EDGE_STYLE, motion: 'dots', motionSpeed: 'slow' });
   });
 
   it("an undo is dropped, not forced, once a collaborator has changed the edge's weight", async () => {
@@ -160,7 +194,7 @@ describe('edge style actions (RC-688)', () => {
     expect(f.weights.size).toBe(0);
     await f.ops.history.undo();
     const [restored] = [...f.edge.rows.values()];
-    expect(f.ops.edgeStyle(restored)).toEqual({ color: 'green', strokeStyle: 'dotted', weight: 'bold' });
+    expect(f.ops.edgeStyle(restored)).toEqual({ ...DEFAULT_EDGE_STYLE, color: 'green', strokeStyle: 'dotted', weight: 'bold' });
   });
 
   it('undo of a node delete brings back the styled edges it took', async () => {
@@ -172,7 +206,7 @@ describe('edge style actions (RC-688)', () => {
     expect(f.weights.size).toBe(0);
     await f.ops.history.undo();
     const [restored] = [...f.edge.rows.values()];
-    expect(f.ops.edgeStyle(restored)).toEqual({ color: '', strokeStyle: 'solid', weight: 'medium' });
+    expect(f.ops.edgeStyle(restored)).toEqual({ ...DEFAULT_EDGE_STYLE, color: '', strokeStyle: 'solid', weight: 'medium' });
   });
 
   it('a restored default edge makes no style calls at all', async () => {
@@ -196,11 +230,11 @@ describe('edge style actions (RC-688)', () => {
     const f = fakeConn();
     await f.ops.insertLibraryAction('pair', payload('bold'), { x: 0, y: 0 }, 1n);
     const [bold] = [...f.edge.rows.values()];
-    expect(f.ops.edgeStyle(bold)).toEqual({ color: 'blue', strokeStyle: 'dashed', weight: 'bold' });
+    expect(f.ops.edgeStyle(bold)).toEqual({ ...DEFAULT_EDGE_STYLE, color: 'blue', strokeStyle: 'dashed', weight: 'bold' });
     const g = fakeConn();
     await g.ops.insertLibraryAction('pair', payload(), { x: 0, y: 0 }, 1n);
     const [plain] = [...g.edge.rows.values()];
-    expect(g.ops.edgeStyle(plain)).toEqual({ color: 'blue', strokeStyle: 'dashed', weight: 'regular' });
+    expect(g.ops.edgeStyle(plain)).toEqual({ ...DEFAULT_EDGE_STYLE, color: 'blue', strokeStyle: 'dashed', weight: 'regular' });
     expect(g.reducers.setEdgeWeight).not.toHaveBeenCalled();
   });
 });

@@ -4795,10 +4795,18 @@ textarea#inline-edit {
 #world .route-dot.error,
 #world .route-comet:has(.route-dot.error) .route-tail { fill: var(--c-red); }
 
-/* Edge traffic (edge-flow.ts): ink dots at 60%, accent for errors. */
+/* Edge traffic (edge-flow.ts): ink dots at 60%, accent for errors; threat dots glow red, as a blast's. */
 #world .layer-flow { pointer-events: none; }
 #world .flow-dot { fill: var(--ink); opacity: 0.6; }
 #world .flow-dot.err { fill: var(--accent); opacity: 1; }
+#world .flow-dot.threat { fill: var(--c-red); opacity: 1; filter: drop-shadow(0 0 3px var(--c-red)); }
+/* Hand-set edge motion (render.ts --motion-dur by speed): dash flows the line; threat runs it red, as a blast-hot edge. */
+#world .edge.motion-threat .edge-line,
+#world.overlay .edge.motion-threat .edge-line { stroke: var(--c-red); stroke-dasharray: 6 6; }
+@media (prefers-reduced-motion: no-preference) {
+  #world .edge.motion-dash .edge-line { stroke-dasharray: 6 4; animation: edge-flow var(--motion-dur, 1.2s) linear infinite; }
+  #world .edge.motion-threat .edge-line { animation: edge-flow-12 var(--motion-dur, 1.2s) linear infinite; }
+}
 
 /* Trace replay: a node lights while one of its spans runs, quickly on, slowly off.
    The transparent zero shadow gives the glow a start value to grow from. */

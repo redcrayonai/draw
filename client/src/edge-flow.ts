@@ -1,11 +1,15 @@
 // Traffic dots along the drawn edges, source to target. Density encodes rate
-// (every dot moves at SPEED); accent dots are errors. Edges idle by activity.ts draw nothing.
+// (every dot on an edge moves at one speed); accent dots are errors. An edge
+// with neither live activity (activity.ts) nor a dots or threat motion draws nothing.
 import { liveActivity } from './activity';
-import { el } from './render';
+import { el, type EdgeMotion } from './render';
 import { reducedMotion } from './route-play';
 
-/** World units per ms, the same for every dot. */
+/** World units per ms at normal speed; an edge's motion speed scales it. */
 const SPEED = 0.12;
+const SPEEDS: Record<string, number> = { slow: 0.5, normal: 1, fast: 2 };
+/** The rate a dots or threat edge shows without live activity. */
+const STEADY_RPS = 3;
 export const MAX_IN_FLIGHT = 12;
 
 /** Time between dots on an edge carrying `rps` requests a second. */
@@ -20,9 +24,9 @@ type Lane = { path: SVGPathElement; d: string; len: number; pts: Float32Array; d
  * One requestAnimationFrame loop for every edge. Call sync() after each render
  * and each setActivity: it picks up redrawn paths and wakes the loop, which
  * sleeps once no edge is live and no dot is in flight. Hidden tab or reduced
- * motion: no loop, no dots.
+ * motion: no loop, no dots. The layer joins the world with its first dot.
  */
-export function edgeFlow(world: SVGGElement): { sync(): void } {
+export function edgeFlow(world: SVGGElement, motionOf: (edgeId: bigint) => EdgeMotion | undefined = () => undefined): { sync(): void } {
   const layer = el('g', { class: 'layer-flow' });
   const lanes = new Map<bigint, Lane>();
   let paths = new Map<bigint, SVGPathElement>();
@@ -43,9 +47,14 @@ export function edgeFlow(world: SVGGElement): { sync(): void } {
     const landed: SVGCircleElement[] = [];
     const moves: { c: SVGCircleElement; x: number; y: number }[] = [];
     for (const [id, path] of paths) {
+      const motion = motionOf(id);
+      const kind = motion?.motion;
       const a = liveActivity(id, wall);
+      // A dash edge flows in CSS (render.ts); dots and threat run at live traffic's rate, else a steady one.
+      const rps = kind === 'dash' ? undefined : a?.rps ?? (kind === 'dots' || kind === 'threat' ? STEADY_RPS : undefined);
+      const v = SPEED * (SPEEDS[motion?.speed ?? 'normal'] ?? 1);
       let lane = lanes.get(id);
-      if (a === undefined && lane === undefined) continue;
+      if (rps === undefined && lane === undefined) continue;
       if (lane === undefined || lane.path !== path) {
         lane?.dots.forEach(d => d.c.remove());
         lane = { path, d: '', len: 0, pts: new Float32Array(0), dots: [], next: now, errDebt: 0 };
@@ -62,29 +71,31 @@ export function edgeFlow(world: SVGGElement): { sync(): void } {
           lane.pts[2 * i + 1] = p.y;
         }
       }
-      while (lane.dots.length > 0 && (now - lane.dots[0].born) * SPEED >= lane.len) landed.push(lane.dots.shift()!.c);
-      if (a !== undefined && now >= lane.next) {
+      while (lane.dots.length > 0 && (now - lane.dots[0].born) * v >= lane.len) landed.push(lane.dots.shift()!.c);
+      if (rps !== undefined && now >= lane.next) {
         if (lane.dots.length < MAX_IN_FLIGHT) {
           // Error dots by running debt, not dice: exactly errRate of the dots, deterministically.
-          lane.errDebt += a.errRate;
+          lane.errDebt += a?.errRate ?? 0;
           const err = lane.errDebt >= 1;
           if (err) lane.errDebt -= 1;
-          const c = el('circle', { class: err ? 'flow-dot err' : 'flow-dot', r: '2' });
+          const c = el('circle', { class: err ? 'flow-dot err' : kind === 'threat' ? 'flow-dot threat' : 'flow-dot', r: '2' });
           fresh.push(c);
           lane.dots.push({ c, born: now });
         }
-        lane.next = now + spawnMs(a.rps);
+        lane.next = now + spawnMs(rps);
       }
       for (const dot of lane.dots) {
-        const at = ((now - dot.born) * SPEED) / STEP;
+        const at = ((now - dot.born) * v) / STEP;
         const i = Math.floor(at);
         const f = at - i;
         const pts = lane.pts;
         moves.push({ c: dot.c, x: pts[2 * i] + (pts[2 * i + 2] - pts[2 * i]) * f, y: pts[2 * i + 1] + (pts[2 * i + 3] - pts[2 * i + 1]) * f });
       }
-      if (a === undefined && lane.dots.length === 0) lanes.delete(id);
+      if (rps === undefined && lane.dots.length === 0) lanes.delete(id);
     }
     landed.forEach(c => c.remove());
+    // Above the edge lines, under the nodes. Only once there is a dot: a board without traffic keeps today's DOM.
+    if (fresh.length > 0 && !layer.isConnected) world.querySelector('.layer-edges')?.after(layer);
     layer.append(...fresh);
     for (const m of moves) {
       m.c.setAttribute('cx', m.x.toFixed(1));
@@ -94,9 +105,9 @@ export function edgeFlow(world: SVGGElement): { sync(): void } {
   };
 
   const sync = () => {
-    if (document.hidden || reducedMotion()) return halt();
-    // Above the edge lines, under the nodes; a board switch rebuilds the world without it.
-    if (!layer.isConnected) world.querySelector('.layer-edges')?.after(layer);
+    // A board switch rebuilds the world without the layer: its dots went with it.
+    if (document.hidden || reducedMotion() || !layer.isConnected) halt();
+    if (document.hidden || reducedMotion()) return;
     paths = new Map(
       [...world.querySelectorAll<SVGPathElement>('.layer-edges .edge-hit[data-edge-id]')].map(p => [BigInt(p.dataset.edgeId!), p])
     );

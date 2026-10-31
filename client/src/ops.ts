@@ -216,15 +216,18 @@ export interface NodeFields {
 /**
  * An edge's hand-set style (RC-688). Colour and line live on the edge row;
  * weight lives in visible_edge_weight, which holds a row only for medium or
- * bold. A new edge starts at DEFAULT_EDGE_STYLE.
+ * bold, and motion in visible_edge_motion, a row only for an animated edge.
+ * A new edge starts at DEFAULT_EDGE_STYLE.
  */
 export interface EdgeStyle {
   color: string;
   strokeStyle: string;
   weight: string;
+  motion: string;
+  motionSpeed: string;
 }
 
-export const DEFAULT_EDGE_STYLE: Readonly<EdgeStyle> = { color: '', strokeStyle: 'solid', weight: 'regular' };
+export const DEFAULT_EDGE_STYLE: Readonly<EdgeStyle> = { color: '', strokeStyle: 'solid', weight: 'regular', motion: 'none', motionSpeed: 'normal' };
 
 /** What create_chart takes. `options` is the options JSON ('' reads as '{}');
  *  an empty `source` lets the server fill in the caller's default. */
@@ -520,9 +523,15 @@ export class Ops {
     return this.conn.db.visibleEdgeWeight?.edgeId.find(edgeId)?.weight ?? DEFAULT_EDGE_STYLE.weight;
   }
 
-  /** An edge's colour, line and weight as the toolbar shows them. */
+  /** An edge's motion and its speed: none unless visible_edge_motion holds a row for it. Read with `?.`, as weight. */
+  edgeMotion(edgeId: bigint): { motion: string; motionSpeed: string } {
+    const row = this.conn.db.visibleEdgeMotion?.edgeId.find(edgeId);
+    return row ? { motion: row.motion, motionSpeed: row.speed } : { motion: DEFAULT_EDGE_STYLE.motion, motionSpeed: DEFAULT_EDGE_STYLE.motionSpeed };
+  }
+
+  /** An edge's colour, line, weight and motion as the toolbar shows them. */
   edgeStyle(edge: Pick<Edge, 'id' | 'color' | 'strokeStyle'>): EdgeStyle {
-    return { color: edge.color, strokeStyle: edge.strokeStyle, weight: this.edgeWeight(edge.id) };
+    return { color: edge.color, strokeStyle: edge.strokeStyle, weight: this.edgeWeight(edge.id), ...this.edgeMotion(edge.id) };
   }
 
   private liveEdge(id: bigint): Edge | undefined {
@@ -531,13 +540,18 @@ export class Ops {
   }
 
   /** Write the parts of a style the patch names: colour and line through
-   *  update_edge_style, weight through set_edge_weight. */
+   *  update_edge_style, weight through set_edge_weight, motion and its speed
+   *  through set_edge_motion (which takes both: the one not named stays). */
   private async writeEdgeStyle(edgeId: bigint, patch: Partial<EdgeStyle>): Promise<void> {
     if (patch.color !== undefined || patch.strokeStyle !== undefined) {
       await this.conn.reducers.updateEdgeStyle({ edgeId, color: patch.color, strokeStyle: patch.strokeStyle });
     }
     if (patch.weight !== undefined) {
       await this.conn.reducers.setEdgeWeight({ edgeId, weight: patch.weight });
+    }
+    if (patch.motion !== undefined || patch.motionSpeed !== undefined) {
+      const now = this.edgeMotion(edgeId);
+      await this.conn.reducers.setEdgeMotion({ edgeId, motion: patch.motion ?? now.motion, speed: patch.motionSpeed ?? now.motionSpeed });
     }
   }
 
@@ -584,9 +598,11 @@ export class Ops {
     // Only the calls a fresh edge's defaults leave to make.
     const lined = style.color !== DEFAULT_EDGE_STYLE.color || style.strokeStyle !== DEFAULT_EDGE_STYLE.strokeStyle;
     const weighted = style.weight !== DEFAULT_EDGE_STYLE.weight;
+    const moving = style.motion !== DEFAULT_EDGE_STYLE.motion;
     await this.writeEdgeStyle(edgeId, {
       ...(lined ? { color: style.color, strokeStyle: style.strokeStyle } : {}),
       ...(weighted ? { weight: style.weight } : {}),
+      ...(moving ? { motion: style.motion, motionSpeed: style.motionSpeed } : {}),
     });
   }
 
@@ -963,7 +979,7 @@ export class Ops {
         const edgeId = await this.createEdge({ boardId, fromNode, toNode, label: e.label });
         this.link('edge', prevEdges[edgeIds.length], edgeId);
         edgeIds.push(edgeId);
-        await this.restoreEdgeStyle(edgeId, { color: e.color, strokeStyle: e.strokeStyle, weight: e.weight ?? DEFAULT_EDGE_STYLE.weight });
+        await this.restoreEdgeStyle(edgeId, { ...DEFAULT_EDGE_STYLE, color: e.color, strokeStyle: e.strokeStyle, weight: e.weight ?? DEFAULT_EDGE_STYLE.weight });
       }
     };
     try {

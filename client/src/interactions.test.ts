@@ -418,7 +418,7 @@ describe('edge-only selection (G35)', () => {
     const updateNodeAction = vi.fn().mockResolvedValue(undefined);
     const ops = {
       history: new History(), updateEdgeStyleAction, updateNodeAction,
-      edgeStyle: (e: Edge) => ({ color: e.color, strokeStyle: e.strokeStyle, weight: weights.get(e.id) ?? 'regular' }),
+      edgeStyle: (e: Edge) => ({ color: e.color, strokeStyle: e.strokeStyle, weight: weights.get(e.id) ?? 'regular', motion: 'none', motionSpeed: 'normal' }),
     } as unknown as Ops;
     let readOnly = false;
     const editor = new Editor({ conn: {} as DbConnection, boardId: 1n, svg, wrap, viewport,
@@ -578,7 +578,7 @@ describe('edge-only selection (G35)', () => {
       expect(reset.disabled).toBe(false);
       reset.click();
       await settle();
-      expect(updateEdgeStyleAction).toHaveBeenCalledWith(edge.id, { color: '', strokeStyle: 'solid', weight: 'regular' });
+      expect(updateEdgeStyleAction).toHaveBeenCalledWith(edge.id, { color: '', strokeStyle: 'solid', weight: 'regular', motion: 'none', motionSpeed: 'normal' });
     });
 
     it('says, while the evidence overlay is on, that line and weight show evidence', () => {

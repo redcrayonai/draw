@@ -31,7 +31,7 @@ import {
   initBoardsLink,
 } from './chrome';
 import { paintAccessLine } from './access-line';
-import { renderBoard, focusOf, ghostEdges, contentBounds, evidenceClass, hasMachineEvidence, nodeRect, type RefBadge, type EdgeRefBadge, type LiveEdge } from './render';
+import { renderBoard, focusOf, ghostEdges, contentBounds, evidenceClass, hasMachineEvidence, nodeRect, type RefBadge, type EdgeRefBadge, type LiveEdge, type EdgeMotion } from './render';
 import { LiveSession, liveUrl, resolveLive, tapPrompt, type LiveState } from './live';
 import { Glide, type XY } from './glide';
 import { Viewport, chromeInsets } from './viewport';
@@ -180,8 +180,10 @@ async function loadAuth(): Promise<Auth> {
   return authLoading;
 }
 
-// ?demo=flow: synthetic edge traffic until a tap source feeds activity.ts. Without it nothing is drawn.
-const flow = new URLSearchParams(location.search).get('demo') === 'flow' ? edgeFlow(world) : null;
+// ?demo=flow: synthetic edge traffic in activity.ts. Without it, only edges given a motion animate.
+const demoFlow = new URLSearchParams(location.search).get('demo') === 'flow';
+let edgeMotions = new Map<bigint, EdgeMotion>();
+const flow = edgeFlow(world, id => edgeMotions.get(id));
 const dbParam = new URLSearchParams(location.search).get('db');
 // A link names its database, except this build's own, which setDb leaves out.
 const linkedDb = dbParam || config.defaultDb;
@@ -545,6 +547,8 @@ async function boot(conn: DbConnection, identityHex: string, signedIn: boolean):
       let edgeWeights = new Map<bigint, string>();
       const rebuildEdgeWeights = () => {
         edgeWeights = new Map([...conn.db.visibleEdgeWeight.iter()].filter(w => w.boardId === boardId).map(w => [w.edgeId, w.weight]));
+        // Edge motions, the same way: animated edges only. Optional: an older module has no table.
+        edgeMotions = new Map([...(conn.db.visibleEdgeMotion?.iter() ?? [])].filter(m => m.boardId === boardId).map(m => [m.edgeId, m]));
       };
       // Library icons of this board by node id (spec 2026-10-18), like charts.
       let icons = new Map<bigint, string>();
@@ -1424,6 +1428,7 @@ async function boot(conn: DbConnection, identityHex: string, signedIn: boolean):
           edgeDiff: showDiff ? comparison?.edgeDiff : undefined,
           charts,
           edgeWeights,
+          edgeMotions,
           icons,
           focus: focusOf(editor.hoverId, editor.selection),
           notes: changeNotes,
@@ -1434,7 +1439,7 @@ async function boot(conn: DbConnection, identityHex: string, signedIn: boolean):
         crayonUi.sync();
         lightThreatRow();
         syncBlastDots();
-        flow?.sync();
+        flow.sync();
         renderLegend();
         syncEmpty();
         const nodesById = new Map(getAllNodes().map(n => [n.id, n]));
@@ -2123,6 +2128,7 @@ async function boot(conn: DbConnection, identityHex: string, signedIn: boolean):
         conn.db.visibleNode,
         conn.db.visibleEdge,
         conn.db.visibleEdgeWeight,
+        ...(conn.db.visibleEdgeMotion ? [conn.db.visibleEdgeMotion] : []),
         conn.db.visibleHideSet,
         conn.db.visibleHideSetMember,
         conn.db.visibleCodeRef,
@@ -2402,7 +2408,7 @@ async function boot(conn: DbConnection, identityHex: string, signedIn: boolean):
       enter = true;
       rerenderParticipants();
       requestAnimationFrame(finishBoardLoading);
-      if (flow) {
+      if (demoFlow) {
         const feedDemo = () => {
           setActivity(demoActivity(getEdges().map(e => e.id), Date.now()));
           flow.sync();

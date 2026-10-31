@@ -89,6 +89,29 @@ describe('edgeFlow', () => {
     expect(frames).toHaveLength(0);
   });
 
+  it('adds no layer to the world until a dot exists', () => {
+    const w = world(16n);
+    edgeFlow(w).sync();
+    tick(0);
+    expect(w.querySelector('.layer-flow')).toBeNull();
+    expect(frames).toHaveLength(0);
+  });
+
+  it('runs a dots or threat motion without activity at a steady rate, its speed scaling every dot', () => {
+    const w = world(17n, 18n, 19n);
+    const motions = new Map([[17n, { motion: 'dots', speed: 'fast' }], [18n, { motion: 'threat', speed: 'slow' }], [19n, { motion: 'dash', speed: 'normal' }]]);
+    edgeFlow(w, id => motions.get(id)).sync();
+    tick(0);
+    tick(250);
+    const at = (id: bigint) => dots(w).filter(c => c.getAttribute('cy') === '0.0' && c.getAttribute('cx') !== '0.0').map(c => [c.getAttribute('class'), c.getAttribute('cx')]);
+    // one dot each for dots and threat (dash draws in CSS); fast is 2x, slow 0.5x the 0.12 units/ms
+    expect(dots(w)).toHaveLength(2);
+    expect(at(0n)).toEqual([['flow-dot', '60.0'], ['flow-dot threat', '15.0']]);
+    // steady 3 rps: the next dot at 333 ms
+    tick(340);
+    expect(dots(w)).toHaveLength(4);
+  });
+
   it('draws nothing under reduced motion or in a hidden tab', () => {
     const w = world(15n);
     setActivity([{ edgeId: 15n, rps: 10, errRate: 0, observedAt: wall }]);

@@ -733,7 +733,9 @@ export class Editor {
         (readOnly && button.id !== 'tb-library') ||
         (this.topologyReadOnly && (button === this.tbKind || button === this.tbDelete)) ||
         (chart && (button === this.tbKind || button.closest('#tb-shape') !== null)) ||
-        (button === this.tbReset && !resettable);
+        (button === this.tbReset && !resettable) ||
+        // Speed sets how a moving edge moves: nothing to set until one has a motion.
+        (button.closest('#tb-speed') !== null && !edgeStyles.some(st => st.motion !== DEFAULT_EDGE_STYLE.motion));
       if (button.disabled !== disabled) button.disabled = disabled;
     }
     const b = this.selectionBounds();
@@ -817,6 +819,12 @@ export class Editor {
       }
       for (const b of document.querySelectorAll<HTMLButtonElement>('#tb-weight button')) {
         press(b, headEdge !== undefined && b.dataset.weight === headEdge.weight);
+      }
+      for (const b of document.querySelectorAll<HTMLButtonElement>('#tb-motion button')) {
+        press(b, headEdge !== undefined && b.dataset.motion === headEdge.motion);
+      }
+      for (const b of document.querySelectorAll<HTMLButtonElement>('#tb-speed button')) {
+        press(b, headEdge !== undefined && b.dataset.speed === headEdge.motionSpeed);
       }
       // The overlay draws evidence instead of the line and weight shown here.
       setHidden(this.tbOverlayNote, !this.overlay);
@@ -1640,7 +1648,13 @@ export class Editor {
     for (const b of document.querySelectorAll<HTMLButtonElement>('#tb-weight button')) {
       b.addEventListener('click', () => styleSelection({ edge: { weight: b.dataset.weight ?? 'regular' } }, 'weight'));
     }
-    // Back to what a new edge gets: no colour of its own, solid, regular.
+    for (const b of document.querySelectorAll<HTMLButtonElement>('#tb-motion button')) {
+      b.addEventListener('click', () => styleSelection({ edge: { motion: b.dataset.motion ?? 'none' } }, 'motion'));
+    }
+    for (const b of document.querySelectorAll<HTMLButtonElement>('#tb-speed button')) {
+      b.addEventListener('click', () => styleSelection({ edge: { motionSpeed: b.dataset.speed ?? 'normal' } }, 'speed'));
+    }
+    // Back to what a new edge gets: no colour of its own, solid, regular, still.
     this.tbReset.addEventListener('click', () => styleSelection({ edge: { ...DEFAULT_EDGE_STYLE } }, 'reset style'));
 
     this.tbDelete.addEventListener('click', () => this.deleteSelection());
