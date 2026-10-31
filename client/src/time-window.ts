@@ -84,6 +84,12 @@ export function mountWindowBrush(onPick: (w: TimeWindow) => void): () => void {
   };
   const move = (evt: PointerEvent) => {
     if (!drag) return;
+    // The button came up outside the page: drop the drag, or a later plain click would finish it.
+    if (evt.buttons === 0) {
+      drag.band.remove();
+      drag = null;
+      return;
+    }
     evt.stopPropagation();
     const hit = hitUnder(evt);
     if (hit && hit !== drag.last) {

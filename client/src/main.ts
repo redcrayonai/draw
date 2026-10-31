@@ -585,21 +585,13 @@ async function boot(conn: DbConnection, identityHex: string, signedIn: boolean):
           row.append(line);
           if (!publicExample()) {
             const w = timeWindow;
-            row.append(windowButton('Zoom out', () => setWindow(zoomOut(w))), windowButton('Clear', () => setWindow(null)));
+            row.append(liveButton('Zoom out', () => setWindow(zoomOut(w))), liveButton('Clear', () => setWindow(null)));
           }
         } else if (hasTimeChart && !publicExample()) {
           const line = document.createElement('div');
           line.textContent = 'Alt-drag across a time chart to set everyone\'s time window.';
           row.append(line);
         }
-      }
-      function windowButton(label: string, run: () => void): HTMLButtonElement {
-        const b = document.createElement('button');
-        b.type = 'button';
-        b.className = 'session-route-play live-action';
-        b.textContent = label;
-        b.addEventListener('click', run);
-        return b;
       }
       mountWindowBrush(w => {
         if (!publicExample()) setWindow(w);
@@ -1071,7 +1063,7 @@ async function boot(conn: DbConnection, identityHex: string, signedIn: boolean):
             // A live chart already pinned to this edge takes the new numbers; otherwise a new one sits beside the edge.
             const own = [...anchors].find(([chartId, a]) => a.targetKind === 'edge' && a.targetId === edgeId && charts.get(chartId)?.source === LIVE_CHART_SOURCE);
             if (own) {
-              await actionOps.setChartDataAction(own[0], { csv });
+              await actionOps.setChartDataAction(own[0], { csv, source: LIVE_CHART_SOURCE });
               continue;
             }
             const a = nodesById.get(edge.fromNode), b = nodesById.get(edge.toNode);
@@ -1104,14 +1096,15 @@ async function boot(conn: DbConnection, identityHex: string, signedIn: boolean):
         if (auth?.hasSession()) return auth.freshToken().catch(() => null);
         return readAnonymousToken(ANON_TOKEN_KEY, SHARE_LOCAL_GUEST) ?? null;
       };
-      const liveButton = (label: string, run: () => void) => {
+      // A rail action under Live and under the time window; a declaration, so renderWindow above can use it.
+      function liveButton(label: string, run: () => void): HTMLButtonElement {
         const b = document.createElement('button');
         b.type = 'button';
         b.className = 'session-route-play live-action';
         b.textContent = label;
         b.addEventListener('click', run);
         return b;
-      };
+      }
       const renderLive = () => {
         const on = liveSession !== null;
         liveRow.setAttribute('aria-pressed', on ? 'true' : 'false');

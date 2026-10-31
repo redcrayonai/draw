@@ -19,6 +19,7 @@ import {
   HUMAN_SOURCE_RESERVED,
   isHumanSource,
   ARCHITECTURE_CHART_RULE,
+  MAX_EPOCH_MS,
 } from './chart-contracts';
 import {
   checkAliases,
@@ -3118,10 +3119,10 @@ export const unanchorChart = reducer(
 // The shared time window, in epoch milliseconds. A month at most: wider than
 // any incident, and every viewer's charts redraw on each change.
 const WINDOW_MAX_MS = 31 * 24 * 3600 * 1000;
-const WINDOW_RULE = `window rule: startMs and endMs are epoch milliseconds with startMs < endMs, at most ${WINDOW_MAX_MS / (24 * 3600 * 1000)} days apart`;
+const WINDOW_RULE = `window rule: startMs and endMs are epoch milliseconds with startMs < endMs, at most ${WINDOW_MAX_MS / (24 * 3600 * 1000)} days apart and no later than ${MAX_EPOCH_MS}`;
 
 function writeBoardWindow(ctx: any, boardId: bigint, startMs: number, endMs: number): void {
-  if (!Number.isFinite(startMs) || !Number.isFinite(endMs) || startMs < 0 || endMs <= startMs || endMs - startMs > WINDOW_MAX_MS) throw new SenderError(WINDOW_RULE);
+  if (!Number.isFinite(startMs) || !Number.isFinite(endMs) || startMs < 0 || endMs <= startMs || endMs - startMs > WINDOW_MAX_MS || endMs > MAX_EPOCH_MS) throw new SenderError(WINDOW_RULE);
   const row = { boardId, startMs, endMs, updatedAt: ctx.timestamp };
   if (ctx.db.boardWindow.boardId.find(boardId)) ctx.db.boardWindow.boardId.update(row);
   else ctx.db.boardWindow.insert(row);
@@ -3152,11 +3153,13 @@ const INCIDENTS_PER_BOARD = 20;
 const GROUP_KEY_MAX = 512;
 // The window a new incident board opens on: this long either side of the alert's start.
 const INCIDENT_WINDOW_MS = 15 * 60 * 1000;
+// An alert that fires again this soon after resolving reopens its board instead of copying the source again.
+const INCIDENT_REOPEN_MICROS = 60n * MINUTE_MICROS;
 
 // An alert opens an incident board: a copy of the source board's drawing with
 // no suspects (focal) marked, flagged ephemeral, its window around the alert's
 // start. The same groupKey while the incident is firing finds it again;
-// status 'resolved' closes it. A service account with edit rights on the
+// status 'resolved' closes it, and firing within the hour reopens it. A service account with edit rights on the
 // source board may call this: it is the one board it can make, and the board
 // goes to the source's workspace, never to the machine.
 export const openIncident = reducer(
@@ -3177,6 +3180,14 @@ export const openIncident = reducer(
       return;
     }
     if (status === 'resolved') return; // nothing open to close
+    // Nothing for this group is firing, so a match is resolved: a flapping alert reuses its board.
+    const recent = [...ctx.db.incident.groupKey.filter(groupKey)]
+      .find((i: any) => i.sourceBoardId === sourceBoardId && ctx.timestamp.microsSinceUnixEpoch - i.updatedAt.microsSinceUnixEpoch < INCIDENT_REOPEN_MICROS);
+    if (recent) {
+      ctx.db.incident.boardId.update({ ...recent, status, updatedAt: ctx.timestamp });
+      emit(ctx, recent.boardId, 'incident.reopened', {});
+      return;
+    }
     if (firing.length >= INCIDENTS_PER_BOARD) throw new SenderError(`incident rule: a board has at most ${INCIDENTS_PER_BOARD} open incidents; resolve one first`);
     if (limitsApply(ctx)) {
       let count = 0;
@@ -3193,7 +3204,7 @@ export const openIncident = reducer(
     inheritWorkspaceBoard(ctx, sourceBoardId, board.id, ctx.db.agentLink.agent.find(ctx.sender)?.owner ?? ctx.sender);
     ctx.db.boardLifetime.insert({ boardId: board.id, isEphemeral: true, createdAt: ctx.timestamp });
     ctx.db.incident.insert({ boardId: board.id, sourceBoardId, groupKey, title, status, openedAt: ctx.timestamp, updatedAt: ctx.timestamp });
-    if (Number.isFinite(startsAtMs) && startsAtMs > INCIDENT_WINDOW_MS) writeBoardWindow(ctx, board.id, startsAtMs - INCIDENT_WINDOW_MS, startsAtMs + INCIDENT_WINDOW_MS);
+    if (startsAtMs > INCIDENT_WINDOW_MS && startsAtMs + INCIDENT_WINDOW_MS <= MAX_EPOCH_MS) writeBoardWindow(ctx, board.id, startsAtMs - INCIDENT_WINDOW_MS, startsAtMs + INCIDENT_WINDOW_MS);
     emit(ctx, sourceBoardId, 'incident.opened', { title });
   }
 );
