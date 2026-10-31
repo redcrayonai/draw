@@ -181,6 +181,12 @@ async function assertWriter(t: T, b: { id: bigint; name: string }, what: string)
   }
 }
 
+/** The board's Live Durable Object, or null with no live channel bound (tests): then no tap can connect. */
+function liveOf(t: T, board: bigint): LiveStub | null {
+  const { LIVE } = t.ctx.env;
+  return LIVE ? (LIVE.get(LIVE.idFromName(String(board))) as unknown as LiveStub) : null;
+}
+
 async function boardOf(t: T, board: string): Promise<{ id: SafeU64; name: string }> {
   const boardId = u64(board);
   const [row] = await t.ctx.db.read<Row>(sql`SELECT * FROM visible_board WHERE id = ${boardId}`, t.signal);
@@ -689,9 +695,7 @@ export const TOOLS: Record<string, ToolDef> = {
     input: z.object({ board: boardArg }).strict(),
     async run({ board }, t) {
       const b = await boardOf(t, board);
-      const { LIVE } = t.ctx.env;
-      // No live channel bound (tests): no tap can be connected.
-      const s = LIVE ? await (LIVE.get(LIVE.idFromName(String(b.id))) as unknown as LiveStub).status() : null;
+      const s = (await liveOf(t, b.id)?.status()) ?? null;
       const iso = (ms: number | null | undefined) => (ms == null ? null : new Date(ms).toISOString());
       return okResult(
         JSON.stringify(
@@ -722,9 +726,7 @@ export const TOOLS: Record<string, ToolDef> = {
     async run({ board }, t) {
       const b = await boardOf(t, board);
       await assertWriter(t, b, 'stop its live tap');
-      const { LIVE } = t.ctx.env;
-      // No live channel bound (tests): no tap can be connected, and no token can connect.
-      const stopped = LIVE ? await (LIVE.get(LIVE.idFromName(String(b.id))) as unknown as LiveStub).stop() : false;
+      const stopped = (await liveOf(t, b.id)?.stop()) ?? false;
       return okResult(JSON.stringify({ board: String(b.id), stopped }, null, 1));
     },
   },
