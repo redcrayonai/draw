@@ -49,6 +49,7 @@ says why, and the first word tells the agent what to do:
 | `get_chart` | Reads a chart's type, data and options. |
 | `pin_chart` | Pins a chart to the edge or component it measures, or unpins it. |
 | `set_time_window` | Sets or clears the board's shared time window, which every time chart shows. |
+| `open_incident` | Opens an ephemeral incident board copied from a board, or returns the incident board it is given. |
 
 ## Code refs, notes and threats
 

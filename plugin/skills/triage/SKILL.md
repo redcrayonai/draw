@@ -1,6 +1,6 @@
 ---
 name: triage
-description: Use when the user types /draw:triage [board link], or asks for help working an incident or an alert on a draw board.
+description: Use when the user types /draw:triage [board link], or asks for help working an incident or an alert on a draw board. Works on an ephemeral incident board, never the lasting one.
 argument-hint: [board link] [what is wrong]
 allowed-tools: mcp__draw__*, mcp__plugin_draw_draw__*, Bash(git:*), Read
 ---
@@ -42,6 +42,13 @@ says is wrong.
 Relay `url` once, verbatim, in your next message, before any other tool call.
 Read [results.md](../../references/results.md) the first time a result starts with
 `REJECTED`, `UNAVAILABLE` or `UNCONFIRMED`.
+
+**Work on an incident board, never on the lasting one.** Call `open_incident` with
+the board's `id`, a `title` that says what is wrong in a few words, and `since`
+(ISO 8601 UTC) when the user said when it started. It copies the board into an
+ephemeral incident board, or returns the board itself when it already is one.
+When `opened` is true, relay its `url` once and use its `id` as `board` on every
+later call. Calling it again with the same title finds the same incident.
 
 Then call `get_board` and read it before you write anything: the components and
 connections, the charts and what each one is pinned to, the focal nodes, and the

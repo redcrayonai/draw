@@ -87,7 +87,9 @@ With [the draw plugin](/connect/#claude-code), hand the board to your agent:
 /draw:triage <incident board link> checkout errors since the deploy
 ```
 
-The agent reads the board, pulls measurements from the monitoring tools you
+Given a lasting board, the agent first opens an incident board from it with
+`open_incident`, so its charts never land on the original. Given an incident
+board, it works there. Then it reads the board, pulls measurements from the monitoring tools you
 connected, charts them beside the hops they describe and pins each chart there.
 It may narrow the time window and says when it does. It does not mark suspects.
 

@@ -490,6 +490,20 @@ test('revoking a human editor removes delegated agent content from live and HTTP
   } finally { tab.disconnect(); }
 });
 
+test('a linked agent that opens an incident from a workspace board keeps editing the incident board', async () => {
+  const owner = person(), a = agent();
+  const W = await workspace(owner, 'incident-agent');
+  const B = await board(owner, W, 'incident-source');
+  await node(owner, B, 'api');
+  await ok(service, 'link_hosted_agent', [id(a), id(owner)]);
+  await ok(owner, 'grant_agent_board', [B, id(a)]);
+  await ok(a, 'open_incident', [B, 'agent:checkout errors', 'Incident: checkout errors', 'firing', 0]);
+  const [inc] = (await rows(a, 'my_incidents')).filter(row => row.sourceBoardId === B);
+  assert.ok(inc, 'the agent reads the incident it opened');
+  await node(a, inc.boardId, 'agent finding');
+  assert.equal(await sees(owner, inc.boardId), true, 'the workspace owner reads it too');
+});
+
 test('assigning an agent workspace membership cannot replace an explicit board delegation', async () => {
   const owner = person(), a = agent(), unlinked = agent();
   const W = await workspace(owner, 'agent-membership');

@@ -29,7 +29,7 @@ const TOOL_NAMES = blocks.map(b => b.match(/^(\w+):/)[1]);
 const takesCapture = blocks.filter(b => /^\s+capture,$|, capture \}/m.test(b)).map(b => b.match(/^(\w+):/)[1]);
 
 test('tools.ts parses into the hosted tool list', () => {
-  assert.equal(TOOL_NAMES.length, 41);
+  assert.equal(TOOL_NAMES.length, 42);
   for (const t of ['start_session', 'get_board', 'add_code_ref', 'mark_checkpoint', 'arrive', 'describe_charts', 'add_threat', 'update_threat', 'remove_threat', 'create_branch', 'submit_branch', 'wait_for_marks', 'watch_marks', 'reply_to_mark', 'list_marks']) assert.ok(TOOL_NAMES.includes(t), t);
   assert.ok(!TOOL_NAMES.includes('link_dashboard'));
 });
@@ -208,7 +208,8 @@ test('triage skill: links only shared modules, names only registered tools, and 
   for (const [, f] of triageMd.matchAll(/\]\(\.\.\/\.\.\/references\/([\w-]+\.md)\)/g)) assert.ok(modules.includes(f), f);
   const words = new Set(triageMd.replace(/mcp__[\w-]*?__/g, ' ').match(/\b[a-z]+(?:_[a-z]+)+\b/g));
   for (const w of words) assert.ok(TOOL_NAMES.includes(w), `triage names ${w}, which mcp/src/tools.ts does not register`);
-  for (const t of ['pin_chart', 'set_time_window', 'create_chart', 'get_board']) assert.ok(words.has(t), t);
+  for (const t of ['open_incident', 'pin_chart', 'set_time_window', 'create_chart', 'get_board']) assert.ok(words.has(t), t);
+  assert.match(triageMd, /never on the lasting one/);
   assert.match(triageMd, /Do not set or\s+clear `focal`/);
   assert.doesNotMatch(triageMd, VENDOR);
   assert.doesNotMatch(triageMd, INTERNALS);

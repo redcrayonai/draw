@@ -42,7 +42,7 @@ const HOSTED = [
   'add_change_note', 'update_change_note', 'remove_change_note',
   'add_threat', 'update_threat', 'remove_threat',
   'wait_for_marks', 'watch_marks', 'reply_to_mark', 'list_marks',
-  'pin_chart', 'set_time_window',
+  'pin_chart', 'set_time_window', 'open_incident',
 ];
 const keysOf = (schema: z.ZodType): string[] => {
   const json = z.toJSONSchema(schema) as { properties?: Record<string, unknown> };
@@ -298,6 +298,47 @@ describe('set_edge_latency on the hosted server', () => {
 
   it('accepts only prod, local or estimate as a source', () => {
     expect(TOOLS.set_edge_latency.input.safeParse({ board: '1', edgeId: '30', latencyMs: 5, source: 'guess' }).success).toBe(false);
+  });
+});
+
+describe('open_incident on the hosted server', () => {
+  const run = async (input: Record<string, unknown>, incidentBoard = false) => {
+    const calls: { reducer: string; args: Record<string, any> }[] = [];
+    const db = {
+      stats: { dbCalls: 0, dbMs: 0, writes: 0 },
+      async read(q: { text: string }) {
+        if (q.text.includes('visible_board')) return [{ id: 1n, name: 'checkout prod' }];
+        if (q.text.includes('my_incidents WHERE board_id')) return incidentBoard ? [{ boardId: 1n, slug: 'inc1' }] : [];
+        if (q.text.includes('my_incidents WHERE source_board_id')) return calls.length ? [{ boardId: 9n, slug: 'inc9', groupKey: 'agent:checkout errors', status: 'firing' }] : [];
+        throw new Error(`unexpected read ${q.text}`);
+      },
+      async call(reducer: string, args: Record<string, any>) {
+        calls.push({ reducer, args });
+      },
+    };
+    const o = { boardUrl: (slug: string) => `http://app/#b=${slug}` };
+    const t = { ctx: { db, o }, signal: new AbortController().signal, named: () => {}, deadline: Date.now() + 15_000 } as never;
+    const def = TOOLS.open_incident;
+    try {
+      return { calls, out: text(await def.run(def.input.parse(input) as never, t)) };
+    } catch (err) {
+      return { calls, out: scrub(err, { write: true }).text };
+    }
+  };
+
+  it('opens an incident board from a lasting board and returns its id and link', async () => {
+    const r = await run({ board: '1', title: 'checkout errors', since: '2026-10-31T14:32:00Z' });
+    expect(r.calls).toEqual([{ reducer: 'open_incident', args: { sourceBoardId: 1n, groupKey: 'agent:checkout errors', title: 'Incident: checkout errors', status: 'firing', startsAtMs: Date.parse('2026-10-31T14:32:00Z') } }]);
+    expect(JSON.parse(r.out)).toEqual({ board: 'Incident: checkout errors', id: 9, url: 'http://app/#b=inc9', opened: true });
+  });
+
+  it('returns an incident board as it is, and refuses a since it cannot read', async () => {
+    const same = await run({ board: '1', title: 'checkout errors' }, true);
+    expect(same.calls).toEqual([]);
+    expect(JSON.parse(same.out)).toEqual({ board: 'checkout prod', id: 1, url: 'http://app/#b=inc1', opened: false });
+    const bad = await run({ board: '1', title: 'checkout errors', since: 'an hour ago' });
+    expect(bad.calls).toEqual([]);
+    expect(bad.out).toMatch(/^REJECTED: pass since as ISO 8601/);
   });
 });
 

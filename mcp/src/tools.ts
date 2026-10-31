@@ -822,6 +822,38 @@ export const TOOLS: Record<string, ToolDef> = {
     },
   },
 
+  open_incident: {
+    title: 'Open incident',
+    scope: 'board:write',
+    description:
+      'Open an incident board: an ephemeral copy of a board (nodes, edges, charts and their pins) with no focal nodes, its time window 15 minutes either side of since. Work an incident there, never on the lasting board. ' +
+      'On a board that already is an incident board, returns that board. Calling it again with the same board and title returns the same open incident. ' +
+      'since: when the problem started, ISO 8601 or epoch milliseconds; leave it out when unknown. Returns JSON { board, id, url, opened }: pass id as board on every later tool, and relay url to the user once when opened is true.',
+    input: z
+      .object({
+        board: boardArg,
+        title: z.string().min(1, SESSION_NAME_RULE).max(SESSION_NAME_MAX - 10, SESSION_NAME_RULE).regex(SESSION_NAME_RE, SESSION_NAME_RULE).describe('what is wrong, one short line'),
+        since: z.string().optional(),
+      })
+      .strict(),
+    async run({ board, title, since }, t) {
+      const { db, o } = t.ctx;
+      const b = await boardOf(t, board);
+      const [own] = await db.read<Row>(sql`SELECT * FROM my_incidents WHERE board_id = ${b.id}`, t.signal);
+      if (own) return okResult(jsonText({ board: b.name, id: Number(b.id), url: o.boardUrl(String(own.slug)), opened: false }));
+      const startsAtMs = since === undefined ? 0 : instant(since);
+      if (startsAtMs === undefined) throw new Refusal(`REJECTED: pass since as ISO 8601 or epoch milliseconds, or leave it out. Nothing was written. board=${b.name}`);
+      // One group per title: a retry or a second call for the same problem finds the open incident.
+      const groupKey = `agent:${title}`, name = `Incident: ${title}`;
+      await absolute(() => db.call('open_incident', { sourceBoardId: b.id, groupKey, title: name, status: 'firing', startsAtMs }, t.signal));
+      const rows = await db.read<Row>(sql`SELECT * FROM my_incidents WHERE source_board_id = ${b.id}`, t.signal);
+      const row = rows.find(r => r.groupKey === groupKey && r.status === 'firing');
+      if (!row) throw new Refusal(boardNotFound(name));
+      t.named(name);
+      return okResult(jsonText({ board: name, id: Number(row.boardId), url: o.boardUrl(String(row.slug)), opened: true }));
+    },
+  },
+
   start_session: {
     title: 'Start session',
     scope: 'board:write',
