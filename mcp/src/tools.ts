@@ -218,6 +218,12 @@ async function nodesOnBoard(t: T, b: { id: SafeU64; name: string }, ids: SafeU64
 
 const committed = (board: string, text = 'committed') => okResult(`${text} board=${board}`);
 
+/** An ISO 8601 time or epoch milliseconds as epoch ms; undefined when it is neither. */
+const instant = (s: string | undefined): number | undefined => {
+  const ms = s === undefined ? NaN : /^\d+$/.test(s) ? Number(s) : Date.parse(s);
+  return Number.isFinite(ms) ? ms : undefined;
+};
+
 /** Known-not-committed answers that may be retried: the host's 5xx (not a module refusal) before the reducer ran. */
 const retryable = (err: unknown) => err instanceof DbError && err.status >= 500 && err.status !== 530;
 
@@ -776,6 +782,43 @@ export const TOOLS: Record<string, ToolDef> = {
     async run({ board, nodeId }, t) {
       const { board: b, row } = await boardAndTarget(t, board, 'chart', nodeId);
       return okResult(JSON.stringify({ board: b.name, nodeId, type: row.type, options: row.options, source: row.source, csv: row.csv }, null, 1));
+    },
+  },
+
+  pin_chart: {
+    title: 'Pin chart',
+    scope: 'board:write',
+    description: 'Pin a chart to the edge or component it measures, e.g. a latency chart on the failing hop; the board draws a leader from the chart to it. Pass exactly one of edge or node; pinning again moves the pin; unpin: true removes it.' + BOARD_SUFFIX,
+    input: z.object({ board: boardArg, chart: id, edge: id.optional(), node: id.optional(), unpin: z.boolean().optional() }).strict(),
+    async run({ board, chart, edge, node, unpin }, t) {
+      const { board: b, targetId: nodeId } = await boardAndTarget(t, board, 'chart', chart);
+      if (unpin) {
+        await absolute(() => t.ctx.db.call('unanchor_chart', { nodeId }, t.signal));
+        return committed(b.name);
+      }
+      if ((edge === undefined) === (node === undefined)) throw new Refusal(`REJECTED: pass exactly one of edge or node, or unpin: true. Nothing was written. board=${b.name}`);
+      const targetKind = edge !== undefined ? 'edge' : 'node';
+      const { targetId } = await boardAndTarget(t, board, targetKind, (edge ?? node)!);
+      await absolute(() => t.ctx.db.call('anchor_chart', { nodeId, targetKind, targetId }, t.signal));
+      return committed(b.name);
+    },
+  },
+
+  set_time_window: {
+    title: 'Set time window',
+    scope: 'board:write',
+    description: "Set the board's shared time window: every viewer's time-axis charts show only start to end, so everyone looks at the same minutes. start and end: ISO 8601 (2026-10-09T14:30:00Z) or epoch milliseconds, at most 31 days apart. clear: true removes it and charts show all their data." + BOARD_SUFFIX,
+    input: z.object({ board: boardArg, start: z.string().optional(), end: z.string().optional(), clear: z.boolean().optional() }).strict(),
+    async run({ board, start, end, clear }, t) {
+      const b = await boardOf(t, board);
+      if (clear) {
+        await absolute(() => t.ctx.db.call('clear_board_window', { boardId: b.id }, t.signal));
+        return committed(b.name);
+      }
+      const startMs = instant(start), endMs = instant(end);
+      if (startMs === undefined || endMs === undefined) throw new Refusal(`REJECTED: pass start and end as ISO 8601 or epoch milliseconds, or clear: true. Nothing was written. board=${b.name}`);
+      await absolute(() => t.ctx.db.call('set_board_window', { boardId: b.id, startMs, endMs }, t.signal));
+      return committed(b.name);
     },
   },
 
