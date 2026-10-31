@@ -5,7 +5,8 @@ sidebar:
   order: 6
 ---
 
-Use a scratch board to collect evidence for one investigation. Put the metrics
+Use a scratch board to collect evidence for one investigation. To open one
+from an alert, with your system already drawn, see [Incident boards](/capabilities/incidents/). Put the metrics
 beside the services they describe, then keep the board for the incident report
 or delete it afterwards. Scratch boards do not expire automatically.
 

@@ -815,6 +815,8 @@ export interface InspectorActions {
   /** Save a chart's data (ops.setChartDataAction). Absent where charts
    *  cannot be edited; optional so existing fixtures stay valid. */
   setChartData?: (nodeId: bigint, patch: ChartPatch) => Promise<void>;
+  /** Pin a chart to the edge or component it measures, or unpin it (null). Absent where charts cannot be edited. */
+  pinChart?: (nodeId: bigint, target: { targetKind: string; targetId: bigint } | null) => void;
   /** Mark a change note reviewed or clear it (D12); absent where nobody may review. */
   markReviewed?: (id: bigint, reviewed: boolean) => void;
   /** Clipboard write of an "ask agent to fix" prompt (D8); resolves false when the write failed. */
@@ -844,6 +846,8 @@ export interface InspectorModel {
   privacyUrl?: string;
   /** A chart node's data row; absent until the chart table has loaded. */
   chartRow?: (nodeId: bigint) => Chart | undefined;
+  /** What a chart is pinned to (visible_chart_anchor); absent before the table loads. */
+  chartPin?: (nodeId: bigint) => { targetKind: string; targetId: bigint } | undefined;
   /** Change notes by anchor node (spec 2026-10-16); absent before the table loads. */
   changeNotes?: ReadonlyMap<bigint, NoteView[]>;
   /** D12: a signed-in viewer who may edit this board may review a change note. */
@@ -950,6 +954,45 @@ export function flashLabel(el: HTMLElement, ok: boolean, idle: string, done = 'c
       el.classList.remove('copied', 'copy-failed');
     }, FLASH_MS)
   );
+}
+
+const ICON_CHECK = '<svg width="14" height="14" viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M3.5 8.5l3 3 6-7" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+const AGENT_PROMPT_LABEL = 'Copy prompt for agent';
+const AGENT_PROMPT_DONE = 'Copied · paste to agent';
+
+/**
+ * A prompt the board hands to the person's coding agent: the agent glyph (as
+ * on its presence avatar) and a label that names the hand-off. A copy reads
+ * "Copied · paste to agent" for 2.4 s; `onFail` gets the text a
+ * blocked clipboard could not take, so the caller can show it instead.
+ */
+export function agentPromptButton(text: () => string, onFail: (text: string) => void): HTMLButtonElement {
+  const b = document.createElement('button');
+  b.type = 'button';
+  b.className = 'ctl agent-prompt';
+  const icon = document.createElement('span');
+  icon.className = 'agent-prompt-icon';
+  const label = document.createElement('span');
+  const idle = () => {
+    icon.replaceChildren(botIcon(14));
+    label.textContent = AGENT_PROMPT_LABEL;
+    b.classList.remove('copied');
+  };
+  idle();
+  b.append(icon, label);
+  b.addEventListener('click', () => {
+    const value = text();
+    void copyText(value).then(ok => {
+      announce(ok ? AGENT_PROMPT_DONE : 'copy failed');
+      if (!ok) return onFail(value);
+      icon.innerHTML = ICON_CHECK;
+      label.textContent = AGENT_PROMPT_DONE;
+      b.classList.add('copied');
+      window.clearTimeout(flashTimers.get(b));
+      flashTimers.set(b, window.setTimeout(idle, 2 * FLASH_MS));
+    });
+  });
+  return b;
 }
 
 /** A node's name in chrome copy: its label, else its sublabel (G37). */
@@ -1135,6 +1178,8 @@ function signature(nodes: Node[], edges: Edge[], m: InspectorModel): string {
   if (nodes.length === 1 && edges.length === 0 && nodes[0].kind === 'chart') {
     // A chart row change re-renders, but not while a chart field has focus.
     parts.push(chartSignature(nodes[0].id, m.chartRow?.(nodes[0].id)));
+    const pin = m.chartPin?.(nodes[0].id);
+    parts.push(`pin:${pin ? `${pin.targetKind}:${pin.targetId}` : ''}|${m.nodes.length}|${m.edges.length}`);
   }
   if (nodes.length === 1 && edges.length === 0) {
     const notes = m.changeNotes?.get(nodes[0].id);
@@ -1743,6 +1788,7 @@ function renderChartInspector(n: Node, m: InspectorModel, actions: InspectorActi
   } else {
     frag.push(...sections);
   }
+  frag.push(...renderPinSection(n, m, actions));
   if (n.doc.length > 0) {
     frag.push(div('insp-divider'), div('eyebrow', 'DOC'), div('insp-body', n.doc));
   }
@@ -1766,6 +1812,32 @@ function renderChartInspector(n: Node, m: InspectorModel, actions: InspectorActi
     frag.push(actionsRow);
   }
   inspectorEl.replaceChildren(...frag);
+}
+
+/** PINNED TO: the edge or component a chart measures, picked from the board's edges and components. */
+function renderPinSection(n: Node, m: InspectorModel, actions: InspectorActions): HTMLElement[] {
+  if (m.chartPin === undefined) return [];
+  const pin = m.chartPin(n.id);
+  const names = new Map(m.nodes.map(x => [x.id, x.label || `node ${x.id}`]));
+  const select = document.createElement('select');
+  select.className = 'chart-pin-select';
+  select.setAttribute('aria-label', 'Pinned to');
+  const add = (value: string, text: string) => {
+    const o = document.createElement('option');
+    o.value = value;
+    o.textContent = text;
+    select.append(o);
+  };
+  add('', 'not pinned');
+  for (const e of m.edges) add(`edge:${e.id}`, `${names.get(e.fromNode) ?? '?'} → ${names.get(e.toNode) ?? '?'}${e.label ? ` · ${e.label}` : ''}`);
+  for (const x of m.nodes) if (!['chart', 'text', 'note', 'boundary'].includes(x.kind)) add(`node:${x.id}`, names.get(x.id)!);
+  select.value = pin ? `${pin.targetKind}:${pin.targetId}` : '';
+  select.disabled = m.readOnly === true || currentActions(actions).pinChart === undefined;
+  select.addEventListener('change', () => {
+    const [targetKind, id] = select.value.split(':');
+    currentActions(actions).pinChart?.(n.id, targetKind ? { targetKind, targetId: BigInt(id) } : null);
+  });
+  return [div('insp-divider'), div('eyebrow', 'PINNED TO'), select];
 }
 
 function renderNodeInspector(n: Node, m: InspectorModel, actions: InspectorActions): void {

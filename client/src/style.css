@@ -4452,6 +4452,21 @@ textarea#inline-edit {
 .chart-cell-value { opacity: 0.85; }
 .chart-grid { stroke: var(--border); stroke-width: 1; vector-effect: non-scaling-stroke; }
 .chart-base { stroke: var(--hairline); stroke-width: 1; vector-effect: non-scaling-stroke; }
+/* The time window brush (time-window.ts) and chart pins (render.ts drawAnchors). */
+.chart-brush { fill: var(--ink); fill-opacity: 0.08; }
+.chart-pin { stroke: var(--muted); stroke-width: 1; stroke-dasharray: 3 3; vector-effect: non-scaling-stroke; fill: none; }
+.chart-pin-dot { fill: var(--muted); }
+/* A prompt handed to the person's agent (chrome.ts agentPromptButton): a sans action under a mono hint. */
+.ctl.agent-prompt {
+  display: flex; align-items: center; gap: var(--space-2);
+  width: 100%; margin-top: var(--space-2); color: var(--ink);
+}
+.agent-prompt-icon { display: inline-flex; flex: none; color: var(--muted); }
+.ctl.agent-prompt:hover .agent-prompt-icon { color: var(--ink); }
+.ctl.agent-prompt.copied .agent-prompt-icon { color: var(--ok); }
+.ctl.agent-prompt:focus-visible { outline: 2px solid var(--sel); outline-offset: 2px; }
+#window-row .live-action,
+#live-status .live-action { margin: 4px 6px 0 0; }
 /* Status is never a series colour, and always comes with a glyph. */
 .chart-crit,
 .chart-bad { fill: var(--c-red); color: var(--c-red); }

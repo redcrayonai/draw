@@ -17,6 +17,7 @@ import {
   MARK_TABLES,
   EDGE_WEIGHT_TABLES,
   CODE_LINK_TABLES,
+  INCIDENT_TABLES,
   NOT_SUBSCRIBED,
   ROUTE_TABLES,
   LIST_TABLES,
@@ -47,7 +48,7 @@ describe('board subscription', () => {
   it('list + core + companion + route tables + the unsubscribed dashboard views are exactly the tables in module_bindings', () => {
     const inBindings = [...bindings.matchAll(/^ {4}name: '(\w+)',$/gm)].map(m => m[1]).sort();
     expect(
-      [...LIST_TABLES, ...CORE_TABLES, ...COMPANION_TABLES, ...ROUTE_TABLES, ...ARCHITECTURE_TABLES, ...CHART_TABLES, ...ICON_TABLES, ...LIBRARY_VIEWS, ...TRACE_TABLES, ...CHANGE_NOTE_TABLES, ...THREAT_TABLES, ...MARK_TABLES, ...EDGE_WEIGHT_TABLES, ...CODE_LINK_TABLES, ...AGENT_LINK_VIEWS, ...SHARE_VIEWS, ...EMBED_VIEWS, ...PERMISSION_VIEWS, ...NOT_SUBSCRIBED].sort()
+      [...LIST_TABLES, ...CORE_TABLES, ...COMPANION_TABLES, ...ROUTE_TABLES, ...ARCHITECTURE_TABLES, ...CHART_TABLES, ...ICON_TABLES, ...LIBRARY_VIEWS, ...TRACE_TABLES, ...CHANGE_NOTE_TABLES, ...THREAT_TABLES, ...MARK_TABLES, ...EDGE_WEIGHT_TABLES, ...CODE_LINK_TABLES, ...INCIDENT_TABLES, ...AGENT_LINK_VIEWS, ...SHARE_VIEWS, ...EMBED_VIEWS, ...PERMISSION_VIEWS, ...NOT_SUBSCRIBED].sort()
     ).toEqual(inBindings);
   });
 
@@ -130,7 +131,7 @@ describe('board subscription', () => {
     const crash = vi.fn();
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
     subscribeBoard(conn, () => {}, crash);
-    expect(conn.subs).toHaveLength(11);
+    expect(conn.subs).toHaveLength(12);
     expect(conn.subs[3].queries).toEqual(['SELECT * FROM visible_chart']);
     expect(conn.subs[4].queries).toEqual(['SELECT * FROM visible_node_icon']);
     expect(conn.subs[5].queries).toEqual(['SELECT * FROM visible_trace_playback']);
@@ -139,11 +140,12 @@ describe('board subscription', () => {
     expect(conn.subs[8].queries).toEqual(['SELECT * FROM visible_edge_weight']);
     expect(conn.subs[9].queries).toEqual(['SELECT * FROM visible_mark', 'SELECT * FROM visible_mark_waiter', 'SELECT * FROM visible_mark_read']);
     expect(conn.subs[10].queries).toEqual(['SELECT * FROM visible_session_remote', 'SELECT * FROM visible_code_ref_hash', 'SELECT * FROM visible_edge_evidence_hash']);
-    for (const [i, table] of [[3, 'visible_chart'], [4, 'visible_node_icon'], [5, 'visible_trace_playback'], [6, 'visible_change_note'], [7, 'visible_threat'], [8, 'visible_edge_weight'], [9, 'visible_mark'], [10, 'visible_session_remote']] as const) {
+    expect(conn.subs[11].queries).toEqual(['SELECT * FROM visible_chart_anchor', 'SELECT * FROM visible_board_window', 'SELECT * FROM visible_board_lifetime', 'SELECT * FROM visible_incident']);
+    for (const [i, table] of [[3, 'visible_chart'], [4, 'visible_node_icon'], [5, 'visible_trace_playback'], [6, 'visible_change_note'], [7, 'visible_threat'], [8, 'visible_edge_weight'], [9, 'visible_mark'], [10, 'visible_session_remote'], [11, 'visible_chart_anchor']] as const) {
       conn.subs[i].onError!({ event: new Error(`no such table: \`${table}\``) });
     }
     expect(crash).not.toHaveBeenCalled();
-    expect(warn).toHaveBeenCalledTimes(8);
+    expect(warn).toHaveBeenCalledTimes(9);
     expect(String(warn.mock.calls[0][0])).toContain('chart table unavailable');
     expect(String(warn.mock.calls[1][0])).toContain('icon table unavailable');
     expect(String(warn.mock.calls[2][0])).toContain('trace table unavailable');
@@ -152,6 +154,7 @@ describe('board subscription', () => {
     expect(String(warn.mock.calls[5][0])).toContain('edge weights unavailable');
     expect(String(warn.mock.calls[6][0])).toContain('marks unavailable');
     expect(String(warn.mock.calls[7][0])).toContain('code links unavailable');
+    expect(String(warn.mock.calls[8][0])).toContain('incident tables unavailable');
     warn.mockRestore();
   });
 
