@@ -10,7 +10,7 @@ import type { Env } from './env';
 import { UserLedger } from './user';
 import { CAPTURE_TTL_MS, CaptureVault } from './captures';
 import { verifyTap } from './issuer';
-import { AUTH_MS, LiveHub, type Attachment, type LiveSocket } from './live';
+import { AUTH_MS, LiveHub, type Attachment, type LiveSocket, type LiveStatus } from './live';
 import { dbHttp } from '../../shared/db-http';
 
 export class User extends DurableObject<Env> {
@@ -131,6 +131,11 @@ export class Live extends DurableObject<Env> {
     server.serializeAttachment({ role: 'pending', board, at: Date.now() } satisfies Attachment);
     if ((await this.ctx.storage.getAlarm()) === null) await this.ctx.storage.setAlarm(Date.now() + AUTH_MS);
     return new Response(null, { status: 101, webSocket: client });
+  }
+
+  /** tap_status, by RPC from the tools: reads the sockets, changes nothing. */
+  async status(): Promise<LiveStatus> {
+    return this.hub.status();
   }
 
   async webSocketMessage(ws: WebSocket, message: string | ArrayBuffer): Promise<void> {

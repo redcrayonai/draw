@@ -29,7 +29,7 @@ const TOOL_NAMES = blocks.map(b => b.match(/^(\w+):/)[1]);
 const takesCapture = blocks.filter(b => /^\s+capture,$|, capture \}/m.test(b)).map(b => b.match(/^(\w+):/)[1]);
 
 test('tools.ts parses into the hosted tool list', () => {
-  assert.equal(TOOL_NAMES.length, 39);
+  assert.equal(TOOL_NAMES.length, 40);
   for (const t of ['start_session', 'get_board', 'add_code_ref', 'mark_checkpoint', 'arrive', 'describe_charts', 'add_threat', 'update_threat', 'remove_threat', 'create_branch', 'submit_branch', 'wait_for_marks', 'watch_marks', 'reply_to_mark', 'list_marks']) assert.ok(TOOL_NAMES.includes(t), t);
   assert.ok(!TOOL_NAMES.includes('link_dashboard'));
 });

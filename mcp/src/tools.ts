@@ -66,6 +66,7 @@ import { sha256, type Principal, type UserInfo } from './auth';
 import { principalSubject, mintMarks, mintTap } from './issuer';
 import { boardText, readBoard } from './board';
 import { groupByFiles, newSeat } from './marks';
+import type { LiveStub } from './live';
 import {
   boardNotFound,
   captureNeeded,
@@ -649,6 +650,38 @@ export const TOOLS: Record<string, ToolDef> = {
       await assertWriter(t, b, 'start a live tap on it');
       const token = await mintTap(t.ctx.env, principalSubject(t.ctx.principal), b.id);
       return okResult(JSON.stringify({ board: String(b.id), token, command: `npx -y @redcrayonai/draw@1 tap --token ${token}`, otlp: 'http://127.0.0.1:4318', expires_in_hours: 12 }, null, 1));
+    },
+  },
+
+  tap_status: {
+    title: 'Live tap status',
+    scope: 'board:read',
+    annotations: { readOnlyHint: true },
+    description:
+      'Check the live tap on this board: whether one is connected and since when, when it last sent numbers, and whether anyone has Live on. Call it after the user runs the start_tap command, to confirm it connected. ' +
+      'Returns JSON { board, tap: "connected" | "none", connected_since, last_sent, watching, started_by_you }; times are ISO 8601 or null. A tap sends nothing while nobody watches, so last_sent stays null until someone turns Live on.' +
+      BOARD_SUFFIX,
+    input: z.object({ board: boardArg }).strict(),
+    async run({ board }, t) {
+      const b = await boardOf(t, board);
+      const { LIVE } = t.ctx.env;
+      // No live channel bound (tests): no tap can be connected.
+      const s = LIVE ? await (LIVE.get(LIVE.idFromName(String(b.id))) as unknown as LiveStub).status() : null;
+      const iso = (ms: number | null | undefined) => (ms == null ? null : new Date(ms).toISOString());
+      return okResult(
+        JSON.stringify(
+          {
+            board: String(b.id),
+            tap: s?.tap ? 'connected' : 'none',
+            connected_since: iso(s?.since),
+            last_sent: iso(s?.lastPublish),
+            watching: s?.watching ?? false,
+            started_by_you: s?.sub ? s.sub === principalSubject(t.ctx.principal) : null,
+          },
+          null,
+          1
+        )
+      );
     },
   },
 

@@ -36,5 +36,6 @@ When the user wants to watch traffic move while they run their app locally, use 
 3. Write `.redcrayon/tap.json` in the project root: `{ "board": "<id>", "services": { "<service.name>": "<node id>" } }`, one entry per OpenTelemetry service name.
 4. Run the command `start_tap` returned, in the background, from the project root. It needs Node 22.
 5. Tell the user to point their exporter at `http://127.0.0.1:4318` with `OTEL_EXPORTER_OTLP_PROTOCOL=http/protobuf`, and to switch on **live traffic** on the board.
+6. Call `tap_status` with `{ "board": "<id>" }` to confirm the tap connected.
 
 The tap drops span attributes on the user's machine and sends only per-edge rates, latencies and errors, and only while someone watches. It prints unmapped service names once a minute: add them to the file, which it rereads. The token lasts 12 hours.

@@ -9,6 +9,7 @@ import { shareHref } from '../../shared/share-link';
 import { INSTRUCTIONS, TOOLS, TOOL_NAMES, boardInLink } from './tools';
 import { verifyMarks, verifyTap } from './issuer';
 import { testEnv } from './test/env';
+import type { LiveStatus } from './live';
 import { ICON_IDS } from '../../module/src/node-icons';
 import { CODE_CONSENT_RULE, boardStoresCode, markCheckpointFlow, prepareSourceEvidence, startSessionFlow } from '../../agent/src/session';
 import { arriveFlow } from '../../agent/src/routes';
@@ -36,7 +37,7 @@ vi.mock('../../agent/src/routes', async importOriginal => {
 
 const VENDOR = /spacetime|maincloud|bsatn|clockwork|\bstdb\b/i;
 const HOSTED = [
-  'get_board', 'create_node', 'move_node', 'update_node', 'resize_node', 'delete_node', 'create_edge', 'hide_node', 'hide_edge', 'set_edge_latency', 'play_trace', 'start_tap', 'create_branch', 'submit_branch',
+  'get_board', 'create_node', 'move_node', 'update_node', 'resize_node', 'delete_node', 'create_edge', 'hide_node', 'hide_edge', 'set_edge_latency', 'play_trace', 'start_tap', 'tap_status', 'create_branch', 'submit_branch',
   'delete_edge', 'describe_charts', 'create_chart', 'set_chart_data', 'get_chart', 'start_session', 'add_code_ref',
   'mark_checkpoint', 'plan_route', 'arrive', 'reroute', 'remove_code_ref', 'set_node_doc', 'set_selection', 'layout_board',
   'add_change_note', 'update_change_note', 'remove_change_note',
@@ -113,7 +114,7 @@ describe('the hosted tool list (spec §4)', () => {
 
   it('titles, scopes and annotations', () => {
     for (const def of Object.values(TOOLS)) expect(def.title.length).toBeGreaterThan(0);
-    expect(Object.entries(TOOLS).filter(([, d]) => d.scope === 'board:read').map(([n]) => n).sort()).toEqual(['describe_charts', 'get_board', 'get_chart', 'list_marks']);
+    expect(Object.entries(TOOLS).filter(([, d]) => d.scope === 'board:read').map(([n]) => n).sort()).toEqual(['describe_charts', 'get_board', 'get_chart', 'list_marks', 'tap_status']);
     expect(Object.entries(TOOLS).filter(([, d]) => d.annotations?.destructiveHint).map(([n]) => n).sort()).toEqual(['delete_edge', 'delete_node', 'remove_change_note', 'remove_code_ref', 'remove_threat']);
     expect(TOOLS.get_board.annotations?.readOnlyHint).toBe(true);
   });
@@ -506,6 +507,44 @@ describe('start_tap and watch_marks on the hosted server', () => {
     expect(await verifyMarks(env, body.token)).toEqual({ sub: `machine:${keyId}`, board: 5n, seat: 'AbCdEfGhIjKlMnOp' });
   });
 });
+
+describe('tap_status', () => {
+  const run = async (status: LiveStatus | null) => {
+    const ids: string[] = [];
+    const LIVE = status && { idFromName: (n: string) => (ids.push(n), n), get: () => ({ status: async () => status }) };
+    const env = await testEnv(LIVE ? { LIVE: LIVE as never } : {});
+    const db = {
+      stats: { dbCalls: 0, dbMs: 0, writes: 0 },
+      async read(q: { text: string }) {
+        if (q.text.includes('visible_board')) return [{ id: 5n, name: 'main' }];
+        throw new Error(`unexpected read ${q.text}`);
+      },
+      async call() {
+        throw new Error('tap_status writes nothing');
+      },
+    };
+    const t = { ctx: { db, env, principal: { userId: 'user_ada' } }, signal: new AbortController().signal, named: () => {}, deadline: Date.now() + 15_000 } as never;
+    return { ids, body: JSON.parse(text(await TOOLS.tap_status.run({ board: '5' }, t))) };
+  };
+
+  it('reports the connected tap, when it last sent, and that you started it', async () => {
+    const { ids, body } = await run({ tap: true, since: Date.UTC(2026, 9, 31, 10), lastPublish: Date.UTC(2026, 9, 31, 10, 5), sub: 'agent:user_ada', watching: true });
+    expect(ids).toEqual(['5']);
+    expect(body).toEqual({ board: '5', tap: 'connected', connected_since: '2026-10-31T10:00:00.000Z', last_sent: '2026-10-31T10:05:00.000Z', watching: true, started_by_you: true });
+  });
+
+  it('says when someone else started it, and cannot tell for a tap from before that was recorded', async () => {
+    expect((await run({ tap: true, since: 0, lastPublish: null, sub: 'agent:user_bob', watching: false })).body.started_by_you).toBe(false);
+    expect((await run({ tap: true, since: 0, lastPublish: null, sub: null, watching: false })).body.started_by_you).toBeNull();
+  });
+
+  it('reports none without a tap, and without a live channel', async () => {
+    const none = { board: '5', tap: 'none', connected_since: null, last_sent: null, watching: false, started_by_you: null };
+    expect((await run({ tap: false, since: null, lastPublish: null, sub: null, watching: true })).body).toEqual({ ...none, watching: true });
+    expect((await run(null)).body).toEqual(none);
+  });
+});
+
 
 describe('red crayon review marks', () => {
   const HEX = identityFromClaims('https://iss.test', 'agent:u1');

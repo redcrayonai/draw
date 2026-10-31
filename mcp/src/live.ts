@@ -11,7 +11,8 @@ export type LiveRole = 'tap' | 'viewer';
 
 export type Attachment =
   | { role: 'pending'; board: string; at: number }
-  | { role: 'tap'; board: string; at: number; last: number; strikes: number }
+  /** sub: who started it (the token's subject); absent on a tap that connected before it was recorded. */
+  | { role: 'tap'; board: string; at: number; last: number; strikes: number; sub?: string }
   | { role: 'viewer'; board: string; at: number; live: boolean; checked: number };
 
 export interface LiveSocket {
@@ -22,8 +23,8 @@ export interface LiveSocket {
 }
 
 export interface LiveDeps {
-  /** The board a publish token is for, or null when it is not a valid tap token. */
-  verifyTap(token: string): Promise<{ board: bigint } | null>;
+  /** The board a publish token is for and who it was minted for, or null when it is not a valid tap token. */
+  verifyTap(token: string): Promise<{ board: bigint; sub: string } | null>;
   /** Whether this canvas token can read the board. */
   canRead(token: string, board: bigint): Promise<boolean>;
   now(): number;
@@ -48,6 +49,12 @@ export const ACCESS_TTL_MS = 3 * REAUTH_MS;
 export const CLOSE = { auth: 4001, conflict: 4009, abuse: 4008, full: 4013 } as const;
 
 const json = (v: unknown) => JSON.stringify(v);
+
+/** The board's tap, if any, and whether anyone has Live on (tap_status). Times are ms since the epoch. */
+export type LiveStatus = { tap: boolean; since: number | null; lastPublish: number | null; sub: string | null; watching: boolean };
+
+/** The Live Durable Object as the tools call it. */
+export type LiveStub = { status(): Promise<LiveStatus> };
 
 export class LiveHub {
   /** Sockets whose auth frame is being checked: a DO delivers frames during the check's fetch, so others are dropped. */
@@ -152,7 +159,7 @@ export class LiveHub {
       const claims = await this.deps.verifyTap(msg.auth);
       if (!claims || claims.board !== board) return fail('This tap token is not valid for this board. Ask your agent for a new one (start_tap).');
       if (this.role('tap', ws).length > 0) return ws.close(CLOSE.conflict, 'Another tap is already live for this board.');
-      ws.setAttachment({ role: 'tap', board: a.board, at, last: 0, strikes: 0 });
+      ws.setAttachment({ role: 'tap', board: a.board, at, last: 0, strikes: 0, sub: claims.sub });
       ws.send(json({ ok: true, role: 'tap' }));
       ws.send(json({ watching: this.watching() }));
       for (const v of this.role('viewer')) v.send(json({ tap: 'connected' }));
@@ -163,6 +170,11 @@ export class LiveHub {
     ws.setAttachment({ role: 'viewer', board: a.board, at, live: false, checked: at });
     ws.send(json({ ok: true, role: 'viewer' }));
     ws.send(json({ tap: this.role('tap').length > 0 ? 'connected' : 'gone' }));
+  }
+
+  status(): LiveStatus {
+    const t = this.role('tap')[0]?.attachment() as Extract<Attachment, { role: 'tap' }> | undefined;
+    return { tap: t !== undefined, since: t?.at ?? null, lastPublish: t && t.last > 0 ? t.last : null, sub: t?.sub ?? null, watching: this.watching() };
   }
 
   closed(ws: LiveSocket): void {

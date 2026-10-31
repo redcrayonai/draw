@@ -66,6 +66,7 @@ says why, and the first word tells the agent what to do:
 | Tool | What it does |
 |---|---|
 | `start_tap` | Starts a live view of your app's local traffic on the board, while you run it. |
+| `tap_status` | Says whether a tap is connected to the board, when it last sent numbers, and whether anyone has Live on. |
 | `set_edge_latency` | Sets an edge's latency and where the number came from: production, local or an estimate. |
 | `play_trace` | Replays one request on the board, span by span; errors show red. |
 
