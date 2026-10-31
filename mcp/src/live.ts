@@ -11,8 +11,8 @@ export type LiveRole = 'tap' | 'viewer';
 
 export type Attachment =
   | { role: 'pending'; board: string; at: number }
-  /** sub: who started it (the token's subject); absent on a tap that connected before it was recorded. */
-  | { role: 'tap'; board: string; at: number; last: number; strikes: number; sub?: string }
+  /** sub: who started it (the token's subject); exp: when its token expires (ms). Both absent on a tap that connected before they were recorded. */
+  | { role: 'tap'; board: string; at: number; last: number; strikes: number; sub?: string; exp?: number }
   | { role: 'viewer'; board: string; at: number; live: boolean; checked: number };
 
 export interface LiveSocket {
@@ -23,8 +23,8 @@ export interface LiveSocket {
 }
 
 export interface LiveDeps {
-  /** The board a publish token is for and who it was minted for, or null when it is not a valid tap token. */
-  verifyTap(token: string): Promise<{ board: bigint; sub: string } | null>;
+  /** The board a publish token is for, who it was minted for and its expiry (seconds), or null when it is not a valid tap token. */
+  verifyTap(token: string): Promise<{ board: bigint; sub: string; exp: number } | null>;
   /** Whether this canvas token can read the board. */
   canRead(token: string, board: bigint): Promise<boolean>;
   now(): number;
@@ -47,6 +47,9 @@ export const ACCESS_TTL_MS = 3 * REAUTH_MS;
 
 /** Close codes (application range): the reason is a sentence the tap or canvas shows. */
 export const CLOSE = { auth: 4001, conflict: 4009, abuse: 4008, full: 4013 } as const;
+export const TAP_EXPIRED = 'This tap token expired. Ask your agent for a new one (start_tap).';
+
+type TapAttachment = Extract<Attachment, { role: 'tap' }>;
 
 const json = (v: unknown) => JSON.stringify(v);
 
@@ -74,7 +77,23 @@ export class LiveHub {
   /** Tell the tap, if any, whether anyone is watching now. */
   private notifyTap(except?: LiveSocket): void {
     const w = this.watching(except);
-    for (const t of this.role('tap', except)) t.send(json({ watching: w }));
+    for (const t of this.taps(except)) t.send(json({ watching: w }));
+  }
+
+  private expired(a: TapAttachment): boolean {
+    return a.exp !== undefined && this.deps.now() >= a.exp;
+  }
+
+  /**
+   * The taps whose token is still valid. A token is verified once, at connect, so an expired tap
+   * is closed here, the next time it would be told who watches, block a new tap, or be reported.
+   */
+  private taps(except?: LiveSocket): LiveSocket[] {
+    return this.role('tap', except).filter(t => {
+      if (!this.expired(t.attachment() as TapAttachment)) return true;
+      t.close(CLOSE.auth, TAP_EXPIRED);
+      return false;
+    });
   }
 
   async message(ws: LiveSocket, raw: string): Promise<void> {
@@ -102,7 +121,8 @@ export class LiveHub {
       this.notifyTap();
       return;
     }
-    // tap: rate and size limits, then fan out to the viewers who are watching
+    // tap: expiry, rate and size limits, then fan out to the viewers who are watching
+    if (this.expired(a)) return ws.close(CLOSE.auth, TAP_EXPIRED);
     const now = this.deps.now();
     const tooSoon = now - a.last < MIN_INTERVAL_MS;
     const tooBig = raw.length > MAX_MESSAGE_BYTES;
@@ -158,8 +178,8 @@ export class LiveHub {
     if (msg.role === 'tap') {
       const claims = await this.deps.verifyTap(msg.auth);
       if (!claims || claims.board !== board) return fail('This tap token is not valid for this board. Ask your agent for a new one (start_tap).');
-      if (this.role('tap', ws).length > 0) return ws.close(CLOSE.conflict, 'Another tap is already live for this board.');
-      ws.setAttachment({ role: 'tap', board: a.board, at, last: 0, strikes: 0, sub: claims.sub });
+      if (this.taps(ws).length > 0) return ws.close(CLOSE.conflict, 'Another tap is already live for this board.');
+      ws.setAttachment({ role: 'tap', board: a.board, at, last: 0, strikes: 0, sub: claims.sub, exp: claims.exp * 1000 });
       ws.send(json({ ok: true, role: 'tap' }));
       ws.send(json({ watching: this.watching() }));
       for (const v of this.role('viewer')) v.send(json({ tap: 'connected' }));
@@ -169,11 +189,11 @@ export class LiveHub {
     if (this.role('viewer').length >= MAX_VIEWERS) return ws.close(CLOSE.full, 'Too many viewers on this board right now.');
     ws.setAttachment({ role: 'viewer', board: a.board, at, live: false, checked: at });
     ws.send(json({ ok: true, role: 'viewer' }));
-    ws.send(json({ tap: this.role('tap').length > 0 ? 'connected' : 'gone' }));
+    ws.send(json({ tap: this.taps().length > 0 ? 'connected' : 'gone' }));
   }
 
   status(): LiveStatus {
-    const t = this.role('tap')[0]?.attachment() as Extract<Attachment, { role: 'tap' }> | undefined;
+    const t = this.taps()[0]?.attachment() as TapAttachment | undefined;
     return { tap: t !== undefined, since: t?.at ?? null, lastPublish: t && t.last > 0 ? t.last : null, sub: t?.sub ?? null, watching: this.watching() };
   }
 
