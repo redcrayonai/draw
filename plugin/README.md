@@ -28,6 +28,9 @@ agent cites). Other agents connect to the same server by its URL.
 3. Start drawing: run `/draw:navigate`. Your agent opens a board named after
    your branch and posts its link. `/draw:navigate <name>` names the board;
    `/draw:navigate <board link>` draws on a board you already have.
+   During an incident, `/draw:triage <board link>` works the board an alert
+   opened: it charts measured evidence beside the hops it describes and leaves
+   the suspects to you.
 
 Code refs and checkpoints need git and Node 20 or later on your PATH. Without
 Node, drawing still works.
