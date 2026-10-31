@@ -14,15 +14,15 @@
     "dev": "wrangler dev"
   },
   "devDependencies": {
-    "@cloudflare/workers-types": "5.20261010.1",
-    "@modelcontextprotocol/client": "2.3.1",
-    "@modelcontextprotocol/sdk": "1.32.1",
-    "@types/node": "^26.6.4",
+    "@cloudflare/workers-types": "5.20261028.1",
+    "@modelcontextprotocol/client": "2.4.0",
+    "@modelcontextprotocol/sdk": "1.32.2",
+    "@types/node": "^26.6.5",
     "esbuild": "^0.28.2",
-    "jose": "6.2.12",
+    "jose": "6.2.13",
     "typescript": "~5.6.3",
     "vitest": "^4.1.11",
-    "wrangler": "4.149.0"
+    "wrangler": "4.154.0"
   },
   "pnpm": {
     "ignoredBuiltDependencies": [
@@ -36,7 +36,7 @@
   },
   "packageManager": "pnpm@10.34.5",
   "dependencies": {
-    "@modelcontextprotocol/server": "2.3.1",
+    "@modelcontextprotocol/server": "2.4.0",
     "zod": "4.6.5"
   },
   "license": "Apache-2.0"
