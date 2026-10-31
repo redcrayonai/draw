@@ -78,7 +78,8 @@ The automation sends `Authorization: Bearer <key>` to the MCP endpoint.
 Managed keys start with `rcak_`. The service stores only their digest.
 For rotation, create a replacement, update the automation, then revoke the old key.
 
-Service accounts operate on existing boards. They cannot create boards, start
+Service accounts operate on existing boards. They cannot create boards, except
+[incident boards](/capabilities/incidents/) from a board they can edit. They cannot start
 traffic taps, manage sharing or memberships, or perform human reviews. Their
 current scope caps every key. Revocation and account changes affect existing keys.
 Personal workspaces do not have service accounts.
