@@ -11,6 +11,9 @@ const byEdge = new Map<bigint, EdgeActivity>();
 /** Merges readings by edge: an edge keeps its last reading until a newer one or IDLE_MS passes. */
 export function setActivity(list: readonly EdgeActivity[]): void {
   for (const a of list) byEdge.set(a.edgeId, a);
+  // Readings already idle by the newest one go, so edges that stop reporting (or leave the board) are not kept.
+  const now = Math.max(...list.map(a => a.observedAt));
+  for (const [id, a] of byEdge) if (now - a.observedAt >= IDLE_MS) byEdge.delete(id);
 }
 
 export const getActivity = (edgeId: bigint): EdgeActivity | undefined => byEdge.get(edgeId);

@@ -12,6 +12,15 @@ describe('activity', () => {
     expect(liveActivity(903n, 1000)).toBeUndefined();
   });
 
+  it('drops readings already idle by the newest one, so edges that stop reporting are not kept', () => {
+    setActivity([{ edgeId: 905n, rps: 4, errRate: 0, observedAt: 1000 }]);
+    setActivity([{ edgeId: 906n, rps: 4, errRate: 0, observedAt: 1000 + IDLE_MS - 1 }]);
+    expect(getActivity(905n)).toBeDefined();
+    setActivity([{ edgeId: 906n, rps: 4, errRate: 0, observedAt: 1000 + IDLE_MS }]);
+    expect(getActivity(905n)).toBeUndefined();
+    expect(getActivity(906n)).toBeDefined();
+  });
+
   it('treats zero traffic as idle', () => {
     setActivity([{ edgeId: 904n, rps: 0, errRate: 0, observedAt: 1000 }]);
     expect(liveActivity(904n, 1000)).toBeUndefined();
