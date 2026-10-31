@@ -447,6 +447,8 @@ export interface RenderState {
   charts?: ReadonlyMap<bigint, Chart>;
   /** Hand-set line weight by edge id (visible_edge_weight, RC-688); absent means regular. */
   edgeWeights?: ReadonlyMap<bigint, string>;
+  /** Hand-set traffic animation by edge id (visible_edge_motion); absent means static. */
+  edgeMotions?: ReadonlyMap<bigint, EdgeMotion>;
   /** Library icon id by node (visible_node_icon); a node without one draws as before. */
   icons?: ReadonlyMap<bigint, string>;
   /** Neighbour focus: hovered node, else the single selected one. flow = from selection. */
@@ -574,6 +576,10 @@ export function edgeText(edge: Pick<Edge, 'label' | 'latencyMs' | 'latencySource
 /** Latency at which an edge reads warm, and hot. */
 const WARM_MS = 100;
 const HOT_MS = 400;
+
+/** An edge's hand-set animation: dots and threat dots ride the line (edge-flow.ts); dash and threat move its dashes here. */
+export type EdgeMotion = { motion: string; speed: string };
+const MOTION_DUR: Record<string, string> = { slow: '2.4s', normal: '1.2s', fast: '0.6s' };
 
 /** How fast a live edge flows: busier is faster, 2.4 s per dash cycle down to 0.4 s. */
 export function flowSeconds(rps: number): number {
@@ -1859,6 +1865,14 @@ export function renderBoard(
     if (e.g.style.getPropertyValue('--flow-dur') !== dur) {
       if (dur) e.g.style.setProperty('--flow-dur', dur);
       else e.g.style.removeProperty('--flow-dur');
+    }
+    const motion = state.edgeMotions?.get(edge.id)?.motion;
+    e.g.classList.toggle('motion-dash', motion === 'dash');
+    e.g.classList.toggle('motion-threat', motion === 'threat');
+    const motionDur = motion === 'dash' || motion === 'threat' ? MOTION_DUR[state.edgeMotions!.get(edge.id)!.speed] ?? MOTION_DUR.normal : '';
+    if (e.g.style.getPropertyValue('--motion-dur') !== motionDur) {
+      if (motionDur) e.g.style.setProperty('--motion-dur', motionDur);
+      else e.g.style.removeProperty('--motion-dur');
     }
     const diffColor = state.edgeDiff?.get(edge.id);
     const head = markerFor(evCls, state.overlay, selected, diffColor === 'added' ? 'green' : diffColor === 'removed' ? 'red' : diffColor === 'changed' ? 'blue' : reader?.status === 'stale' ? 'red' : edge.color);

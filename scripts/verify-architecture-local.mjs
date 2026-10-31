@@ -138,6 +138,25 @@ test('merge applies branch adds, removes and changes; keeps base work since the 
   await rejects(user.token, 'create_node', nodeArgs(v.boardId, 'F'), 'merged branch');
   await ok(user.token, 'delete_board', [v.boardId]);
 });
+test("a branch copies its base's edge motions, and a merge brings a branch edge's motion back", async () => {
+  const user = await mint(), boardId = await plainBoard(user, 'motion');
+  for (const l of ['A', 'B']) await ok(user.token, 'create_node', nodeArgs(boardId, l));
+  const [a, b] = await sql(OWNER, `SELECT * FROM node WHERE board_id = ${boardId}`);
+  await ok(user.token, 'create_edge', [boardId, a.id, b.id, 'reads', 'human:me', NONE, NONE, NONE]);
+  const [e] = await sql(OWNER, `SELECT * FROM edge WHERE board_id = ${boardId}`);
+  await ok(user.token, 'set_edge_motion', [e.id, 'threat', 'fast']);
+  const motions = async board => (await sql(OWNER, `SELECT * FROM edge_motion WHERE board_id = ${board}`)).map(m => [m.motion, m.speed]).sort();
+  const v = await branchOf(user, boardId, 'motion-branch');
+  assert.deepEqual(await motions(v.boardId), [['threat', 'fast']]);
+  const [ba, bb] = await sql(OWNER, `SELECT * FROM node WHERE board_id = ${v.boardId}`);
+  await ok(user.token, 'create_edge', [v.boardId, bb.id, ba.id, 'calls back', 'human:me', NONE, NONE, NONE]);
+  const back = (await sql(OWNER, `SELECT * FROM edge WHERE board_id = ${v.boardId} AND label = 'calls back'`))[0];
+  await ok(user.token, 'set_edge_motion', [back.id, 'dots', 'slow']);
+  await review(user, v);
+  await ok(user.token, 'merge_architecture_proposal', [v.boardId]);
+  assert.deepEqual(await motions(boardId), [['dots', 'slow'], ['threat', 'fast']]);
+});
+
 test('merge refuses a fact base and an agent caller', async () => {
   const user = await mint(), agent = await mint(), h = await history(user, 'factmerge'), base = await publish(h);
   const p = await proposal(user, base, 'fm'); await review(user, p);

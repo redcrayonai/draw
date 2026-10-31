@@ -239,6 +239,17 @@ const tables = {
       weight: t.string(), // 'medium' | 'bold'
     }
   ),
+  // An edge's traffic animation, set by hand: its own table and view, as edgeWeight.
+  // A row exists only for an animated edge, and goes with its edge.
+  edgeMotion: table(
+    {},
+    {
+      edgeId: t.u64().primaryKey(),
+      boardId: t.u64().index('btree'),
+      motion: t.string(), // 'dots' | 'dash' | 'threat'
+      speed: t.string(), // 'slow' | 'normal' | 'fast'
+    }
+  ),
   // named hide-sets: a labeled editorial stance ("vendor libs", "schedulers")
   // that the chrome can enumerate and a reader can toggle. Rows belong to sets
   // via hide_set_member, so a row can be in several sets and a set is a
@@ -878,7 +889,7 @@ export const embeddedBoard = spacetimedb.view({ name: 'embedded_board', public: 
 // readable board (the switcher, ⌘K, the history rail); the rest return the
 // boards the caller has open (viewBoardIds, RC-605).
 export const visibleRows = spacetimedb.exportGroup({
-  ...Object.fromEntries(['board', 'architectureVersion', 'node', 'edge', 'edgeWeight', 'hideSet', 'sessionRoute', 'routeEvent', 'chart', 'tracePlayback', 'changeNote', 'nodeIcon'].map(key => [
+  ...Object.fromEntries(['board', 'architectureVersion', 'node', 'edge', 'edgeWeight', 'edgeMotion', 'hideSet', 'sessionRoute', 'routeEvent', 'chart', 'tracePlayback', 'changeNote', 'nodeIcon'].map(key => [
     `visible${key[0].toUpperCase()}${key.slice(1)}`,
     spacetimedb.view({ name: `visible_${key.replace(/[A-Z]/g, c => `_${c.toLowerCase()}`)}`, public: true }, t.array((tables as any)[key].rowType) as any, ctx => {
       const ids = key === 'board' || key === 'architectureVersion' ? readableBoardIds(ctx) : viewBoardIds(ctx);
@@ -1007,6 +1018,8 @@ const ALLOWED_STROKES = ['solid', 'dashed'];
 // RC-688: an edge can also be dotted; a node border cannot (no renderer).
 const ALLOWED_EDGE_STROKES = ['solid', 'dashed', 'dotted'];
 const ALLOWED_EDGE_WEIGHTS = ['regular', 'medium', 'bold'];
+const ALLOWED_EDGE_MOTIONS = ['none', 'dots', 'dash', 'threat'];
+const ALLOWED_EDGE_SPEEDS = ['slow', 'normal', 'fast'];
 const ALLOWED_SIZES = ['s', 'm', 'l'];
 const FOCAL_LIMIT = 2;
 const GRID = 4;
@@ -1860,6 +1873,7 @@ function clearBoardContent(ctx: any, boardId: bigint): void {
   for (const row of [...ctx.db.chart.boardId.filter(boardId)]) ctx.db.chart.nodeId.delete(row.nodeId);
   for (const row of [...ctx.db.chartEmbed.boardId.filter(boardId)]) revokeChartEmbed(ctx, row.nodeId);
   for (const row of [...ctx.db.edgeWeight.boardId.filter(boardId)]) ctx.db.edgeWeight.edgeId.delete(row.edgeId);
+  for (const row of [...ctx.db.edgeMotion.boardId.filter(boardId)]) ctx.db.edgeMotion.edgeId.delete(row.edgeId);
   for (const row of [...ctx.db.nodeIcon.boardId.filter(boardId)]) ctx.db.nodeIcon.nodeId.delete(row.nodeId);
   for (const row of [...ctx.db.nodeTouch.boardId.filter(boardId)]) ctx.db.nodeTouch.nodeId.delete(row.nodeId);
   for (const row of [...ctx.db.codeRefHash.boardId.filter(boardId)]) ctx.db.codeRefHash.refId.delete(row.refId);
@@ -2219,6 +2233,7 @@ function removeEdgeRows(ctx: any, edgeId: bigint): void {
   clearCodeRefs(ctx, 'edge', edgeId);
   ctx.db.edge.id.delete(edgeId);
   ctx.db.edgeWeight.edgeId.delete(edgeId); // false (no throw) for a regular edge
+  ctx.db.edgeMotion.edgeId.delete(edgeId);
   dropEdgeHash(ctx, edgeId);
 }
 
@@ -2367,6 +2382,29 @@ export const setEdgeWeight = reducer(
     assertBoardWrite(ctx, edge.boardId);
     assertOneOf('weight', weight, ALLOWED_EDGE_WEIGHTS);
     writeEdgeWeight(ctx, edge, weight);
+    touch(ctx, edge.boardId);
+  }
+);
+
+// Its own reducer, as set_edge_weight: update_edge_style keeps the arguments older clients send.
+export const setEdgeMotion = reducer(
+  { edgeId: t.u64(), motion: t.string(), speed: t.string() },
+  (ctx, { edgeId, motion, speed }) => {
+    const edge = ctx.db.edge.id.find(edgeId);
+    if (!edge) {
+      throw new SenderError(`edge ${edgeId} does not exist`);
+    }
+    assertBoardWrite(ctx, edge.boardId);
+    assertOneOf('motion', motion, ALLOWED_EDGE_MOTIONS);
+    assertOneOf('speed', speed, ALLOWED_EDGE_SPEEDS);
+    const row = ctx.db.edgeMotion.edgeId.find(edgeId);
+    if (motion === 'none') {
+      if (row) ctx.db.edgeMotion.edgeId.delete(edgeId);
+    } else if (!row) {
+      ctx.db.edgeMotion.insert({ edgeId, boardId: edge.boardId, motion, speed });
+    } else if (row.motion !== motion || row.speed !== speed) {
+      ctx.db.edgeMotion.edgeId.update({ ...row, motion, speed });
+    }
     touch(ctx, edge.boardId);
   }
 );
@@ -2576,6 +2614,7 @@ export const deleteEdge = reducer(
     clearCodeRefs(ctx, 'edge', edgeId);
     ctx.db.edge.id.delete(edgeId);
     ctx.db.edgeWeight.edgeId.delete(edgeId);
+    ctx.db.edgeMotion.edgeId.delete(edgeId);
     dropEdgeHash(ctx, edgeId);
     refreshStats(ctx, edge.boardId);
     emit(ctx, edge.boardId, 'edge.deleted', { evidence: evidenceClass(edge.evidence, edge.evidenceStatus) });
@@ -4583,6 +4622,8 @@ export const createArchitectureProposal = reducer(
       const row = ctx.db.edge.insert({ ...e, id: 0n, boardId: board.id, fromNode: nodes.get(e.fromNode)!, toNode: nodes.get(e.toNode)! }); edges.set(e.id, row.id);
       const weight = ctx.db.edgeWeight.edgeId.find(e.id);
       if (weight) ctx.db.edgeWeight.insert({ edgeId: row.id, boardId: board.id, weight: weight.weight });
+      const motion = ctx.db.edgeMotion.edgeId.find(e.id);
+      if (motion) ctx.db.edgeMotion.insert({ ...motion, edgeId: row.id, boardId: board.id });
       const hash = ctx.db.edgeEvidenceHash.edgeId.find(e.id);
       if (hash) ctx.db.edgeEvidenceHash.insert({ ...hash, edgeId: row.id, boardId: board.id });
     }
@@ -4768,6 +4809,8 @@ export const mergeArchitectureProposal = reducer(
       copyEdgeHash(ctx, e.id, row.id, base);
       const weight = ctx.db.edgeWeight.edgeId.find(e.id);
       if (weight) ctx.db.edgeWeight.insert({ edgeId: row.id, boardId: base, weight: weight.weight });
+      const motion = ctx.db.edgeMotion.edgeId.find(e.id);
+      if (motion) ctx.db.edgeMotion.insert({ ...motion, edgeId: row.id, boardId: base });
       baseEdges.set(k, row); addedEdges++;
     }
     // kept on both sides: the branch's content wins per field, the base keeps its layout

@@ -242,7 +242,38 @@
                 </button>
               </div>
             </div>
-            <div class="tb-popover-row tb-edge-control"><span>Default</span><button id="tb-reset-style" title="Reset colour, line and weight to the default">Reset</button></div>
+            <div class="tb-popover-row tb-edge-control">
+              <span>Motion</span>
+              <div class="tb-seg" id="tb-motion" role="group" aria-label="Motion">
+                <button data-motion="none" title="No motion" aria-label="No motion" aria-pressed="false">
+                  <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2.5 8h11" /></svg>
+                </button>
+                <button data-motion="dots" title="Dots: traffic flows along the edge" aria-label="Dots: traffic flows along the edge" aria-pressed="false">
+                  <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2.5 8h11" stroke-opacity="0.4" /><circle cx="4.5" cy="8" r="1.2" fill="currentColor" stroke="none" /><circle cx="8" cy="8" r="1.2" fill="currentColor" stroke="none" /><circle cx="11.5" cy="8" r="1.2" fill="currentColor" stroke="none" /></svg>
+                </button>
+                <button data-motion="dash" title="Dash: the line flows" aria-label="Dash: the line flows" aria-pressed="false">
+                  <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2.5 8h8" stroke-dasharray="2.5 2" /><path d="M10.5 5.5l3 2.5-3 2.5" /></svg>
+                </button>
+                <button data-motion="threat" title="Threat: attack traffic, as a threat's blast radius" aria-label="Threat: attack traffic, as a threat's blast radius" aria-pressed="false">
+                  <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 2.5l5.5 10h-11z" /><path d="M8 6.5v2.5" /><path d="M8 11h.01" /></svg>
+                </button>
+              </div>
+            </div>
+            <div class="tb-popover-row tb-edge-control">
+              <span>Speed</span>
+              <div class="tb-seg" id="tb-speed" role="group" aria-label="Speed">
+                <button data-speed="slow" title="Slow" aria-label="Slow" aria-pressed="false">
+                  <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6.5 5l3 3-3 3" /></svg>
+                </button>
+                <button data-speed="normal" title="Normal speed" aria-label="Normal speed" aria-pressed="false">
+                  <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4.5 5l3 3-3 3M8.5 5l3 3-3 3" /></svg>
+                </button>
+                <button data-speed="fast" title="Fast" aria-label="Fast" aria-pressed="false">
+                  <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2.5 5l3 3-3 3M6.5 5l3 3-3 3M10.5 5l3 3-3 3" /></svg>
+                </button>
+              </div>
+            </div>
+            <div class="tb-popover-row tb-edge-control"><span>Default</span><button id="tb-reset-style" title="Reset colour, line, weight and motion to the default">Reset</button></div>
             <p id="tb-overlay-note" class="tb-note tb-edge-control" hidden>Evidence overlay is on, so line and weight show evidence. &#8997;E turns it off.</p>
             <div class="tb-popover-row tb-node-control">
               <span>Shape</span>
