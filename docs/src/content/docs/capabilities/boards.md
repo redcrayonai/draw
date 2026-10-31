@@ -26,6 +26,24 @@ Code refs and checkpoints need a session tied to your checkout.
 Every write uses the same drawing rules: a 4px grid, at most two focal nodes,
 and a fixed set of colors. A refused write explains the rule it breaks.
 
+## Animate an edge
+
+Select one or more edges and open the style menu (the color dot) in the toolbar.
+**Motion** makes an edge show traffic:
+
+| Motion | What the edge shows |
+|---|---|
+| None | A still line. New edges start here. |
+| Dots | Dots flow from source to target. |
+| Dash | The line itself flows toward the target. |
+| Threat | A red dashed line with glowing red dots, as in a threat's blast radius. |
+
+**Speed** sets slow, normal or fast for an edge that has a motion. **Reset**
+returns color, line, weight and motion to the default. Motion is a hand-set
+style: it does not measure anything. For measured traffic, use a
+[live tap](/capabilities/traffic/). If your system asks for reduced motion,
+edges do not animate.
+
 ## Read the evidence
 
 An agent can hide imported components in named groups. The board counts hidden
