@@ -358,6 +358,14 @@ export const EdgeEvidenceHash = __t.object("EdgeEvidenceHash", {
 });
 export type EdgeEvidenceHash = __Infer<typeof EdgeEvidenceHash>;
 
+export const EdgeMotion = __t.object("EdgeMotion", {
+  edgeId: __t.u64(),
+  boardId: __t.u64(),
+  motion: __t.string(),
+  speed: __t.string(),
+});
+export type EdgeMotion = __Infer<typeof EdgeMotion>;
+
 export const EdgeWeight = __t.object("EdgeWeight", {
   edgeId: __t.u64(),
   boardId: __t.u64(),
@@ -890,6 +898,9 @@ export type VisibleEdge = __Infer<typeof VisibleEdge>;
 
 export const VisibleEdgeEvidenceHash = __t.object("VisibleEdgeEvidenceHash", {});
 export type VisibleEdgeEvidenceHash = __Infer<typeof VisibleEdgeEvidenceHash>;
+
+export const VisibleEdgeMotion = __t.object("VisibleEdgeMotion", {});
+export type VisibleEdgeMotion = __Infer<typeof VisibleEdgeMotion>;
 
 export const VisibleEdgeWeight = __t.object("VisibleEdgeWeight", {});
 export type VisibleEdgeWeight = __Infer<typeof VisibleEdgeWeight>;

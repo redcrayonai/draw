@@ -81,6 +81,13 @@ describe('boardInLink', () => {
     expect(boardInLink(o, '12345678901234567890', 'redcrayon')).toBe('12345678901234567890');
     expect(boardInLink(o, "x' OR '1'='1", 'redcrayon')).toBeUndefined();
   });
+
+  it('reads a bare #b= or #s= fragment as this deployment', () => {
+    expect(boardInLink(o, '#b=c4bb879c7355360696d9', 'redcrayon')).toBe('c4bb879c7355360696d9');
+    expect(boardInLink(o, '#b=12345678901234567890', 'redcrayon')).toBe('12345678901234567890');
+    expect(boardInLink(o, '#s=0123456789abcdef0123456789abcdef', 'redcrayon')).toEqual({ share: '0123456789abcdef0123456789abcdef' });
+    expect(boardInLink(o, "#b=x'%20OR%20'1'='1", 'redcrayon')).toBeUndefined();
+  });
 });
 
 describe('the hosted tool list (spec §4)', () => {

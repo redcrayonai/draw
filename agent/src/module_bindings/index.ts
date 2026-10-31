@@ -129,6 +129,7 @@ import SetCodeRefHashesReducer from "./set_code_ref_hashes_reducer";
 import SetEdgeEvidenceCodeReducer from "./set_edge_evidence_code_reducer";
 import SetEdgeHiddenReducer from "./set_edge_hidden_reducer";
 import SetEdgeLatencyReducer from "./set_edge_latency_reducer";
+import SetEdgeMotionReducer from "./set_edge_motion_reducer";
 import SetEdgeWeightReducer from "./set_edge_weight_reducer";
 import SetLinkShareReducer from "./set_link_share_reducer";
 import SetLinkShareIncludesReducer from "./set_link_share_includes_reducer";
@@ -208,6 +209,7 @@ import VisibleCodeRefHashRow from "./visible_code_ref_hash_table";
 import VisibleCursorRow from "./visible_cursor_table";
 import VisibleEdgeRow from "./visible_edge_table";
 import VisibleEdgeEvidenceHashRow from "./visible_edge_evidence_hash_table";
+import VisibleEdgeMotionRow from "./visible_edge_motion_table";
 import VisibleEdgeWeightRow from "./visible_edge_weight_table";
 import VisibleHideSetRow from "./visible_hide_set_table";
 import VisibleHideSetMemberRow from "./visible_hide_set_member_table";
@@ -524,6 +526,13 @@ const tablesSchema = __schema({
     constraints: [
     ],
   }, VisibleEdgeEvidenceHashRow),
+  visibleEdgeMotion: __table({
+    name: 'visible_edge_motion',
+    indexes: [
+    ],
+    constraints: [
+    ],
+  }, VisibleEdgeMotionRow),
   visibleEdgeWeight: __table({
     name: 'visible_edge_weight',
     indexes: [
@@ -742,6 +751,7 @@ const reducersSchema = __reducers(
   __reducerSchema("set_edge_evidence_code", SetEdgeEvidenceCodeReducer),
   __reducerSchema("set_edge_hidden", SetEdgeHiddenReducer),
   __reducerSchema("set_edge_latency", SetEdgeLatencyReducer),
+  __reducerSchema("set_edge_motion", SetEdgeMotionReducer),
   __reducerSchema("set_edge_weight", SetEdgeWeightReducer),
   __reducerSchema("set_link_share", SetLinkShareReducer),
   __reducerSchema("set_link_share_includes", SetLinkShareIncludesReducer),

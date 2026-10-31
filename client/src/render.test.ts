@@ -2413,6 +2413,28 @@ describe('hand-set edge style (RC-688)', () => {
     expect(line(world).getAttribute('marker-end')).toBe('url(#mk-c-green)');
   });
 
+  it('dash and threat motions flow the edge at their speed; dots, none and no row leave it as it was', () => {
+    const world = mkWorld();
+    const edge = mkEdge(10, 1, 2);
+    const g = () => world.querySelector<SVGGElement>('.edge')!;
+    renderBoard(world, nodes, [edge], mkState());
+    const plain = g().outerHTML;
+    renderBoard(world, nodes, [edge], mkState({ edgeMotions: new Map([[10n, { motion: 'dash', speed: 'fast' }]]) }));
+    expect(g().classList.contains('motion-dash')).toBe(true);
+    expect(g().style.getPropertyValue('--motion-dur')).toBe('0.6s');
+    const threat = mkState({ edgeMotions: new Map([[10n, { motion: 'threat', speed: 'slow' }]]) });
+    renderBoard(world, nodes, [edge], threat);
+    expect([g().classList.contains('motion-dash'), g().classList.contains('motion-threat')]).toEqual([false, true]);
+    expect(g().style.getPropertyValue('--motion-dur')).toBe('2.4s');
+    expect(mutations(world, () => renderBoard(world, nodes, [edge], threat))).toHaveLength(0);
+    renderBoard(world, nodes, [edge], mkState({ edgeMotions: new Map([[10n, { motion: 'dots', speed: 'fast' }]]) }));
+    expect(g().classList.contains('motion-threat')).toBe(false);
+    expect(g().style.getPropertyValue('--motion-dur')).toBe('');
+    const fresh = mkWorld();
+    renderBoard(fresh, nodes, [edge], mkState({ edgeMotions: new Map([[10n, { motion: 'dots', speed: 'fast' }]]) }));
+    expect(fresh.querySelector('.edge')!.outerHTML).toBe(plain);
+  });
+
   it('a weight change patches the line in place, and an identical frame writes nothing', () => {
     const world = mkWorld();
     const edge = mkEdge(10, 1, 2);

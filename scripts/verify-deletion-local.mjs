@@ -217,6 +217,7 @@ before(async () => {
   await ok(owner.token, 'enable_board_embed', [B, randomBytes(16).toString('hex'), false, 0]);
   await ok(owner.token, 'set_node_icon', [a, 'queue']);
   await ok(owner.token, 'set_edge_weight', [edge.id, 'bold']);
+  await ok(owner.token, 'set_edge_motion', [edge.id, 'dots', 'fast']);
   await ok(owner.token, 'set_node_hidden', [b, true, some('scratch')]);
   sets = (await sql(OWNER, `SELECT * FROM hide_set WHERE board_id = ${B}`)).map(s => s.id);
   await ok(owner.token, 'plan_route', [B, [a, b]]);

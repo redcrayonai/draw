@@ -167,7 +167,7 @@ test('every ordinary graph and companion reducer rejects an unrelated identity',
     ['update_node', [a.id, { some: 'stolen' }, ...Array(8).fill(NONE)]], ['set_node_doc', [a.id, 'stolen']],
     ['set_node_hidden', [a.id, true, NONE]], ['delete_node', [a.id]],
     ['create_edge', [B, a.id, b.id, 'stolen', 'human:test', NONE, NONE, NONE]],
-    ['set_edge_hidden', [edge.id, true, NONE]], ['update_edge_style', [edge.id, { some: 'red' }, NONE]], ['set_edge_weight', [edge.id, 'bold']],
+    ['set_edge_hidden', [edge.id, true, NONE]], ['update_edge_style', [edge.id, { some: 'red' }, NONE]], ['set_edge_weight', [edge.id, 'bold']], ['set_edge_motion', [edge.id, 'dots', 'fast']],
     ['update_edge_evidence', [edge.id, 'source:secret.ts:1', 'stale']], ['delete_edge', [edge.id]],
     ['add_repo_files', [B, ['stolen.ts']]], ['mark_checkpoint', [B, SHA, '{}']], ['plan_route', [B, [a.id]]],
     ['reroute', [B, [], [], [], 'stolen']], ['arrive_at_checkpoint', [B, a.id, 1, 0, SHA, '{}']],
@@ -571,6 +571,40 @@ test('edge style (RC-688): colour, line and weight are stored, read by every rea
   await ok(owner, 'set_edge_weight', [onC.id, 'bold']);
   await ok(owner, 'delete_board', [C]);
   assert.deepEqual(await sql(operator, `SELECT * FROM edge_weight WHERE board_id = ${C}`), []);
+});
+
+test('edge motion: stored as one row for an animated edge, read by every reader, refused to view-link visitors and strangers, and goes with its edge', async () => {
+  const owner = await mint(), viewer = await mint(), stranger = await mint();
+  const B = await create(owner), [a, b] = await nodes(owner, B);
+  await ok(owner, 'create_edge', [B, a.id, b.id, 'uses', 'human:test', NONE, NONE, NONE]);
+  const [e] = await sql(operator, `SELECT * FROM edge WHERE board_id = ${B}`);
+  const motions = who => sql(who, `SELECT * FROM visible_edge_motion WHERE board_id = ${B}`);
+  assert.deepEqual(await motions(owner), []);
+  await ok(owner, 'set_edge_motion', [e.id, 'threat', 'fast']);
+  await ok(owner, 'set_edge_motion', [e.id, 'threat', 'fast']);
+  assert.deepEqual(await motions(owner), [{ edge_id: e.id, board_id: B, motion: 'threat', speed: 'fast' }]);
+  await denied(owner, 'set_edge_motion', [e.id, 'sparkle', 'fast'], "motion 'sparkle' is not allowed; must be one of: none, dots, dash, threat");
+  await denied(owner, 'set_edge_motion', [e.id, 'dots', 'warp'], "speed 'warp' is not allowed; must be one of: slow, normal, fast");
+  await denied(owner, 'set_edge_motion', [Number.MAX_SAFE_INTEGER, 'dots', 'normal'], 'does not exist');
+  const token = randomBytes(16).toString('hex');
+  await ok(owner, 'set_link_share', [B, 'view', token]);
+  await ok(viewer, 'open_shared_link', [token]);
+  assert.deepEqual(await motions(viewer), [{ edge_id: e.id, board_id: B, motion: 'threat', speed: 'fast' }]);
+  await denied(viewer, 'set_edge_motion', [e.id, 'none', 'normal'], 'read only');
+  await denied(stranger, 'set_edge_motion', [e.id, 'none', 'normal']);
+  assert.deepEqual(await motions(stranger), []);
+  // none is no row; delete_edge and delete_board take the row with the edge
+  await ok(owner, 'set_edge_motion', [e.id, 'none', 'normal']);
+  assert.deepEqual(await motions(owner), []);
+  await ok(owner, 'set_edge_motion', [e.id, 'dots', 'slow']);
+  await ok(owner, 'delete_edge', [e.id]);
+  assert.deepEqual(await sql(operator, `SELECT * FROM edge_motion WHERE edge_id = ${e.id}`), []);
+  const C = await create(owner), [c, d] = await nodes(owner, C);
+  await ok(owner, 'create_edge', [C, c.id, d.id, 'uses', 'human:test', NONE, NONE, NONE]);
+  const [onC] = await sql(operator, `SELECT * FROM edge WHERE board_id = ${C}`);
+  await ok(owner, 'set_edge_motion', [onC.id, 'dash', 'normal']);
+  await ok(owner, 'delete_board', [C]);
+  assert.deepEqual(await sql(operator, `SELECT * FROM edge_motion WHERE board_id = ${C}`), []);
 });
 
 test('text the app itself stored can always be stored again, so undo can restore any existing row', async () => {
