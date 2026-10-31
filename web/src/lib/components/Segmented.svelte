@@ -1,19 +1,21 @@
 <script lang="ts" generics="T extends string">
-  // One bordered group of toggle buttons; the visible label names the group.
-  let { label, options, value, onchange }: {
+  // One bordered group of toggle buttons; the label names the group (visible unless hideLabel, when a heading beside it already says it).
+  let { label, options, value, onchange, disabled = false, hideLabel = false }: {
     label: string;
     options: readonly T[];
     value: T;
     onchange: (v: T) => void;
+    disabled?: boolean;
+    hideLabel?: boolean;
   } = $props();
   const id = $props.id();
 </script>
 
 <div class="group" role="group" aria-labelledby={id}>
-  <span class="eyebrow" {id}>{label}</span>
+  <span class={hideLabel ? 'sr-only' : 'eyebrow'} {id}>{label}</span>
   <div class="seg">
     {#each options as o (o)}
-      <button type="button" aria-pressed={o === value} onclick={() => onchange(o)}>{o}</button>
+      <button type="button" aria-pressed={o === value} {disabled} onclick={() => !disabled && o !== value && onchange(o)}>{o}</button>
     {/each}
   </div>
 </div>
@@ -32,6 +34,7 @@
     cursor: pointer;
     transition: background var(--rc-dur) var(--rc-ease), color var(--rc-dur) var(--rc-ease);
   }
-  button:hover { color: var(--rc-ink); background: var(--rc-hover); }
+  button:hover:not(:disabled) { color: var(--rc-ink); background: var(--rc-hover); }
+  button:disabled { cursor: not-allowed; opacity: 0.55; }
   button[aria-pressed='true'] { color: var(--rc-ink); background: var(--rc-sel-soft); box-shadow: inset 0 0 0 1px var(--rc-sel); }
 </style>

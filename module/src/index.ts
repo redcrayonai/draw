@@ -80,6 +80,8 @@ import {
   MARK_SEAT_RULE,
   MARK_SEND_RULE,
 } from './marks';
+import { pluginFeatures, workspacePlugin } from './plugins';
+import { versionFeatures, versionTables } from './versions';
 
 const architectureHistory = table({}, {
   id: t.u64().primaryKey().autoInc(),
@@ -141,6 +143,8 @@ const tables = {
   ...workspaceTables,
   ...workspaceServiceAccountTables,
   workspaceApiKeyExpiry,
+  workspacePlugin,
+  ...versionTables,
   architectureHistory,
   boardCreation,
   architectureVersion: table({}, {
@@ -5621,4 +5625,19 @@ export const nativeWorkspaces = spacetimedb.exportGroup(workspaceFeatures(spacet
     }
     emit(ctx, root, 'board.workspace_moved', { workspaceId: workspace.id.toString() });
   },
+}));
+
+// Optional plugins (PLUGINS.md): the on/off seam, then each plugin.
+export const plugins = spacetimedb.exportGroup(pluginFeatures(spacetimedb, { reducer, isHuman: workspaceHuman }));
+
+export const versions = spacetimedb.exportGroup(versionFeatures(spacetimedb, {
+  reducer,
+  isHuman: workspaceHuman,
+  assertService,
+  spendWrite,
+  assertBoardName,
+  insertBoard,
+  initCallerBoard,
+  refreshStats,
+  emit,
 }));

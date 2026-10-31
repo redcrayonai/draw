@@ -136,6 +136,34 @@ The agent sends the key as a bearer token:
 claude mcp add --transport http draw http://localhost:8788/mcp --header "Authorization: Bearer <key>"
 ```
 
+## Versions (optional)
+
+[Versions](/capabilities/versions/) keeps saved versions of boards in an
+S3-compatible bucket that you run or rent. Set the endpoint, bucket and region
+in `.env` to offer it, then run `docker compose up --build` again. Workspace owners and
+admins then turn it on under **Settings › Plugins**.
+
+| Variable | Purpose |
+|---|---|
+| `VERSIONS_S3_ENDPOINT` | The store's URL, for example `https://objects.example.com`. Requests are path-style: `<endpoint>/<bucket>/<key>`. |
+| `VERSIONS_S3_BUCKET` | An existing, empty bucket that only this deployment writes. |
+| `VERSIONS_S3_REGION` | The region the store expects, for example `us-east-1`. |
+| `VERSIONS_S3_ACCESS_KEY_ID` | Optional. An access key that can read and write objects in the bucket. |
+| `VERSIONS_S3_SECRET_ACCESS_KEY` | Optional. Its secret. It stays on the dashboard server. |
+
+Set both keys, or leave both empty to use the machine's role: an EC2 instance
+profile (IMDSv2) or an ECS task role with read and write on the bucket's
+objects. On EC2, set the instance's metadata hop limit to 2 so containers reach
+it. EKS roles (IRSA, Pod Identity) are not read; use keys there.
+
+Versions needs sign-in, because workspaces do. The dashboard server must reach
+the endpoint: inside the containers, `localhost` is not your machine. Use the
+store's service name on the stack's network or a public address.
+
+Each version gets its own object key. The server writes it only if the key is
+empty and never overwrites an object, so bucket versioning is not needed.
+Nothing deletes versions. Back up the bucket with your other data.
+
 ## Code storage and team access
 
 Code snippet storage starts off on your own stack too. Enable it under dashboard

@@ -108,6 +108,12 @@ services:
       IMPORT_RUNNER_URL: http://localhost:3101
       IMPORT_RUNNER_SECRET: &import-secret local-only
       IMPORT_CALLBACK_URL: &import-callback http://localhost:5174/api/imports/complete
+      # Versions plugin (SELF_HOSTING.md): offered with the endpoint, bucket and region in .env.
+      VERSIONS_S3_ENDPOINT: ${VERSIONS_S3_ENDPOINT:-}
+      VERSIONS_S3_BUCKET: ${VERSIONS_S3_BUCKET:-}
+      VERSIONS_S3_REGION: ${VERSIONS_S3_REGION:-}
+      VERSIONS_S3_ACCESS_KEY_ID: ${VERSIONS_S3_ACCESS_KEY_ID:-}
+      VERSIONS_S3_SECRET_ACCESS_KEY: ${VERSIONS_S3_SECRET_ACCESS_KEY:-}
     volumes: [state:/state:ro]
     depends_on:
       setup: { condition: service_completed_successfully }

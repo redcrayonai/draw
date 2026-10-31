@@ -46,6 +46,13 @@ printf 'Iface\tDestination\tGateway\tFlags\tRefCnt\tUse\tMetric\tMask\tMTU\tWind
 [ "$(sh -c '. ./runtime-config.sh; own_networks "$1"' _ "$tmp/route" | paste -sd, -)" = '172.17.0.0/16,192.168.8.0/20' ] &&
   ok 'own_networks reads the routing table' || bad 'own_networks reads the routing table'
 
+roles() { env -i "$@" sh -c '. ./runtime-config.sh; role_networks' | paste -sd, -; }
+[ "$(roles VERSIONS_S3_ENDPOINT=https://s3.example.com)" = '169.254.169.254/32,169.254.170.2/32' ] &&
+  ok 'role_networks opens the credential endpoints for Versions without keys' || bad 'role_networks opens the credential endpoints for Versions without keys'
+[ -z "$(roles VERSIONS_S3_ENDPOINT=https://s3.example.com VERSIONS_S3_ACCESS_KEY_ID=key)" ] &&
+  ok 'role_networks: none with keys' || bad 'role_networks: none with keys'
+[ -z "$(roles)" ] && ok 'role_networks: none without Versions' || bad 'role_networks: none without Versions'
+
 # db_issuers: a stand-in curl answers POST /v1/identity with an anonymous token of issuer `localhost`.
 jwt() { printf 'x.%s.y' "$(printf '{"iss":"%s","sub":"s"}' "$1" | base64 | tr '+/' '-_' | tr -d '=\n')"; }
 mkdir "$tmp/bin"

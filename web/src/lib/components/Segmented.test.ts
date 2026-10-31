@@ -12,4 +12,14 @@ describe('Segmented', () => {
     await fireEvent.click(screen.getByRole('button', { name: 'name' }));
     expect(onchange).toHaveBeenCalledWith('name');
   });
+
+  it('can keep its label for screen readers only, and be disabled', async () => {
+    const onchange = vi.fn();
+    render(Segmented, { props: { label: 'Versions', hideLabel: true, disabled: true, options: ['off', 'on'], value: 'off', onchange } });
+    expect(screen.getByRole('group', { name: 'Versions' })).toBeInTheDocument();
+    expect(screen.getByText('Versions')).toHaveClass('sr-only');
+    await fireEvent.click(screen.getByRole('button', { name: 'on' }));
+    expect(screen.getByRole('button', { name: 'on' })).toBeDisabled();
+    expect(onchange).not.toHaveBeenCalled();
+  });
 });

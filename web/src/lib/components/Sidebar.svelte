@@ -113,6 +113,7 @@
                       {#if !ws.personal}<li><a class="row l3" href={href('/workspaces/members', id)} aria-current={current('/workspaces/members', id)}><span class="label">Members &amp; access</span></a></li>{/if}
                       {#if !ws.personal && managesWorkspace(ws)}<li><a class="row l3" href={href('/workspaces/keys', id)} aria-current={current('/workspaces/keys', id)}><span class="label">Service accounts &amp; keys</span></a></li>{/if}
                       <li><a class="row l3" href={href('/workspaces', id)} aria-current={current('/workspaces', id)}><span class="label">General</span></a></li>
+                      <li><a class="row l3" href={href('/workspaces/plugins', id)} aria-current={current('/workspaces/plugins', id)}><span class="label">Plugins</span></a></li>
                     </ul>
                   {/if}
                 </li>
