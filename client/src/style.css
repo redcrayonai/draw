@@ -4795,6 +4795,11 @@ textarea#inline-edit {
 #world .route-dot.error,
 #world .route-comet:has(.route-dot.error) .route-tail { fill: var(--c-red); }
 
+/* Edge traffic (edge-flow.ts): ink dots at 60%, accent for errors. */
+#world .layer-flow { pointer-events: none; }
+#world .flow-dot { fill: var(--ink); opacity: 0.6; }
+#world .flow-dot.err { fill: var(--accent); opacity: 1; }
+
 /* Trace replay: a node lights while one of its spans runs, quickly on, slowly off.
    The transparent zero shadow gives the glow a start value to grow from. */
 #world.trace-playing .node .node-rect {

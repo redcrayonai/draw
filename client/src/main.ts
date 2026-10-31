@@ -96,6 +96,8 @@ import { playRoute, routeLegs } from './route-play';
 import { mountCrayon } from './crayon';
 import { listening, setupReview } from './review-panel';
 import { playTrace } from './trace-play';
+import { demoActivity, setActivity } from './activity';
+import { edgeFlow } from './edge-flow';
 import { traceMs, type TraceSpan } from '../../module/src/trace';
 import {
   readOverlayPref,
@@ -178,6 +180,8 @@ async function loadAuth(): Promise<Auth> {
   return authLoading;
 }
 
+// ?demo=flow: synthetic edge traffic until a tap source feeds activity.ts. Without it nothing is drawn.
+const flow = new URLSearchParams(location.search).get('demo') === 'flow' ? edgeFlow(world) : null;
 const dbParam = new URLSearchParams(location.search).get('db');
 // A link names its database, except this build's own, which setDb leaves out.
 const linkedDb = dbParam || config.defaultDb;
@@ -1430,6 +1434,7 @@ async function boot(conn: DbConnection, identityHex: string, signedIn: boolean):
         crayonUi.sync();
         lightThreatRow();
         syncBlastDots();
+        flow?.sync();
         renderLegend();
         syncEmpty();
         const nodesById = new Map(getAllNodes().map(n => [n.id, n]));
@@ -2397,6 +2402,14 @@ async function boot(conn: DbConnection, identityHex: string, signedIn: boolean):
       enter = true;
       rerenderParticipants();
       requestAnimationFrame(finishBoardLoading);
+      if (flow) {
+        const feedDemo = () => {
+          setActivity(demoActivity(getEdges().map(e => e.id), Date.now()));
+          flow.sync();
+        };
+        feedDemo();
+        window.setInterval(feedDemo, 1000);
+      }
       // "checkpoint N · 4 min ago" keeps ticking without a table change.
       // So do D17's presence thresholds: hosted agents dim, then leave.
       window.setInterval(() => {
