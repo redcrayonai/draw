@@ -9,8 +9,8 @@ importers:
   .:
     dependencies:
       spacetimedb:
-        specifier: 2.10.*
-        version: 2.10.2
+        specifier: 2.13.*
+        version: 2.13.0
       tsx:
         specifier: ^4.23.15
         version: 4.23.15
@@ -19,8 +19,8 @@ importers:
         version: 5.6.3
     devDependencies:
       '@types/node':
-        specifier: ^26.6.4
-        version: 26.6.4
+        specifier: ^26.6.5
+        version: 26.6.5
 
 packages:
 
@@ -180,8 +180,8 @@ packages:
     cpu: [x64]
     os: [win32]
 
-  '@types/node@26.6.4':
-    resolution: {integrity: sha512-ldVPDCzj7fsaGZrLB0NuHuTvJcsNasysBAqMolr/cgxrLd1xbqxIr3XJiPnHHJUCxj5sNF1vnRj9aWnrVh5Jcg==}
+  '@types/node@26.6.5':
+    resolution: {integrity: sha512-uMzsv9stDdofIZBx4UGh4Z9ZgXnGC9seRDscilBcTHAeOFk67MZg/k9bWVfO+bk4qZmG+l52hRnLwUiH2LnJTg==}
 
   base64-js@1.5.1:
     resolution: {integrity: sha512-AKpaYlHn8t4SVbOHCy+b5+KKgvR4vrsD8vbvrbiQJps7fKDTkjkDry6ji0rUJjC0kzbNePLwzxq8iypo41qeWA==}
@@ -203,8 +203,8 @@ packages:
     resolution: {integrity: sha512-W67iLl4J2EXEGTbfeHCffrjDfitvLANg0UlX3wFUUSTx92KXRFegMHUVgSqE+wvhAbi4WqjGg9czysTV2Epbew==}
     engines: {node: '>= 0.4'}
 
-  prettier@3.9.9:
-    resolution: {integrity: sha512-Z/CJHIkdujO/OtN7nXUii0Rf3VT5SRuhjBA82Xvu2XhBUgX3nhP67T0LHceBdQLex7OOFGTox+Q5Yg8Jk2Qivg==}
+  prettier@3.9.10:
+    resolution: {integrity: sha512-skGHTH1Yb9QvaTC4hWnRTzEYtCpApF0UMBPz+t/0ZPzP8ihefo/btKd+QA7pUE0fEwA1SbS/NmhyEcstdXOIdA==}
     engines: {node: '>=14'}
     hasBin: true
 
@@ -215,8 +215,8 @@ packages:
     resolution: {integrity: sha512-b3rppTKm9T+PsVCBEOUR46GWI7fdOs00VKZ1+9c1EWDaDMvjQc6tUwuFyIprgGgTcWoVHSKrU8H31ZHA2e0RHA==}
     engines: {node: '>=10'}
 
-  spacetimedb@2.10.2:
-    resolution: {integrity: sha512-9HxcpM5b7uKTZWSMShd/pQRgpIabFxVHfya/4vfvSDBvcSO4OiRiqv8hRGMYZuoH2FEKLjt6EOs+gBfN3OytVg==}
+  spacetimedb@2.13.0:
+    resolution: {integrity: sha512-KuViI2SVCb4SwVSSRkKddtZe5uoy09SFK2ZmpK+R4JVvckPSdYJ7I97fvceChIjKQem0IuF5plYNAbgTBMGp3w==}
     peerDependencies:
       '@angular/core': '>=17.0.0'
       '@tanstack/react-query': ^5.0.0
@@ -341,7 +341,7 @@ snapshots:
   '@esbuild/win32-x64@0.28.2':
     optional: true
 
-  '@types/node@26.6.4':
+  '@types/node@26.6.5':
     dependencies:
       undici-types: 8.9.0
 
@@ -383,18 +383,18 @@ snapshots:
 
   object-inspect@1.13.4: {}
 
-  prettier@3.9.9: {}
+  prettier@3.9.10: {}
 
   pure-rand@7.0.1: {}
 
   safe-stable-stringify@2.5.0: {}
 
-  spacetimedb@2.10.2:
+  spacetimedb@2.13.0:
     dependencies:
       base64-js: 1.5.1
       headers-polyfill: 4.0.3
       object-inspect: 1.13.4
-      prettier: 3.9.9
+      prettier: 3.9.10
       pure-rand: 7.0.1
       safe-stable-stringify: 2.5.0
       statuses: 2.0.2
