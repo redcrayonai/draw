@@ -1268,7 +1268,8 @@ export const TOOL_NAMES = Object.keys(TOOLS);
 export function boardInLink(o: Origins, link: string, dbName: string): SafeU64 | SafeToken | { share: SafeToken } | undefined {
   let url: URL;
   try {
-    url = new URL(link);
+    // a bare fragment (#b=<slug>, #s=<token>) copied out of a link is this deployment's
+    url = new URL(link, link.startsWith('#') ? o.app : undefined);
   } catch {
     // a bare board id or slug, as the canvas shows it; a slug can be all digits, and longer than any id
     return safeU64(link) ?? safeToken(link);
