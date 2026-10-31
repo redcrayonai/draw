@@ -100,6 +100,7 @@ import OpenChartEmbedReducer from "./open_chart_embed_reducer";
 import OpenSharedLinkReducer from "./open_shared_link_reducer";
 import PlanRouteReducer from "./plan_route_reducer";
 import PlayTraceReducer from "./play_trace_reducer";
+import SetWorkspacePluginReducer from "./set_workspace_plugin_reducer";
 import PropagateArchitectureCurationReducer from "./propagate_architecture_curation_reducer";
 import PublishArchitectureSnapshotReducer from "./publish_architecture_snapshot_reducer";
 import ReconcileArchitectureProposalReducer from "./reconcile_architecture_proposal_reducer";
@@ -153,6 +154,8 @@ import UpdateEdgeEvidenceReducer from "./update_edge_evidence_reducer";
 import UpdateEdgeStyleReducer from "./update_edge_style_reducer";
 import UpdateNodeReducer from "./update_node_reducer";
 import UpdateThreatReducer from "./update_threat_reducer";
+import PublishBoardVersionReducer from "./publish_board_version_reducer";
+import StageBoardVersionChunkReducer from "./stage_board_version_chunk_reducer";
 import WipeStoredCodeReducer from "./wipe_stored_code_reducer";
 import CreateWorkspaceServiceAccountReducer from "./create_workspace_service_account_reducer";
 import UpdateWorkspaceServiceAccountReducer from "./update_workspace_service_account_reducer";
@@ -160,6 +163,8 @@ import CreateWorkspaceApiKeyReducer from "./create_workspace_api_key_reducer";
 import RevokeWorkspaceApiKeyReducer from "./revoke_workspace_api_key_reducer";
 
 // Import all procedure arg schemas
+import * as CaptureBoardVersionProcedure from "./capture_board_version_procedure";
+import * as RestoreBoardVersionProcedure from "./restore_board_version_procedure";
 
 // Import all table schema definitions
 import EmbeddedBoardRow from "./embedded_board_table";
@@ -172,6 +177,7 @@ import MyBoardCreationsRow from "./my_board_creations_table";
 import MyBoardEmbedsRow from "./my_board_embeds_table";
 import MyBoardPermissionsRow from "./my_board_permissions_table";
 import MyBoardSlugsRow from "./my_board_slugs_table";
+import MyBoardVersionsRow from "./my_board_versions_table";
 import MyBoardsRow from "./my_boards_table";
 import MyChartEmbedsRow from "./my_chart_embeds_table";
 import MyCodeConsentRow from "./my_code_consent_table";
@@ -182,6 +188,7 @@ import MyWorkspaceApiKeysRow from "./my_workspace_api_keys_table";
 import MyWorkspaceBoardGrantsRow from "./my_workspace_board_grants_table";
 import MyWorkspaceInvitesRow from "./my_workspace_invites_table";
 import MyWorkspaceMembersRow from "./my_workspace_members_table";
+import MyWorkspacePluginsRow from "./my_workspace_plugins_table";
 import MyWorkspaceServiceAccountsRow from "./my_workspace_service_accounts_table";
 import MyWorkspaceTeamGrantsRow from "./my_workspace_team_grants_table";
 import MyWorkspaceTeamMembersRow from "./my_workspace_team_members_table";
@@ -295,6 +302,13 @@ const tablesSchema = __schema({
     constraints: [
     ],
   }, MyBoardSlugsRow),
+  myBoardVersions: __table({
+    name: 'my_board_versions',
+    indexes: [
+    ],
+    constraints: [
+    ],
+  }, MyBoardVersionsRow),
   myBoards: __table({
     name: 'my_boards',
     indexes: [
@@ -365,6 +379,13 @@ const tablesSchema = __schema({
     constraints: [
     ],
   }, MyWorkspaceMembersRow),
+  myWorkspacePlugins: __table({
+    name: 'my_workspace_plugins',
+    indexes: [
+    ],
+    constraints: [
+    ],
+  }, MyWorkspacePluginsRow),
   myWorkspaceServiceAccounts: __table({
     name: 'my_workspace_service_accounts',
     indexes: [
@@ -701,6 +722,7 @@ const reducersSchema = __reducers(
   __reducerSchema("open_shared_link", OpenSharedLinkReducer),
   __reducerSchema("plan_route", PlanRouteReducer),
   __reducerSchema("play_trace", PlayTraceReducer),
+  __reducerSchema("set_workspace_plugin", SetWorkspacePluginReducer),
   __reducerSchema("propagate_architecture_curation", PropagateArchitectureCurationReducer),
   __reducerSchema("publish_architecture_snapshot", PublishArchitectureSnapshotReducer),
   __reducerSchema("reconcile_architecture_proposal", ReconcileArchitectureProposalReducer),
@@ -754,6 +776,8 @@ const reducersSchema = __reducers(
   __reducerSchema("update_edge_style", UpdateEdgeStyleReducer),
   __reducerSchema("update_node", UpdateNodeReducer),
   __reducerSchema("update_threat", UpdateThreatReducer),
+  __reducerSchema("publish_board_version", PublishBoardVersionReducer),
+  __reducerSchema("stage_board_version_chunk", StageBoardVersionChunkReducer),
   __reducerSchema("wipe_stored_code", WipeStoredCodeReducer),
   __reducerSchema("create_workspace_service_account", CreateWorkspaceServiceAccountReducer),
   __reducerSchema("update_workspace_service_account", UpdateWorkspaceServiceAccountReducer),
@@ -763,6 +787,8 @@ const reducersSchema = __reducers(
 
 /** The schema information for all procedures in this module. This is defined the same way as the procedures would have been defined in the server. */
 const proceduresSchema = __procedures(
+  __procedureSchema("capture_board_version", CaptureBoardVersionProcedure.params, CaptureBoardVersionProcedure.returnType),
+  __procedureSchema("restore_board_version", RestoreBoardVersionProcedure.params, RestoreBoardVersionProcedure.returnType),
 );
 
 /** The remote SpacetimeDB module schema, both runtime and type information. */

@@ -72,6 +72,11 @@ export function dbHttp(url: string, db: string) {
     /** Call a reducer by its snake_case name with positional arguments. */
     async callAs(token: string, reducer: string, args: unknown[], signal?: AbortSignal): Promise<void> {
       await post(token, `call/${reducer}`, JSON.stringify(args, replacer), 'application/json', signal);
+    },
+
+    /** Call a procedure the same way; its result, as the JSON text the database sends. */
+    procedureAs(token: string, procedure: string, args: unknown[], signal?: AbortSignal): Promise<string> {
+      return post(token, `call/${procedure}`, JSON.stringify(args, replacer), 'application/json', signal);
     }
   };
 }

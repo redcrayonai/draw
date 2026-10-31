@@ -198,6 +198,31 @@ export const BoardStats = __t.object("BoardStats", {
 });
 export type BoardStats = __Infer<typeof BoardStats>;
 
+export const BoardVersion = __t.object("BoardVersion", {
+  id: __t.u64(),
+  workspaceId: __t.u64(),
+  boardId: __t.u64(),
+  boardName: __t.string(),
+  objectKey: __t.string(),
+  sha256: __t.string(),
+  bytes: __t.u64(),
+  formatVersion: __t.u32(),
+  status: __t.string(),
+  createdBy: __t.identity(),
+  createdAt: __t.timestamp(),
+});
+export type BoardVersion = __Infer<typeof BoardVersion>;
+
+export const BoardVersionChunk = __t.object("BoardVersionChunk", {
+  id: __t.u64(),
+  owner: __t.identity(),
+  versionId: __t.u64(),
+  requestKey: __t.string(),
+  index: __t.u32(),
+  data: __t.string(),
+});
+export type BoardVersionChunk = __Infer<typeof BoardVersionChunk>;
+
 export const BoardWorkspace = __t.object("BoardWorkspace", {
   boardId: __t.u64(),
   workspaceId: __t.u64(),
@@ -536,6 +561,24 @@ export type MyBoardPermissions = __Infer<typeof MyBoardPermissions>;
 export const MyBoardSlugs = __t.object("MyBoardSlugs", {});
 export type MyBoardSlugs = __Infer<typeof MyBoardSlugs>;
 
+export const MyBoardVersion = __t.object("MyBoardVersion", {
+  id: __t.u64(),
+  workspaceId: __t.u64(),
+  boardId: __t.u64(),
+  boardName: __t.string(),
+  objectKey: __t.string(),
+  sha256: __t.string(),
+  bytes: __t.u64(),
+  formatVersion: __t.u32(),
+  createdBy: __t.identity(),
+  creatorName: __t.string(),
+  createdAt: __t.timestamp(),
+});
+export type MyBoardVersion = __Infer<typeof MyBoardVersion>;
+
+export const MyBoardVersions = __t.object("MyBoardVersions", {});
+export type MyBoardVersions = __Infer<typeof MyBoardVersions>;
+
 export const MyBoards = __t.object("MyBoards", {});
 export type MyBoards = __Infer<typeof MyBoards>;
 
@@ -596,6 +639,18 @@ export type MyWorkspaceMember = __Infer<typeof MyWorkspaceMember>;
 
 export const MyWorkspaceMembers = __t.object("MyWorkspaceMembers", {});
 export type MyWorkspaceMembers = __Infer<typeof MyWorkspaceMembers>;
+
+export const MyWorkspacePlugin = __t.object("MyWorkspacePlugin", {
+  key: __t.string(),
+  workspaceId: __t.u64(),
+  plugin: __t.string(),
+  enabled: __t.bool(),
+  updatedAt: __t.timestamp(),
+});
+export type MyWorkspacePlugin = __Infer<typeof MyWorkspacePlugin>;
+
+export const MyWorkspacePlugins = __t.object("MyWorkspacePlugins", {});
+export type MyWorkspacePlugins = __Infer<typeof MyWorkspacePlugins>;
 
 export const MyWorkspaceServiceAccounts = __t.object("MyWorkspaceServiceAccounts", {});
 export type MyWorkspaceServiceAccounts = __Infer<typeof MyWorkspaceServiceAccounts>;
@@ -802,6 +857,12 @@ export const TracePlayback = __t.object("TracePlayback", {
 });
 export type TracePlayback = __Infer<typeof TracePlayback>;
 
+export const VersionCooldown = __t.object("VersionCooldown", {
+  key: __t.string(),
+  until: __t.timestamp(),
+});
+export type VersionCooldown = __Infer<typeof VersionCooldown>;
+
 export const VisibleArchitectureHistory = __t.object("VisibleArchitectureHistory", {});
 export type VisibleArchitectureHistory = __Infer<typeof VisibleArchitectureHistory>;
 
@@ -974,6 +1035,16 @@ export const WorkspaceMember = __t.object("WorkspaceMember", {
   role: __t.string(),
 });
 export type WorkspaceMember = __Infer<typeof WorkspaceMember>;
+
+export const WorkspacePlugin = __t.object("WorkspacePlugin", {
+  key: __t.string(),
+  workspaceId: __t.u64(),
+  plugin: __t.string(),
+  enabled: __t.bool(),
+  updatedBy: __t.identity(),
+  updatedAt: __t.timestamp(),
+});
+export type WorkspacePlugin = __Infer<typeof WorkspacePlugin>;
 
 export const WorkspaceServiceAccount = __t.object("WorkspaceServiceAccount", {
   id: __t.u64(),

@@ -5,6 +5,7 @@
   import { accessLabel, ago, canvasHref, cardState, idTail, isEpoch, plural, shareLink, type MyBoard } from '$lib/boards';
   import type { Workspace, BoardPermission } from '$lib/workspaces';
   import BoardWorkspaceAccess from './BoardWorkspaceAccess.svelte';
+  import BoardVersions from './BoardVersions.svelte';
   import Badge from './Badge.svelte';
   import Button from './Button.svelte';
   let { board, permission, workspaces = [], slug = '', teams = [], onclose, onshare, onlink, onrename, ondelete, version, disabled = false, agents = [], granted = [], onagent }: {
@@ -222,6 +223,9 @@
       </div>
       {#if agentError}<p class="alert" role="alert">{agentError}</p>{/if}
     </details>
+  {/if}
+  {#if native && permission}
+    <BoardVersions boardId={board.boardId} workspaceId={permission.workspaceId} canEdit={permission.canEdit} {disabled} />
   {/if}
   {#if manager && workspaces.length}
     <BoardWorkspaceAccess boardId={board.boardId} {permission} {workspaces} {disabled} />

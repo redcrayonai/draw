@@ -33,3 +33,10 @@ own_networks() {
     printf '%d.%d.%d.%d/%d\n' "0x$1" "0x$2" "0x$3" "0x$4" "$bits"
   done <"${1:-/proc/net/route}"
 }
+
+# role_networks: the link-local endpoints a Versions setup without keys gets its machine role from
+# (EC2 instance metadata, the ECS task role), one CIDR per line; nothing with keys or without storage.
+role_networks() {
+  [ -n "${VERSIONS_S3_ENDPOINT:-}" ] && [ -z "${VERSIONS_S3_ACCESS_KEY_ID:-}" ] || return 0
+  printf '169.254.169.254/32\n169.254.170.2/32\n'
+}

@@ -37,6 +37,9 @@ case "$app" in
     [ -n "${SPACETIMEDB_SERVICE_TOKEN:-}" ] || SPACETIMEDB_SERVICE_TOKEN="$(state service-token)"
     export SPACETIMEDB_SERVICE_TOKEN
     cp -R "/app/dashboard/${VITE_AUTH_PROVIDER:-anonymous}/." "$run/"
+    # Versions without keys signs with the machine's role, whose credential endpoints are link-local, not "public".
+    role="$(role_networks | sed 's/.*/"&"/' | paste -sd, -)"
+    [ -z "$role" ] || networks="$networks,$role"
     cp /app/assets.js "$run/"
     runtime_config "$run" spacetime_uri spacetime_db canvas_url mcp_url oidc_issuer oidc_client_id
     ;;
