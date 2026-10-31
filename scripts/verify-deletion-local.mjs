@@ -58,6 +58,8 @@ const EXEMPT = {
   workspace_invite: 'created by a signed-in manager, with a server timestamp: the same native board deletion test verifies pending invitation cleanup',
   workspace_service_account: 'board_ids are retained policy references, not owned board data: verify-workspace-service-accounts-local.mjs "machine keys cannot delete histories" proves deleted boards stay inaccessible',
   workspace_api_key: 'retained key audit and scope records: the same machine deletion test proves stale references grant no access',
+  incident: 'only an incident board has one (B is a session board): verify-incidents-local.mjs "IN deleting an incident board removes its incident, lifetime and window rows"',
+  board_lifetime: 'written for incident boards: the same verify-incidents-local.mjs test',
 };
 
 // --- HTTP API (as verify-change-notes-local.mjs) -----------------------------
@@ -216,6 +218,8 @@ before(async () => {
   await ok(owner.token, 'enable_board_embed', [B, randomBytes(16).toString('hex'), false, 0]);
   await ok(owner.token, 'set_node_icon', [a, 'queue']);
   await ok(owner.token, 'set_edge_weight', [edge.id, 'bold']);
+  await ok(owner.token, 'anchor_chart', [embedChart, 'edge', edge.id]);
+  await ok(owner.token, 'set_board_window', [B, Date.parse('2026-10-31T14:00:00Z'), Date.parse('2026-10-31T15:00:00Z')]);
   await ok(owner.token, 'set_node_hidden', [b, true, some('scratch')]);
   sets = (await sql(OWNER, `SELECT * FROM hide_set WHERE board_id = ${B}`)).map(s => s.id);
   await ok(owner.token, 'plan_route', [B, [a, b]]);

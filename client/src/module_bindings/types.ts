@@ -150,6 +150,13 @@ export const BoardGrant = __t.object("BoardGrant", {
 });
 export type BoardGrant = __Infer<typeof BoardGrant>;
 
+export const BoardLifetime = __t.object("BoardLifetime", {
+  boardId: __t.u64(),
+  isEphemeral: __t.bool(),
+  createdAt: __t.timestamp(),
+});
+export type BoardLifetime = __Infer<typeof BoardLifetime>;
+
 export const BoardPermission = __t.object("BoardPermission", {
   boardId: __t.u64(),
   workspaceId: __t.u64(),
@@ -198,6 +205,14 @@ export const BoardStats = __t.object("BoardStats", {
 });
 export type BoardStats = __Infer<typeof BoardStats>;
 
+export const BoardWindow = __t.object("BoardWindow", {
+  boardId: __t.u64(),
+  startMs: __t.f64(),
+  endMs: __t.f64(),
+  updatedAt: __t.timestamp(),
+});
+export type BoardWindow = __Infer<typeof BoardWindow>;
+
 export const BoardWorkspace = __t.object("BoardWorkspace", {
   boardId: __t.u64(),
   workspaceId: __t.u64(),
@@ -237,6 +252,14 @@ export const Chart = __t.object("Chart", {
   updatedAt: __t.timestamp(),
 });
 export type Chart = __Infer<typeof Chart>;
+
+export const ChartAnchor = __t.object("ChartAnchor", {
+  nodeId: __t.u64(),
+  boardId: __t.u64(),
+  targetKind: __t.string(),
+  targetId: __t.u64(),
+});
+export type ChartAnchor = __Infer<typeof ChartAnchor>;
 
 export const ChartEmbed = __t.object("ChartEmbed", {
   nodeId: __t.u64(),
@@ -398,6 +421,29 @@ export const HistoryWorkspace = __t.object("HistoryWorkspace", {
 });
 export type HistoryWorkspace = __Infer<typeof HistoryWorkspace>;
 
+export const Incident = __t.object("Incident", {
+  boardId: __t.u64(),
+  sourceBoardId: __t.u64(),
+  groupKey: __t.string(),
+  title: __t.string(),
+  status: __t.string(),
+  openedAt: __t.timestamp(),
+  updatedAt: __t.timestamp(),
+});
+export type Incident = __Infer<typeof Incident>;
+
+export const IncidentRow = __t.object("IncidentRow", {
+  boardId: __t.u64(),
+  slug: __t.string(),
+  sourceBoardId: __t.u64(),
+  groupKey: __t.string(),
+  title: __t.string(),
+  status: __t.string(),
+  openedAt: __t.timestamp(),
+  updatedAt: __t.timestamp(),
+});
+export type IncidentRow = __Infer<typeof IncidentRow>;
+
 export const LegacyWorkspace = __t.object("LegacyWorkspace", {
   orgId: __t.string(),
   workspaceId: __t.u64(),
@@ -545,6 +591,9 @@ export type MyCodeConsentRow = __Infer<typeof MyCodeConsentRow>;
 
 export const MyGuestBoard = __t.object("MyGuestBoard", {});
 export type MyGuestBoard = __Infer<typeof MyGuestBoard>;
+
+export const MyIncidents = __t.object("MyIncidents", {});
+export type MyIncidents = __Infer<typeof MyIncidents>;
 
 export const MyLibrary = __t.object("MyLibrary", {});
 export type MyLibrary = __Infer<typeof MyLibrary>;
@@ -806,14 +855,23 @@ export type VisibleBoard = __Infer<typeof VisibleBoard>;
 export const VisibleBoardCodeConsent = __t.object("VisibleBoardCodeConsent", {});
 export type VisibleBoardCodeConsent = __Infer<typeof VisibleBoardCodeConsent>;
 
+export const VisibleBoardLifetime = __t.object("VisibleBoardLifetime", {});
+export type VisibleBoardLifetime = __Infer<typeof VisibleBoardLifetime>;
+
 export const VisibleBoardPeople = __t.object("VisibleBoardPeople", {});
 export type VisibleBoardPeople = __Infer<typeof VisibleBoardPeople>;
+
+export const VisibleBoardWindow = __t.object("VisibleBoardWindow", {});
+export type VisibleBoardWindow = __Infer<typeof VisibleBoardWindow>;
 
 export const VisibleChangeNote = __t.object("VisibleChangeNote", {});
 export type VisibleChangeNote = __Infer<typeof VisibleChangeNote>;
 
 export const VisibleChart = __t.object("VisibleChart", {});
 export type VisibleChart = __Infer<typeof VisibleChart>;
+
+export const VisibleChartAnchor = __t.object("VisibleChartAnchor", {});
+export type VisibleChartAnchor = __Infer<typeof VisibleChartAnchor>;
 
 export const VisibleCodeRef = __t.object("VisibleCodeRef", {});
 export type VisibleCodeRef = __Infer<typeof VisibleCodeRef>;
@@ -838,6 +896,9 @@ export type VisibleHideSet = __Infer<typeof VisibleHideSet>;
 
 export const VisibleHideSetMember = __t.object("VisibleHideSetMember", {});
 export type VisibleHideSetMember = __Infer<typeof VisibleHideSetMember>;
+
+export const VisibleIncident = __t.object("VisibleIncident", {});
+export type VisibleIncident = __Infer<typeof VisibleIncident>;
 
 export const VisibleMark = __t.object("VisibleMark", {});
 export type VisibleMark = __Infer<typeof VisibleMark>;
