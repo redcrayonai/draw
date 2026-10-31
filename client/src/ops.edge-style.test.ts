@@ -164,6 +164,18 @@ describe('edge style actions (RC-688)', () => {
     expect(f.motions.size).toBe(0);
   });
 
+  it('a speed on a still edge (a mixed selection) writes nothing and adds no undo step', async () => {
+    const f = fakeConn();
+    const { id, style } = await drawn(f);
+    await f.ops.updateEdgeStyleAction(id, { color: 'red' });
+    await f.ops.updateEdgeStyleAction(id, { motionSpeed: 'fast' });
+    expect(f.reducers.setEdgeMotion).not.toHaveBeenCalled();
+    // the one undo there is still reverses the colour, with no 'changed by someone else'
+    await f.ops.history.undo();
+    expect(style()).toEqual(DEFAULT_EDGE_STYLE);
+    expect(showError).not.toHaveBeenCalled();
+  });
+
   it('undo of an edge delete brings back its motion', async () => {
     const f = fakeConn();
     const { id, row } = await drawn(f);

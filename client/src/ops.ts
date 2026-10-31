@@ -568,6 +568,8 @@ export class Ops {
     const change: Partial<EdgeStyle> = {};
     const before: Partial<EdgeStyle> = {};
     for (const key of Object.keys(patch) as (keyof EdgeStyle)[]) {
+      // A still edge stores no speed (no motion row): setting one would write nothing and leave an undo that cannot match.
+      if (key === 'motionSpeed' && now.motion === 'none' && (patch.motion ?? 'none') === 'none') continue;
       if (patch[key] !== undefined && patch[key] !== now[key]) {
         change[key] = patch[key];
         before[key] = now[key];
