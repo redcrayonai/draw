@@ -233,6 +233,9 @@ describe('LiveHub', () => {
     const fresh = open();
     await h.message(fresh, JSON.stringify({ auth: 'tap-5', role: 'tap' }));
     expect(fresh.sent[0]).toEqual({ ok: true, role: 'tap' });
+    // the expired tap finishes closing after the fresh one connected: viewers still have a tap
+    h.closed(t);
+    expect(v.sent.at(-1)).toEqual({ tap: 'connected' });
   });
 
   it('closes an idle expired tap when a viewer arrives or the status is asked', async () => {

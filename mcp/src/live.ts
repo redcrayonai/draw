@@ -199,7 +199,8 @@ export class LiveHub {
 
   closed(ws: LiveSocket): void {
     const a = ws.attachment();
-    if (a?.role === 'tap') {
+    // A closed tap may finish closing after a fresh one connected: then the board still has a tap.
+    if (a?.role === 'tap' && this.taps(ws).length === 0) {
       for (const v of this.role('viewer', ws)) v.send(json({ tap: 'gone' }));
     } else if (a?.role === 'viewer' && a.live) {
       this.notifyTap(ws);
