@@ -135,7 +135,7 @@ export class Live extends DurableObject<Env> {
     return new Response(null, { status: 101, webSocket: client });
   }
 
-  /** tap_status, by RPC from the tools: reads the sockets, changes nothing. */
+  /** tap_status, by RPC from the tools: reads the sockets; closes an expired tap. */
   async status(): Promise<LiveStatus> {
     return this.hub.status();
   }

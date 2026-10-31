@@ -202,7 +202,12 @@ export class LiveHub {
   async stop(): Promise<boolean> {
     await this.deps.revoke(Math.floor(this.deps.now() / 1000));
     const taps = this.role('tap');
-    for (const t of taps) t.close(CLOSE.auth, TAP_STOPPED);
+    for (const t of taps) {
+      // A closing socket stays listed until the tap answers, which a sleeping laptop never does:
+      // expire it now, so status, the conflict check and closed() skip it at once.
+      t.setAttachment({ ...(t.attachment() as TapAttachment), exp: 0 });
+      t.close(CLOSE.auth, TAP_STOPPED);
+    }
     return taps.length > 0;
   }
 

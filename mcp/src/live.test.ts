@@ -29,7 +29,8 @@ const TAPS: Record<string, { board: bigint; iat: number; exp: number }> = {
   'tap-5-later': { board: 5n, iat: 100, exp: 12 * 3600 },
 };
 
-function hub(opts: { readers?: string[]; now?: () => number } = {}) {
+// listClosed: closed sockets stay listed, as a DO lists one until its peer answers the close.
+function hub(opts: { readers?: string[]; now?: () => number; listClosed?: boolean } = {}) {
   const sockets: FakeSocket[] = [];
   const readers = opts.readers ?? ['viewer'];
   let clock = 0;
@@ -43,7 +44,7 @@ function hub(opts: { readers?: string[]; now?: () => number } = {}) {
       revoke: async at => void (revoked = at),
       now,
     },
-    () => sockets.filter(s => s.closedWith === null)
+    () => (opts.listClosed ? sockets : sockets.filter(s => s.closedWith === null))
   );
   const open = () => {
     const s = new FakeSocket({ role: 'pending', board: '5', at: now() });
@@ -265,12 +266,14 @@ describe('LiveHub', () => {
   });
 
   it('stops the tap and refuses every token issued up to the stop (stop_tap)', async () => {
-    const { h, open, tick } = hub();
+    const { h, open, tick } = hub({ listClosed: true });
     const t = open();
     await h.message(t, JSON.stringify({ auth: 'tap-5', role: 'tap' }));
     tick(10_000);
     expect(await h.stop()).toBe(true);
     expect(t.closedWith).toEqual([CLOSE.auth, TAP_STOPPED]);
+    // still listed (the tap never answered the close), yet no longer the board's tap
+    expect(h.status().tap).toBe(false);
     const again = open();
     await h.message(again, JSON.stringify({ auth: 'tap-5', role: 'tap' }));
     expect(again.closedWith).toEqual([CLOSE.auth, TAP_STOPPED]);
