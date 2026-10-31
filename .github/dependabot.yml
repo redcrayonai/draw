@@ -1,0 +1,28 @@
+# Weekly dependency updates. Security updates still arrive individually.
+version: 2
+updates:
+  - package-ecosystem: npm
+    directories:
+      - /agent
+      - /client
+      - /e2e
+      - /helper
+      - /importer
+      - /mcp
+      - /module
+      - /shared
+      - /web
+    schedule:
+      interval: weekly
+    groups:
+      npm:
+        patterns: ['*']
+        update-types: [minor, patch]
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    groups:
+      actions:
+        patterns: ['*']

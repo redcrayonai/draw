@@ -1,0 +1,47 @@
+name: e2e
+
+on:
+  workflow_call:
+
+permissions:
+  contents: read
+
+jobs:
+  browser:
+    runs-on: ubuntu-latest
+    # Room for a slow apt mirror in the Chromium install (12 min once) on top of a ~10-minute shard.
+    timeout-minutes: 25
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3]
+    steps:
+      - uses: actions/checkout@v7
+      - uses: ./.github/actions/spacetime
+      - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
+        with:
+          package_json_file: e2e/package.json
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: pnpm
+          cache-dependency-path: |
+            module/pnpm-lock.yaml
+            shared/pnpm-lock.yaml
+            client/pnpm-lock.yaml
+            web/pnpm-lock.yaml
+            e2e/pnpm-lock.yaml
+      - name: Install
+        run: for p in module shared client web e2e; do pnpm -C "$p" install --frozen-lockfile; done
+      - name: Install Chromium
+        run: pnpm -C e2e exec playwright install --with-deps chromium
+      - name: Browser journeys
+        run: pnpm -C e2e test --shard=${{ matrix.shard }}/${{ strategy.job-total }}
+      - name: Browser reports and failure artifacts
+        if: ${{ always() }}
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: browser-results-${{ matrix.shard }}
+          path: |
+            e2e/playwright-report/
+            e2e/test-results/

@@ -1,0 +1,18 @@
+# gitleaks (secret-scan.yml): the default rules, minus fake secrets that
+# tests use on purpose to prove the secret refusal.
+[extend]
+useDefault = true
+
+[[rules]]
+id = "redcrayon-workspace-api-key"
+description = "Redcrayon workspace API key"
+regex = '''\brcak_[0-9a-f]{32}_[0-9a-f]{64}\b'''
+keywords = ["rcak_"]
+
+[[allowlists]]
+description = "fake AWS key in mcp/src/worker.db.test.ts (the snippet secret refusal)"
+regexes = ['''AKIAABCDEFGHIJKLMNOP''']
+
+[[allowlists]]
+description = "dummy share token (0123456789abcdef repeated) in mcp/src/tools.test.ts share-link parsing; CI scans every remote branch"
+regexes = ['''0123456789abcdef0123456789abcdef''']

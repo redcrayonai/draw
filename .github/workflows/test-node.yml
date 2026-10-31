@@ -1,0 +1,68 @@
+# Unit tests for the two packages no other workflow covers.
+#
+#   - importer/ holds the repository import runner (a deployed HTTP service
+#     that clones untrusted public repositories) and the graph extractor. Its
+#     Go tests use a local `replace` directive, so they need a toolchain but
+#     never the network; Go is pinned to the version importer/Dockerfile ships.
+#   - module/ holds the architecture graph rules shared by the reducer, the
+#     canvas and the dashboard. The suite is plain node:test over
+#     module/src/architecture.ts, so that job needs Node and nothing else —
+#     no install step, hence no pnpm setup.
+#
+# build-client.yml and build-web.yml already run the client/ and web/ suites,
+# and bindings-check.yml only regenerates module_bindings. Without this
+# workflow both suites above would pass or fail unobserved.
+
+name: test-node
+
+on:
+  workflow_call:
+
+jobs:
+  importer:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      # Matches `FROM golang:1.26-bookworm` in importer/Dockerfile: `go list`
+      # output is what the extractor parses, so the version should not drift
+      # away from the one the runner image uses.
+      - uses: actions/setup-go@v7
+        with:
+          go-version: '1.26'
+          cache: false
+
+      - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
+        with:
+          package_json_file: importer/package.json
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: pnpm
+          cache-dependency-path: importer/pnpm-lock.yaml
+
+      - name: Install importer dependencies
+        working-directory: importer
+        run: pnpm install --frozen-lockfile
+
+      - name: Type-check
+        working-directory: importer
+        run: pnpm run typecheck
+
+      - name: Test
+        working-directory: importer
+        run: pnpm test
+
+  module:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+
+      - name: Test
+        working-directory: module
+        run: npm test

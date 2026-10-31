@@ -1,0 +1,10 @@
+node_modules
+/build
+/.svelte-kit
+/package
+.env
+.env.*
+!.env.example
+# wrangler state (dev, dry-run) and its local secrets file
+.wrangler/
+.dev.vars*

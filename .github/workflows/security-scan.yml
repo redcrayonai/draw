@@ -1,0 +1,44 @@
+# Vulnerability scan (RC-451). Anchore (grype) scans every pnpm lockfile in
+# the repo and fails on any high or critical finding that has a fix available.
+# Called by ci.yml for PRs and releases; also runs weekly so new CVEs
+# against unchanged dependencies still surface.
+#
+# Output is a table in the job log: the repo is private without GitHub Code
+# Security, so SARIF upload to the Security tab is not available.
+#
+# vendor-scan (RC-600): no tracked file under scripts/public-paths.json names
+# the auth vendor, our cloud account or a production host. A new hit fails CI.
+
+name: security-scan
+
+on:
+  workflow_call:
+  schedule:
+    - cron: '0 14 * * 1'
+
+permissions:
+  contents: read
+
+jobs:
+  anchore:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: anchore/scan-action@27805bf3b4e84b4a5c980df22ed233c00390a439 # v7.4.2
+        with:
+          path: .
+          severity-cutoff: high
+          fail-build: true
+          only-fixed: true
+          output-format: table
+
+  vendor-scan:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+      - name: Vendor scan of the public tree
+        run: node scripts/vendor-scan.mjs --public --enforce

@@ -1,0 +1,1008 @@
+{
+  "session": "parity",
+  "steps": [
+    {
+      "step": "add_code_ref",
+      "results": [
+        {
+          "path": "src/limiter.ts",
+          "startLine": 4,
+          "endLine": 6,
+          "existing": false
+        },
+        {
+          "path": "src/limiter.ts",
+          "startLine": 9,
+          "endLine": 11,
+          "existing": false
+        },
+        {
+          "path": "src/server.ts",
+          "startLine": 4,
+          "endLine": 7,
+          "existing": false
+        },
+        {
+          "path": "src/legacy.ts",
+          "startLine": 1,
+          "endLine": 1,
+          "existing": false
+        },
+        {
+          "path": "README.md",
+          "startLine": 3,
+          "endLine": 4,
+          "existing": false
+        },
+        {
+          "path": "src/limiter.ts",
+          "startLine": 4,
+          "endLine": 6,
+          "existing": true
+        }
+      ]
+    },
+    {
+      "step": "checkpoint 1: nothing changed",
+      "reanchor": {
+        "shifted": 0,
+        "drifted": 0,
+        "stale": [],
+        "ambiguous": [],
+        "restored": []
+      },
+      "session": {
+        "checkpoint": 1,
+        "baseSha": "268cc4104b6c14c6098992db77b0fa0f0a37fa87",
+        "headSha": "268cc4104b6c14c6098992db77b0fa0f0a37fa87",
+        "coverage": {
+          "changed": 0,
+          "uncovered": [],
+          "excluded": [],
+          "deleted": []
+        }
+      },
+      "codeRefs": [
+        {
+          "target": "node Docs",
+          "path": "README.md",
+          "symbol": "Limits",
+          "startLine": 3,
+          "endLine": 4,
+          "blobSha": "9b6c0177ec7f407be376ece993e6456d080fb2c9",
+          "snippet": "## Limits\nEach caller gets 10 calls.",
+          "lineHashes": "68c8d3995fdaf422477c6429e560ed8c 5f02803a52a5a9b8865a51c3327710a0",
+          "author": "parity",
+          "checkpoint": 1,
+          "status": "ok"
+        },
+        {
+          "target": "node Legacy",
+          "path": "src/legacy.ts",
+          "symbol": "legacy",
+          "startLine": 1,
+          "endLine": 1,
+          "blobSha": "7e15a4a640939c8951c2c828759b35d00748b486",
+          "snippet": "export const legacy = 1;",
+          "lineHashes": "e80c3237f22f8adb429bff1279b04b87",
+          "author": "parity",
+          "checkpoint": 1,
+          "status": "ok"
+        },
+        {
+          "target": "node Limiter",
+          "path": "src/limiter.ts",
+          "symbol": "Limiter.allow",
+          "startLine": 4,
+          "endLine": 6,
+          "blobSha": "cbf48fc8cffe25a25b33b4c1036f103cc9937bcf",
+          "snippet": "  allow(used: number): boolean {\n    return used < this.max;\n  }",
+          "lineHashes": "5a7f0b7d3c9f915c862cabcf681dec16 0b9d9183e03e0a266ad1a5434adbf441 737db166c79ae98e44bbe5ad43e03bf3",
+          "author": "parity",
+          "checkpoint": 1,
+          "status": "ok"
+        },
+        {
+          "target": "node Limiter",
+          "path": "src/limiter.ts",
+          "symbol": "parseLimit",
+          "startLine": 9,
+          "endLine": 11,
+          "blobSha": "cbf48fc8cffe25a25b33b4c1036f103cc9937bcf",
+          "snippet": "export function parseLimit(text: string): number {\n  return Number.parseInt(text, 10);\n}",
+          "lineHashes": "6396278be63569982e70eeb885b9df63 88411ae535c46b07b95ac76c93cc8247 d10b36aa74a59bcf4a88185837f658af",
+          "author": "parity",
+          "checkpoint": 1,
+          "status": "ok"
+        },
+        {
+          "target": "node Server",
+          "path": "src/server.ts",
+          "symbol": "handle",
+          "startLine": 4,
+          "endLine": 7,
+          "blobSha": "eddd1ef4dd0195d6a3310963e90a6e6e9e5efa69",
+          "snippet": "export function handle(used: number): string {\n  const limiter = new Limiter(10 + legacy);\n  return limiter.allow(used) ? 'ok' : 'busy';\n}",
+          "lineHashes": "feb24d1b4247886286c36c0ea7af5e31 c8a542df895b819ce84aa70cc9e94291 a0430af4a6d355baf498d1786967de13 d10b36aa74a59bcf4a88185837f658af",
+          "author": "parity",
+          "checkpoint": 1,
+          "status": "ok"
+        }
+      ],
+      "edges": [
+        {
+          "edge": "Docs documents Server",
+          "evidence": "source:README.md:7",
+          "evidenceSnippet": "Busy callers get 'busy'.",
+          "lineHash": "cf5da858e8540c43b52357e76f8b5f31",
+          "evidenceStatus": "ok"
+        },
+        {
+          "edge": "Server reads Legacy",
+          "evidence": "source:src/legacy.ts:1",
+          "evidenceSnippet": "export const legacy = 1;",
+          "lineHash": "e80c3237f22f8adb429bff1279b04b87",
+          "evidenceStatus": "ok"
+        },
+        {
+          "edge": "Server uses Limiter",
+          "evidence": "source:src/server.ts:1",
+          "evidenceSnippet": "import { Limiter } from './limiter';",
+          "lineHash": "6c476e96342bf6ba626f56ca014c46d8",
+          "evidenceStatus": "ok"
+        }
+      ]
+    },
+    {
+      "step": "checkpoint 2: edited",
+      "reanchor": {
+        "shifted": 4,
+        "drifted": 1,
+        "stale": [
+          "legacy src/legacy.ts ref=<Legacy legacy>",
+          "edge <Server reads Legacy> source:src/legacy.ts:1",
+          "edge <Docs documents Server> source:README.md:7"
+        ],
+        "ambiguous": [],
+        "restored": []
+      },
+      "session": {
+        "checkpoint": 2,
+        "baseSha": "268cc4104b6c14c6098992db77b0fa0f0a37fa87",
+        "headSha": "c77750b225ff758b0d531a664a0523ebb87dfb70",
+        "coverage": {
+          "changed": 5,
+          "uncovered": [
+            "README.md",
+            "src/server.ts",
+            "src/new.ts"
+          ],
+          "excluded": [
+            {
+              "reason": "docs",
+              "paths": [
+                "docs/guide.md"
+              ]
+            }
+          ],
+          "deleted": [
+            "src/legacy.ts"
+          ]
+        }
+      },
+      "codeRefs": [
+        {
+          "target": "node Docs",
+          "path": "README.md",
+          "symbol": "Limits",
+          "startLine": 5,
+          "endLine": 6,
+          "blobSha": "3f426152fd9b87d6932902e1573b9e507fe548d7",
+          "snippet": "## Limits\nEach caller gets 10 calls.",
+          "lineHashes": "68c8d3995fdaf422477c6429e560ed8c 5f02803a52a5a9b8865a51c3327710a0",
+          "author": "parity",
+          "checkpoint": 1,
+          "status": "ok"
+        },
+        {
+          "target": "node Legacy",
+          "path": "src/legacy.ts",
+          "symbol": "legacy",
+          "startLine": 1,
+          "endLine": 1,
+          "blobSha": "7e15a4a640939c8951c2c828759b35d00748b486",
+          "snippet": "export const legacy = 1;",
+          "lineHashes": "e80c3237f22f8adb429bff1279b04b87",
+          "author": "parity",
+          "checkpoint": 1,
+          "status": "stale"
+        },
+        {
+          "target": "node Limiter",
+          "path": "src/limiter.ts",
+          "symbol": "Limiter.allow",
+          "startLine": 5,
+          "endLine": 7,
+          "blobSha": "9ab4a39b28fe8baee26381fabeb92ced9437876e",
+          "snippet": "  allow(used: number): boolean {\n    return used < this.max;\n  }",
+          "lineHashes": "5a7f0b7d3c9f915c862cabcf681dec16 0b9d9183e03e0a266ad1a5434adbf441 737db166c79ae98e44bbe5ad43e03bf3",
+          "author": "parity",
+          "checkpoint": 1,
+          "status": "ok"
+        },
+        {
+          "target": "node Limiter",
+          "path": "src/limiter.ts",
+          "symbol": "parseLimit",
+          "startLine": 10,
+          "endLine": 12,
+          "blobSha": "9ab4a39b28fe8baee26381fabeb92ced9437876e",
+          "snippet": "export function parseLimit(text: string): number {\n  return Number.parseInt(text, 10) || 0;\n}",
+          "lineHashes": "6396278be63569982e70eeb885b9df63 58cf72c3848bf74581dd6935b5bb48d3 d10b36aa74a59bcf4a88185837f658af",
+          "author": "parity",
+          "checkpoint": 2,
+          "status": "ok"
+        },
+        {
+          "target": "node Server",
+          "path": "src/server.ts",
+          "symbol": "handle",
+          "startLine": 5,
+          "endLine": 8,
+          "blobSha": "0852a4ab140652977f0572aacead2fbc33e379f9",
+          "snippet": "export function handle(used: number): string {\n  const limiter = new Limiter(10 + legacy);\n  return limiter.allow(used) ? 'ok' : 'busy';\n}",
+          "lineHashes": "feb24d1b4247886286c36c0ea7af5e31 c8a542df895b819ce84aa70cc9e94291 a0430af4a6d355baf498d1786967de13 d10b36aa74a59bcf4a88185837f658af",
+          "author": "parity",
+          "checkpoint": 1,
+          "status": "ok"
+        }
+      ],
+      "edges": [
+        {
+          "edge": "Docs documents Server",
+          "evidence": "source:README.md:7",
+          "evidenceSnippet": "Busy callers get 'busy'.",
+          "lineHash": "cf5da858e8540c43b52357e76f8b5f31",
+          "evidenceStatus": "stale"
+        },
+        {
+          "edge": "Server reads Legacy",
+          "evidence": "source:src/legacy.ts:1",
+          "evidenceSnippet": "export const legacy = 1;",
+          "lineHash": "e80c3237f22f8adb429bff1279b04b87",
+          "evidenceStatus": "stale"
+        },
+        {
+          "edge": "Server uses Limiter",
+          "evidence": "source:src/server.ts:2",
+          "evidenceSnippet": "import { Limiter } from './limiter';",
+          "lineHash": "6c476e96342bf6ba626f56ca014c46d8",
+          "evidenceStatus": "ok"
+        }
+      ]
+    },
+    {
+      "step": "checkpoint 3: restored",
+      "reanchor": {
+        "shifted": 0,
+        "drifted": 0,
+        "stale": [
+          "edge <Docs documents Server> source:README.md:7"
+        ],
+        "ambiguous": [],
+        "restored": [
+          "legacy src/legacy.ts ref=<Legacy legacy>",
+          "edge <Server reads Legacy> source:src/legacy.ts:1"
+        ]
+      },
+      "session": {
+        "checkpoint": 3,
+        "baseSha": "268cc4104b6c14c6098992db77b0fa0f0a37fa87",
+        "headSha": "c77750b225ff758b0d531a664a0523ebb87dfb70",
+        "coverage": {
+          "changed": 5,
+          "uncovered": [
+            "README.md",
+            "src/server.ts",
+            "src/new.ts"
+          ],
+          "excluded": [
+            {
+              "reason": "docs",
+              "paths": [
+                "docs/guide.md"
+              ]
+            }
+          ],
+          "deleted": []
+        }
+      },
+      "codeRefs": [
+        {
+          "target": "node Docs",
+          "path": "README.md",
+          "symbol": "Limits",
+          "startLine": 5,
+          "endLine": 6,
+          "blobSha": "3f426152fd9b87d6932902e1573b9e507fe548d7",
+          "snippet": "## Limits\nEach caller gets 10 calls.",
+          "lineHashes": "68c8d3995fdaf422477c6429e560ed8c 5f02803a52a5a9b8865a51c3327710a0",
+          "author": "parity",
+          "checkpoint": 1,
+          "status": "ok"
+        },
+        {
+          "target": "node Legacy",
+          "path": "src/legacy.ts",
+          "symbol": "legacy",
+          "startLine": 1,
+          "endLine": 1,
+          "blobSha": "7e15a4a640939c8951c2c828759b35d00748b486",
+          "snippet": "export const legacy = 1;",
+          "lineHashes": "e80c3237f22f8adb429bff1279b04b87",
+          "author": "parity",
+          "checkpoint": 1,
+          "status": "ok"
+        },
+        {
+          "target": "node Limiter",
+          "path": "src/limiter.ts",
+          "symbol": "Limiter.allow",
+          "startLine": 5,
+          "endLine": 7,
+          "blobSha": "9ab4a39b28fe8baee26381fabeb92ced9437876e",
+          "snippet": "  allow(used: number): boolean {\n    return used < this.max;\n  }",
+          "lineHashes": "5a7f0b7d3c9f915c862cabcf681dec16 0b9d9183e03e0a266ad1a5434adbf441 737db166c79ae98e44bbe5ad43e03bf3",
+          "author": "parity",
+          "checkpoint": 1,
+          "status": "ok"
+        },
+        {
+          "target": "node Limiter",
+          "path": "src/limiter.ts",
+          "symbol": "parseLimit",
+          "startLine": 10,
+          "endLine": 12,
+          "blobSha": "9ab4a39b28fe8baee26381fabeb92ced9437876e",
+          "snippet": "export function parseLimit(text: string): number {\n  return Number.parseInt(text, 10) || 0;\n}",
+          "lineHashes": "6396278be63569982e70eeb885b9df63 58cf72c3848bf74581dd6935b5bb48d3 d10b36aa74a59bcf4a88185837f658af",
+          "author": "parity",
+          "checkpoint": 2,
+          "status": "ok"
+        },
+        {
+          "target": "node Server",
+          "path": "src/server.ts",
+          "symbol": "handle",
+          "startLine": 5,
+          "endLine": 8,
+          "blobSha": "0852a4ab140652977f0572aacead2fbc33e379f9",
+          "snippet": "export function handle(used: number): string {\n  const limiter = new Limiter(10 + legacy);\n  return limiter.allow(used) ? 'ok' : 'busy';\n}",
+          "lineHashes": "feb24d1b4247886286c36c0ea7af5e31 c8a542df895b819ce84aa70cc9e94291 a0430af4a6d355baf498d1786967de13 d10b36aa74a59bcf4a88185837f658af",
+          "author": "parity",
+          "checkpoint": 1,
+          "status": "ok"
+        }
+      ],
+      "edges": [
+        {
+          "edge": "Docs documents Server",
+          "evidence": "source:README.md:7",
+          "evidenceSnippet": "Busy callers get 'busy'.",
+          "lineHash": "cf5da858e8540c43b52357e76f8b5f31",
+          "evidenceStatus": "stale"
+        },
+        {
+          "edge": "Server reads Legacy",
+          "evidence": "source:src/legacy.ts:1",
+          "evidenceSnippet": "export const legacy = 1;",
+          "lineHash": "e80c3237f22f8adb429bff1279b04b87",
+          "evidenceStatus": "ok"
+        },
+        {
+          "edge": "Server uses Limiter",
+          "evidence": "source:src/server.ts:2",
+          "evidenceSnippet": "import { Limiter } from './limiter';",
+          "lineHash": "6c476e96342bf6ba626f56ca014c46d8",
+          "evidenceStatus": "ok"
+        }
+      ]
+    },
+    {
+      "step": "plan_route",
+      "route": {
+        "revision": 1,
+        "currentIndex": -1,
+        "currentCheckpoint": 0,
+        "destinationId": "Docs",
+        "arrived": 0,
+        "complete": false,
+        "waypoints": [
+          {
+            "nodeId": "Server",
+            "status": "pending",
+            "missing": false,
+            "hidden": false
+          },
+          {
+            "nodeId": "Limiter",
+            "status": "pending",
+            "missing": false,
+            "hidden": false
+          },
+          {
+            "nodeId": "Docs",
+            "status": "pending",
+            "missing": false,
+            "hidden": false
+          }
+        ],
+        "history": [
+          {
+            "kind": "plan",
+            "revision": 1,
+            "nodeIds": [
+              "Server",
+              "Limiter",
+              "Docs"
+            ],
+            "reason": "",
+            "checkpoint": 3
+          }
+        ]
+      }
+    },
+    {
+      "step": "arrive: Server",
+      "existing": false,
+      "checkpoint": 4,
+      "route": {
+        "revision": 1,
+        "currentIndex": 0,
+        "currentCheckpoint": 4,
+        "destinationId": "Docs",
+        "arrived": 1,
+        "complete": false,
+        "waypoints": [
+          {
+            "nodeId": "Server",
+            "status": "current",
+            "missing": false,
+            "hidden": false
+          },
+          {
+            "nodeId": "Limiter",
+            "status": "pending",
+            "missing": false,
+            "hidden": false
+          },
+          {
+            "nodeId": "Docs",
+            "status": "pending",
+            "missing": false,
+            "hidden": false
+          }
+        ],
+        "history": [
+          {
+            "kind": "plan",
+            "revision": 1,
+            "nodeIds": [
+              "Server",
+              "Limiter",
+              "Docs"
+            ],
+            "reason": "",
+            "checkpoint": 3
+          },
+          {
+            "kind": "arrive",
+            "revision": 1,
+            "nodeId": "Server",
+            "nodeIds": [
+              "Server",
+              "Limiter",
+              "Docs"
+            ],
+            "reason": "",
+            "checkpoint": 4
+          }
+        ]
+      },
+      "reanchor": {
+        "shifted": 0,
+        "drifted": 0,
+        "stale": [
+          "edge <Docs documents Server> source:README.md:7"
+        ],
+        "ambiguous": [],
+        "restored": []
+      },
+      "session": {
+        "checkpoint": 4,
+        "baseSha": "268cc4104b6c14c6098992db77b0fa0f0a37fa87",
+        "headSha": "c77750b225ff758b0d531a664a0523ebb87dfb70",
+        "coverage": {
+          "changed": 5,
+          "uncovered": [
+            "README.md",
+            "src/server.ts",
+            "src/new.ts"
+          ],
+          "excluded": [
+            {
+              "reason": "docs",
+              "paths": [
+                "docs/guide.md"
+              ]
+            }
+          ],
+          "deleted": []
+        }
+      },
+      "codeRefs": [
+        {
+          "target": "node Docs",
+          "path": "README.md",
+          "symbol": "Limits",
+          "startLine": 5,
+          "endLine": 6,
+          "blobSha": "3f426152fd9b87d6932902e1573b9e507fe548d7",
+          "snippet": "## Limits\nEach caller gets 10 calls.",
+          "lineHashes": "68c8d3995fdaf422477c6429e560ed8c 5f02803a52a5a9b8865a51c3327710a0",
+          "author": "parity",
+          "checkpoint": 1,
+          "status": "ok"
+        },
+        {
+          "target": "node Legacy",
+          "path": "src/legacy.ts",
+          "symbol": "legacy",
+          "startLine": 1,
+          "endLine": 1,
+          "blobSha": "7e15a4a640939c8951c2c828759b35d00748b486",
+          "snippet": "export const legacy = 1;",
+          "lineHashes": "e80c3237f22f8adb429bff1279b04b87",
+          "author": "parity",
+          "checkpoint": 1,
+          "status": "ok"
+        },
+        {
+          "target": "node Limiter",
+          "path": "src/limiter.ts",
+          "symbol": "Limiter.allow",
+          "startLine": 5,
+          "endLine": 7,
+          "blobSha": "9ab4a39b28fe8baee26381fabeb92ced9437876e",
+          "snippet": "  allow(used: number): boolean {\n    return used < this.max;\n  }",
+          "lineHashes": "5a7f0b7d3c9f915c862cabcf681dec16 0b9d9183e03e0a266ad1a5434adbf441 737db166c79ae98e44bbe5ad43e03bf3",
+          "author": "parity",
+          "checkpoint": 1,
+          "status": "ok"
+        },
+        {
+          "target": "node Limiter",
+          "path": "src/limiter.ts",
+          "symbol": "parseLimit",
+          "startLine": 10,
+          "endLine": 12,
+          "blobSha": "9ab4a39b28fe8baee26381fabeb92ced9437876e",
+          "snippet": "export function parseLimit(text: string): number {\n  return Number.parseInt(text, 10) || 0;\n}",
+          "lineHashes": "6396278be63569982e70eeb885b9df63 58cf72c3848bf74581dd6935b5bb48d3 d10b36aa74a59bcf4a88185837f658af",
+          "author": "parity",
+          "checkpoint": 2,
+          "status": "ok"
+        },
+        {
+          "target": "node Server",
+          "path": "src/server.ts",
+          "symbol": "handle",
+          "startLine": 5,
+          "endLine": 8,
+          "blobSha": "0852a4ab140652977f0572aacead2fbc33e379f9",
+          "snippet": "export function handle(used: number): string {\n  const limiter = new Limiter(10 + legacy);\n  return limiter.allow(used) ? 'ok' : 'busy';\n}",
+          "lineHashes": "feb24d1b4247886286c36c0ea7af5e31 c8a542df895b819ce84aa70cc9e94291 a0430af4a6d355baf498d1786967de13 d10b36aa74a59bcf4a88185837f658af",
+          "author": "parity",
+          "checkpoint": 1,
+          "status": "ok"
+        }
+      ],
+      "edges": [
+        {
+          "edge": "Docs documents Server",
+          "evidence": "source:README.md:7",
+          "evidenceSnippet": "Busy callers get 'busy'.",
+          "lineHash": "cf5da858e8540c43b52357e76f8b5f31",
+          "evidenceStatus": "stale"
+        },
+        {
+          "edge": "Server reads Legacy",
+          "evidence": "source:src/legacy.ts:1",
+          "evidenceSnippet": "export const legacy = 1;",
+          "lineHash": "e80c3237f22f8adb429bff1279b04b87",
+          "evidenceStatus": "ok"
+        },
+        {
+          "edge": "Server uses Limiter",
+          "evidence": "source:src/server.ts:2",
+          "evidenceSnippet": "import { Limiter } from './limiter';",
+          "lineHash": "6c476e96342bf6ba626f56ca014c46d8",
+          "evidenceStatus": "ok"
+        }
+      ]
+    },
+    {
+      "step": "reroute: Legacy first",
+      "route": {
+        "revision": 2,
+        "currentIndex": 0,
+        "currentCheckpoint": 4,
+        "destinationId": "Docs",
+        "arrived": 1,
+        "complete": false,
+        "waypoints": [
+          {
+            "nodeId": "Server",
+            "status": "current",
+            "missing": false,
+            "hidden": false
+          },
+          {
+            "nodeId": "Legacy",
+            "status": "pending",
+            "missing": false,
+            "hidden": false
+          },
+          {
+            "nodeId": "Limiter",
+            "status": "pending",
+            "missing": false,
+            "hidden": false
+          },
+          {
+            "nodeId": "Docs",
+            "status": "pending",
+            "missing": false,
+            "hidden": false
+          }
+        ],
+        "history": [
+          {
+            "kind": "plan",
+            "revision": 1,
+            "nodeIds": [
+              "Server",
+              "Limiter",
+              "Docs"
+            ],
+            "reason": "",
+            "checkpoint": 3
+          },
+          {
+            "kind": "arrive",
+            "revision": 1,
+            "nodeId": "Server",
+            "nodeIds": [
+              "Server",
+              "Limiter",
+              "Docs"
+            ],
+            "reason": "",
+            "checkpoint": 4
+          },
+          {
+            "kind": "reroute",
+            "revision": 2,
+            "nodeIds": [
+              "Server",
+              "Legacy",
+              "Limiter",
+              "Docs"
+            ],
+            "reason": "legacy first",
+            "checkpoint": 4
+          }
+        ]
+      }
+    },
+    {
+      "step": "arrive: Legacy",
+      "existing": false,
+      "checkpoint": 5,
+      "route": {
+        "revision": 2,
+        "currentIndex": 1,
+        "currentCheckpoint": 5,
+        "destinationId": "Docs",
+        "arrived": 2,
+        "complete": false,
+        "waypoints": [
+          {
+            "nodeId": "Server",
+            "status": "done",
+            "missing": false,
+            "hidden": false
+          },
+          {
+            "nodeId": "Legacy",
+            "status": "current",
+            "missing": false,
+            "hidden": false
+          },
+          {
+            "nodeId": "Limiter",
+            "status": "pending",
+            "missing": false,
+            "hidden": false
+          },
+          {
+            "nodeId": "Docs",
+            "status": "pending",
+            "missing": false,
+            "hidden": false
+          }
+        ],
+        "history": [
+          {
+            "kind": "plan",
+            "revision": 1,
+            "nodeIds": [
+              "Server",
+              "Limiter",
+              "Docs"
+            ],
+            "reason": "",
+            "checkpoint": 3
+          },
+          {
+            "kind": "arrive",
+            "revision": 1,
+            "nodeId": "Server",
+            "nodeIds": [
+              "Server",
+              "Limiter",
+              "Docs"
+            ],
+            "reason": "",
+            "checkpoint": 4
+          },
+          {
+            "kind": "reroute",
+            "revision": 2,
+            "nodeIds": [
+              "Server",
+              "Legacy",
+              "Limiter",
+              "Docs"
+            ],
+            "reason": "legacy first",
+            "checkpoint": 4
+          },
+          {
+            "kind": "arrive",
+            "revision": 2,
+            "nodeId": "Legacy",
+            "nodeIds": [
+              "Server",
+              "Legacy",
+              "Limiter",
+              "Docs"
+            ],
+            "reason": "",
+            "checkpoint": 5
+          }
+        ]
+      },
+      "reanchor": {
+        "shifted": 0,
+        "drifted": 0,
+        "stale": [
+          "edge <Docs documents Server> source:README.md:7"
+        ],
+        "ambiguous": [],
+        "restored": []
+      },
+      "session": {
+        "checkpoint": 5,
+        "baseSha": "268cc4104b6c14c6098992db77b0fa0f0a37fa87",
+        "headSha": "c77750b225ff758b0d531a664a0523ebb87dfb70",
+        "coverage": {
+          "changed": 5,
+          "uncovered": [
+            "README.md",
+            "src/server.ts",
+            "src/new.ts"
+          ],
+          "excluded": [
+            {
+              "reason": "docs",
+              "paths": [
+                "docs/guide.md"
+              ]
+            }
+          ],
+          "deleted": []
+        }
+      },
+      "codeRefs": [
+        {
+          "target": "node Docs",
+          "path": "README.md",
+          "symbol": "Limits",
+          "startLine": 5,
+          "endLine": 6,
+          "blobSha": "3f426152fd9b87d6932902e1573b9e507fe548d7",
+          "snippet": "## Limits\nEach caller gets 10 calls.",
+          "lineHashes": "68c8d3995fdaf422477c6429e560ed8c 5f02803a52a5a9b8865a51c3327710a0",
+          "author": "parity",
+          "checkpoint": 1,
+          "status": "ok"
+        },
+        {
+          "target": "node Legacy",
+          "path": "src/legacy.ts",
+          "symbol": "legacy",
+          "startLine": 1,
+          "endLine": 1,
+          "blobSha": "7e15a4a640939c8951c2c828759b35d00748b486",
+          "snippet": "export const legacy = 1;",
+          "lineHashes": "e80c3237f22f8adb429bff1279b04b87",
+          "author": "parity",
+          "checkpoint": 1,
+          "status": "ok"
+        },
+        {
+          "target": "node Limiter",
+          "path": "src/limiter.ts",
+          "symbol": "Limiter.allow",
+          "startLine": 5,
+          "endLine": 7,
+          "blobSha": "9ab4a39b28fe8baee26381fabeb92ced9437876e",
+          "snippet": "  allow(used: number): boolean {\n    return used < this.max;\n  }",
+          "lineHashes": "5a7f0b7d3c9f915c862cabcf681dec16 0b9d9183e03e0a266ad1a5434adbf441 737db166c79ae98e44bbe5ad43e03bf3",
+          "author": "parity",
+          "checkpoint": 1,
+          "status": "ok"
+        },
+        {
+          "target": "node Limiter",
+          "path": "src/limiter.ts",
+          "symbol": "parseLimit",
+          "startLine": 10,
+          "endLine": 12,
+          "blobSha": "9ab4a39b28fe8baee26381fabeb92ced9437876e",
+          "snippet": "export function parseLimit(text: string): number {\n  return Number.parseInt(text, 10) || 0;\n}",
+          "lineHashes": "6396278be63569982e70eeb885b9df63 58cf72c3848bf74581dd6935b5bb48d3 d10b36aa74a59bcf4a88185837f658af",
+          "author": "parity",
+          "checkpoint": 2,
+          "status": "ok"
+        },
+        {
+          "target": "node Server",
+          "path": "src/server.ts",
+          "symbol": "handle",
+          "startLine": 5,
+          "endLine": 8,
+          "blobSha": "0852a4ab140652977f0572aacead2fbc33e379f9",
+          "snippet": "export function handle(used: number): string {\n  const limiter = new Limiter(10 + legacy);\n  return limiter.allow(used) ? 'ok' : 'busy';\n}",
+          "lineHashes": "feb24d1b4247886286c36c0ea7af5e31 c8a542df895b819ce84aa70cc9e94291 a0430af4a6d355baf498d1786967de13 d10b36aa74a59bcf4a88185837f658af",
+          "author": "parity",
+          "checkpoint": 1,
+          "status": "ok"
+        }
+      ],
+      "edges": [
+        {
+          "edge": "Docs documents Server",
+          "evidence": "source:README.md:7",
+          "evidenceSnippet": "Busy callers get 'busy'.",
+          "lineHash": "cf5da858e8540c43b52357e76f8b5f31",
+          "evidenceStatus": "stale"
+        },
+        {
+          "edge": "Server reads Legacy",
+          "evidence": "source:src/legacy.ts:1",
+          "evidenceSnippet": "export const legacy = 1;",
+          "lineHash": "e80c3237f22f8adb429bff1279b04b87",
+          "evidenceStatus": "ok"
+        },
+        {
+          "edge": "Server uses Limiter",
+          "evidence": "source:src/server.ts:2",
+          "evidenceSnippet": "import { Limiter } from './limiter';",
+          "lineHash": "6c476e96342bf6ba626f56ca014c46d8",
+          "evidenceStatus": "ok"
+        }
+      ]
+    },
+    {
+      "step": "arrive: Legacy again",
+      "existing": true,
+      "checkpoint": 5,
+      "route": {
+        "revision": 2,
+        "currentIndex": 1,
+        "currentCheckpoint": 5,
+        "destinationId": "Docs",
+        "arrived": 2,
+        "complete": false,
+        "waypoints": [
+          {
+            "nodeId": "Server",
+            "status": "done",
+            "missing": false,
+            "hidden": false
+          },
+          {
+            "nodeId": "Legacy",
+            "status": "current",
+            "missing": false,
+            "hidden": false
+          },
+          {
+            "nodeId": "Limiter",
+            "status": "pending",
+            "missing": false,
+            "hidden": false
+          },
+          {
+            "nodeId": "Docs",
+            "status": "pending",
+            "missing": false,
+            "hidden": false
+          }
+        ],
+        "history": [
+          {
+            "kind": "plan",
+            "revision": 1,
+            "nodeIds": [
+              "Server",
+              "Limiter",
+              "Docs"
+            ],
+            "reason": "",
+            "checkpoint": 3
+          },
+          {
+            "kind": "arrive",
+            "revision": 1,
+            "nodeId": "Server",
+            "nodeIds": [
+              "Server",
+              "Limiter",
+              "Docs"
+            ],
+            "reason": "",
+            "checkpoint": 4
+          },
+          {
+            "kind": "reroute",
+            "revision": 2,
+            "nodeIds": [
+              "Server",
+              "Legacy",
+              "Limiter",
+              "Docs"
+            ],
+            "reason": "legacy first",
+            "checkpoint": 4
+          },
+          {
+            "kind": "arrive",
+            "revision": 2,
+            "nodeId": "Legacy",
+            "nodeIds": [
+              "Server",
+              "Legacy",
+              "Limiter",
+              "Docs"
+            ],
+            "reason": "",
+            "checkpoint": 5
+          }
+        ]
+      }
+    }
+  ]
+}

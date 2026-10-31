@@ -1,0 +1,32 @@
+node_modules/
+.direnv/
+dist/
+agent/.agent-token*
+.playwright-mcp/
+# ignore local Claude Code state, but commit project skills and settings (git cannot
+# re-include under an excluded directory, so the parent must be `.claude/*`, not
+# `.claude/`). .claude/skills/redcrayon is a symlink to plugin/.
+.claude/*
+!.claude/skills/
+!.claude/settings.json
+
+# the helper bundle, copied into the plugin at release time
+plugin/bin/redcrayon.mjs
+client/.env
+
+# superpowers brainstorm companion
+.superpowers/
+
+# local Postgres (scripts/pg.sh)
+.postgres/
+
+# Local tool identities are private credentials.
+.context/importer-token.*
+
+# Browser test artifacts
+e2e/test-results/
+e2e/playwright-report/
+
+# Impeccable design-run scratch (mocks, decision pages); design.json is the DESIGN.md sidecar
+.impeccable/*
+!.impeccable/design.json

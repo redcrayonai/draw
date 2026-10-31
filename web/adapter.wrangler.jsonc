@@ -1,0 +1,12 @@
+// What @sveltejs/adapter-cloudflare builds from (svelte.config.js). The adapter
+// writes its generated worker to `main`, so `main` here is the generated file
+// and wrangler.jsonc deploys worker.js, which wraps it. Keep `assets` equal to
+// wrangler.jsonc's.
+{
+  "main": ".svelte-kit/cloudflare/_worker.js",
+  "assets": {
+    "binding": "ASSETS",
+    "directory": ".svelte-kit/cloudflare",
+    "not_found_handling": "single-page-application"
+  }
+}

@@ -1,0 +1,484 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Draw by Red Crayon</title>
+    <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='%23E5484D' stroke-width='1.3' stroke-linecap='round' stroke-linejoin='round'%3E%3Crect width='16' height='16' rx='3.5' fill='%23000' stroke='none'/%3E%3Cpath d='M2.75 13.25V11l7.5-7.5 2.25 2.25-7.5 7.5Z'/%3E%3Cpath d='M10.25 3.5l1.5-1.5 2.25 2.25-1.5 1.5'/%3E%3Cpath d='M4.75 9l2.25 2.25'/%3E%3C/svg%3E" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=Geist+Mono:wght@400;500&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="/src/style.css" />
+    <script>
+      // Apply the theme before first paint to avoid a flash. Dark is the default.
+      // The ids of shared/themes.ts THEMES; chrome-contract.test holds them in step.
+      const stored = localStorage.getItem('redcrayon-theme');
+      document.documentElement.dataset.theme = [
+        'dark', 'light', 'brutal', 'catppuccin-mocha', 'gruvbox-material', 'material-dark', 'monokai-pro',
+        'nord', 'oceanic-next', 'one-dark', 'catppuccin-latte', 'material-light', 'one-light',
+      ].includes(stored) ? stored : 'dark';
+    </script>
+  </head>
+  <body class="board-loading">
+    <div id="board-loading" role="status" aria-live="polite">
+      <canvas id="loading-orb" width="64" height="64" aria-hidden="true"></canvas>
+      <p id="loading-caption">Loading board…</p>
+      <button id="loading-retry" class="ctl" hidden>Reload</button>
+    </div>
+    <div id="error-strip" hidden>
+      <span id="error-text"></span>
+      <button id="error-dismiss" aria-label="Dismiss">&times;</button>
+    </div>
+
+    <header class="topbar">
+      <div class="tb-left">
+        <button id="rail-toggle" class="icon-btn" aria-expanded="true" title="Toggle the board panel">
+          <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+            <rect x="1.75" y="2.75" width="12.5" height="10.5" rx="2" stroke="currentColor" stroke-width="1.3" />
+            <line x1="6.25" y1="2.75" x2="6.25" y2="13.25" stroke="currentColor" stroke-width="1.3" />
+          </svg>
+        </button>
+        <span id="preview-tag" class="preview-tag" title="Draw is in preview. The hosted version is free while it lasts." hidden>Preview</span>
+        <nav class="crumb" aria-label="Breadcrumb">
+          <!-- href set at boot from VITE_DASHBOARD_URL; without it this stays plain text -->
+          <a id="crumb-boards" class="crumb-root">Boards</a>
+          <span class="crumb-sep" aria-hidden="true">/</span>
+          <h1 id="board-title"></h1>
+        </nav>
+        <button id="branch-chip" type="button" aria-haspopup="dialog" aria-expanded="false" aria-controls="branch-pop" title="Branches">
+          <svg class="branch-icon" width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" aria-hidden="true"><circle cx="4" cy="3.5" r="1.8"/><circle cx="4" cy="12.5" r="1.8"/><circle cx="12" cy="6" r="1.8"/><path d="M4 5.3v5.4M12 7.8c0 2.6-2.4 3.3-5 3.7"/></svg>
+          <span class="branch-name"></span>
+          <i class="branch-dot" aria-hidden="true"></i>
+          <span class="branch-status"></span>
+          <svg class="branch-chev" width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" aria-hidden="true"><path d="M2.5 4l2.5 2.5L7.5 4"/></svg>
+        </button>
+        <div id="branch-pop" role="dialog" aria-label="Branches" hidden>
+          <div class="branch-pop-head">
+            <h2>Branches</h2>
+            <button type="button" class="branch-new"><svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" aria-hidden="true"><path d="M6 2v8M2 6h8"/></svg>New branch <kbd>⌘⇧B</kbd></button>
+          </div>
+          <div class="branch-tree" role="tree" aria-label="Branches of this board"></div>
+          <div class="branch-pop-foot"><span><kbd>⌘K</kbd> branch commands</span><span><kbd>↵</kbd> switch</span></div>
+        </div>
+        <button id="exposure-chip" type="button" aria-haspopup="dialog" aria-controls="share-pop" aria-expanded="false"></button>
+        <div id="board-counts" role="group"></div>
+      </div>
+
+      <div class="header-actions">
+        <span id="save-status" role="status" aria-live="polite" hidden></span>
+        <div id="live" class="live" title="Connected to the live board">
+          <span class="live-dot" aria-hidden="true"></span>Live
+        </div>
+        <button id="participants-label" title="Show participant details" aria-label="Participants" aria-expanded="false" aria-controls="presence-pop">
+          <span id="participant-chips"></span>
+        </button>
+        <span class="tb-div" aria-hidden="true"></span>
+        <!-- Red crayon history (spec 2026-10-19 D5): Send drifts the circles into it. -->
+        <button id="act-review" class="icon-btn" title="Review" aria-label="Review" aria-expanded="false" aria-controls="review-pop">
+          <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2.75 13.25V11l7.5-7.5 2.25 2.25-7.5 7.5Z" /><path d="M10.25 3.5l1.5-1.5 2.25 2.25-1.5 1.5" /><path d="M4.75 9l2.25 2.25" /></svg>
+          <span id="review-badge" class="review-badge" aria-hidden="true" hidden></span>
+        </button>
+        <button id="act-theme" class="icon-btn" title="Theme" aria-label="Theme" aria-expanded="false" aria-controls="theme-pop">
+          <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+            <path d="M8 1.75a6.25 6.25 0 1 0 6.25 6.25A4.9 4.9 0 0 1 8 1.75Z" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round" />
+          </svg>
+        </button>
+        <!-- chrome.ts setupTheme fills this from shared/themes.ts -->
+        <div id="theme-pop" role="group" aria-label="Theme" hidden></div>
+        <!-- review-panel.ts fills this: rounds newest first, opening marks replies read -->
+        <div id="review-pop" role="group" aria-label="Review" hidden></div>
+        <div id="share-pop" role="group" aria-label="Share" hidden>
+          <p class="eyebrow">Share</p>
+          <label class="share-row"><span>Share with link</span><input id="share-on" type="checkbox" role="switch"></label>
+          <div id="share-detail" hidden>
+            <div class="share-seg" role="group" aria-label="Link access">
+              <button data-share-mode="view" aria-pressed="false">Can view</button>
+              <button data-share-mode="edit" aria-pressed="false">Can edit</button>
+            </div>
+            <fieldset class="share-includes">
+              <legend>Also include</legend>
+              <label class="share-check"><input id="share-threats" type="checkbox"><span><b>Threats</b><small>markers, details and blast radius</small></span><em class="share-count"></em></label>
+              <label class="share-check"><input id="share-code" type="checkbox"><span><b>Code</b><small>code refs and source snippets</small></span><em class="share-count"></em></label>
+              <small id="share-code-note" class="share-note" hidden>Edit links always include code, so undo can restore what an edit removes.</small>
+            </fieldset>
+            <div class="share-link"><input id="share-url" readonly aria-label="Share link"><button id="share-copy" class="btn-primary">Copy</button></div>
+          </div>
+          <p id="share-hint" class="share-hint"></p>
+          <p id="share-error" class="share-error" role="alert" hidden></p>
+          <!-- owners export from here; share.ts hides the header's Export while Share shows -->
+          <div class="share-export"><span>Download a copy</span><button id="share-export" class="ctl">Export SVG</button></div>
+        </div>
+        <button id="act-rescan" class="icon-btn" hidden title="Re-scan repository" aria-label="Re-scan repository">
+          <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+            <path d="M13.5 8a5.5 5.5 0 1 1-1.6-3.9M13.5 2v3h-3" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round" />
+          </svg>
+        </button>
+        <!-- shown at boot when a hosted server URL (VITE_MCP_URL) is set -->
+        <button id="act-connect" hidden title="Connect a coding agent" aria-label="Connect an agent" aria-haspopup="dialog" aria-controls="connect-panel" aria-expanded="false">
+          <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+            <path d="M6 1.75v3M10 1.75v3M4.25 4.75h7.5v2.5a3.75 3.75 0 0 1-7.5 0ZM8 11v3.25" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round" />
+          </svg>
+          <span class="act-label">Connect an agent</span>
+        </button>
+        <button id="act-share" class="btn-primary" hidden title="Share this board" aria-haspopup="dialog" aria-controls="share-pop" aria-expanded="false">Share</button>
+        <button id="act-embed" hidden aria-haspopup="dialog" aria-controls="embed-pop" aria-expanded="false">Embed chart</button>
+        <div id="embed-pop" class="embed-pop" role="dialog" aria-label="Embed chart" hidden>
+          <p class="eyebrow">EMBED</p>
+          <label class="embed-theme-label">Content <select id="embed-scope"><option value="chart">Selected chart</option><option value="board">Whole board / diagram</option></select></label>
+          <label class="share-row"><span>Enable embed access</span><input id="embed-on" type="checkbox" role="switch"></label>
+          <p class="share-hint" id="embed-access-hint"></p>
+          <div id="embed-board-options" hidden>
+            <label class="share-row"><span>Include threat playback</span><input id="embed-threats" type="checkbox"></label>
+            <label class="share-row" id="embed-comparison-row" hidden><span>Include previous architecture snapshot</span><input id="embed-comparison" type="checkbox"></label>
+            <p class="share-hint">Publishes visible node labels, connections and chart data. Threats publish titles, severity and propagation. A comparison also publishes the previous snapshot’s diagram.</p>
+          </div>
+          <div id="embed-detail" hidden>
+            <label class="embed-theme-label">Theme <select id="embed-theme"><option value="auto">System</option><option value="light">Light</option><option value="dark">Dark</option></select></label>
+            <label for="embed-url">URL · paste into Notion’s /embed block</label>
+            <div class="share-link"><input id="embed-url" readonly aria-label="Embed URL"><button id="embed-copy-url">Copy</button></div>
+            <label for="embed-snippet">Iframe · paste into your webpage</label>
+            <textarea id="embed-snippet" readonly rows="4" aria-label="Iframe snippet"></textarea>
+            <button id="embed-copy-snippet">Copy</button>
+          </div>
+          <p class="share-hint">Turn off to revoke this link, including open embeds. Enabling again creates a new link.</p>
+          <p id="embed-error" class="share-error" role="alert" hidden></p>
+        </div>
+        <button id="act-export" class="btn-primary">Export SVG</button>
+      </div>
+
+      <div id="presence-pop" hidden></div>
+    </header>
+
+    <main id="canvas-wrap" aria-busy="true" inert>
+      <svg id="board">
+        <g id="world"></g>
+      </svg>
+
+      <aside id="rail">
+        <div class="rail-head">
+          <h2 class="rail-title">Board</h2>
+        </div>
+        <!-- who can see the board, from my_boards (access-line.ts) -->
+        <p id="access-line" hidden></p>
+        <!-- shown by main.ts renderLegend once an edge carries machine evidence -->
+        <button id="overlay-row" class="rail-switch" aria-pressed="false" hidden title="Evidence overlay · &#8997;E">
+          <span id="overlay-switch" class="overlay-switch"><span class="knob"></span></span>
+          <span class="overlay-name">Evidence overlay</span>
+          <span class="overlay-key">&#8997;E</span>
+        </button>
+        <button id="code-overlay-row" class="rail-switch" aria-pressed="false" hidden title="Code overlay · &#8997;C">
+          <span class="overlay-switch"><span class="knob"></span></span>
+          <span class="overlay-name">Code overlay</span>
+          <span class="overlay-key">&#8997;C</span>
+        </button>
+        <div id="code-overlay-hint" class="session-hint" hidden></div>
+        <button id="live-row" class="rail-switch" aria-pressed="false" hidden title="Live traffic from a tap on your machine">
+          <span class="overlay-switch"><span class="knob"></span></span>
+          <span class="overlay-name">Live traffic</span>
+        </button>
+        <div id="live-status" class="session-hint" aria-live="polite" hidden></div>
+        <div id="rail-hint">Choose a tool below to draw. Select a node to edit it.</div>
+        <div class="rail-divider"></div>
+        <div id="session-row" hidden></div>
+        <section class="hidden-sets" aria-labelledby="hidden-sets-title">
+          <h3 id="hidden-sets-title" class="eyebrow">Hidden sets</h3>
+          <div id="chips-row"></div>
+        </section>
+      </aside>
+
+      <div id="toolbar" role="toolbar" aria-label="Selection controls" hidden>
+        <details class="tb-menu" id="tb-color-menu">
+          <summary title="Colour: Ink" aria-label="Colour: Ink"><span id="tb-color-dot" class="sw-ink"></span><span class="tb-chevron" aria-hidden="true"><svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 6.5l3 3 3-3" /></svg></span></summary>
+          <div class="tb-popover">
+            <div class="eyebrow">COLOUR</div>
+            <div id="tb-swatches" role="group" aria-label="Colour">
+              <button class="swatch sw-ink" data-color="ink" title="Ink" aria-label="Ink" aria-pressed="false"></button>
+              <button class="swatch sw-blue" data-color="blue" title="Blue" aria-label="Blue" aria-pressed="false"></button>
+              <button class="swatch sw-red" data-color="red" title="Red" aria-label="Red" aria-pressed="false"></button>
+              <button class="swatch sw-green" data-color="green" title="Green" aria-label="Green" aria-pressed="false"></button>
+              <button class="swatch sw-purple" data-color="purple" title="Purple" aria-label="Purple" aria-pressed="false"></button>
+              <button class="swatch sw-gray" data-color="gray" title="Grey" aria-label="Grey" aria-pressed="false"></button>
+              <button class="swatch sw-default tb-edge-control" data-color="" title="Default" aria-label="Default" aria-pressed="false"></button>
+            </div>
+          </div>
+        </details>
+        <div class="tb-seg" id="tb-size" role="group" aria-label="Size">
+          <button data-size="s" title="Small" aria-label="Small" aria-pressed="false">S</button>
+          <button data-size="m" title="Medium" aria-label="Medium" aria-pressed="false">M</button>
+          <button data-size="l" title="Large" aria-label="Large" aria-pressed="false">L</button>
+        </div>
+        <details class="tb-menu" id="tb-style-menu">
+          <summary>Style <span class="tb-chevron" aria-hidden="true"><svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 6.5l3 3 3-3" /></svg></span></summary>
+          <div class="tb-popover">
+            <div class="tb-popover-row">
+              <span>Line</span>
+              <div class="tb-seg" id="tb-stroke" role="group" aria-label="Line">
+                <button data-stroke="solid" title="Solid line" aria-label="Solid line" aria-pressed="false">
+                  <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2.5 8h11" /></svg>
+                </button>
+                <button data-stroke="dashed" title="Dashed line" aria-label="Dashed line" aria-pressed="false">
+                  <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2.5 8h11" stroke-dasharray="3.75 3.5" /></svg>
+                </button>
+                <button class="tb-edge-control" data-stroke="dotted" title="Dotted line" aria-label="Dotted line" aria-pressed="false">
+                  <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2.5 8h11" stroke-dasharray="0 2.75" /></svg>
+                </button>
+              </div>
+            </div>
+            <div class="tb-popover-row tb-edge-control">
+              <span>Weight</span>
+              <div class="tb-seg" id="tb-weight" role="group" aria-label="Weight">
+                <!-- Filled bars, not strokes: every 16-unit icon strokes at 1.3, and these show three weights. -->
+                <button data-weight="regular" title="Regular weight" aria-label="Regular weight" aria-pressed="false">
+                  <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor" stroke="none" aria-hidden="true"><rect x="2.5" y="7.35" width="11" height="1.3" rx="0.65" /></svg>
+                </button>
+                <button data-weight="medium" title="Medium weight" aria-label="Medium weight" aria-pressed="false">
+                  <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor" stroke="none" aria-hidden="true"><rect x="2.5" y="6.8" width="11" height="2.4" rx="1.2" /></svg>
+                </button>
+                <button data-weight="bold" title="Bold weight" aria-label="Bold weight" aria-pressed="false">
+                  <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor" stroke="none" aria-hidden="true"><rect x="2.5" y="6.2" width="11" height="3.6" rx="1.8" /></svg>
+                </button>
+              </div>
+            </div>
+            <div class="tb-popover-row tb-edge-control"><span>Default</span><button id="tb-reset-style" title="Reset colour, line and weight to the default">Reset</button></div>
+            <p id="tb-overlay-note" class="tb-note tb-edge-control" hidden>Evidence overlay is on, so line and weight show evidence. &#8997;E turns it off.</p>
+            <div class="tb-popover-row tb-node-control">
+              <span>Shape</span>
+              <div class="tb-seg" id="tb-shape" role="group" aria-label="Shape">
+                <button data-shape="rect" title="Rectangle" aria-label="Rectangle" aria-pressed="false">
+                  <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2" y="4" width="12" height="8" rx="1.5" /></svg>
+                </button>
+                <button data-shape="pill" title="Pill" aria-label="Pill" aria-pressed="false">
+                  <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="1.5" y="4" width="13" height="8" rx="4" /></svg>
+                </button>
+                <button data-shape="ellipse" title="Ellipse" aria-label="Ellipse" aria-pressed="false">
+                  <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><ellipse cx="8" cy="8" rx="6.5" ry="4.5" /></svg>
+                </button>
+              </div>
+            </div>
+            <div class="tb-popover-row tb-node-control"><span>Kind</span><button id="tb-kind" title="Cycle kind"></button></div>
+            <div class="tb-popover-row tb-node-control"><span>Emphasis</span><button id="tb-token" title="Cycle token"></button></div>
+            <div class="tb-popover-row tb-node-control"><span>Focus</span><button id="tb-focal" title="Toggle focal" aria-pressed="false">focal</button></div>
+          </div>
+        </details>
+        <span class="tb-sep" aria-hidden="true"></span>
+        <button id="tb-library" class="tb-node-control" title="Add to library · ⇧L" aria-label="Add to library" aria-keyshortcuts="Shift+L">
+          <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 2.5h8v11L8 10.75 4 13.5z" /><path d="M8 5v3.5M6.25 6.75h3.5" /></svg>
+        </button>
+        <button id="tb-delete" title="Delete selection" aria-label="Delete selection">
+          <svg width="14" height="14" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+            <path d="M2.5 4h11M6 4V2.5h4V4M4 4l.6 9.5h6.8L12 4" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round" />
+          </svg>
+        </button>
+        <button id="tb-more" title="More commands · ⌘K" aria-label="More commands" aria-keyshortcuts="Meta+K Control+K">
+          <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="3.5" cy="8" r="1.1" fill="currentColor" stroke="none" /><circle cx="8" cy="8" r="1.1" fill="currentColor" stroke="none" /><circle cx="12.5" cy="8" r="1.1" fill="currentColor" stroke="none" /></svg>
+        </button>
+      </div>
+
+      <div id="dim-badge" hidden></div>
+
+      <div id="dock" role="toolbar" aria-label="Tools">
+        <button id="tool-select" class="tool" title="Select &middot; esc">
+          <svg width="17" height="17" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
+            <path d="M2.4 1.4 2.4 12.6 5.4 9.8 7.4 14.2 9.1 13.4 7.1 9.1 11.2 9.1Z" />
+          </svg>
+          <span class="tool-key">esc</span>
+        </button>
+        <button id="tool-hand" class="tool" title="Hand &middot; drag to pan &middot; h">
+          <svg width="17" height="17" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M5 7.5V4a1 1 0 0 1 2 0v3M7 7V3a1 1 0 0 1 2 0v4M9 7.5V4.5a1 1 0 0 1 2 0V9c0 2.8-1.8 4.5-4 4.5S3.6 12.2 3 10.6l-.9-2.2a1 1 0 0 1 1.7-1L5 9" />
+          </svg>
+          <span class="tool-key">h</span>
+        </button>
+        <span class="dock-div" aria-hidden="true"></span>
+        <button class="add-row tool" data-kind="service" title="Service &middot; 1">
+          <span class="add-icon icon-service" aria-hidden="true"><svg width="20" height="20" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="1.5" y="4" width="13" height="8" rx="2" /></svg></span>
+          <span class="add-name">Service</span>
+          <span class="add-key tool-key">1</span>
+        </button>
+        <button class="add-row tool" data-kind="datastore" title="Datastore &middot; 2">
+          <span class="add-icon icon-datastore" aria-hidden="true"><svg width="20" height="20" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="1.5" y="4" width="13" height="8" rx="2" /><path d="M1.5 6a2 2 0 0 1 2-2h1v8h-1a2 2 0 0 1-2-2z" fill="currentColor" stroke="none" /></svg></span>
+          <span class="add-name">Datastore</span>
+          <span class="add-key tool-key">2</span>
+        </button>
+        <button class="add-row tool" data-kind="external" title="External &middot; 3">
+          <span class="add-icon icon-external" aria-hidden="true"><svg width="20" height="20" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="1.5" y="4" width="13" height="8" rx="2" stroke-dasharray="2.75 2.5" /></svg></span>
+          <span class="add-name">External</span>
+          <span class="add-key tool-key">3</span>
+        </button>
+        <button class="add-row tool" data-kind="boundary" title="Boundary &middot; 4">
+          <span class="add-icon icon-boundary" aria-hidden="true"><svg width="20" height="20" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="1" y="2.5" width="14" height="11" rx="2" /><path d="M3.5 5.5h4" /></svg></span>
+          <span class="add-name">Boundary</span>
+          <span class="add-key tool-key">4</span>
+        </button>
+        <button class="add-row tool" data-kind="note" title="Note &middot; 5">
+          <span class="add-icon icon-note" aria-hidden="true"><svg width="20" height="20" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 6.5h12" /><path d="M2 9.5h8" opacity="0.55" /></svg></span>
+          <span class="add-name">Note</span>
+          <span class="add-key tool-key">5</span>
+        </button>
+        <button class="add-row tool" data-kind="text" title="Text &middot; T">
+          <span class="add-icon icon-text" aria-hidden="true"><svg width="20" height="20" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 3.5h10M8 3.5v9" /></svg></span>
+          <span class="add-name">Text</span>
+          <span class="add-key tool-key">T</span>
+        </button>
+        <span class="dock-div" aria-hidden="true"></span>
+        <button id="tool-crayon" class="tool" title="Red crayon &middot; circle nodes to review &middot; C" aria-label="Red crayon" aria-keyshortcuts="C">
+          <svg width="17" height="17" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2.75 13.25V11l7.5-7.5 2.25 2.25-7.5 7.5Z" /><path d="M10.25 3.5l1.5-1.5 2.25 2.25-1.5 1.5" /><path d="M4.75 9l2.25 2.25" /></svg>
+          <span class="tool-key">C</span>
+        </button>
+        <span class="dock-div" aria-hidden="true"></span>
+        <button id="tool-library" class="tool" title="Library &middot; L" aria-label="Library" aria-expanded="false" aria-controls="library-popover" aria-keyshortcuts="L">
+          <svg width="17" height="17" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <rect x="2" y="2" width="5" height="5" rx="1" /><rect x="9" y="2" width="5" height="5" rx="1" /><rect x="2" y="9" width="5" height="5" rx="1" /><path d="M11.5 9v5M9 11.5h5" />
+          </svg>
+          <span class="tool-key">L</span>
+        </button>
+      </div>
+
+      <div id="library-popover" role="dialog" aria-label="Library" hidden></div>
+
+      <!-- crayon.ts: shown while red crayon drafts exist; one reducer call sends them all. -->
+      <div id="mark-banner" class="mark-banner" role="status" hidden></div>
+      <button id="mark-send" class="mark-send" hidden><span class="mark-send-label">Send 0 marks</span><svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 8h10M9 4l4 4-4 4" /></svg></button>
+
+      <div class="zoom-cluster">
+        <button id="hud-zoom-out" title="Zoom out (Ctrl/Cmd -)" aria-label="Zoom out">&minus;</button>
+        <button id="hud-zoom" title="Reset zoom to 100%">100%</button>
+        <button id="hud-zoom-in" title="Zoom in (Ctrl/Cmd +)" aria-label="Zoom in">+</button>
+        <span class="zoom-div" aria-hidden="true"></span>
+        <button id="hud-fit" title="Fit to content (Shift+1)">fit</button>
+      </div>
+
+      <button id="shortcuts-toggle" title="Keyboard shortcuts (?)">
+        <span class="q" aria-hidden="true">?</span><span class="shortcuts-label">Shortcuts</span>
+      </button>
+
+      <div id="legend" hidden>
+        <div class="legend-row"><svg width="32" height="8" aria-hidden="true"><path d="M0,4 L32,4" class="lg-import"></path></svg><span class="lg-strong">import</span></div>
+        <div class="legend-row"><svg width="32" height="8" aria-hidden="true"><path d="M0,4 L32,4" class="lg-source"></path></svg><span class="lg-strong">source:path:line</span></div>
+        <div class="legend-row"><svg width="32" height="8" aria-hidden="true"><path d="M0,4 L32,4" class="lg-stale"></path></svg><span class="lg-weak">stale source</span></div>
+        <div class="legend-row"><svg width="32" height="8" aria-hidden="true"><path d="M0,4 L32,4" class="lg-test"></path></svg><span class="lg-weak">test-import</span></div>
+        <div class="legend-row"><svg width="32" height="8" aria-hidden="true"><path d="M0,4 L32,4" class="lg-human"></path></svg><span class="lg-weak">human</span></div>
+        <div class="legend-row"><svg width="32" height="8" aria-hidden="true"><path d="M0,4 L32,4" class="lg-agent"></path></svg><span class="lg-weak">agent claim</span></div>
+        <div class="legend-row"><svg width="32" height="8" aria-hidden="true"><path d="M0,4 L32,4" class="lg-none"></path></svg><span class="lg-weak lg-italic">none</span></div>
+        <div id="legend-summary"></div>
+        <details class="legend-help">
+          <summary>How evidence works</summary>
+          <p>Proven links cite imported code or a current source location. Stale source needs a fresh citation. Test-import comes from tests; human is a person's assertion. None means no citation.</p>
+        </details>
+      </div>
+
+      <div id="empty-state" hidden data-mode="board">
+        <div class="empty-title" data-mode-only="board">Start with your first node.</div>
+        <div class="empty-copy" data-mode-only="board">Map a service, datastore, or idea. Connect nodes as your drawing takes shape.</div>
+        <canvas id="empty-orb" data-mode-only="session agent" hidden aria-hidden="true"></canvas>
+        <div id="empty-agent" class="empty-title" data-mode-only="agent" hidden></div>
+        <div class="empty-title" data-mode-only="session" hidden>Waiting for the agent to draw</div>
+        <div class="empty-copy empty-waiting" data-mode-only="session" hidden>
+          <span id="empty-live" class="empty-live" title="Connected to the live board"><span class="live-dot" aria-hidden="true"></span></span>The board fills in at each checkpoint.
+        </div>
+        <div class="empty-actions">
+          <button id="empty-connect" data-mode-only="board">connect an agent</button>
+          <button id="empty-import" hidden>import codebase</button>
+          <button id="empty-place">Draw a service</button>
+        </div>
+        <div class="empty-hint" data-mode-only="board">Click to place. Keep clicking to add more. Esc or Select finishes.</div>
+      </div>
+
+      <div id="shortcuts" hidden>
+        <h2>Keyboard</h2>
+        <table>
+          <tr><td>1&ndash;5</td><td>choose a node kind; click to place, keep clicking to repeat; esc finishes</td></tr>
+          <tr><td>L</td><td>open the library (Esc closes it): objects, charts, saved items</td></tr>
+          <tr><td>&#8679;L</td><td>add the selection to your library</td></tr>
+          <tr><td>&#8997;E</td><td>toggle the evidence overlay</td></tr>
+          <tr data-session-only><td>&#8997;C</td><td>toggle the code overlay (ref badges on nodes and edges)</td></tr>
+          <tr data-session-only><td>&#8593; / &#8595; (inspector)</td><td>move between code refs</td></tr>
+          <tr data-session-only><td>&#8629; (inspector)</td><td>expand the focused ref</td></tr>
+          <tr data-session-only><td>o (inspector)</td><td>open the expanded ref in your editor</td></tr>
+          <tr data-session-only><td>c (inspector)</td><td>copy the expanded ref as path:start-end</td></tr>
+          <tr data-session-only><td>&#8997;-click open in editor</td><td>copy the link instead of opening it</td></tr>
+          <tr><td>drag node</td><td>move (grid-snapped)</td></tr>
+          <tr><td>drag canvas</td><td>marquee select</td></tr>
+          <tr><td>click edge</td><td>select it (shift adds); inspector shows its evidence</td></tr>
+          <tr><td>shift-click / shift-drag</td><td>add or remove from selection</td></tr>
+          <tr><td>C</td><td>red crayon: click nodes to circle them, then Send; &#8984;Z takes back the last circle</td></tr>
+          <tr><td>h</td><td>hand tool: drag anywhere to pan (esc exits)</td></tr>
+          <tr><td>space-drag / middle-drag</td><td>pan</td></tr>
+          <tr><td>scroll</td><td>pan</td></tr>
+          <tr><td>ctrl/&#8984;-scroll, pinch</td><td>zoom (cursor-anchored)</td></tr>
+          <tr><td>shift-1</td><td>fit to content</td></tr>
+          <tr><td>ctrl/&#8984;-0</td><td>reset zoom</td></tr>
+          <tr><td>ctrl/&#8984;-plus / minus</td><td>zoom in / out</td></tr>
+          <tr><td>double-click canvas</td><td>new node</td></tr>
+          <tr><td>double-click label</td><td>edit text inline</td></tr>
+          <tr><td>drag border handle</td><td>draw edge to another node</td></tr>
+          <tr><td>ctrl/&#8984;-d</td><td>duplicate selection</td></tr>
+          <tr><td>f</td><td>toggle focal</td></tr>
+          <tr><td>delete</td><td>delete selection</td></tr>
+          <tr><td>ctrl/&#8984;-z</td><td>undo (own ops)</td></tr>
+          <tr><td>ctrl/&#8984;-shift-z</td><td>redo</td></tr>
+          <tr><td>ctrl/&#8984;-k</td><td>command palette</td></tr>
+          <tr><td>?</td><td>this overlay</td></tr>
+        </table>
+        <p>esc closes</p>
+      </div>
+
+      <aside id="inspector" hidden tabindex="0" aria-label="Inspector"></aside>
+      <div id="copy-status" class="sr-only" role="status" aria-live="polite"></div>
+    </main>
+
+    <div id="palette" hidden>
+      <div id="palette-panel" role="dialog" aria-modal="true" aria-label="Command palette">
+        <div id="palette-ctx" hidden></div>
+        <input
+          id="palette-input"
+          type="text"
+          autocomplete="off"
+          spellcheck="false"
+          placeholder="Type a command…"
+          aria-label="Command"
+          role="combobox"
+          aria-expanded="true"
+          aria-controls="palette-list"
+          aria-autocomplete="list"
+        />
+        <div id="palette-list" role="listbox" aria-label="Commands"></div>
+        <div id="palette-preview" hidden></div>
+        <div id="palette-foot">
+          <span class="pf"><kbd>↑↓</kbd>navigate</span>
+          <span class="pf"><kbd>↵</kbd>apply</span>
+          <span class="pf" id="palette-undo" hidden><kbd>⌘Z</kbd>undo anytime</span>
+          <span class="pf pf-right"><kbd>esc</kbd>close</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Tabs, steps and footer are built from shared/connect-guide.ts (connect.ts). -->
+    <div id="connect" hidden>
+      <div id="connect-panel" role="dialog" aria-modal="true" aria-labelledby="connect-title" aria-describedby="connect-lead" tabindex="-1">
+        <div class="connect-head">
+          <h2 id="connect-title">Connect an agent</h2>
+          <button class="icon-btn" data-act="close" aria-label="Close">
+            <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M4 4l8 8M12 4l-8 8" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" /></svg>
+          </button>
+        </div>
+        <div class="connect-body">
+          <p id="connect-lead" class="connect-lead"></p>
+          <div id="connect-tabs" class="tb-seg connect-tabs" role="tablist" aria-label="Agent"></div>
+          <div id="connect-panes"></div>
+          <p id="connect-live" class="connect-live" aria-live="polite"><span class="live-dot" aria-hidden="true"></span><span id="connect-live-text"></span></p>
+          <div id="connect-foot" class="connect-foot"></div>
+        </div>
+      </div>
+    </div>
+
+    <div id="auth-gate" hidden>
+      <div id="auth-card"></div>
+    </div>
+
+    <script type="module" src="/src/start.ts"></script>
+  </body>
+</html>

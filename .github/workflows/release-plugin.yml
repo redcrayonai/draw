@@ -1,0 +1,137 @@
+# Releases the redcrayon plugin and its helper as one npm package,
+# @redcrayonai/draw (spec §7, §9; RC-560). Runs on a tag plugin-v<version>, or by
+# hand (Run workflow) on main or on such a tag, e.g. for a hotfix: bump the
+# versions, merge to main, run it. release-labels.yml starts it on the tag a
+# release:plugin PR gets. Never on a branch push or a PR:
+#
+#   1. on a tag, stamps its version into the plugin package/manifest and helper;
+#      checks they agree, then configures the release's
+#      endpoint from the PLUGIN_MCP_ORIGIN repository variable; committed
+#      defaults stay local;
+#   2. builds the helper and copies helper/dist/redcrayon.mjs to plugin/bin/;
+#   3. packs plugin/ and runs scripts/vendor-scan.sh over everything that ships:
+#      the packed npm package and the marketplace file;
+#   4. publishes plugin/ to npm with provenance, by trusted publishing (the
+#      id-token below; no npm token). npm accepts provenance only from a public
+#      repo equal to plugin/package.json's repository (this one), so this step
+#      fails until the repo is public; publish by hand until then.
+#
+# .claude-plugin/marketplace.json points Claude Code at npm @redcrayonai/draw
+# ^1.0.0, so a 1.x release reaches users without changing it.
+
+name: release-plugin
+
+on:
+  push:
+    tags: ['plugin-v*']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: release-plugin
+  cancel-in-progress: false
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      # release-labels.yml picks a tag's version from PR labels; the files still hold the last hand bump.
+      # Without helper/ the next step names the problem.
+      - name: Stamp the tag's version into the files that ship
+        if: startsWith(github.ref, 'refs/tags/plugin-v') && hashFiles('helper/package.json') != ''
+        run: node scripts/release-labels.mjs stamp-plugin "${GITHUB_REF_NAME#plugin-v}"
+
+      - name: Check the helper and versions
+        id: version
+        run: |
+          if [ ! -f helper/package.json ]; then
+            echo "::error::helper/ is missing on this commit. The plugin ships the built helper as bin/redcrayon.mjs: tag a commit that has helper/."
+            exit 1
+          fi
+          package=$(node -p "require('./plugin/package.json').version")
+          # A tag names its version; a hand run on main publishes the version the files hold.
+          case "$GITHUB_REF" in
+            refs/tags/plugin-v*) tag="${GITHUB_REF_NAME#plugin-v}" ;;
+            refs/heads/main) tag="$package" ;;
+            *) echo "::error::release from main or a plugin-v<version> tag, not $GITHUB_REF."; exit 1 ;;
+          esac
+          plugin=$(node -p "require('./plugin/.claude-plugin/plugin.json').version")
+          helper=$(node -p "require('./helper/package.json').version")
+          if [ "$tag" != "$package" ] || [ "$tag" != "$plugin" ] || [ "$tag" != "$helper" ]; then
+            echo "::error::tag plugin-v$tag, plugin/package.json $package, plugin/.claude-plugin/plugin.json $plugin and helper/package.json $helper must hold the same version."
+            exit 1
+          fi
+          echo "version=$tag" >> "$GITHUB_OUTPUT"
+
+      - name: Configure the release endpoint
+        env:
+          PLUGIN_MCP_ORIGIN: ${{ vars.PLUGIN_MCP_ORIGIN }}
+        run: |
+          node scripts/plugin-config.mjs "${PLUGIN_MCP_ORIGIN:?Set PLUGIN_MCP_ORIGIN to the hosted MCP origin}"
+          if grep -rn 'redcrayon\.invalid' plugin helper/src; then
+            echo "::error::the placeholder domain is still in the files above after configuring PLUGIN_MCP_ORIGIN."
+            exit 1
+          fi
+
+      - name: Require an explicit deployment URL
+        run: |
+          node --input-type=module <<'NODE'
+          import { readFileSync } from 'node:fs';
+          import { domainOf, hostedUrl } from './scripts/plugin-config.mjs';
+          const origin = new URL(hostedUrl(JSON.parse(readFileSync('plugin/.mcp.json', 'utf8')))).origin;
+          domainOf(origin);
+          const helperOrigin = readFileSync('helper/src/capture.ts', 'utf8').match(/^export const DEFAULT_ORIGIN = (['"])([^'"]+)\1;$/m)?.[2];
+          if (helperOrigin !== origin) throw new Error('helper DEFAULT_ORIGIN must match the plugin MCP origin; check the PLUGIN_MCP_ORIGIN configuration step');
+          NODE
+
+      - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
+        with:
+          package_json_file: helper/package.json
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          registry-url: https://registry.npmjs.org
+          cache: pnpm
+          cache-dependency-path: helper/pnpm-lock.yaml
+
+      - name: Build the helper into the plugin
+        run: |
+          pnpm -C helper install --frozen-lockfile
+          pnpm -C helper run build
+          test -f helper/dist/redcrayon.mjs || { echo "::error::the helper build wrote no helper/dist/redcrayon.mjs"; exit 1; }
+          cp helper/dist/redcrayon.mjs plugin/bin/redcrayon.mjs
+          rm -f plugin/bin/.gitkeep
+
+      - name: Pack the plugin
+        run: |
+          mkdir -p "$RUNNER_TEMP/pack"
+          (cd plugin && npm pack --pack-destination "$RUNNER_TEMP/pack")
+          tar -xzf "$RUNNER_TEMP"/pack/*.tgz -C "$RUNNER_TEMP/pack"
+          test -x "$RUNNER_TEMP/pack/package/bin/redcrayon.mjs" || { echo "::error::the packed plugin has no executable bin/redcrayon.mjs"; exit 1; }
+
+      # The npm package and the marketplace file, with the text rules (vendor and internals words).
+      - name: Vendor scan
+        env:
+          PLUGIN_RELEASE_SCAN: '1'
+        run: |
+          printf 'tree %s\ntree .claude-plugin\n' "$RUNNER_TEMP/pack/package" > "$RUNNER_TEMP/release.targets"
+          scripts/vendor-scan.sh "$RUNNER_TEMP/release.targets" --hosted-plugin
+          node --test scripts/plugin.test.mjs
+
+      - name: Publish @redcrayonai/draw to npm (trusted publishing, provenance)
+        working-directory: plugin
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          npm install -g npm@^11.5.1
+          if npm view "@redcrayonai/draw@$VERSION" version >/dev/null 2>&1; then
+            echo "@redcrayonai/draw@$VERSION is already on npm; skipping the publish."
+          else
+            npm publish --provenance --access public
+          fi

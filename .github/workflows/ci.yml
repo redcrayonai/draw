@@ -1,0 +1,117 @@
+# Every PR runs this; main moves only through green PRs.
+# Leaf workflows are reusable so each check runs once per event.
+name: ci
+
+on:
+  pull_request:
+  workflow_call:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  workflow-checks:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+      - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
+        with:
+          package_json_file: agent/package.json
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: pnpm
+          cache-dependency-path: |
+            agent/pnpm-lock.yaml
+            helper/pnpm-lock.yaml
+      # eval-lib.test imports agent/src (typescript); plugin.test builds helper (esbuild).
+      - name: Install agent and helper
+        run: for p in agent helper; do pnpm -C "$p" install --frozen-lockfile; done
+      - uses: actions/setup-go@v7
+        with:
+          go-version: '1.26'
+          cache: false
+      - name: Workflow contracts
+        run: node --test scripts/ci-workflows.test.mjs scripts/eval-lib.test.mjs scripts/vendor-scan.test.mjs scripts/plugin.test.mjs scripts/live-drift.test.mjs scripts/check-wire-compat.test.mjs scripts/module-env.test.mjs scripts/board-links.test.mjs scripts/release-labels.test.mjs
+      - name: Validate GitHub Actions workflows
+        run: go run github.com/rhysd/actionlint/cmd/actionlint@v1.7.12
+
+  # A PR touching only markdown, GitHub YAML or **/scripts/ runs only workflow-checks and
+  # secret-scan (scripts/ci-ready.mjs). ci-ready still reports, so the required check
+  # never hangs; that is why this is not a paths-ignore. Main pushes run everything.
+  changes:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      full: ${{ steps.files.outputs.full }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 2
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+      - id: files
+        run: |
+          if [ "$GITHUB_EVENT_NAME" = pull_request ]; then
+            # HEAD is the PR's merge commit; its first parent is the base
+            git diff --no-renames --name-only HEAD^1 HEAD | node scripts/ci-ready.mjs changes >> "$GITHUB_OUTPUT"
+          else
+            echo full=true >> "$GITHUB_OUTPUT"
+          fi
+
+  bindings-check:
+    needs: changes
+    if: needs.changes.outputs.full == 'true'
+    uses: ./.github/workflows/bindings-check.yml
+  test-node:
+    needs: changes
+    if: needs.changes.outputs.full == 'true'
+    uses: ./.github/workflows/test-node.yml
+  session-flows:
+    needs: changes
+    if: needs.changes.outputs.full == 'true'
+    uses: ./.github/workflows/session-flows.yml
+  build-client:
+    needs: [bindings-check, changes]
+    if: needs.changes.outputs.full == 'true'
+    uses: ./.github/workflows/build-client.yml
+  build-web:
+    needs: [bindings-check, changes]
+    if: needs.changes.outputs.full == 'true'
+    uses: ./.github/workflows/build-web.yml
+  module-tests:
+    needs: changes
+    if: needs.changes.outputs.full == 'true'
+    uses: ./.github/workflows/module-tests.yml
+  secret-scan:
+    uses: ./.github/workflows/secret-scan.yml
+  security-scan:
+    needs: changes
+    if: needs.changes.outputs.full == 'true'
+    uses: ./.github/workflows/security-scan.yml
+  e2e:
+    needs: changes
+    if: needs.changes.outputs.full == 'true'
+    uses: ./.github/workflows/e2e.yml
+  compose-smoke:
+    needs: changes
+    if: needs.changes.outputs.full == 'true'
+    uses: ./.github/workflows/compose-smoke.yml
+
+  ci-ready:
+    name: ci-ready
+    needs: [workflow-checks, changes, bindings-check, test-node, session-flows, build-client, build-web, module-tests, secret-scan, security-scan, e2e, compose-smoke]
+    if: ${{ always() }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+      - name: Require every check to succeed
+        env:
+          CI_NEEDS: ${{ toJSON(needs) }}
+        run: node scripts/ci-ready.mjs

@@ -1,0 +1,19 @@
+{
+  "name": "redcrayon-module",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "spacetime build",
+    "publish": "node ../scripts/module-env.mjs local -- spacetime publish",
+    "test": "node --experimental-strip-types --test src/*.test.mjs"
+  },
+  "dependencies": {
+    "spacetimedb": "2.10.*"
+  },
+  "devDependencies": {
+    "typescript": "~5.6.3"
+  },
+  "packageManager": "pnpm@10.34.5",
+  "license": "Apache-2.0"
+}

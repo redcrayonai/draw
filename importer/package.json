@@ -1,0 +1,29 @@
+{
+  "name": "redcrayon-importer",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "start": "tsx src/import-runner.ts",
+    "test": "node --import tsx --test src/*.test.ts",
+    "import-go": "tsx src/import-go.ts",
+    "stats": "tsx src/board-stats.ts",
+    "fork": "tsx src/fork-board.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "spacetimedb": "2.10.*",
+    "tsx": "^4.23.15",
+    "typescript": "~5.6.3"
+  },
+  "devDependencies": {
+    "@types/node": "^26.6.4"
+  },
+  "pnpm": {
+    "ignoredBuiltDependencies": [
+      "esbuild"
+    ]
+  },
+  "packageManager": "pnpm@10.34.5",
+  "license": "Apache-2.0"
+}
