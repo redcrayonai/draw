@@ -10,23 +10,32 @@ import { Aggregator, type TapMapping } from './tap-agg';
 import { decodeJson, decodeProtobuf } from './tap-otlp';
 import { HelperError } from './capture';
 
-export const TAP_USAGE = 'redcrayon: usage: redcrayon tap --token <token from start_tap> [--port 4318] [--map .redcrayon/tap.json]';
+export const TAP_USAGE =
+  'redcrayon: usage: redcrayon tap --token <token from start_tap> [--service <service.name>=<node id>]… [--port 4318] [--map .redcrayon/tap.json] (REDCRAYON_TAP_TOKEN may stand in for --token)';
 const MAX_BODY = 8 * 1024 * 1024;
 
 export interface TapArgs {
   token: string;
   port: number;
   map: string;
+  /** --service flags (service.name -> node id), applied over the mapping file. */
+  services: Record<string, string>;
 }
 
-export function parseTap(argv: string[]): TapArgs {
-  const out: TapArgs = { token: '', port: 4318, map: join('.redcrayon', 'tap.json') };
+/** The token may come from REDCRAYON_TAP_TOKEN, so it stays out of argv (other users of a host can read argv). */
+export function parseTap(argv: string[], env: Record<string, string | undefined> = process.env): TapArgs {
+  const out: TapArgs = { token: env.REDCRAYON_TAP_TOKEN ?? '', port: 4318, map: join('.redcrayon', 'tap.json'), services: {} };
   for (let i = 0; i < argv.length; i++) {
     const v = argv[i + 1];
     if (argv[i] === '--token' && v) (out.token = v), i++;
     else if (argv[i] === '--port' && v && /^\d{1,5}$/.test(v)) (out.port = Number(v)), i++;
     else if (argv[i] === '--map' && v) (out.map = v), i++;
-    else throw new HelperError(TAP_USAGE);
+    else if (argv[i] === '--service' && v && /^.+=\d{1,20}$/.test(v)) {
+      // The node id is digits, so the last = splits even a service name that holds one.
+      const at = v.lastIndexOf('=');
+      out.services[v.slice(0, at)] = v.slice(at + 1);
+      i++;
+    } else throw new HelperError(TAP_USAGE);
   }
   if (!out.token) throw new HelperError(TAP_USAGE);
   return out;
@@ -43,11 +52,14 @@ export function boardOfToken(token: string): string {
   throw new HelperError('redcrayon: that is not a tap token. Ask your agent to call start_tap again.');
 }
 
-/** A mapping file read on change: services -> node ids; a broken edit keeps the last good mapping. */
-export function mappingFile(path: string, board: string, log: (line: string) => void): () => TapMapping {
+/**
+ * A mapping file read on change: services -> node ids; a broken edit keeps the last good mapping.
+ * `flags` (--service) win over the file, and with flags no file is needed.
+ */
+export function mappingFile(path: string, board: string, log: (line: string) => void, flags: Record<string, string> = {}): () => TapMapping {
   let mtime = -1;
-  let current: TapMapping = { board, services: {} };
-  let warned = false;
+  let current: TapMapping = { board, services: { ...flags } };
+  let warned = Object.keys(flags).length > 0;
   return () => {
     let m: number;
     try {
@@ -66,8 +78,8 @@ export function mappingFile(path: string, board: string, log: (line: string) => 
         for (const [k, v] of Object.entries(raw.services as Record<string, unknown>)) if (typeof v === 'string' && /^\d{1,20}$/.test(v)) services[k] = v;
       }
       if (raw.board !== undefined && String(raw.board) !== board) log(`redcrayon tap: ${path} names board ${String(raw.board)}, but the token is for board ${board}; using ${board}.`);
-      current = { board, services };
-      log(`redcrayon tap: mapping ${Object.keys(services).length} service(s) from ${path}.`);
+      current = { board, services: { ...services, ...flags } };
+      log(`redcrayon tap: mapping ${Object.keys(current.services).length} service(s) from ${path}${Object.keys(flags).length > 0 ? ' and --service' : ''}.`);
     } catch {
       log(`redcrayon tap: ${path} is not valid JSON; keeping the previous mapping.`);
     }
@@ -94,7 +106,7 @@ const OPEN = 1;
 /** The tap's moving parts, without timers or process handling (runTap adds those). */
 export function createTap(args: TapArgs, channelOrigin: string, deps: TapDeps) {
   const board = boardOfToken(args.token);
-  const mapping = mappingFile(args.map, board, deps.log);
+  const mapping = mappingFile(args.map, board, deps.log, args.services);
   const agg = new Aggregator(mapping, deps.now);
   let socket: TapSocket | null = null;
   let watching = false;
@@ -196,7 +208,7 @@ export function createTap(args: TapArgs, channelOrigin: string, deps: TapDeps) {
       if (deps.now() - lastHint >= 60_000) {
         lastHint = deps.now();
         if (agg.unmappedServices.size > 0) {
-          deps.log(`redcrayon tap: unmapped services: ${[...agg.unmappedServices].sort().join(', ')}. Add them to ${args.map}.`);
+          deps.log(`redcrayon tap: unmapped services: ${[...agg.unmappedServices].sort().join(', ')}. Add them to ${args.map} or pass --service <name>=<node id>.`);
           agg.unmappedServices.clear();
         }
       }

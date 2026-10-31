@@ -150,7 +150,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { AddressInfo } from 'node:net';
 import { gzipSync } from 'node:zlib';
-import { boardOfToken, createTap, parseTap, type TapSocket } from './tap';
+import { boardOfToken, createTap, mappingFile, parseTap, type TapSocket } from './tap';
 
 const tokenFor = (board: string) => `h.${Buffer.from(JSON.stringify({ board })).toString('base64url')}.s`;
 
@@ -181,7 +181,7 @@ async function startTap(services: Record<string, string>) {
   const sockets: FakeChannel[] = [];
   const logs: string[] = [];
   let now = 0;
-  const tap = createTap({ token: tokenFor('5'), port: 0, map }, 'https://mcp.example.test', {
+  const tap = createTap({ token: tokenFor('5'), port: 0, map, services: {} }, 'https://mcp.example.test', {
     connect: url => {
       const s = new FakeChannel();
       (s as unknown as { url: string }).url = url;
@@ -207,10 +207,28 @@ const otlpJson = (spans: Array<[string, string, string | null, number]>) => ({
 
 describe('redcrayon tap', () => {
   it('parses its flags and reads the board from the token', () => {
-    expect(parseTap(['--token', 't', '--port', '4400'])).toEqual({ token: 't', port: 4400, map: join('.redcrayon', 'tap.json') });
-    expect(() => parseTap([])).toThrow(/usage/);
+    expect(parseTap(['--token', 't', '--port', '4400'], {})).toEqual({ token: 't', port: 4400, map: join('.redcrayon', 'tap.json'), services: {} });
+    expect(() => parseTap([], {})).toThrow(/usage/);
     expect(boardOfToken(tokenFor('42'))).toBe('42');
     expect(() => boardOfToken('nope')).toThrow(/start_tap/);
+  });
+
+  it('takes the token from REDCRAYON_TAP_TOKEN and services from --service', () => {
+    const env = { REDCRAYON_TAP_TOKEN: 'from-env' };
+    expect(parseTap(['--service', 'web=12', '--service', 'odd=name=13'], env)).toMatchObject({ token: 'from-env', services: { web: '12', 'odd=name': '13' } });
+    expect(parseTap(['--token', 'flag'], env).token).toBe('flag');
+    expect(() => parseTap(['--service', 'web=node-1'], env)).toThrow(/usage/);
+    expect(() => parseTap(['--service', '=12'], env)).toThrow(/usage/);
+  });
+
+  it('maps --service flags over the file, and needs no file with them', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'tap-'));
+    const logs: string[] = [];
+    expect(mappingFile(join(dir, 'missing.json'), '5', l => logs.push(l), { web: '12' })().services).toEqual({ web: '12' });
+    expect(logs).toEqual([]);
+    const map = join(dir, 'tap.json');
+    writeFileSync(map, JSON.stringify({ services: { web: '1', api: '13' } }));
+    expect(mappingFile(map, '5', l => logs.push(l), { web: '12' })().services).toEqual({ web: '12', api: '13' });
   });
 
   it('authenticates, then sends windows only while someone watches', async () => {
