@@ -22,6 +22,7 @@ import {
   initAccountBar,
   initSignInButton,
   copyText,
+  copyIconButton,
   nodeName,
   renderBoardCounts,
   renderExposure,
@@ -1125,12 +1126,8 @@ async function boot(conn: DbConnection, identityHex: string, signedIn: boolean):
           : s.kind === 'waiting' ? 'Tap connected. Waiting for traffic.'
           : s.kind === 'live' ? `Live · ${s.edges} edge${s.edges === 1 ? '' : 's'}${s.unmapped > 0 ? ` · ${s.unmapped} unmapped call${s.unmapped === 1 ? '' : 's'}` : ''}`
           : s.reason;
+        if (s.kind === 'no-tap') line.append(' ', copyIconButton('Copy a prompt for your agent to start a tap', () => tapPrompt(boardId), showError));
         liveStatus.append(line);
-        if (s.kind === 'no-tap') {
-          liveStatus.append(liveButton('Copy a prompt for your agent', () => {
-            void copyText(tapPrompt(boardId)).then(ok => { if (!ok) showError(tapPrompt(boardId)); });
-          }));
-        }
         if (s.kind === 'live' && !publicExample() && liveMap && liveMap.size > 0) {
           liveStatus.append(liveButton('Pin as latency', () => {
             const pins = [...(liveMap ?? new Map<bigint, LiveEdge>())];
