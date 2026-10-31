@@ -173,6 +173,54 @@ export class LiveSession {
   }
 }
 
+/** How much live history the canvas keeps per edge, and the bucket a saved chart shows per row. */
+export const HISTORY_MS = 15 * 60 * 1000;
+export const BUCKET_MS = 10_000;
+/** The source a saved live chart carries: how "Save as charts" finds its own charts again. */
+export const LIVE_CHART_SOURCE = 'live tap';
+
+export interface LivePoint {
+  /** The window's end, epoch ms (the tap machine's clock). */
+  t: number;
+  count: number;
+  p50: number;
+  p95: number;
+}
+
+/** Add one window's edges to the per-edge history, and drop what is older than HISTORY_MS. */
+export function recordLive(history: Map<bigint, LivePoint[]>, t: number, edges: ReadonlyMap<bigint, LiveEdge>): void {
+  for (const [id, e] of edges) {
+    if (e.count <= 0) continue;
+    const points = history.get(id) ?? [];
+    points.push({ t, count: e.count, p50: e.p50, p95: e.p95 });
+    history.set(id, points);
+  }
+  for (const [id, points] of history) {
+    const kept = points.filter(p => t - p.t <= HISTORY_MS);
+    if (kept.length === 0) history.delete(id);
+    else history.set(id, kept);
+  }
+}
+
+/**
+ * One edge's history as a time series chart's CSV, a row per BUCKET_MS:
+ * the call-weighted mean of each window's p50 and p95, in ms.
+ */
+export function liveCsv(points: readonly LivePoint[]): string {
+  const buckets = new Map<number, { n: number; p50: number; p95: number }>();
+  for (const p of points) {
+    const at = Math.floor(p.t / BUCKET_MS) * BUCKET_MS;
+    const b = buckets.get(at) ?? { n: 0, p50: 0, p95: 0 };
+    b.n += p.count;
+    b.p50 += p.p50 * p.count;
+    b.p95 += p.p95 * p.count;
+    buckets.set(at, b);
+  }
+  const round = (v: number) => Math.round(v * 10) / 10;
+  const rows = [...buckets].sort((a, b) => a[0] - b[0]).map(([at, b]) => `${new Date(at).toISOString()},${round(b.p50 / b.n)},${round(b.p95 / b.n)}`);
+  return ['time,p50,p95', ...rows].join('\n');
+}
+
 /** What to paste into the agent's chat when no tap runs: the board stays one-way. */
 export const tapPrompt = (board: bigint) =>
   `Start a live tap for board ${board} (call start_tap, write .redcrayon/tap.json, run the command it returns) so I can watch live traffic.`;
