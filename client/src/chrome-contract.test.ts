@@ -295,18 +295,22 @@ describe('index.html DOM contract', () => {
     expect([...doc.querySelectorAll('#tb-weight button')].map(b => b.getAttribute('data-weight'))).toEqual([
       'regular', 'medium', 'bold',
     ]);
+    expect([...doc.querySelectorAll('#tb-motion button')].map(b => b.getAttribute('data-motion'))).toEqual(['none', 'dots', 'dash', 'threat']);
+    expect([...doc.querySelectorAll('#tb-speed button')].map(b => b.getAttribute('data-speed'))).toEqual(['slow', 'normal', 'fast']);
     expect(doc.getElementById('tb-reset-style')?.textContent).toBe('Reset');
   });
 
   it('offers the edge-only controls (RC-688) to edges alone, and says when the overlay overrides them', () => {
     const edgeOnly = [...doc.querySelectorAll('#toolbar .tb-edge-control')];
     expect(edgeOnly.map(e => e.getAttribute('data-color') ?? e.getAttribute('data-stroke') ?? e.id ?? e.className)).toEqual([
-      '', 'dotted', '', '', 'tb-overlay-note',
+      '', 'dotted', '', '', '', '', 'tb-overlay-note',
     ]);
-    // the Weight row, the Reset row and the note sit in the Style popover
+    // the Weight, Motion, Speed and Reset rows and the note sit in the Style popover
     expect(edgeOnly.slice(2).every(e => e.closest('#tb-style-menu') !== null)).toBe(true);
     expect(edgeOnly[2].querySelector('#tb-weight')).not.toBeNull();
-    expect(edgeOnly[3].querySelector('#tb-reset-style')).not.toBeNull();
+    expect(edgeOnly[3].querySelector('#tb-motion')).not.toBeNull();
+    expect(edgeOnly[4].querySelector('#tb-speed')).not.toBeNull();
+    expect(edgeOnly[5].querySelector('#tb-reset-style')).not.toBeNull();
     expect(doc.getElementById('tb-overlay-note')?.hasAttribute('hidden')).toBe(true);
     expect(doc.getElementById('tb-overlay-note')?.textContent).toBe('Evidence overlay is on, so line and weight show evidence. \u2325E turns it off.');
   });
@@ -317,6 +321,8 @@ describe('index.html DOM contract', () => {
     expect(labels('#tb-stroke button')).toEqual(['Solid line', 'Dashed line', 'Dotted line']);
     expect(labels('#tb-shape button')).toEqual(['Rectangle', 'Pill', 'Ellipse']);
     expect(labels('#tb-weight button')).toEqual(['Regular weight', 'Medium weight', 'Bold weight']);
+    expect(labels('#tb-motion button')).toEqual(['No motion', 'Dots: traffic flows along the edge', 'Dash: the line flows', "Threat: attack traffic, as a threat's blast radius"]);
+    expect(labels('#tb-speed button')).toEqual(['Slow', 'Normal speed', 'Fast']);
     expect(labels('#tb-swatches .swatch').slice(-1)).toEqual(['Default']);
     for (const b of doc.querySelectorAll('#tb-swatches .swatch, #tb-size button, #tb-stroke button, #tb-shape button, #tb-weight button')) {
       expect(b.getAttribute('aria-pressed'), b.outerHTML).toBe('false');

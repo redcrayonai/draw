@@ -26,6 +26,8 @@ export const THREAT_TABLES = ['visible_threat'];
 export const MARK_TABLES = ['visible_mark', 'visible_mark_waiter', 'visible_mark_read'];
 /** Hand-set edge weights (RC-688): optional, so a module without them draws every edge at regular weight. */
 export const EDGE_WEIGHT_TABLES = ['visible_edge_weight'];
+/** Hand-set edge motions: optional, so a module without them draws every edge still. */
+export const EDGE_MOTION_TABLES = ['visible_edge_motion'];
 /** The repo remote and the line hashes (RC-690): optional, so a module without them shows no GitHub links and undo replays no hashes. */
 export const CODE_LINK_TABLES = ['visible_session_remote', 'visible_code_ref_hash', 'visible_edge_evidence_hash'];
 /** The caller's saved library (one owner-filtered view). Optional, like charts. */
@@ -144,6 +146,9 @@ export function subscribeBoard(
   conn.subscriptionBuilder()
     .onError(ctx => console.warn('edge weights unavailable (module predates them):', ctx.event))
     .subscribe(all(EDGE_WEIGHT_TABLES));
+  conn.subscriptionBuilder()
+    .onError(ctx => console.warn('edge motions unavailable (module predates them):', ctx.event))
+    .subscribe(all(EDGE_MOTION_TABLES));
   conn.subscriptionBuilder()
     .onError(ctx => console.warn('marks unavailable (module predates red crayon review):', ctx.event))
     .subscribe(all(MARK_TABLES));
