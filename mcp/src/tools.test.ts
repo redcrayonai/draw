@@ -332,6 +332,10 @@ describe('set_time_window and pin_chart on the hosted server', () => {
       out: 'committed board=main',
     });
     expect((await run('set_time_window', { board: '1', clear: true })).calls).toEqual([{ reducer: 'clear_board_window', args: { boardId: 1n } }]);
+    // Date.parse would roll February 31 over to March 3.
+    const shifted = await run('set_time_window', { board: '1', start: '2026-02-31T14:00:00Z', end: '2026-03-04T14:00:00Z' });
+    expect(shifted.calls).toEqual([]);
+    expect(shifted.out).toMatch(/^REJECTED: pass start and end/);
     const bad = await run('set_time_window', { board: '1', start: 'yesterday', end: '1' });
     expect(bad.calls).toEqual([]);
     expect(bad.out).toMatch(/^REJECTED: pass start and end/);

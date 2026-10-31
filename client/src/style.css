@@ -4452,7 +4452,8 @@ textarea#inline-edit {
 .chart-cell-value { opacity: 0.85; }
 .chart-grid { stroke: var(--border); stroke-width: 1; vector-effect: non-scaling-stroke; }
 .chart-base { stroke: var(--hairline); stroke-width: 1; vector-effect: non-scaling-stroke; }
-/* The time window brush (time-window.ts) and chart pins (render.ts drawAnchors). */
+/* The time window brush (time-window.ts) and chart pins (render.ts drawAnchors); leads never take a click. */
+.layer-anchors { pointer-events: none; }
 .chart-brush { fill: var(--ink); fill-opacity: 0.08; }
 .chart-pin { stroke: var(--muted); stroke-width: 1; stroke-dasharray: 3 3; vector-effect: non-scaling-stroke; fill: none; }
 .chart-pin-dot { fill: var(--muted); }

@@ -948,6 +948,8 @@ export const visibleRows = spacetimedb.exportGroup({
       const rows = [...ids].flatMap(id => (index.filter ? [...index.filter(id)] : index.find(id) ?? []));
       // A branch's sha is the fork-time base signature, server-side only.
       if (key === 'architectureVersion') return rows.map((row: any) => (row.historyId === 0n && row.sha !== '' ? { ...row, sha: '' } : row));
+      // An alert group key carries its labels (hosts, clusters): link visitors get the incident without it.
+      if (key === 'incident') return rows.map((row: any) => (isBoardMember(ctx, row.boardId) ? row : { ...row, groupKey: '' }));
       if (key !== 'edge') return rows;
       // A source citation's captured line is code: a link that leaves code out gets the edge without it.
       const code = codeViewBoardIds(ctx);
@@ -3194,6 +3196,11 @@ const INCIDENT_WINDOW_MS = 15 * 60 * 1000;
 // An alert that fires again this soon after resolving reopens its board instead of copying the source again.
 const INCIDENT_REOPEN_MICROS = 60n * MINUTE_MICROS;
 
+// The window around an alert's start. An unknown start (0) or one too late to draw leaves the window as it is.
+function alertWindow(ctx: any, boardId: bigint, startsAtMs: number): void {
+  if (startsAtMs > INCIDENT_WINDOW_MS && startsAtMs + INCIDENT_WINDOW_MS <= MAX_EPOCH_MS) writeBoardWindow(ctx, boardId, startsAtMs - INCIDENT_WINDOW_MS, startsAtMs + INCIDENT_WINDOW_MS);
+}
+
 // An alert opens an incident board: a copy of the source board's drawing with
 // no suspects (focal) marked, flagged ephemeral, its window around the alert's
 // start. The same groupKey while the incident is firing finds it again;
@@ -3223,6 +3230,9 @@ export const openIncident = reducer(
       .find((i: any) => i.sourceBoardId === sourceBoardId && ctx.timestamp.microsSinceUnixEpoch - i.updatedAt.microsSinceUnixEpoch < INCIDENT_REOPEN_MICROS);
     if (recent) {
       ctx.db.incident.boardId.update({ ...recent, status, updatedAt: ctx.timestamp });
+      // A window that already shows the new start stays; one that cannot is moved to it.
+      const w = ctx.db.boardWindow.boardId.find(recent.boardId);
+      if (!w || startsAtMs < w.startMs || startsAtMs > w.endMs) alertWindow(ctx, recent.boardId, startsAtMs);
       emit(ctx, recent.boardId, 'incident.reopened', {});
       return;
     }
@@ -3242,7 +3252,7 @@ export const openIncident = reducer(
     inheritWorkspaceBoard(ctx, sourceBoardId, board.id, ctx.db.agentLink.agent.find(ctx.sender)?.owner ?? ctx.sender);
     ctx.db.boardLifetime.insert({ boardId: board.id, isEphemeral: true, createdAt: ctx.timestamp });
     ctx.db.incident.insert({ boardId: board.id, sourceBoardId, groupKey, title, status, openedAt: ctx.timestamp, updatedAt: ctx.timestamp });
-    if (startsAtMs > INCIDENT_WINDOW_MS && startsAtMs + INCIDENT_WINDOW_MS <= MAX_EPOCH_MS) writeBoardWindow(ctx, board.id, startsAtMs - INCIDENT_WINDOW_MS, startsAtMs + INCIDENT_WINDOW_MS);
+    alertWindow(ctx, board.id, startsAtMs);
     emit(ctx, sourceBoardId, 'incident.opened', { title });
   }
 );

@@ -1063,15 +1063,18 @@ async function boot(conn: DbConnection, identityHex: string, signedIn: boolean):
         const W = 320, H = 176, at = (v: number) => Math.round(v / 4) * 4;
         const y = at(Math.max(0, ...getAllNodes().map(n => n.y + n.h)) + 48);
         const placed: number[] = [];
+        let saved = 0;
         await actionOps.history.batch('save live charts', async () => {
           for (const [edgeId, points] of liveHistory) {
             const edge = getEdges().find(e => e.id === edgeId);
             const csv = liveCsv(points);
             if (!edge || csv.split('\n').length < 3) continue; // a series needs two rows
+            saved++;
             // A live chart already pinned to this edge takes the new numbers; otherwise a new one sits beside the edge.
-            const own = [...anchors].find(([chartId, a]) => a.targetKind === 'edge' && a.targetId === edgeId && charts.get(chartId)?.source === LIVE_CHART_SOURCE);
+            // The tables, not the per-frame maps: a second save right after the first must see its pins.
+            const own = [...conn.db.visibleChartAnchor.iter()].find(a => a.targetKind === 'edge' && a.targetId === edgeId && conn.db.visibleChart.nodeId.find(a.nodeId)?.source === LIVE_CHART_SOURCE);
             if (own) {
-              await actionOps.setChartDataAction(own[0], { csv, source: LIVE_CHART_SOURCE });
+              await actionOps.setChartDataAction(own.nodeId, { csv, source: LIVE_CHART_SOURCE });
               continue;
             }
             const a = nodesById.get(edge.fromNode), b = nodesById.get(edge.toNode);
@@ -1095,6 +1098,7 @@ async function boot(conn: DbConnection, identityHex: string, signedIn: boolean):
             await conn.reducers.anchorChart({ nodeId: id, targetKind: 'edge', targetId: edgeId });
           }
         });
+        if (saved === 0) showError('Live needs about 20 seconds of traffic on an edge before it can save a chart.');
       };
       let liveSession: LiveSession | null = null;
       let liveState: LiveState | null = null;
