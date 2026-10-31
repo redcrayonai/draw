@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { parseChart, type ChartData } from '../../module/src/chart-contracts';
-import { WINDOW_MAX_MS, clipToWindow, formatWindow, zoomOut } from './time-window';
+import { WINDOW_MAX_MS, clipToWindow, formatWindow, mountWindowBrush, zoomOut } from './time-window';
 
 const series = (csv: string): ChartData => {
   const r = parseChart('timeseries', csv, '{}');
@@ -43,5 +43,47 @@ describe('zoomOut and formatWindow', () => {
   it('names the day once inside a day, and both days across midnight, in UTC like the chart axes', () => {
     expect(formatWindow({ startMs: T('14:30'), endMs: T('14:45') })).toBe('Oct 31 14:30–14:45 UTC');
     expect(formatWindow({ startMs: T('23:30'), endMs: T('23:30') + 3600_000 })).toBe('Oct 31 23:30 – Nov 1 00:30 UTC');
+  });
+});
+
+describe('mountWindowBrush', () => {
+  const plot = () => {
+    const g = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+    const hit = (x: number, t: number) => {
+      const r = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+      r.setAttribute('class', 'chart-hit');
+      Object.entries({ x: String(x), y: '0', width: '10', height: '50', 'data-t': String(t) }).forEach(([k, v]) => r.setAttribute(k, v));
+      g.append(r);
+      return r;
+    };
+    const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+    svg.append(g);
+    document.body.append(svg);
+    return { a: hit(0, T('14:00')), b: hit(10, T('14:10')), g };
+  };
+  const pointer = (type: string, init: PointerEventInit & { target?: Element } = {}) => {
+    const evt = new MouseEvent(type, { bubbles: true, cancelable: true, ...init }) as unknown as PointerEvent;
+    (init.target ?? window).dispatchEvent(evt);
+  };
+
+  it('picks the instants under both ends, and drops a drag whose button came up outside the page', () => {
+    const { a, b, g } = plot();
+    const picks: unknown[] = [];
+    const unmount = mountWindowBrush(w => picks.push(w));
+    document.elementFromPoint = () => b;
+    pointer('pointerdown', { target: a, altKey: true, button: 0 });
+    expect(g.querySelector('.chart-brush')).not.toBeNull();
+    pointer('pointermove', { buttons: 1 });
+    pointer('pointerup', {});
+    expect(picks).toEqual([{ startMs: T('14:00'), endMs: T('14:10') }]);
+    expect(g.querySelector('.chart-brush')).toBeNull();
+
+    pointer('pointerdown', { target: a, altKey: true, button: 0 });
+    pointer('pointermove', { buttons: 1 });
+    pointer('pointermove', { buttons: 0 }); // released outside the page
+    expect(g.querySelector('.chart-brush')).toBeNull();
+    pointer('pointerup', {}); // a later plain click
+    expect(picks).toHaveLength(1);
+    unmount();
   });
 });
