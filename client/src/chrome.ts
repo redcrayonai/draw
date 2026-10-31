@@ -956,6 +956,38 @@ export function flashLabel(el: HTMLElement, ok: boolean, idle: string, done = 'c
   );
 }
 
+const ICON_COPY = '<svg width="14" height="14" viewBox="0 0 16 16" fill="none" aria-hidden="true"><rect x="5.25" y="5.25" width="8" height="8" rx="1.5" stroke="currentColor" stroke-width="1.3"/><path d="M10.75 5.25V3.5a1 1 0 0 0-1-1h-6a1 1 0 0 0-1 1v6a1 1 0 0 0 1 1h1.75" stroke="currentColor" stroke-width="1.3"/></svg>';
+const ICON_CHECK = '<svg width="14" height="14" viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M3.5 8.5l3 3 6-7" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+
+/**
+ * An icon-only copy button: `label` names it for the tooltip and assistive
+ * tech; a copy shows a check for 1.2 s. `onFail` gets the text a blocked
+ * clipboard could not take, so the caller can show it instead.
+ */
+export function copyIconButton(label: string, text: () => string, onFail: (text: string) => void): HTMLButtonElement {
+  const b = document.createElement('button');
+  b.type = 'button';
+  b.className = 'icon-copy';
+  b.title = label;
+  b.setAttribute('aria-label', label);
+  b.innerHTML = ICON_COPY;
+  b.addEventListener('click', () => {
+    const value = text();
+    void copyText(value).then(ok => {
+      announce(ok ? 'copied' : 'copy failed');
+      if (!ok) return onFail(value);
+      b.innerHTML = ICON_CHECK;
+      b.classList.add('copied');
+      window.clearTimeout(flashTimers.get(b));
+      flashTimers.set(b, window.setTimeout(() => {
+        b.innerHTML = ICON_COPY;
+        b.classList.remove('copied');
+      }, FLASH_MS));
+    });
+  });
+  return b;
+}
+
 /** A node's name in chrome copy: its label, else its sublabel (G37). */
 export function nodeName(n: Node): string {
   return n.label || n.sublabel;
