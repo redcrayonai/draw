@@ -264,7 +264,7 @@ export const SENDER_ERRORS: readonly RegExp[] = [
   /^trace rule: [^]*?$/,
   /^trace rule: title is at most 120 characters$/,
   /^use create_chart for charts$/,
-  /^window rule: startMs and endMs are epoch milliseconds with startMs < endMs, at most [^]*? days apart$/,
+  /^window rule: startMs and endMs are epoch milliseconds with startMs < endMs, at most [^]*? days apart and no later than [^]*?$/,
   /^workspace rule: a full workspace member is required to import$/,
   /^workspace rule: a personal workspace keeps its single owner$/,
   /^workspace rule: board and invitation must belong to the same workspace$/,

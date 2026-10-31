@@ -29,7 +29,7 @@ When an alert fires for a board, draw:
 
 A repeated notification for the same alert group finds the open incident
 instead of copying again. A `resolved` notification closes it. If the group
-fires again after that, a new incident board opens. A board has at most 20 open
+fires again within an hour, its board reopens; after that, a new incident board opens. A board has at most 20 open
 incidents, and an incident board cannot open incidents of its own.
 
 The rail shows `Incident · firing` or `Incident · resolved` beside the window.

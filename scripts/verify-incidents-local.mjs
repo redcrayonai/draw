@@ -150,6 +150,7 @@ test('IN set_board_window stores the window, refuses a bad one and a reader, and
   await rejects(who.token, 'set_board_window', [B, start, start], 'window rule');
   await rejects(who.token, 'set_board_window', [B, start, start + 32 * 24 * 3600_000], 'window rule');
   await rejects(who.token, 'set_board_window', [B, -1, 1], 'window rule');
+  await rejects(who.token, 'set_board_window', [B, 8.64e15, 8.64e15 + 1000], 'window rule'); // past the last date a viewer can draw
   const stranger = await mint();
   await rejects(stranger.token, 'set_board_window', [B, start, start + 1000], 'not authorized');
   await ok(who.token, 'clear_board_window', [B]);
@@ -186,7 +187,7 @@ test('IN open_incident copies the drawing with no suspects, flags it ephemeral a
   assert.ok((await nodesOn(src.B)).find(n => n.label === 'api').focal);
 });
 
-test('IN a repeated alert finds the open incident; resolved closes it; a new firing opens a new board', async () => {
+test('IN a repeated alert finds the open incident; resolved closes it; firing again within the hour reopens it', async () => {
   const who = await mint();
   const { B } = await topology(who, 'in-repeat');
   await ok(who.token, 'open_incident', [B, 'g', 'Incident: A', 'firing', 0]);
@@ -199,10 +200,13 @@ test('IN a repeated alert finds the open incident; resolved closes it; a new fir
   rows = await incidentsFrom(B);
   assert.deepEqual(rows.map(r => r.status), ['resolved']);
   await ok(who.token, 'open_incident', [B, 'g', 'Incident: A', 'firing', 0]);
-  rows = await incidentsFrom(B);
-  assert.deepEqual(rows.map(r => r.status).sort(), ['firing', 'resolved']);
+  const reopened = await incidentsFrom(B);
+  assert.deepEqual(reopened.map(r => [r.boardId, r.status]), [[rows[0].boardId, 'firing']], 'a flapping alert reuses its board');
   await ok(who.token, 'open_incident', [B, 'other', 'Incident: B', 'resolved', 0]);
-  assert.equal((await incidentsFrom(B)).length, 2, 'a resolved alert with nothing open opens nothing');
+  assert.equal((await incidentsFrom(B)).length, 1, 'a resolved alert with nothing open opens nothing');
+  await ok(who.token, 'open_incident', [B, 'late', 'Incident: C', 'firing', 8.64e15]);
+  const late = (await incidentsFrom(B)).find(r => r.groupKey === 'late');
+  assert.equal(await windowOf(late.boardId), undefined, 'a start too late to draw opens without a window');
 });
 
 test('IN open_incident refuses a reader, bad input and an incident board as the source', async () => {
