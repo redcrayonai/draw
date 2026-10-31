@@ -11,7 +11,7 @@
  */
 import { McpServer } from '@modelcontextprotocol/server';
 import { z } from 'zod';
-import { CHART_MIN_H, CHART_MIN_W, CHART_TYPES, HUMAN_SOURCE_RESERVED, MAX_CSV_BYTES, SAMPLE_RESERVED } from '../../module/src/chart-contracts';
+import { CHART_MIN_H, CHART_MIN_W, CHART_TYPES, HUMAN_SOURCE_RESERVED, MAX_CSV_BYTES, SAMPLE_RESERVED, timeValue } from '../../module/src/chart-contracts';
 import { traceMs } from '../../module/src/trace';
 import { MARK_FILES_MAX, MARK_FILE_MAX, MARK_REPLY_MAX, SEAT_RE } from '../../module/src/marks';
 import { ICONS, ICON_SECTIONS } from '../../module/src/node-icons';
@@ -218,10 +218,10 @@ async function nodesOnBoard(t: T, b: { id: SafeU64; name: string }, ids: SafeU64
 
 const committed = (board: string, text = 'committed') => okResult(`${text} board=${board}`);
 
-/** An ISO 8601 time or epoch milliseconds as epoch ms; undefined when it is neither. */
+/** An ISO 8601 time or epoch milliseconds as epoch ms, read as chart cells are (no February 31); undefined otherwise. */
 const instant = (s: string | undefined): number | undefined => {
-  const ms = s === undefined ? NaN : /^\d+$/.test(s) ? Number(s) : Date.parse(s);
-  return Number.isFinite(ms) ? ms : undefined;
+  const v = s === undefined ? null : timeValue(s.trim());
+  return v && v.kind !== 'clock' ? v.ms : undefined;
 };
 
 /** Known-not-committed answers that may be retried: the host's 5xx (not a module refusal) before the reducer ran. */

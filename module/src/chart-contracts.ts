@@ -225,7 +225,7 @@ const notATime = (where: string, s: string) => (EPOCH_RE.test(s)
   : `${where}: '${s}' is not a time; ${TIME_HELP}`);
 
 // ISO date-times without an offset are UTC, so the server and every browser get the same instant.
-function timeValue(s: string): { kind: XKind; ms: number } | null {
+export function timeValue(s: string): { kind: XKind; ms: number } | null {
   const iso = ISO_RE.exec(s);
   if (iso) {
     const y = +iso[1], mo = +iso[2], d = +iso[3];

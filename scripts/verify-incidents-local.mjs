@@ -2,7 +2,7 @@
 // window and incident boards. Talks to an ISOLATED SpacetimeDB over the HTTP
 // API only, like scripts/verify-icons-local.mjs:
 //
-//   nix develop --command scripts/stdb-test.sh run scripts/verify-incidents-local.mjs
+//   nix develop --command scripts/stdb-test.sh run   (the suite lists this file; passing it again runs it twice)
 //
 // Every test mints its own identities and boards; none depends on another.
 import { test } from 'node:test';
@@ -207,6 +207,38 @@ test('IN a repeated alert finds the open incident; resolved closes it; firing ag
   await ok(who.token, 'open_incident', [B, 'late', 'Incident: C', 'firing', 8.64e15]);
   const late = (await incidentsFrom(B)).find(r => r.groupKey === 'late');
   assert.equal(await windowOf(late.boardId), undefined, 'a start too late to draw opens without a window');
+});
+
+test('IN a reopened incident moves its window to the new alert, and keeps one that already shows it', async () => {
+  const who = await mint();
+  const { B } = await topology(who, 'in-reopen-window');
+  const first = Date.parse('2026-10-31T14:30:00Z'), again = Date.parse('2026-10-31T15:10:00Z');
+  await ok(who.token, 'open_incident', [B, 'g', 'Incident: A', 'firing', first]);
+  const [inc] = await incidentsFrom(B);
+  await ok(who.token, 'open_incident', [B, 'g', 'Incident: A', 'resolved', 0]);
+  await ok(who.token, 'open_incident', [B, 'g', 'Incident: A', 'firing', again]);
+  let w = await windowOf(inc.boardId);
+  assert.deepEqual([w.startMs, w.endMs], [again - 900_000, again + 900_000]);
+  await ok(who.token, 'set_board_window', [inc.boardId, again - 3_600_000, again + 3_600_000]); // a responder widens it
+  await ok(who.token, 'open_incident', [B, 'g', 'Incident: A', 'resolved', 0]);
+  await ok(who.token, 'open_incident', [B, 'g', 'Incident: A', 'firing', again + 600_000]);
+  w = await windowOf(inc.boardId);
+  assert.deepEqual([w.startMs, w.endMs], [again - 3_600_000, again + 3_600_000]);
+});
+
+test('IN a link visitor reads the incident without its alert group key; a member reads it whole', async () => {
+  const who = await mint();
+  const { B } = await topology(who, 'in-group-key');
+  await ok(who.token, 'open_incident', [B, '{}:{instance="10.0.3.4:9100"}', 'Incident: A', 'firing', 0]);
+  const [inc] = await incidentsFrom(B);
+  const token = [...crypto.getRandomValues(new Uint8Array(16))].map(b => b.toString(16).padStart(2, '0')).join('');
+  await ok(who.token, 'set_link_share', [inc.boardId, 'view', token]);
+  const visitor = await mint();
+  await ok(visitor.token, 'open_shared_link', [token]);
+  const seen = (await sql(visitor.token, 'SELECT * FROM visible_incident')).find(r => r.boardId === inc.boardId);
+  assert.deepEqual([seen.status, seen.groupKey], ['firing', '']);
+  const own = (await sql(who.token, 'SELECT * FROM visible_incident')).find(r => r.boardId === inc.boardId);
+  assert.equal(own.groupKey, '{}:{instance="10.0.3.4:9100"}');
 });
 
 test('IN open_incident refuses a reader, bad input and an incident board as the source', async () => {

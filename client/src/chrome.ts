@@ -1179,7 +1179,7 @@ function signature(nodes: Node[], edges: Edge[], m: InspectorModel): string {
     // A chart row change re-renders, but not while a chart field has focus.
     parts.push(chartSignature(nodes[0].id, m.chartRow?.(nodes[0].id)));
     const pin = m.chartPin?.(nodes[0].id);
-    parts.push(`pin:${pin ? `${pin.targetKind}:${pin.targetId}` : ''}|${m.nodes.length}|${m.edges.length}`);
+    parts.push(`pin:${pin ? `${pin.targetKind}:${pin.targetId}` : ''}|${m.nodes.map(x => `${x.id}:${x.label}`).join('|')}|${m.edges.map(e => `${e.id}:${e.label}`).join('|')}`);
   }
   if (nodes.length === 1 && edges.length === 0) {
     const notes = m.changeNotes?.get(nodes[0].id);
