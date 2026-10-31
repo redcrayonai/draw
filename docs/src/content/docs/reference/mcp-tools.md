@@ -47,6 +47,8 @@ says why, and the first word tells the agent what to do:
 | `create_chart` | Adds a chart node from CSV data, with a note on where the data came from. |
 | `set_chart_data` | Replaces a chart's data. |
 | `get_chart` | Reads a chart's type, data and options. |
+| `pin_chart` | Pins a chart to the edge or component it measures, or unpins it. |
+| `set_time_window` | Sets or clears the board's shared time window, which every time chart shows. |
 
 ## Code refs, notes and threats
 

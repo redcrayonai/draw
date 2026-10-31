@@ -113,13 +113,23 @@ separate Redis hop from its attributes. Trace context must propagate between
 services. See [context propagation](https://opentelemetry.io/docs/concepts/context-propagation/).
 
 Sampling and export batching affect what arrives. Old live values clear after
-about three seconds without a new window. The live channel stores no history.
-Use a chart or your tracing system to keep a comparison.
+about three seconds without a new window. The live channel stores no history;
+your open board keeps the last 15 minutes while Live is on.
 
 The helper computes p95 and maximum durations too, but current edge labels show
 p50. Use your tracing tool for a tail-latency analysis. With edit access,
 **Pin as latency** saves the latest median on each observed edge as a `local`
 measurement. It remains after Live is off, without saving rates or a history.
+
+**Save as charts** keeps that history. It writes one time chart per observed
+edge, with p50 and p95 latency in 10-second rows, pinned to its edge and placed
+under the drawing. Saving again updates the same charts. Their source reads
+`live tap`, and they follow the board's [time window](/capabilities/charts/#share-a-time-window),
+so clear or widen the window to see recent traffic.
+
+![Live traffic saved as three charts, each pinned to the edge it measures, under charts drawn earlier](../../../assets/live-charts.png)
+
+A local demo with synthetic spans.
 
 ![Live traffic is on, with one observed edge and a 64 ms median label on gateway to checkout-api](../../../assets/live-tap.png)
 
@@ -129,7 +139,7 @@ This local capture uses the synthetic smoke-test payload and a simulated channel
 
 | Symptom | What to check |
 |---|---|
-| No live source | Start the helper with a fresh `start_tap` token for this board. |
+| No live source | Use **Copy prompt for agent** under Live traffic, or start the helper with a fresh `start_tap` token. |
 | Tap waits for a viewer | Open the same board and turn on Live traffic. |
 | Receiver gets no traces | Check SDK setup, HTTP protocol, endpoint path and the app's network. |
 | Unmapped services | Match names in the helper's periodic log to keys in `tap.json`. |
