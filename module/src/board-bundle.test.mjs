@@ -33,6 +33,7 @@ function seed(db, boardId = 7n) {
   node(1n); node(2n, { hidden: true }); node(3n, { kind: 'chart', w: 224, h: 144 });
   db.edge.insert({ id: 11n, boardId, fromNode: 1n, toNode: 2n, label: 'calls', evidence: 'source:src/a.ts:3', hidden: true, imported: false, color: '', strokeStyle: 'solid', evidenceSnippet: 'secret code', evidenceStatus: 'ok', relation: '', latencyMs: 12.5, latencySource: 'local' });
   db.edgeWeight.insert({ edgeId: 11n, boardId, weight: 'bold' });
+  db.edgeMotion.insert({ edgeId: 11n, boardId, motion: 'dots', speed: 'fast' });
   db.edgeEvidenceHash.insert({ edgeId: 11n, boardId, lineHash: 'f'.repeat(32) });
   db.chart.insert({ nodeId: 3n, boardId, type: 'bars', csv: 'a,1', options: '{}', source: 'human:x', updatedAt: time(5n) });
   db.nodeIcon.insert({ nodeId: 1n, boardId, icon: 'database' });

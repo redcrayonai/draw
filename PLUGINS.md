@@ -164,6 +164,7 @@ In the bundle (`SECTIONS` in `module/src/board-bundle.ts`):
 | `nodes` | `node` | All columns: geometry, kind, style, doc, hidden, imported, focal, `sourceKey`. |
 | `edges` | `edge` | All columns but `evidenceSnippet` (code text). Ends remapped. |
 | `edgeWeights` | `edge_weight` | |
+| `edgeMotions` | `edge_motion` | |
 | `edgeEvidenceHashes` | `edge_evidence_hash` | Line hashes stay, so citations can be re-checked. |
 | `charts` | `chart` | Chart nodes only. |
 | `nodeIcons` | `node_icon` | |

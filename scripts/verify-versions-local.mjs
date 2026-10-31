@@ -207,6 +207,7 @@ before(async () => {
   await ok(O, 'create_chart', [B, 'latency', '', 0, 160, 352, 224, 'timeseries', 'time,p99\n10:00,40\n10:05,44\n', NONE, NONE]);
   await ok(O, 'set_node_icon', [a, 'queue']);
   await ok(O, 'set_edge_weight', [edge.id, 'bold']);
+  await ok(O, 'set_edge_motion', [edge.id, 'dots', 'fast']);
   await ok(O, 'set_node_hidden', [c, true, some('scratch')]);
   await ok(O, 'set_edge_hidden', [edge.id, true, some('scratch')]);
   await ok(O, 'plan_route', [B, [a, b]]);
@@ -264,6 +265,8 @@ test('save, list and restore a complete board into a new private board; the orig
   const calls = edges.find(e => e.label === 'calls');
   assert.deepEqual([calls.fromNode, calls.toNode, calls.hidden, calls.latencyMs, calls.evidenceSnippet], [byLabel.a.id, byLabel.b.id, true, 12.5, '']);
   assert.equal((await sql(OWNER, `SELECT * FROM edge_weight WHERE edge_id = ${calls.id}`))[0].weight, 'bold');
+  const [motion] = await sql(OWNER, `SELECT * FROM edge_motion WHERE edge_id = ${calls.id}`);
+  assert.deepEqual([motion.motion, motion.speed], ['dots', 'fast']);
   assert.equal((await sql(OWNER, `SELECT * FROM edge_evidence_hash WHERE edge_id = ${calls.id}`))[0].lineHash, hashOf('verify();'));
   const [chart] = await sql(OWNER, `SELECT * FROM chart WHERE board_id = ${R}`);
   assert.equal(chart.nodeId, byLabel.latency.id);

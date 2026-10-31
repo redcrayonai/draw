@@ -19,6 +19,7 @@ export const SECTIONS = {
   nodes: { table: 'node', cols: { id: 'u64', label: 'string', sublabel: 'string', x: 'i32', y: 'i32', w: 'i32', h: 'i32', token: 'string', focal: 'bool', doc: 'string', hidden: 'bool', imported: 'bool', kind: 'string', shape: 'string', color: 'string', strokeStyle: 'string', size: 'string', sourceKey: 'string' } },
   edges: { table: 'edge', cols: { id: 'u64', fromNode: 'u64', toNode: 'u64', label: 'string', evidence: 'string', hidden: 'bool', imported: 'bool', color: 'string', strokeStyle: 'string', evidenceStatus: 'string', relation: 'string', latencyMs: 'f32', latencySource: 'string' } },
   edgeWeights: { table: 'edgeWeight', cols: { edgeId: 'u64', weight: 'string' } },
+  edgeMotions: { table: 'edgeMotion', cols: { edgeId: 'u64', motion: 'string', speed: 'string' } },
   edgeEvidenceHashes: { table: 'edgeEvidenceHash', cols: { edgeId: 'u64', lineHash: 'string' } },
   charts: { table: 'chart', cols: { nodeId: 'u64', type: 'string', csv: 'string', options: 'string', source: 'string', updatedAt: 'time' } },
   nodeIcons: { table: 'nodeIcon', cols: { nodeId: 'u64', icon: 'string' } },
@@ -172,7 +173,7 @@ function checkRelations(b: any): void {
   };
   const charts = new Set(b.nodes.filter((n: any) => n.kind === 'chart').map((n: any) => n.id));
   for (const e of b.edges) { target('node', e.fromNode, `edge ${e.id}`); target('node', e.toNode, `edge ${e.id}`); }
-  for (const [section, key, within] of [['edgeWeights', 'edgeId', edges], ['edgeEvidenceHashes', 'edgeId', edges], ['charts', 'nodeId', charts], ['nodeIcons', 'nodeId', nodes], ['codeRefHashes', 'refId', refs]] as const) {
+  for (const [section, key, within] of [['edgeWeights', 'edgeId', edges], ['edgeMotions', 'edgeId', edges], ['edgeEvidenceHashes', 'edgeId', edges], ['charts', 'nodeId', charts], ['nodeIcons', 'nodeId', nodes], ['codeRefHashes', 'refId', refs]] as const) {
     for (const id of keys(b[section], key, section)) if (!within.has(id)) fail(`${section} names ${key} ${id}, which is not in the bundle${section === 'charts' ? ' as a chart node' : ''}`);
   }
   for (const m of b.hideSetMembers) { if (!sets.has(m.setId)) fail(`a hide set member names set ${m.setId}, which is not in the bundle`); target(m.targetKind, m.targetId, `hide set ${m.setId}`); }
@@ -220,6 +221,7 @@ export function restoreBoard(ctx: any, b: BundleBoard, boardId: bigint, epoch: u
   for (const n of b.nodes) nodes.set(n.id, db.node.insert({ ...n, id: 0n, boardId }).id);
   for (const e of b.edges) edges.set(e.id, db.edge.insert({ ...e, id: 0n, boardId, fromNode: to(nodes, e.fromNode), toNode: to(nodes, e.toNode), evidenceSnippet: '' }).id);
   for (const w of b.edgeWeights) db.edgeWeight.insert({ ...w, edgeId: to(edges, w.edgeId), boardId });
+  for (const m of b.edgeMotions) db.edgeMotion.insert({ ...m, edgeId: to(edges, m.edgeId), boardId });
   for (const h of b.edgeEvidenceHashes) db.edgeEvidenceHash.insert({ ...h, edgeId: to(edges, h.edgeId), boardId });
   for (const c of b.charts) db.chart.insert({ ...c, nodeId: to(nodes, c.nodeId), boardId });
   for (const i of b.nodeIcons) db.nodeIcon.insert({ ...i, nodeId: to(nodes, i.nodeId), boardId });
