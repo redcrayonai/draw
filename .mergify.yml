@@ -1,0 +1,13 @@
+# Merge queue: serial, one PR at a time, tested on top of main before it merges.
+# Queue an approved PR with a `@mergifyio queue` comment.
+# Batching (batch_size > 1) would let two release:* PRs race for one tag
+# (see release-labels.yml), so keep it at the default of 1.
+queue_rules:
+  - name: default
+    merge_method: squash
+    queue_conditions:
+      - base = main
+      - "#approved-reviews-by >= 1"
+      - check-success = ci-ready
+    merge_conditions:
+      - check-success = ci-ready
