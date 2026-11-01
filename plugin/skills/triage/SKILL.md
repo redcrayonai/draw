@@ -49,6 +49,9 @@ the board's `id`, a `title` that says what is wrong in a few words, and `since`
 ephemeral incident board, or returns the board itself when it already is one.
 When `opened` is true, relay its `url` once and use its `id` as `board` on every
 later call. Calling it again with the same title finds the same incident.
+A time the user gives without a date is today in UTC. Check the `window` in the
+reply against what the user said; if the day is wrong, fix it with
+`set_time_window` before anything else.
 
 Then call `get_board` and read it before you write anything: the components and
 connections, the charts and what each one is pinned to, the focal nodes, and the

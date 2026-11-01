@@ -307,6 +307,8 @@ describe('open_incident on the hosted server', () => {
     const db = {
       stats: { dbCalls: 0, dbMs: 0, writes: 0 },
       async read(q: { text: string }) {
+        if (q.text.includes('visible_board_window WHERE board_id = 9')) return [{ boardId: 9n, startMs: Date.parse('2026-10-31T14:17:00Z'), endMs: Date.parse('2026-10-31T14:47:00Z') }];
+        if (q.text.includes('visible_board_window')) return [];
         if (q.text.includes('visible_board')) return [{ id: 1n, name: 'checkout prod' }];
         if (q.text.includes('my_incidents WHERE board_id')) return incidentBoard ? [{ boardId: 1n, slug: 'inc1' }] : [];
         if (q.text.includes('my_incidents WHERE source_board_id')) return calls.length ? [{ boardId: 9n, slug: 'inc9', groupKey: 'agent:checkout errors', status: 'firing' }] : [];
@@ -329,13 +331,14 @@ describe('open_incident on the hosted server', () => {
   it('opens an incident board from a lasting board and returns its id and link', async () => {
     const r = await run({ board: '1', title: 'checkout errors', since: '2026-10-31T14:32:00Z' });
     expect(r.calls).toEqual([{ reducer: 'open_incident', args: { sourceBoardId: 1n, groupKey: 'agent:checkout errors', title: 'Incident: checkout errors', status: 'firing', startsAtMs: Date.parse('2026-10-31T14:32:00Z') } }]);
-    expect(JSON.parse(r.out)).toEqual({ board: 'Incident: checkout errors', id: 9, url: 'http://app/#b=inc9', opened: true });
+    // The stored window comes back, so an agent can catch a misread date.
+    expect(JSON.parse(r.out)).toEqual({ board: 'Incident: checkout errors', id: 9, url: 'http://app/#b=inc9', opened: true, window: { start: '2026-10-31T14:17:00.000Z', end: '2026-10-31T14:47:00.000Z' } });
   });
 
   it('returns an incident board as it is, and refuses a since it cannot read', async () => {
     const same = await run({ board: '1', title: 'checkout errors' }, true);
     expect(same.calls).toEqual([]);
-    expect(JSON.parse(same.out)).toEqual({ board: 'checkout prod', id: 1, url: 'http://app/#b=inc1', opened: false });
+    expect(JSON.parse(same.out)).toEqual({ board: 'checkout prod', id: 1, url: 'http://app/#b=inc1', opened: false, window: null });
     const bad = await run({ board: '1', title: 'checkout errors', since: 'an hour ago' });
     expect(bad.calls).toEqual([]);
     expect(bad.out).toMatch(/^REJECTED: pass since as ISO 8601/);
