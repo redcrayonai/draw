@@ -11,7 +11,7 @@
  */
 import { McpServer } from '@modelcontextprotocol/server';
 import { z } from 'zod';
-import { CHART_MIN_H, CHART_MIN_W, CHART_TYPES, HUMAN_SOURCE_RESERVED, MAX_CSV_BYTES, SAMPLE_RESERVED } from '../../module/src/chart-contracts';
+import { CHART_MIN_H, CHART_MIN_W, CHART_TYPES, HUMAN_SOURCE_RESERVED, MAX_CSV_BYTES, SAMPLE_RESERVED, timeValue } from '../../module/src/chart-contracts';
 import { traceMs } from '../../module/src/trace';
 import { MARK_FILES_MAX, MARK_FILE_MAX, MARK_REPLY_MAX, SEAT_RE } from '../../module/src/marks';
 import { ICONS, ICON_SECTIONS } from '../../module/src/node-icons';
@@ -217,6 +217,12 @@ async function nodesOnBoard(t: T, b: { id: SafeU64; name: string }, ids: SafeU64
 }
 
 const committed = (board: string, text = 'committed') => okResult(`${text} board=${board}`);
+
+/** An ISO 8601 time or epoch milliseconds as epoch ms, read as chart cells are (no February 31); undefined otherwise. */
+const instant = (s: string | undefined): number | undefined => {
+  const v = s === undefined ? null : timeValue(s.trim());
+  return v && v.kind !== 'clock' ? v.ms : undefined;
+};
 
 /** Known-not-committed answers that may be retried: the host's 5xx (not a module refusal) before the reducer ran. */
 const retryable = (err: unknown) => err instanceof DbError && err.status >= 500 && err.status !== 530;
@@ -776,6 +782,80 @@ export const TOOLS: Record<string, ToolDef> = {
     async run({ board, nodeId }, t) {
       const { board: b, row } = await boardAndTarget(t, board, 'chart', nodeId);
       return okResult(JSON.stringify({ board: b.name, nodeId, type: row.type, options: row.options, source: row.source, csv: row.csv }, null, 1));
+    },
+  },
+
+  pin_chart: {
+    title: 'Pin chart',
+    scope: 'board:write',
+    description: 'Pin a chart to the edge or component it measures, e.g. a latency chart on the failing hop; the board draws a leader from the chart to it. Pass exactly one of edge or node; pinning again moves the pin; unpin: true removes it.' + BOARD_SUFFIX,
+    input: z.object({ board: boardArg, chart: id, edge: id.optional(), node: id.optional(), unpin: z.boolean().optional() }).strict(),
+    async run({ board, chart, edge, node, unpin }, t) {
+      const { board: b, targetId: nodeId } = await boardAndTarget(t, board, 'chart', chart);
+      if (unpin) {
+        await absolute(() => t.ctx.db.call('unanchor_chart', { nodeId }, t.signal));
+        return committed(b.name);
+      }
+      if ((edge === undefined) === (node === undefined)) throw new Refusal(`REJECTED: pass exactly one of edge or node, or unpin: true. Nothing was written. board=${b.name}`);
+      const targetKind = edge !== undefined ? 'edge' : 'node';
+      const { targetId } = await boardAndTarget(t, board, targetKind, (edge ?? node)!);
+      await absolute(() => t.ctx.db.call('anchor_chart', { nodeId, targetKind, targetId }, t.signal));
+      return committed(b.name);
+    },
+  },
+
+  set_time_window: {
+    title: 'Set time window',
+    scope: 'board:write',
+    description: "Set the board's shared time window: every viewer's time-axis charts show only start to end, so everyone looks at the same minutes. start and end: ISO 8601 (2026-10-09T14:30:00Z) or epoch milliseconds, at most 31 days apart. clear: true removes it and charts show all their data." + BOARD_SUFFIX,
+    input: z.object({ board: boardArg, start: z.string().optional(), end: z.string().optional(), clear: z.boolean().optional() }).strict(),
+    async run({ board, start, end, clear }, t) {
+      const b = await boardOf(t, board);
+      if (clear) {
+        await absolute(() => t.ctx.db.call('clear_board_window', { boardId: b.id }, t.signal));
+        return committed(b.name);
+      }
+      const startMs = instant(start), endMs = instant(end);
+      if (startMs === undefined || endMs === undefined) throw new Refusal(`REJECTED: pass start and end as ISO 8601 or epoch milliseconds, or clear: true. Nothing was written. board=${b.name}`);
+      await absolute(() => t.ctx.db.call('set_board_window', { boardId: b.id, startMs, endMs }, t.signal));
+      return committed(b.name);
+    },
+  },
+
+  open_incident: {
+    title: 'Open incident',
+    scope: 'board:write',
+    description:
+      'Open an incident board: an ephemeral copy of a board (nodes, edges, charts and their pins) with no focal nodes, its time window 15 minutes either side of since. Work an incident there, never on the lasting board. ' +
+      'On a board that already is an incident board, returns that board. Calling it again with the same board and title returns the same open incident. ' +
+      'since: when the problem started, ISO 8601 or epoch milliseconds; leave it out when unknown. Returns JSON { board, id, url, opened, window }: pass id as board on every later tool, relay url to the user once when opened is true, and check window ({ start, end } in UTC, or null) against what the user said.',
+    input: z
+      .object({
+        board: boardArg,
+        title: z.string().min(1, SESSION_NAME_RULE).max(SESSION_NAME_MAX - 10, SESSION_NAME_RULE).regex(SESSION_NAME_RE, SESSION_NAME_RULE).describe('what is wrong, one short line'),
+        since: z.string().optional(),
+      })
+      .strict(),
+    async run({ board, title, since }, t) {
+      const { db, o } = t.ctx;
+      // The board's window as stored, so the agent sees a misread start date before anyone opens the board.
+      const windowOf = async (id: SafeU64) => {
+        const [w] = await db.read<Row>(sql`SELECT * FROM visible_board_window WHERE board_id = ${id}`, t.signal);
+        return w ? { start: new Date(Number(w.startMs)).toISOString(), end: new Date(Number(w.endMs)).toISOString() } : null;
+      };
+      const b = await boardOf(t, board);
+      const [own] = await db.read<Row>(sql`SELECT * FROM my_incidents WHERE board_id = ${b.id}`, t.signal);
+      if (own) return okResult(jsonText({ board: b.name, id: Number(b.id), url: o.boardUrl(String(own.slug)), opened: false, window: await windowOf(b.id) }));
+      const startsAtMs = since === undefined ? 0 : instant(since);
+      if (startsAtMs === undefined) throw new Refusal(`REJECTED: pass since as ISO 8601 or epoch milliseconds, or leave it out. Nothing was written. board=${b.name}`);
+      // One group per title: a retry or a second call for the same problem finds the open incident.
+      const groupKey = `agent:${title}`, name = `Incident: ${title}`;
+      await absolute(() => db.call('open_incident', { sourceBoardId: b.id, groupKey, title: name, status: 'firing', startsAtMs }, t.signal));
+      const rows = await db.read<Row>(sql`SELECT * FROM my_incidents WHERE source_board_id = ${b.id}`, t.signal);
+      const row = rows.find(r => r.groupKey === groupKey && r.status === 'firing');
+      if (!row) throw new Refusal(boardNotFound(name));
+      t.named(name);
+      return okResult(jsonText({ board: name, id: Number(row.boardId), url: o.boardUrl(String(row.slug)), opened: true, window: await windowOf(row.boardId as SafeU64) }));
     },
   },
 

@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { LiveSession, REAUTH_MS, STALE_MS, liveUrl, resolveLive, tapPrompt, type LiveSocketLike, type LiveState } from './live';
+import { HISTORY_MS, LiveSession, REAUTH_MS, STALE_MS, liveCsv, liveUrl, recordLive, resolveLive, tapPrompt, type LivePoint, type LiveSocketLike, type LiveState } from './live';
+import { parseChart } from '../../module/src/chart-contracts';
 
 class FakeWs implements LiveSocketLike {
   readyState = 0;
@@ -121,5 +122,32 @@ describe('LiveSession', () => {
 
   it('offers a prompt for the agent chat, never a command', () => {
     expect(tapPrompt(5n)).toMatch(/^Start a live tap for board 5 \(call start_tap/);
+  });
+});
+
+describe('live history', () => {
+  const edge = (p50: number, p95: number, count = 1) => ({ count, errors: 0, p50, p95, rps: count, reverse: false });
+
+  it('keeps each edge\'s windows for HISTORY_MS and skips quiet windows', () => {
+    const h = new Map<bigint, LivePoint[]>();
+    recordLive(h, 1_000, new Map([[1n, edge(5, 9)], [2n, edge(1, 1, 0)]]));
+    recordLive(h, 2_000, new Map([[1n, edge(6, 10)]]));
+    expect(h.get(1n)!.map(p => p.t)).toEqual([1_000, 2_000]);
+    expect(h.has(2n)).toBe(false);
+    recordLive(h, 2_000 + HISTORY_MS, new Map());
+    expect(h.get(1n)!.map(p => p.t)).toEqual([2_000]);
+    recordLive(h, 3_000 + HISTORY_MS, new Map());
+    expect(h.size).toBe(0);
+  });
+
+  it('writes 10 s buckets of call-weighted p50 and p95 that parse as a time series', () => {
+    const t0 = Date.parse('2026-10-31T14:00:00Z');
+    const csv = liveCsv([
+      { t: t0, count: 1, p50: 10, p95: 20 },
+      { t: t0 + 1_000, count: 3, p50: 20, p95: 40 },
+      { t: t0 + 10_000, count: 2, p50: 5, p95: 8 },
+    ]);
+    expect(csv).toBe('time,p50,p95\n2026-10-31T14:00:00.000Z,17.5,35\n2026-10-31T14:00:10.000Z,5,8');
+    expect(parseChart('timeseries', csv, '{"unit":"ms"}').ok).toBe(true);
   });
 });

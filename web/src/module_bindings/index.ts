@@ -39,11 +39,13 @@ import AddChangeNoteReducer from "./add_change_note_reducer";
 import AddCodeRefReducer from "./add_code_ref_reducer";
 import AddRepoFilesReducer from "./add_repo_files_reducer";
 import AddThreatReducer from "./add_threat_reducer";
+import AnchorChartReducer from "./anchor_chart_reducer";
 import ArriveAtCheckpointReducer from "./arrive_at_checkpoint_reducer";
 import BackfillBoardSlugsReducer from "./backfill_board_slugs_reducer";
 import BackfillBoardStatsReducer from "./backfill_board_stats_reducer";
 import ClaimGuestBoardReducer from "./claim_guest_board_reducer";
 import ClaimMarksReducer from "./claim_marks_reducer";
+import ClearBoardWindowReducer from "./clear_board_window_reducer";
 import CreateArchitectureHistoryReducer from "./create_architecture_history_reducer";
 import CreateArchitectureProposalReducer from "./create_architecture_proposal_reducer";
 import CreateBoardReducer from "./create_board_reducer";
@@ -97,6 +99,7 @@ import OfferGuestClaimReducer from "./offer_guest_claim_reducer";
 import OpenBoardEmbedReducer from "./open_board_embed_reducer";
 import OpenBoardsReducer from "./open_boards_reducer";
 import OpenChartEmbedReducer from "./open_chart_embed_reducer";
+import OpenIncidentReducer from "./open_incident_reducer";
 import OpenSharedLinkReducer from "./open_shared_link_reducer";
 import PlanRouteReducer from "./plan_route_reducer";
 import PlayTraceReducer from "./play_trace_reducer";
@@ -121,6 +124,7 @@ import SendMarksReducer from "./send_marks_reducer";
 import SetArchitectureEdgeRelationReducer from "./set_architecture_edge_relation_reducer";
 import SetArchitectureImportStatusReducer from "./set_architecture_import_status_reducer";
 import SetArchitectureNodeKeyReducer from "./set_architecture_node_key_reducer";
+import SetBoardWindowReducer from "./set_board_window_reducer";
 import SetChangeNoteReadersReducer from "./set_change_note_readers_reducer";
 import SetChartDataReducer from "./set_chart_data_reducer";
 import SetCodeConsentReducer from "./set_code_consent_reducer";
@@ -143,6 +147,7 @@ import ShareBoardWithTeamReducer from "./share_board_with_team_reducer";
 import StartSessionReducer from "./start_session_reducer";
 import StopLinkShareReducer from "./stop_link_share_reducer";
 import SubmitArchitectureProposalReducer from "./submit_architecture_proposal_reducer";
+import UnanchorChartReducer from "./unanchor_chart_reducer";
 import UnlinkAgentReducer from "./unlink_agent_reducer";
 import UnshareBoardFromTeamReducer from "./unshare_board_from_team_reducer";
 import UpdateChangeNoteReducer from "./update_change_note_reducer";
@@ -176,6 +181,7 @@ import MyBoardsRow from "./my_boards_table";
 import MyChartEmbedsRow from "./my_chart_embeds_table";
 import MyCodeConsentRow from "./my_code_consent_table";
 import MyGuestBoardRow from "./my_guest_board_table";
+import MyIncidentsRow from "./my_incidents_table";
 import MyLibraryRow from "./my_library_table";
 import MyLinkIncludesRow from "./my_link_includes_table";
 import MyWorkspaceApiKeysRow from "./my_workspace_api_keys_table";
@@ -194,9 +200,12 @@ import VisibleArchitectureHistoryRow from "./visible_architecture_history_table"
 import VisibleArchitectureVersionRow from "./visible_architecture_version_table";
 import VisibleBoardRow from "./visible_board_table";
 import VisibleBoardCodeConsentRow from "./visible_board_code_consent_table";
+import VisibleBoardLifetimeRow from "./visible_board_lifetime_table";
 import VisibleBoardPeopleRow from "./visible_board_people_table";
+import VisibleBoardWindowRow from "./visible_board_window_table";
 import VisibleChangeNoteRow from "./visible_change_note_table";
 import VisibleChartRow from "./visible_chart_table";
+import VisibleChartAnchorRow from "./visible_chart_anchor_table";
 import VisibleCodeRefRow from "./visible_code_ref_table";
 import VisibleCodeRefHashRow from "./visible_code_ref_hash_table";
 import VisibleCursorRow from "./visible_cursor_table";
@@ -206,6 +215,7 @@ import VisibleEdgeMotionRow from "./visible_edge_motion_table";
 import VisibleEdgeWeightRow from "./visible_edge_weight_table";
 import VisibleHideSetRow from "./visible_hide_set_table";
 import VisibleHideSetMemberRow from "./visible_hide_set_member_table";
+import VisibleIncidentRow from "./visible_incident_table";
 import VisibleMarkRow from "./visible_mark_table";
 import VisibleMarkReadRow from "./visible_mark_read_table";
 import VisibleMarkWaiterRow from "./visible_mark_waiter_table";
@@ -323,6 +333,13 @@ const tablesSchema = __schema({
     constraints: [
     ],
   }, MyGuestBoardRow),
+  myIncidents: __table({
+    name: 'my_incidents',
+    indexes: [
+    ],
+    constraints: [
+    ],
+  }, MyIncidentsRow),
   myLibrary: __table({
     name: 'my_library',
     indexes: [
@@ -449,6 +466,13 @@ const tablesSchema = __schema({
     constraints: [
     ],
   }, VisibleBoardCodeConsentRow),
+  visibleBoardLifetime: __table({
+    name: 'visible_board_lifetime',
+    indexes: [
+    ],
+    constraints: [
+    ],
+  }, VisibleBoardLifetimeRow),
   visibleBoardPeople: __table({
     name: 'visible_board_people',
     indexes: [
@@ -456,6 +480,13 @@ const tablesSchema = __schema({
     constraints: [
     ],
   }, VisibleBoardPeopleRow),
+  visibleBoardWindow: __table({
+    name: 'visible_board_window',
+    indexes: [
+    ],
+    constraints: [
+    ],
+  }, VisibleBoardWindowRow),
   visibleChangeNote: __table({
     name: 'visible_change_note',
     indexes: [
@@ -470,6 +501,13 @@ const tablesSchema = __schema({
     constraints: [
     ],
   }, VisibleChartRow),
+  visibleChartAnchor: __table({
+    name: 'visible_chart_anchor',
+    indexes: [
+    ],
+    constraints: [
+    ],
+  }, VisibleChartAnchorRow),
   visibleCodeRef: __table({
     name: 'visible_code_ref',
     indexes: [
@@ -533,6 +571,13 @@ const tablesSchema = __schema({
     constraints: [
     ],
   }, VisibleHideSetMemberRow),
+  visibleIncident: __table({
+    name: 'visible_incident',
+    indexes: [
+    ],
+    constraints: [
+    ],
+  }, VisibleIncidentRow),
   visibleMark: __table({
     name: 'visible_mark',
     indexes: [
@@ -640,11 +685,13 @@ const reducersSchema = __reducers(
   __reducerSchema("add_code_ref", AddCodeRefReducer),
   __reducerSchema("add_repo_files", AddRepoFilesReducer),
   __reducerSchema("add_threat", AddThreatReducer),
+  __reducerSchema("anchor_chart", AnchorChartReducer),
   __reducerSchema("arrive_at_checkpoint", ArriveAtCheckpointReducer),
   __reducerSchema("backfill_board_slugs", BackfillBoardSlugsReducer),
   __reducerSchema("backfill_board_stats", BackfillBoardStatsReducer),
   __reducerSchema("claim_guest_board", ClaimGuestBoardReducer),
   __reducerSchema("claim_marks", ClaimMarksReducer),
+  __reducerSchema("clear_board_window", ClearBoardWindowReducer),
   __reducerSchema("create_architecture_history", CreateArchitectureHistoryReducer),
   __reducerSchema("create_architecture_proposal", CreateArchitectureProposalReducer),
   __reducerSchema("create_board", CreateBoardReducer),
@@ -698,6 +745,7 @@ const reducersSchema = __reducers(
   __reducerSchema("open_board_embed", OpenBoardEmbedReducer),
   __reducerSchema("open_boards", OpenBoardsReducer),
   __reducerSchema("open_chart_embed", OpenChartEmbedReducer),
+  __reducerSchema("open_incident", OpenIncidentReducer),
   __reducerSchema("open_shared_link", OpenSharedLinkReducer),
   __reducerSchema("plan_route", PlanRouteReducer),
   __reducerSchema("play_trace", PlayTraceReducer),
@@ -722,6 +770,7 @@ const reducersSchema = __reducers(
   __reducerSchema("set_architecture_edge_relation", SetArchitectureEdgeRelationReducer),
   __reducerSchema("set_architecture_import_status", SetArchitectureImportStatusReducer),
   __reducerSchema("set_architecture_node_key", SetArchitectureNodeKeyReducer),
+  __reducerSchema("set_board_window", SetBoardWindowReducer),
   __reducerSchema("set_change_note_readers", SetChangeNoteReadersReducer),
   __reducerSchema("set_chart_data", SetChartDataReducer),
   __reducerSchema("set_code_consent", SetCodeConsentReducer),
@@ -744,6 +793,7 @@ const reducersSchema = __reducers(
   __reducerSchema("start_session", StartSessionReducer),
   __reducerSchema("stop_link_share", StopLinkShareReducer),
   __reducerSchema("submit_architecture_proposal", SubmitArchitectureProposalReducer),
+  __reducerSchema("unanchor_chart", UnanchorChartReducer),
   __reducerSchema("unlink_agent", UnlinkAgentReducer),
   __reducerSchema("unshare_board_from_team", UnshareBoardFromTeamReducer),
   __reducerSchema("update_change_note", UpdateChangeNoteReducer),

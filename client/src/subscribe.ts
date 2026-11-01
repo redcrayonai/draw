@@ -30,6 +30,8 @@ export const EDGE_WEIGHT_TABLES = ['visible_edge_weight'];
 export const EDGE_MOTION_TABLES = ['visible_edge_motion'];
 /** The repo remote and the line hashes (RC-690): optional, so a module without them shows no GitHub links and undo replays no hashes. */
 export const CODE_LINK_TABLES = ['visible_session_remote', 'visible_code_ref_hash', 'visible_edge_evidence_hash'];
+/** Incident triage: chart pins, the shared time window, lifetime flags and incident state. Optional, like charts. */
+export const INCIDENT_TABLES = ['visible_chart_anchor', 'visible_board_window', 'visible_board_lifetime', 'visible_incident'];
 /** The caller's saved library (one owner-filtered view). Optional, like charts. */
 export const LIBRARY_VIEWS = ['my_library'];
 /**
@@ -56,7 +58,7 @@ export const CORE_TABLES = ['visible_cursor', 'visible_edge', 'visible_hide_set'
  * (spec §1.6), as a sender-aware view re-runs once per subscriber, and
  * visible_repo_file, which only agents read, service_demo_reset, the mcp cron's, and the stored-code setting (RC-690), which the dashboard and agents read.
  */
-export const NOT_SUBSCRIBED = ['my_workspaces', 'my_workspace_members', 'my_workspace_teams', 'my_workspace_team_members', 'my_workspace_board_grants', 'my_workspace_team_grants', 'my_workspace_invites', 'my_workspace_service_accounts', 'my_workspace_api_keys', 'service_workspace_api_keys', 'my_guest_board', 'my_board_creations', 'my_board_slugs', 'my_activity', 'service_outbox', 'service_demo_reset', 'my_architecture_histories', 'my_agent_grants', 'visible_repo_file', 'visible_board_people', 'my_code_consent', 'visible_board_code_consent', 'embedded_chart', 'embedded_board'];
+export const NOT_SUBSCRIBED = ['my_workspaces', 'my_workspace_members', 'my_workspace_teams', 'my_workspace_team_members', 'my_workspace_board_grants', 'my_workspace_team_grants', 'my_workspace_invites', 'my_workspace_service_accounts', 'my_workspace_api_keys', 'service_workspace_api_keys', 'my_guest_board', 'my_board_creations', 'my_board_slugs', 'my_activity', 'service_outbox', 'service_demo_reset', 'my_architecture_histories', 'my_agent_grants', 'visible_repo_file', 'visible_board_people', 'my_code_consent', 'visible_board_code_consent', 'embedded_chart', 'embedded_board', 'my_incidents'];
 
 interface Builder {
   onApplied(cb: () => void): Builder;
@@ -155,4 +157,7 @@ export function subscribeBoard(
   conn.subscriptionBuilder()
     .onError(ctx => console.warn('code links unavailable (module predates them):', ctx.event))
     .subscribe(all(CODE_LINK_TABLES));
+  conn.subscriptionBuilder()
+    .onError(ctx => console.warn('incident tables unavailable (module predates them):', ctx.event))
+    .subscribe(all(INCIDENT_TABLES));
 }

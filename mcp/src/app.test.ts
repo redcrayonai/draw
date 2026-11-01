@@ -577,3 +577,69 @@ describe('GET /marks/wait', () => {
     expect(((await res.json()) as any).error).toBe('internal_error');
   });
 });
+
+describe('POST /hooks/alert', () => {
+  afterEach(() => vi.unstubAllGlobals());
+
+  const U64 = { U64: [] };
+  const STR = { String: [] };
+  const table = (cols: [string, unknown][], rows: unknown[][]) =>
+    JSON.stringify([{ schema: { elements: cols.map(([n, t]) => ({ name: { some: n }, algebraic_type: t })) }, rows }]);
+  /** A fake database: visible_board knows slug abc as board 5; my_incidents answers `incidents` ([boardId, slug, groupKey, status]). */
+  function fakeDb(opts: { incidents?: [number, string, string, string][]; refuse?: string }) {
+    const seen = { calls: [] as string[], queries: [] as string[] };
+    vi.stubGlobal('fetch', async (url: string, init?: RequestInit) => {
+      const path = new URL(url).pathname;
+      if (!path.endsWith('/sql')) {
+        seen.calls.push(`${path.split('/').pop()} ${String(init?.body)}`);
+        return opts.refuse ? new Response(opts.refuse, { status: 530 }) : new Response('');
+      }
+      const query = String(init?.body);
+      seen.queries.push(query);
+      if (query.includes('visible_board')) return new Response(table([['id', U64]], query.includes("'abc'") ? [[5]] : []));
+      return new Response(table([['board_id', U64], ['slug', STR], ['group_key', STR], ['status', STR]], opts.incidents ?? []));
+    });
+    return seen;
+  }
+  const ALERT = { version: '4', groupKey: '{}:{alertname="HighLatency"}', status: 'firing', commonLabels: { alertname: 'HighLatency' }, alerts: [{ startsAt: '2026-10-31T14:32:00Z' }, { startsAt: '2026-10-31T14:30:00Z' }] };
+  const post = (body: unknown, headers: Record<string, string> = { authorization: 'Bearer tok_ok' }, board = 'abc') =>
+    app.fetch(new Request(`${BASE}/hooks/alert?board=${board}`, { method: 'POST', headers, body: typeof body === 'string' ? body : JSON.stringify(body) }), env);
+
+  it('401 without a token, 403 from a browser or without board:write', async () => {
+    const seen = fakeDb({});
+    expect((await post(ALERT, {})).status).toBe(401);
+    expect((await post(ALERT, { authorization: 'Bearer tok_ok', origin: 'https://evil.test' })).status).toBe(403);
+    expect((await post(ALERT, { authorization: 'Bearer tok_read' })).status).toBe(403);
+    expect(seen.calls).toEqual([]);
+  });
+
+  it('400 for a body that is not an alert', async () => {
+    const seen = fakeDb({});
+    expect((await post('not json')).status).toBe(400);
+    expect((await post({ status: 'firing' })).status).toBe(400);
+    expect((await post({ groupKey: 'g', status: 'pending' })).status).toBe(400);
+    expect(seen.calls).toEqual([]);
+  });
+
+  it('opens the incident as the caller and answers with its link', async () => {
+    const seen = fakeDb({ incidents: [[8, 'old', ALERT.groupKey, 'resolved'], [9, 'new9', ALERT.groupKey, 'firing'], [10, 'other', 'g2', 'firing']] });
+    const res = await post(ALERT);
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ status: 'firing', board: 'new9', url: 'https://app.redcrayon.test/#b=new9' });
+    expect(seen.calls).toEqual([`open_incident [5,${JSON.stringify(ALERT.groupKey)},"Incident: HighLatency","firing",${Date.parse('2026-10-31T14:30:00Z')}]`]);
+    expect(seen.queries[1]).toBe('SELECT * FROM my_incidents WHERE source_board_id = 5');
+  });
+
+  it('a resolved alert with nothing open answers board null; an unknown board 404s', async () => {
+    fakeDb({});
+    expect(await (await post({ ...ALERT, status: 'resolved' })).json()).toEqual({ status: 'resolved', board: null });
+    expect((await post(ALERT, undefined, 'zzz')).status).toBe(404);
+  });
+
+  it("passes a module refusal through as 403 with the rule's sentence", async () => {
+    fakeDb({ refuse: 'not authorized: board is read only' });
+    const res = await post(ALERT);
+    expect(res.status).toBe(403);
+    expect(((await res.json()) as any).error_description).toMatch(/board is read only/);
+  });
+});
