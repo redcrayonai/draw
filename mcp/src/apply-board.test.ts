@@ -51,11 +51,53 @@ describe('apply_board', () => {
     expect(TOOLS.apply_board.input.safeParse(input({ nodes: [node('__proto__')] })).success).toBe(false);
   });
 
+  it('rejects nodes the create retry matcher cannot distinguish, before writing', () => {
+    const identical = { ...node('api'), key: 'replica' };
+    expect(TOOLS.apply_board.input.safeParse(input({ nodes: [node('api'), identical], edges: [] })).success).toBe(false);
+    expect(TOOLS.apply_board.input.safeParse(input({ nodes: [node('api'), { ...identical, w: 200 }], edges: [] })).success).toBe(false);
+    expect(TOOLS.apply_board.input.safeParse(input({ nodes: [node('api'), { ...identical, x: 200 }], edges: [] })).success).toBe(true);
+  });
+
   it('requires source captures before creating nodes, and keeps captures on their edges', () => {
     const source = { ...edge, evidence: 'source:src/api.ts:10' };
     expect(TOOLS.apply_board.input.safeParse(input({ edges: [source] })).success).toBe(false);
     const capture = 'cap_AAAAAAAAAAAAAAAAAAAAAA';
     expect(TOOLS.apply_board.input.parse(input({ edges: [{ ...source, capture }] }))).toMatchObject({ edges: [{ capture }] });
+  });
+
+  it('rejects a capture reused by two edges before any writes', () => {
+    const source = { ...edge, evidence: 'source:src/api.ts:10', capture: 'cap_AAAAAAAAAAAAAAAAAAAAAA' };
+    expect(TOOLS.apply_board.input.safeParse(input({ edges: [source, { ...source, label: 'also writes' }] })).success).toBe(false);
+  });
+
+  it.each([false, true])('aligns edge ids and results with input order despite reversed completion (failure=%s)', async fail => {
+    let finishFirst!: () => void;
+    const first = new Promise<void>(resolve => { finishFirst = resolve; });
+    const requested = ['first', 'second', 'third', 'fourth'].map(label => ({ ...edge, fromNode: '1', toNode: '2', label }));
+    const result = await applyBoard(input({ nodes: [], edges: requested, layout: false }), async (_name, args) => {
+      if (args.label === 'first') await first;
+      if (args.label === 'third') finishFirst();
+      return fail && args.label === 'second' ? errorResult('REJECTED: second refused') : okResult(`committed id=${requested.findIndex(e => e.label === args.label) + 11} board=main`);
+    }, Date.now() + 15_000);
+    expect(result.structuredContent).toMatchObject({ complete: !fail, edges: fail ? ['11', null, '13', null] : ['11', '12', '13', '14'] });
+    expect((result.structuredContent!.results as { text: string }[]).map(r => r.text)).toEqual(fail
+      ? ['committed id=11 board=main', 'REJECTED: second refused', 'committed id=13 board=main']
+      : requested.map((_, i) => `committed id=${i + 11} board=main`));
+  });
+
+  it('serializes source edges so their snapshot reads do not pile up', async () => {
+    let active = 0;
+    let peak = 0;
+    let id = 10;
+    const edges = Array.from({ length: 3 }, (_, i) => ({ ...edge, evidence: 'source:src/api.ts:10', capture: `capture-${i}` }));
+    const result = await applyBoard(input({ nodes: [], edges, layout: false }), async () => {
+      peak = Math.max(peak, ++active);
+      await new Promise(resolve => setTimeout(resolve, 1));
+      active--;
+      return okResult(`committed id=${++id} board=main`);
+    }, Date.now() + 15_000);
+    expect(peak).toBe(1);
+    expect(result.structuredContent).toMatchObject({ complete: true });
   });
 
   it('returns completed ids and settles in-flight writes before stopping on a refusal', async () => {
@@ -69,7 +111,7 @@ describe('apply_board', () => {
     expect(calls).toEqual(['create_node', 'create_node', 'create_node']);
     expect(result.isError).toBe(true);
     expect(result.content[0].text).toMatch(/^REJECTED:/);
-    expect(result.structuredContent).toMatchObject({ complete: false, nodes: { api: '11', worker: '13' }, edges: [] });
+    expect(result.structuredContent).toMatchObject({ complete: false, nodes: { api: '11', worker: '13' }, edges: [null] });
   });
 
   it('does not connect edges when a committed node has no unambiguous id', async () => {
@@ -80,7 +122,7 @@ describe('apply_board', () => {
     }, Date.now() + 15_000);
     expect(calls).toEqual(['create_node', 'create_node']);
     expect(result.content[0].text).toMatch(/^UNCONFIRMED/);
-    expect(result.structuredContent).toMatchObject({ complete: false, nodes: {}, edges: [] });
+    expect(result.structuredContent).toMatchObject({ complete: false, nodes: {}, edges: [null] });
   });
 
   it('starts no more operations after its budget expires', async () => {

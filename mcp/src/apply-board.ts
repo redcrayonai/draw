@@ -15,17 +15,27 @@ export function applyBoardInput(node: z.ZodObject, edge: z.ZodObject) {
     const count = args.nodes.length + args.edges.length + Number(args.layout);
     if (count < 1 || count > MAX_OPERATIONS) ctx.addIssue({ code: 'custom', message: `REJECTED: pass 1-${MAX_OPERATIONS} operations, counting layout.` });
     const keys = new Set<string>();
+    const placements = new Set<string>();
     for (const n of args.nodes) {
       const name = n.key as string;
       if (keys.has(name)) ctx.addIssue({ code: 'custom', message: 'REJECTED: node keys must be unique.' });
       keys.add(name);
+      // create_node identifies a committed row by these fields after a lost response.
+      const placement = JSON.stringify([n.label, n.sublabel, n.x, n.y]);
+      if (placements.has(placement)) ctx.addIssue({ code: 'custom', message: 'REJECTED: nodes must differ in label, sublabel, x or y so their committed ids are distinguishable.' });
+      placements.add(placement);
     }
+    const captures = new Set<string>();
     for (const e of args.edges) {
       for (const id of [e.fromNode, e.toNode] as string[]) {
         if (id.startsWith('$') && !keys.has(id.slice(1))) ctx.addIssue({ code: 'custom', message: 'REJECTED: an edge names an unknown node key.' });
       }
       if (typeof e.evidence === 'string' && e.evidence.startsWith('source:') && !e.capture) {
         ctx.addIssue({ code: 'custom', message: 'REJECTED: each source edge needs its own capture. Run npx -y @redcrayonai/draw@1 capture cite <path> --board <board> and pass its id as capture on that edge.' });
+      }
+      if (typeof e.capture === 'string') {
+        if (captures.has(e.capture)) ctx.addIssue({ code: 'custom', message: 'REJECTED: each edge needs a separate capture; a capture cannot be reused in the batch.' });
+        captures.add(e.capture);
       }
     }
   });
@@ -42,19 +52,21 @@ type Call = (name: 'create_node' | 'create_edge' | 'layout_board', args: Record<
 /** Each wave settles before the next starts, including after a failure. */
 export async function applyBoard(args: Args, call: Call, deadline: number): Promise<ToolResult> {
   const nodes: Record<string, string> = {};
-  const edges: string[] = [];
+  const edges: (string | null)[] = args.edges.map(() => null);
   const results: { tool: string; key?: string; text: string }[] = [];
   let error: string | undefined;
   const resolve = (id: string) => id.startsWith('$') ? nodes[id.slice(1)] : id;
-  const run = async (tool: Parameters<Call>[0], input: Record<string, unknown>, key?: string) => {
+  const run = async (tool: Parameters<Call>[0], input: Record<string, unknown>, key?: string, index?: number) => {
     // Layout needs its 5 s write budget and 1 s response margin to finish a container as one unit.
     if (tool === 'layout_board' && Date.now() >= deadline - 6_000) {
       error = 'UNAVAILABLE: the batch has too little time left for layout. Call layout_board to finish.';
       return;
     }
+    const entry = { tool, ...(key === undefined ? {} : { key }), text: '' };
+    results.push(entry);
     const result = await call(tool, { board: args.board, ...input });
     const text = result.content.map(c => c.text).join('\n');
-    results.push({ tool, ...(key === undefined ? {} : { key }), text });
+    entry.text = text;
     if (result.isError) { error ??= text; return; }
     if (tool === 'layout_board') {
       if (text.includes('; call again to continue')) error ??= 'UNAVAILABLE: layout has more moves to apply. Call layout_board to continue.';
@@ -64,20 +76,21 @@ export async function applyBoard(args: Args, call: Call, deadline: number): Prom
     if (id === undefined) {
       error ??= 'UNCONFIRMED: a create committed without an unambiguous id. Call get_board before any retry.';
     } else if (key !== undefined) nodes[key] = id;
-    else edges.push(id);
+    else if (index !== undefined) edges[index] = id;
   };
   const stages = [
-    args.nodes.map(({ key, ...input }) => () => run('create_node', input, key)),
-    args.edges.map(input => () => run('create_edge', { ...input, fromNode: resolve(input.fromNode), toNode: resolve(input.toNode) })),
-    args.layout ? [() => run('layout_board', {})] : [],
+    { tasks: args.nodes.map(({ key, ...input }) => () => run('create_node', input, key)), concurrency: 3 },
+    // Source edges each load a full snapshot; avoid queuing several against the request limit.
+    { tasks: args.edges.map((input, i) => () => run('create_edge', { ...input, fromNode: resolve(input.fromNode), toNode: resolve(input.toNode) }, undefined, i)), concurrency: args.edges.some(e => typeof e.evidence === 'string' && e.evidence.startsWith('source:')) ? 1 : 3 },
+    { tasks: args.layout ? [() => run('layout_board', {})] : [], concurrency: 1 },
   ];
-  for (const stage of stages) {
-    for (let i = 0; i < stage.length && !error; i += 3) {
+  for (const { tasks, concurrency } of stages) {
+    for (let i = 0; i < tasks.length && !error; i += concurrency) {
       if (Date.now() >= deadline) {
         error = 'UNCONFIRMED: the batch time budget ended. Call get_board before any retry.';
         break;
       }
-      await Promise.all(stage.slice(i, i + 3).map(run => run()));
+      await Promise.all(tasks.slice(i, i + concurrency).map(run => run()));
     }
     if (error) break;
   }

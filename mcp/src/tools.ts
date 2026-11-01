@@ -1264,10 +1264,10 @@ export const TOOLS: Record<string, ToolDef> = {
     scope: 'board:write',
     description:
       'Create nodes, then their edges, then optionally lay out the board in one call (1-16 operations, including layout). ' +
-      'nodes take create_node fields except board, plus a unique key (a letter followed by up to 39 letters, digits, underscores or hyphens). ' +
+      'nodes take create_node fields except board, plus a unique key (a letter followed by up to 39 letters, digits, underscores or hyphens). Nodes must differ in label, sublabel, x or y. ' +
       'edges take create_edge fields except board; fromNode and toNode accept existing numeric ids or "$key" for a node in this batch. Each source edge needs its own capture; the plugin fills these in. ' +
-      'Independent creates run up to 3 at a time. Each operation has the same checks and counts as one tool call. ' +
-      'Set layout=true only when a person has not arranged the board; when time is short it asks for a separate layout_board call. Returns JSON { complete, nodes: { key: id }, edges: [id], results }. ' +
+      'Independent creates run up to 3 at a time; edges run one at a time when any edge cites source. Each operation has the same checks and counts as one tool call. ' +
+      'Set layout=true only when a person has not arranged the board; when time is short it asks for a separate layout_board call. Returns JSON { complete, nodes: { key: id }, edges: [id or null], results }. edges matches input order; null means no confirmed id. results lists attempted operations in input order, nodes then edges then layout. ' +
       'This is not a transaction: a failure stops later operations after in-flight calls settle and returns completed ids. Call get_board before retrying; do not repeat the whole batch blindly.',
     get input() { return applyBoardInput(TOOLS.create_node.input, TOOLS.create_edge.input); },
     async run(args, t) {
@@ -1627,7 +1627,12 @@ async function invoke(name: string, def: ToolDef, args: Record<string, unknown>,
     }
     writesBefore = ctx.db.stats.writes; // link and join are not this call's writes
     const run = () => def.run(args, t);
-    return typeof args.capture === 'string' ? await onceForCapture(t, [name, args], run) : await run();
+    const result = typeof args.capture === 'string' ? await onceForCapture(t, [name, args], run) : await run();
+    if (name === 'apply_board' && result.isError) {
+      const text = result.content[0]?.text ?? '';
+      outcome = text.startsWith('UNCONFIRMED') ? 'unconfirmed' : text.startsWith('UNAVAILABLE') ? 'unavailable' : 'rejected';
+    }
+    return result;
   } catch (err) {
     const s = scrub(err, { write: def.scope === 'board:write', board: boardName });
     outcome = s.outcome;
@@ -1650,8 +1655,7 @@ async function invoke(name: string, def: ToolDef, args: Record<string, unknown>,
     // reqId joins the trace to its log line; status error marks our failures, not the caller's.
     span?.setAttributes({ tool: name, outcome, status, reqId: ctx.reqId, cold: ctx.cold });
     if (outcome === 'unavailable' || outcome === 'unconfirmed') span?.setStatus({ code: 'error' });
-    // Individual operations already logged the batch's work; do not count it twice.
-    if (name !== 'apply_board') ctx.log(
+    ctx.log(
       {
         reqId: ctx.reqId,
         userId: ctx.principal.userId,
@@ -1661,8 +1665,9 @@ async function invoke(name: string, def: ToolDef, args: Record<string, unknown>,
         board,
         outcome,
         status,
-        dbCalls: ctx.db.stats.dbCalls,
-        dbMs: ctx.db.stats.dbMs,
+        // Child operations already reported the batch's database work.
+        dbCalls: name === 'apply_board' ? 0 : ctx.db.stats.dbCalls,
+        dbMs: name === 'apply_board' ? 0 : ctx.db.stats.dbMs,
         totalMs: Date.now() - started,
         cold: ctx.cold,
         version: version(ctx.env),

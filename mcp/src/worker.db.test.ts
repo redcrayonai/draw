@@ -132,6 +132,10 @@ describe.skipIf(!url || !db)('the Worker on a real DB', () => {
           const started = JSON.parse((await call('start_session', { name: `batch-${era}` })).text);
           const board = String(started.id);
           const node = (key: string, x: number) => ({ key, label: key, sublabel: '', x, y: 0, w: 160, h: 64, token: 'ink', focal: false });
+          const indistinguishable = await call('apply_board', { board, nodes: [node('api', 0), { ...node('api', 0), key: 'replica' }] });
+          expect(indistinguishable.isError).toBe(true);
+          expect(indistinguishable.text).toContain('nodes must differ');
+          expect(JSON.parse((await call('get_board', { board })).text).nodes).toHaveLength(0);
           const args = { board, nodes: [node('api', 0), node('store', 240)], edges: [{ fromNode: '$api', toNode: '$store', label: 'writes', evidence: 'agent:user described the topology' }], layout: true };
           const first = await call('apply_board', args);
           expect(first.isError, first.text).toBe(false);

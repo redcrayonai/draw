@@ -464,6 +464,13 @@ describe('hook mode', () => {
     expect(requests).toEqual([]);
   });
 
+  it('uploads no captures when nodes plus edges plus layout exceed the batch limit', async () => {
+    const root = repo();
+    const r = await pre('mcp__draw__apply_board', { board: '7', nodes: Array.from({ length: 15 }, () => ({})), edges: [{ evidence: 'source:src/a.ts:1' }], layout: true }, root);
+    expect(r).toEqual({ code: 0, stdout: '', stderr: '' });
+    expect(requests).toEqual([]);
+  });
+
   it('uploads batch captures concurrently, at most three at once, without reordering edges', async () => {
     const root = repo();
     responseDelayMs = 150;

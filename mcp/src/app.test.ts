@@ -165,6 +165,8 @@ describe('tool calls', () => {
   it('batches through the usual gate, counting each operation and refusing read-only credentials', async () => {
     vi.stubGlobal('fetch', async () => new Response(''));
     const logs = vi.spyOn(console, 'log').mockImplementation(() => {});
+    const writeDataPoint = vi.fn();
+    env.CALLS = { writeDataPoint };
     const run = vi.spyOn(TOOLS.create_node, 'run').mockImplementation(async args => ({ content: [{ type: 'text', text: `committed id=${args.label === 'api' ? 11 : 12} board=main` }] }));
     const check = vi.fn(async () => true);
     const charge = vi.fn(async () => ({ ok: true, used: 1 }));
@@ -187,7 +189,10 @@ describe('tool calls', () => {
     expect(run).toHaveBeenCalledTimes(2);
     expect(check.mock.calls).toEqual([['user_batch', 1], ['user_batch', 1]]);
     expect(charge).toHaveBeenCalledTimes(2);
-    expect(logs.mock.calls.map(([line]) => JSON.parse(String(line)).tool)).toEqual(['create_node', 'create_node']);
+    expect(logs.mock.calls.map(([line]) => JSON.parse(String(line)).tool)).toEqual(['create_node', 'create_node', 'apply_board']);
+    expect(writeDataPoint).toHaveBeenCalledTimes(3);
+    expect(writeDataPoint.mock.calls[2][0]).toMatchObject({ blobs: ['apply_board', 'ok', 'client_a', 'oauth', '1', expect.any(String)] });
+    expect(writeDataPoint.mock.calls[2][0].doubles.slice(1, 3)).toEqual([0, 0]);
 
     run.mockClear();
     check.mockResolvedValue(false);
@@ -196,6 +201,38 @@ describe('tool calls', () => {
     expect(run).not.toHaveBeenCalled();
     expect(charge).toHaveBeenCalledTimes(2);
     expect(denied.structuredContent).toMatchObject({ complete: false, nodes: {} });
+    expect(JSON.parse(String(logs.mock.calls.at(-1)![0]))).toMatchObject({ tool: 'apply_board', outcome: 'rejected' });
+  });
+
+  it.each(['UNCONFIRMED', 'UNAVAILABLE', 'REJECTED'])('logs and traces a returned batch failure: %s', async prefix => {
+    vi.spyOn(TOOLS.apply_board, 'run').mockResolvedValue({ isError: true, content: [{ type: 'text', text: `${prefix}: batch stopped` }] });
+    const logs = vi.spyOn(console, 'log').mockImplementation(() => {});
+    const writeDataPoint = vi.fn();
+    env.CALLS = { writeDataPoint };
+    const setAttributes = vi.fn();
+    const setStatus = vi.fn();
+    const tracing = { enterSpan: (_name: string, run: (span: Span) => unknown) => run({ setAttributes, setStatus } as unknown as Span) } as Pick<Tracing, 'enterSpan'>;
+    const traced = createApp({ verifyBearer, ledger: () => ({ charge: async () => ({ ok: true, used: 1 }), claim: async () => ({ first: true }), settle: async () => {} }), captures: memoryCaptures(), tracing });
+    const res = await traced.fetch(new Request(`${BASE}/mcp`, {
+      method: 'POST', headers: { authorization: 'Bearer tok_ok', 'content-type': 'application/json', accept: 'application/json, text/event-stream', 'mcp-protocol-version': '2025-06-18' },
+      body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name: 'apply_board', arguments: { board: '1', layout: true } } }),
+    }), env);
+    expect((await rpcBody(res)).result.isError).toBe(true);
+    expect(setAttributes).toHaveBeenCalledWith(expect.objectContaining({ tool: 'apply_board', outcome: prefix.toLowerCase() }));
+    expect(JSON.parse(String(logs.mock.calls.at(-1)![0]))).toMatchObject({ tool: 'apply_board', outcome: prefix.toLowerCase() });
+    expect(writeDataPoint).toHaveBeenCalledWith(expect.objectContaining({ blobs: ['apply_board', prefix.toLowerCase(), 'client_a', 'oauth', '1', expect.any(String)] }));
+    if (prefix !== 'REJECTED') expect(setStatus).toHaveBeenCalledWith({ code: 'error' });
+  });
+
+  it('records the recovery ref when a batch throws unexpectedly', async () => {
+    vi.spyOn(TOOLS.apply_board, 'run').mockRejectedValue(new Error('private details'));
+    const logs = vi.spyOn(console, 'log').mockImplementation(() => {});
+    const errors = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const body = await rpcBody(await rpc({ jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name: 'apply_board', arguments: { board: '1', layout: true } } }));
+    const line = JSON.parse(String(logs.mock.calls.at(-1)![0]));
+    expect(line).toMatchObject({ tool: 'apply_board', outcome: 'unavailable', ref: expect.any(String) });
+    expect(body.result.content[0].text).toContain(line.ref);
+    expect(JSON.parse(String(errors.mock.calls.at(-1)![0]))).toEqual({ event: 'tool.error', ref: line.ref, error: 'Error' });
   });
 
   // A cold isolate links and joins the agent first: those 2 writes are not the tool's.

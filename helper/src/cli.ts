@@ -166,6 +166,10 @@ async function preToolUse(tool: string, args: Json, cwd: string, out: string[], 
   try {
     if (tool === 'apply_board') {
       if (!Array.isArray(args.edges) || args.edges.length > 16 || !args.edges.every(isObject)) return 0;
+      if (args.nodes !== undefined && !Array.isArray(args.nodes)) return 0;
+      if (args.layout !== undefined && typeof args.layout !== 'boolean') return 0;
+      const count = (Array.isArray(args.nodes) ? args.nodes.length : 0) + args.edges.length + Number(args.layout === true);
+      if (count < 1 || count > 16) return 0;
       const edges = [...args.edges];
       let changed = false;
       // Leave ten seconds for startup and cleanup inside the plugin hook's 45 s limit.

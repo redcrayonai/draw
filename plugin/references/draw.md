@@ -4,10 +4,14 @@
 each new node a unique `key` and use `$key` as an edge's `fromNode` or `toNode`;
 existing endpoints still take numeric ids. Node and edge fields otherwise
 match `create_node` and `create_edge`, without their `board`. Pass `board` once
-on the batch. The plugin fills in a separate capture for each source edge.
+on the batch. Nodes must differ in label, sublabel, x or y so the server can
+identify their committed ids. The plugin fills in a separate capture for each
+source edge; never reuse a capture on two edges.
 Set `layout: true` only when no person has arranged the board. A batch holds
 at most 16 operations, including layout. Returned `nodes` maps keys to ids;
-use those ids for code refs, sent together after the batch. Read every result.
+use those ids for code refs, sent together after the batch. Returned `edges`
+matches input order, with `null` where no id was confirmed. Read every result.
+Edges run one at a time when any edge cites source, to bound snapshot load.
 On failure, in-flight writes finish and later operations stop: retain the
 completed ids, call `get_board`, and send only the work still needed. Never
 blindly repeat a whole batch. Edits to existing objects use the tools below.

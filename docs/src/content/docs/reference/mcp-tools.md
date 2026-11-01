@@ -28,7 +28,7 @@ says why, and the first word tells the agent what to do:
 
 | Tool | What it does |
 |---|---|
-| `apply_board` | Creates nodes and their edges, then optionally lays them out, in one call. Uses temporary node keys; at most 16 operations. |
+| `apply_board` | Creates nodes and their edges, then optionally lays them out, in one call. Uses temporary node keys; at most 16 operations. Nodes must differ in label, sublabel or position. Returned edge IDs match input order, with `null` for unconfirmed IDs. |
 | `create_node` | Adds a component: a service, data store, external system, boundary, note or text block. |
 | `update_node` | Changes a node's label, sublabel, colour, kind or focus. |
 | `move_node` | Moves a node. |
