@@ -5407,9 +5407,12 @@ const NO_STATS = {
 
 function linkFields(ctx: any, boardId: bigint, access: string): { linkMode: string; linkToken: string } {
   if (isWorkspaceMachine(ctx)) return { linkMode: workspaceMachineBoardRole(ctx, boardId) === 'viewer' ? 'view' : '', linkToken: '' };
-  // Preserve the existing wire shape and old-client read-only classification.
-  if (ctx.db.boardWorkspace.boardId.find(boardId) && effectiveBoardRole(ctx, boardId) === 'viewer') return { linkMode: 'view', linkToken: '' };
   const share = ctx.db.linkShare.boardId.find(boardId);
+  // Preserve the existing wire shape and old-client read-only classification.
+  // Someone who opened the link still gets its token: the canvas finds a #s= board by it.
+  if (ctx.db.boardWorkspace.boardId.find(boardId) && effectiveBoardRole(ctx, boardId) === 'viewer') {
+    return { linkMode: 'view', linkToken: share && hasLinkVisit(ctx, boardId, ctx.sender) ? share.token : '' };
+  }
   if (!share) return { linkMode: '', linkToken: '' };
   const holder = access === 'owner' || hasLinkVisit(ctx, boardId, ctx.sender);
   return {
