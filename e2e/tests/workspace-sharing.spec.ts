@@ -63,3 +63,37 @@ test('workspace viewers edit only through an independent edit link, which remain
     await memberContext.close();
   }
 });
+
+test('a view link on a workspace board opens for a signed-out visitor and a workspace viewer, and revoking it ends only the signed-out visitor access', async ({ guest, account, stack }) => {
+  test.setTimeout(120_000);
+  const ownerToken = stack.accountToken(), memberToken = stack.accountToken();
+  const name = `Workspace view link ${token()}`;
+  await stack.callReducer(ownerToken, 'create_workspace', [name]);
+  const workspace = (await stack.sql(`SELECT * FROM workspace WHERE name = '${name}'`))[0];
+  const invitation = token();
+  await stack.callReducer(ownerToken, 'create_workspace_invite', [workspace.id, 0, 'member', invitation]);
+  await stack.callReducer(memberToken, 'accept_workspace_invite', [invitation]);
+  await stack.callReducer(ownerToken, 'create_workspace_board', [workspace.id, name, token()]);
+  const board = (await stack.sql(`SELECT * FROM board WHERE name = '${name}'`))[0];
+  await stack.callReducer(ownerToken, 'set_workspace_board_access', [board.id, 'viewer']);
+
+  const owner = await account(ownerToken);
+  await openBoard(owner, `${stack.url}#b=${board.slug}`);
+  await drawNode(owner, 'Ledger');
+  const link = await shareBoard(owner, 'view');
+
+  // A link visitor gets the board by the share token in the link; a workspace board once hid that token (the canvas then said "no longer shared").
+  const [stranger, member] = [await guest(), await account(memberToken)];
+  for (const visitor of [stranger, member]) {
+    await openBoard(visitor, link);
+    await expect(visitor.locator('#board-title')).toContainText(name);
+    await expect(visitor.locator('#world')).toContainText('Ledger');
+    await expect(visitor.locator('#act-share')).toBeHidden();
+    await expect(visitor).toHaveURL(link);
+  }
+
+  await owner.getByRole('switch', { name: 'Share with link' }).uncheck();
+  await expect(stranger.getByText('This link is no longer shared.', { exact: false })).toBeVisible();
+  // The member's workspace viewer access is independent of the link.
+  await expect(member.locator('#world')).toContainText('Ledger');
+});
