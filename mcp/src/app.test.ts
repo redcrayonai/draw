@@ -3,7 +3,7 @@ import { createApp, ipKey, MARKS_WAIT_MS, MAX_BODY } from './app';
 import { mintMarks, mintTap } from './issuer';
 import { resetAuthCaches, type VerifyBearer } from './auth';
 import type { Env } from './env';
-import { TOOL_NAMES } from './tools';
+import { TOOL_NAMES, TOOLS } from './tools';
 import { memoryCaptures, testEnv } from './test/env';
 import { identityFromClaims } from '../../shared/identity';
 import { MAX_BODY_BYTES } from '../../shared/capture';
@@ -160,7 +160,43 @@ describe('MCP discovery', () => {
 });
 
 describe('tool calls', () => {
-  afterEach(() => vi.unstubAllGlobals());
+  afterEach(() => { vi.unstubAllGlobals(); vi.restoreAllMocks(); });
+
+  it('batches through the usual gate, counting each operation and refusing read-only credentials', async () => {
+    vi.stubGlobal('fetch', async () => new Response(''));
+    const logs = vi.spyOn(console, 'log').mockImplementation(() => {});
+    const run = vi.spyOn(TOOLS.create_node, 'run').mockImplementation(async args => ({ content: [{ type: 'text', text: `committed id=${args.label === 'api' ? 11 : 12} board=main` }] }));
+    const check = vi.fn(async () => true);
+    const charge = vi.fn(async () => ({ ok: true, used: 1 }));
+    const metered = createApp({ verifyBearer: async auth => {
+      const principal = await verifyBearer(auth);
+      return principal ? { ...principal, userId: 'user_batch' } : null;
+    }, ledger: () => ({ charge, claim: async () => ({ first: true }), settle: async () => {} }), captures: memoryCaptures(), quota: { check } });
+    const node = (key: string) => ({ key, label: key, sublabel: '', x: 0, y: 0, w: 160, h: 64, token: 'ink', focal: false });
+    const send = (token: string, args: Record<string, unknown>) => metered.fetch(new Request(`${BASE}/mcp`, {
+      method: 'POST',
+      headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json', accept: 'application/json, text/event-stream', 'mcp-protocol-version': '2025-06-18' },
+      body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name: 'apply_board', arguments: args } }),
+    }), env);
+    const args = { board: '1', nodes: [node('api'), node('db')] };
+    expect((await send('tok_read', args)).status).toBe(403);
+    expect(run).not.toHaveBeenCalled();
+    const result = (await rpcBody(await send('tok_ok', args))).result;
+    expect(result.isError).not.toBe(true);
+    expect(result.structuredContent).toMatchObject({ complete: true, nodes: { api: '11', db: '12' } });
+    expect(run).toHaveBeenCalledTimes(2);
+    expect(check.mock.calls).toEqual([['user_batch', 1], ['user_batch', 1]]);
+    expect(charge).toHaveBeenCalledTimes(2);
+    expect(logs.mock.calls.map(([line]) => JSON.parse(String(line)).tool)).toEqual(['create_node', 'create_node']);
+
+    run.mockClear();
+    check.mockResolvedValue(false);
+    const denied = (await rpcBody(await send('tok_ok', args))).result;
+    expect(denied.isError).toBe(true);
+    expect(run).not.toHaveBeenCalled();
+    expect(charge).toHaveBeenCalledTimes(2);
+    expect(denied.structuredContent).toMatchObject({ complete: false, nodes: {} });
+  });
 
   // A cold isolate links and joins the agent first: those 2 writes are not the tool's.
   it("a failing first call on a cold isolate does not claim an earlier write", async () => {

@@ -36,7 +36,7 @@ vi.mock('../../agent/src/routes', async importOriginal => {
 
 const VENDOR = /spacetime|maincloud|bsatn|clockwork|\bstdb\b/i;
 const HOSTED = [
-  'get_board', 'create_node', 'move_node', 'update_node', 'resize_node', 'delete_node', 'create_edge', 'hide_node', 'hide_edge', 'set_edge_latency', 'play_trace', 'start_tap', 'create_branch', 'submit_branch',
+  'get_board', 'create_node', 'move_node', 'update_node', 'resize_node', 'delete_node', 'create_edge', 'hide_node', 'hide_edge', 'set_edge_latency', 'play_trace', 'start_tap', 'create_branch', 'submit_branch', 'apply_board',
   'delete_edge', 'describe_charts', 'create_chart', 'set_chart_data', 'get_chart', 'start_session', 'add_code_ref',
   'mark_checkpoint', 'plan_route', 'arrive', 'reroute', 'remove_code_ref', 'set_node_doc', 'set_selection', 'layout_board',
   'add_change_note', 'update_change_note', 'remove_change_note',
@@ -615,16 +615,21 @@ describe('red crayon review marks', () => {
 describe('create_edge on the hosted server: the cited line stays out unless the board stores code (RC-690)', () => {
   const HASH = 'ab'.repeat(16);
   const LINE = 'const limiter = new Limiter();';
-  const run = async (stores: boolean, turnedOff = false) => {
+  const run = async (stores: boolean, turnedOff = false, abortSnapshot?: AbortController) => {
     vi.mocked(claim).mockResolvedValue({ kind: 'cite', toplevel: '/repo', head: 'h', file: { path: 'src/s.ts' }, asked: 'src/s.ts' } as never);
     vi.mocked(prepareSourceEvidence).mockResolvedValue({ evidence: 'source:src/s.ts:1', evidenceSnippet: LINE, evidenceHash: HASH });
     vi.mocked(boardStoresCode).mockResolvedValue(stores);
+    if (abortSnapshot) vi.mocked(boardStoresCode).mockImplementationOnce(call => call('read', async () => false));
     const calls: { reducer: string; args: Record<string, any> }[] = [];
     const edges: Record<string, unknown>[] = [];
     let refuse = turnedOff;
     const db = {
       stats: { dbCalls: 0, dbMs: 0, writes: 0 },
-      http: {},
+      http: { sqlTypedAs: async (_token: string, _query: string, signal?: AbortSignal) => {
+        abortSnapshot?.abort();
+        signal?.throwIfAborted();
+        return { columns: [], rows: [] };
+      } },
       token: async () => 'tok',
       async read(q: { text: string }) {
         if (q.text.includes('visible_session')) return [{ boardId: 1n, baseSha: 'h', repoRoot: '/repo' }];
@@ -643,12 +648,16 @@ describe('create_edge on the hosted server: the cited line stays out unless the 
       },
     };
     const ledger = { claim: async () => ({ first: true }), settle: async () => {} };
-    const t = { ctx: { db, ledger }, signal: new AbortController().signal, named: () => {}, deadline: Date.now() + 15_000 } as never;
+    const t = { ctx: { db, ledger }, signal: (abortSnapshot ?? new AbortController()).signal, named: () => {}, deadline: Date.now() + 15_000 } as never;
     const input = TOOLS.create_edge.input.parse({ board: '1', fromNode: '1', toNode: '2', label: 'uses', evidence: 'source:src/s.ts:1', capture: 'cap_' + 'A'.repeat(22) });
     const out = text(await TOOLS.create_edge.run(input as never, t));
     return { calls, out };
   };
   const edge = { boardId: 1n, fromNode: 1n, toNode: 2n, label: 'uses', evidence: 'source:src/s.ts:1' };
+
+  it('aborts source snapshot reads when the enclosing tool or batch expires', async () => {
+    await expect(run(false, false, new AbortController())).rejects.toMatchObject({ name: 'AbortError' });
+  });
 
   it('without consent: the edge has no line, then the line hash', async () => {
     const { calls, out } = await run(false);

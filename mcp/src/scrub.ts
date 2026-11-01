@@ -12,7 +12,7 @@ import { SENDER_ERRORS } from './errors.gen';
 
 export type Outcome = 'ok' | 'rejected' | 'unavailable' | 'unconfirmed' | 'limited' | 'ratelimited';
 
-export type ToolResult = { content: { type: 'text'; text: string }[]; isError?: boolean };
+export type ToolResult = { content: { type: 'text'; text: string }[]; isError?: boolean; structuredContent?: Record<string, unknown> };
 
 /** A refusal the Worker itself decided, with its exact text: never scrubbed further. */
 export class Refusal extends Error {

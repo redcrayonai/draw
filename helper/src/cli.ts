@@ -40,13 +40,15 @@ const USAGE =
   'redcrayon: usage: redcrayon capture start | capture ref <path> [--board <id>] | capture cite <path> [--board <id>] | capture checkpoint --board <id> --base <sha> [--also <path>…] | hook | doctor | tap --token <t> | marks --token <t>';
 
 const firstLine = (s: string) => s.split('\n')[0].replace(/[\x00-\x1f\x7f]/g, '').slice(0, 200);
+const BATCH_CAPTURE_TIMEOUT = 'redcrayon: source captures took too long for one batch. Split apply_board into smaller batches or create_edge calls.';
 
-async function upload(body: CaptureBody): Promise<string> {
+async function upload(body: CaptureBody, parent?: AbortSignal): Promise<string> {
   const url = `${origin()}/facts`;
   const host = new URL(url).host;
   let res: Response;
   try {
-    res = await fetch(url, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body), signal: AbortSignal.timeout(30_000) });
+    const timeout = AbortSignal.timeout(30_000);
+    res = await fetch(url, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body), signal: parent ? AbortSignal.any([parent, timeout]) : timeout });
   } catch {
     throw new HelperError(say.offline(host));
   }
@@ -64,10 +66,13 @@ async function upload(body: CaptureBody): Promise<string> {
 }
 
 /** Upload one capture; the privacy line goes out once, after the first upload that worked. */
-async function capture(kind: CaptureKind, opts: CaptureOpts, notice: (line: string) => void): Promise<string> {
-  const body = buildCapture(kind, opts);
-  const id = await upload(body);
-  if (firstRun(join(gitCommonDir(body.toplevel), 'redcrayon'))) notice(PRIVACY);
+async function capture(kind: CaptureKind, opts: CaptureOpts, notice: (line: string) => void, signal?: AbortSignal, deadline?: number): Promise<string> {
+  signal?.throwIfAborted();
+  if (deadline !== undefined && Date.now() >= deadline) throw new HelperError(BATCH_CAPTURE_TIMEOUT);
+  const body = buildCapture(kind, opts, deadline);
+  if (deadline !== undefined && Date.now() >= deadline) throw new HelperError(BATCH_CAPTURE_TIMEOUT);
+  const id = await upload(body, signal);
+  if (firstRun(join(gitCommonDir(body.toplevel, deadline === undefined ? undefined : Math.max(1, deadline - Date.now())), 'redcrayon'))) notice(PRIVACY);
   return id;
 }
 
@@ -159,6 +164,33 @@ function sourcePath(evidence: unknown): string | undefined {
 async function preToolUse(tool: string, args: Json, cwd: string, out: string[], err: string[]): Promise<number> {
   if (typeof args.capture === 'string' && args.capture !== '') return 0;
   try {
+    if (tool === 'apply_board') {
+      if (!Array.isArray(args.edges) || args.edges.length > 16 || !args.edges.every(isObject)) return 0;
+      const edges = [...args.edges];
+      let changed = false;
+      // Leave ten seconds for startup and cleanup inside the plugin hook's 45 s limit.
+      const deadline = Date.now() + 35_000;
+      const budget = AbortSignal.timeout(35_000);
+      const stop = new AbortController();
+      const signal = AbortSignal.any([budget, stop.signal]);
+      try {
+        for (let i = 0; i < edges.length; i += 3) {
+          await Promise.all(edges.slice(i, i + 3).map(async (edge, j) => {
+            const wanted = captureFor('create_edge', { ...edge, board: args.board }, cwd);
+            if (!wanted || (typeof edge.capture === 'string' && edge.capture !== '')) return;
+            const id = await capture(wanted.kind, wanted, line => err.push(line), signal, deadline);
+            edges[i + j] = { ...edge, capture: id };
+            changed = true;
+          }));
+        }
+      } catch (e) {
+        stop.abort();
+        if (budget.aborted || Date.now() >= deadline) throw new HelperError(BATCH_CAPTURE_TIMEOUT);
+        throw e;
+      }
+      if (changed) out.push(JSON.stringify({ hookSpecificOutput: { hookEventName: 'PreToolUse', updatedInput: { ...args, edges } } }));
+      return 0;
+    }
     const wanted = captureFor(tool, args, cwd);
     if (!wanted) return 0;
     const notices: string[] = [];

@@ -9,7 +9,7 @@ import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { CAPTURE_ID_RE, MB, MIN_HELPER_VERSION, claimCapture, newCaptureId, type CaptureBody, type CheckpointBody, type FileBody } from '../../shared/capture';
-import { HELPER_VERSION, HOOK_MATCHER, PRIVACY, githubRemote } from './capture';
+import { HELPER_VERSION, HOOK_MATCHER, PRIVACY, buildCapture, githubRemote } from './capture';
 
 const HELPER = join(dirname(new URL(import.meta.url).pathname), '..');
 let dir: string;
@@ -19,6 +19,9 @@ let origin: string;
 const stateHost = () => new URL(origin).host.replace(/[^A-Za-z0-9.-]/g, '_');
 let server: ReturnType<typeof createServer>;
 let requests: { method: string; url: string; headers: IncomingHttpHeaders; body: string }[] = [];
+let responseDelayMs = 0;
+let activeUploads = 0;
+let peakUploads = 0;
 
 const GIT_ENV = {
   GIT_AUTHOR_NAME: 't',
@@ -38,8 +41,10 @@ beforeAll(async () => {
     req.on('data', c => (body += c));
     req.on('end', () => {
       requests.push({ method: req.method!, url: req.url!, headers: req.headers, body });
+      peakUploads = Math.max(peakUploads, ++activeUploads);
       res.setHeader('content-type', 'application/json');
-      res.end(req.url === '/facts' ? JSON.stringify({ capture: newCaptureId() }) : '{}');
+      const timer = setTimeout(() => res.end(req.url === '/facts' ? JSON.stringify({ capture: newCaptureId() }) : '{}'), responseDelayMs);
+      res.once('close', () => { clearTimeout(timer); activeUploads--; });
     });
   });
   await new Promise<void>(done => server.listen(0, '127.0.0.1', done));
@@ -51,6 +56,9 @@ afterAll(() => {
 });
 beforeEach(() => {
   requests = [];
+  responseDelayMs = 0;
+  activeUploads = 0;
+  peakUploads = 0;
 });
 
 type Run = { code: number; stdout: string; stderr: string };
@@ -400,7 +408,7 @@ describe('hook mode', () => {
   it('matches the tools under every prefix, and nothing else', () => {
     const re = new RegExp(HOOK_MATCHER);
     for (const prefix of ['mcp__plugin_draw_draw__', 'mcp__draw__', 'mcp__draw-dev__', 'mcp__plugin_draw_redcrayon__', 'mcp__redcrayon__', 'mcp__redcrayon-dev__']) {
-      for (const tool of ['start_session', 'add_code_ref', 'mark_checkpoint', 'create_edge', 'arrive']) expect(re.exec(prefix + tool)?.[3]).toBe(tool);
+      for (const tool of ['start_session', 'add_code_ref', 'mark_checkpoint', 'create_edge', 'arrive', 'apply_board']) expect(re.exec(prefix + tool)?.[3]).toBe(tool);
     }
     for (const name of ['mcp__draw-live__add_code_ref', 'mcp__plugin_other_draw__add_code_ref', 'mcp__draw__create_node', 'mcp__other__add_code_ref', 'mcp__draw__add_code_ref_x', 'Bash']) expect(re.test(name)).toBe(false);
   });
@@ -424,6 +432,74 @@ describe('hook mode', () => {
     expect(await pre('mcp__other__add_code_ref', { board: 7, path: 'src/a.ts' }, root)).toEqual(quiet);
     expect(await run(['hook'], { cwd: root, input: 'not json' })).toEqual(quiet);
     expect(requests).toEqual([]);
+  });
+
+  it('fills a separate capture for every source edge in a batch, preserving the rest', async () => {
+    const root = repo();
+    const supplied = 'cap_AAAAAAAAAAAAAAAAAAAAAA';
+    const args = { board: '7', nodes: [{ key: 'api', label: 'API' }], layout: true, edges: [
+      { fromNode: '$api', toNode: '2', label: 'calls', evidence: 'source:src/a.ts:1' },
+      { fromNode: '$api', toNode: '3', label: 'calls', evidence: 'source:src/a.ts:1' },
+      { fromNode: '2', toNode: '3', label: 'calls', evidence: 'source:src/a.ts:1', capture: supplied },
+      { fromNode: '2', toNode: '3', label: 'scenario', evidence: 'agent:user described the topology' },
+    ] };
+    const r = await pre('mcp__draw__apply_board', args, root);
+    expect(r.code).toBe(0);
+    const input = updated(r).updatedInput;
+    expect(input).toEqual({ ...args, edges: [
+      { ...args.edges[0], capture: expect.stringMatching(CAPTURE_ID_RE) },
+      { ...args.edges[1], capture: expect.stringMatching(CAPTURE_ID_RE) },
+      args.edges[2], args.edges[3],
+    ] });
+    const edges = input.edges as { capture?: string }[];
+    expect(edges[0].capture).not.toBe(edges[1].capture);
+    expect(bodies().map(b => b.kind)).toEqual(['cite', 'cite']);
+    expect(await pre('mcp__draw__apply_board', { board: '7', nodes: [] }, root)).toEqual({ code: 0, stdout: '', stderr: '' });
+  });
+
+  it('blocks the whole batch if a source edge cites a secrets file', async () => {
+    const root = repo({ '.env': 'K=v\n' });
+    const r = await pre('mcp__draw__apply_board', { board: '7', edges: [{ evidence: 'source:.env:1' }] }, root);
+    expect(r).toMatchObject({ code: 2, stdout: '', stderr: expect.stringContaining('looks like a secrets file') });
+    expect(requests).toEqual([]);
+  });
+
+  it('uploads batch captures concurrently, at most three at once, without reordering edges', async () => {
+    const root = repo();
+    responseDelayMs = 150;
+    const edges = Array.from({ length: 7 }, (_, i) => ({ fromNode: '1', toNode: '2', label: `edge-${i}`, evidence: 'source:src/a.ts:1' }));
+    const r = await pre('mcp__draw__apply_board', { board: '7', edges }, root);
+    expect(r.code).toBe(0);
+    expect(peakUploads).toBe(3);
+    const filled = updated(r).updatedInput.edges as { label: string; capture: string }[];
+    expect(filled.map(e => e.label)).toEqual(edges.map(e => e.label));
+    expect(new Set(filled.map(e => e.capture)).size).toBe(7);
+  });
+
+  it('stops slow batch captures within one shared deadline and asks for smaller batches', async () => {
+    const root = repo();
+    responseDelayMs = 300;
+    const node = ['--import', 'data:text/javascript,const timeout=AbortSignal.timeout.bind(AbortSignal);AbortSignal.timeout=ms=>timeout(ms===35000?500:ms)'];
+    const edges = Array.from({ length: 7 }, () => ({ fromNode: '1', toNode: '2', label: 'calls', evidence: 'source:src/a.ts:1' }));
+    const r = await run(['hook'], { cwd: root, node, input: JSON.stringify({ hook_event_name: 'PreToolUse', tool_name: 'mcp__draw__apply_board', tool_input: { board: '7', edges }, cwd: root }) });
+    expect(r).toMatchObject({ code: 2, stdout: '', stderr: expect.stringContaining('Split apply_board') });
+    expect(requests.length).toBeLessThan(edges.length);
+  });
+
+  it('checks elapsed time after synchronous capture building, before uploading or building more', async () => {
+    const root = repo();
+    const preload = 'import cp from "node:child_process";import {syncBuiltinESMExports} from "node:module";let offset=0;const now=Date.now.bind(Date);Date.now=()=>now()+offset;const exec=cp.execFileSync;cp.execFileSync=(file,args,opts)=>{const result=exec(file,args,opts);if(file==="git"&&args.includes("hash-object"))offset+=35001;return result};syncBuiltinESMExports();';
+    const edges = Array.from({ length: 4 }, () => ({ fromNode: '1', toNode: '2', label: 'calls', evidence: 'source:src/a.ts:1' }));
+    const r = await run(['hook'], { cwd: root, node: ['--import', `data:text/javascript,${encodeURIComponent(preload)}`], input: JSON.stringify({ hook_event_name: 'PreToolUse', tool_name: 'mcp__draw__apply_board', tool_input: { board: '7', edges }, cwd: root }) });
+    expect(r).toMatchObject({ code: 2, stdout: '', stderr: expect.stringContaining('Split apply_board') });
+    expect(requests).toEqual([]);
+  });
+
+  it('limits a synchronous Git clean filter by the capture deadline', () => {
+    const root = repo();
+    sh(root, 'config', 'filter.slow.clean', 'sleep 0.2; cat');
+    writeFileSync(join(root, '.gitattributes'), '*.ts filter=slow\n');
+    expect(() => buildCapture('cite', { cwd: root, path: 'src/a.ts', board: '7' }, Date.now() + 100)).toThrow(/timed out/);
   });
 
   it('PreToolUse blocks a call that needs a capture the helper refuses (exit 2, the helper line), and never start_session', async () => {
