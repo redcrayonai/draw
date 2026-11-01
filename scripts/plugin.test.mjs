@@ -210,6 +210,7 @@ test('triage skill: links only shared modules, names only registered tools, and 
   for (const w of words) assert.ok(TOOL_NAMES.includes(w), `triage names ${w}, which mcp/src/tools.ts does not register`);
   for (const t of ['open_incident', 'pin_chart', 'set_time_window', 'create_chart', 'get_board']) assert.ok(words.has(t), t);
   assert.match(triageMd, /never on the lasting one/);
+  assert.match(triageMd.replace(/\s+/g, ' '), /Check the `window` in the reply/);
   assert.match(triageMd, /Do not set or\s+clear `focal`/);
   assert.doesNotMatch(triageMd, VENDOR);
   assert.doesNotMatch(triageMd, INTERNALS);

@@ -828,7 +828,7 @@ export const TOOLS: Record<string, ToolDef> = {
     description:
       'Open an incident board: an ephemeral copy of a board (nodes, edges, charts and their pins) with no focal nodes, its time window 15 minutes either side of since. Work an incident there, never on the lasting board. ' +
       'On a board that already is an incident board, returns that board. Calling it again with the same board and title returns the same open incident. ' +
-      'since: when the problem started, ISO 8601 or epoch milliseconds; leave it out when unknown. Returns JSON { board, id, url, opened }: pass id as board on every later tool, and relay url to the user once when opened is true.',
+      'since: when the problem started, ISO 8601 or epoch milliseconds; leave it out when unknown. Returns JSON { board, id, url, opened, window }: pass id as board on every later tool, relay url to the user once when opened is true, and check window ({ start, end } in UTC, or null) against what the user said.',
     input: z
       .object({
         board: boardArg,
@@ -838,9 +838,14 @@ export const TOOLS: Record<string, ToolDef> = {
       .strict(),
     async run({ board, title, since }, t) {
       const { db, o } = t.ctx;
+      // The board's window as stored, so the agent sees a misread start date before anyone opens the board.
+      const windowOf = async (id: SafeU64) => {
+        const [w] = await db.read<Row>(sql`SELECT * FROM visible_board_window WHERE board_id = ${id}`, t.signal);
+        return w ? { start: new Date(Number(w.startMs)).toISOString(), end: new Date(Number(w.endMs)).toISOString() } : null;
+      };
       const b = await boardOf(t, board);
       const [own] = await db.read<Row>(sql`SELECT * FROM my_incidents WHERE board_id = ${b.id}`, t.signal);
-      if (own) return okResult(jsonText({ board: b.name, id: Number(b.id), url: o.boardUrl(String(own.slug)), opened: false }));
+      if (own) return okResult(jsonText({ board: b.name, id: Number(b.id), url: o.boardUrl(String(own.slug)), opened: false, window: await windowOf(b.id) }));
       const startsAtMs = since === undefined ? 0 : instant(since);
       if (startsAtMs === undefined) throw new Refusal(`REJECTED: pass since as ISO 8601 or epoch milliseconds, or leave it out. Nothing was written. board=${b.name}`);
       // One group per title: a retry or a second call for the same problem finds the open incident.
@@ -850,7 +855,7 @@ export const TOOLS: Record<string, ToolDef> = {
       const row = rows.find(r => r.groupKey === groupKey && r.status === 'firing');
       if (!row) throw new Refusal(boardNotFound(name));
       t.named(name);
-      return okResult(jsonText({ board: name, id: Number(row.boardId), url: o.boardUrl(String(row.slug)), opened: true }));
+      return okResult(jsonText({ board: name, id: Number(row.boardId), url: o.boardUrl(String(row.slug)), opened: true, window: await windowOf(row.boardId as SafeU64) }));
     },
   },
 
