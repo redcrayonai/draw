@@ -64,7 +64,7 @@ test('workspace viewers edit only through an independent edit link, which remain
   }
 });
 
-test('a view link on a workspace board opens for a signed-out visitor and a workspace viewer, and revoking it ends only the visitor's access', async ({ guest, account, stack }) => {
+test('a view link on a workspace board opens for a signed-out visitor and a workspace viewer, and revoking it ends only the signed-out visitor access', async ({ guest, account, stack }) => {
   test.setTimeout(120_000);
   const ownerToken = stack.accountToken(), memberToken = stack.accountToken();
   const name = `Workspace view link ${token()}`;
