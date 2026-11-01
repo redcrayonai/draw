@@ -1,0 +1,21 @@
+# Merge queue: serial, one PR at a time, tested on top of main before it merges.
+# An approved, green PR queues itself; `@mergifyio dequeue` takes it out.
+# Batching (batch_size > 1) would let two release:* PRs race for one tag
+# (see release-labels.yml), so keep it at the default of 1.
+queue_rules:
+  - name: default
+    merge_method: squash
+    queue_conditions:
+      - base = main
+      - -draft
+      - "#approved-reviews-by >= 1"
+      - check-success = ci-ready
+      # release-labels.yml: a half-labelled PR would merge without its release
+      - check-success = check
+      # the squashed title becomes the commit on main (Conventional Commits)
+      - 'title ~= ^(feat|fix|docs|chore|refactor|perf|test|build|ci)(\(.+\))?!?: '
+    merge_conditions:
+      - check-success = ci-ready
+
+merge_protections_settings:
+  auto_merge_conditions: true
