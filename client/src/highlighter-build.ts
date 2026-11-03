@@ -6,6 +6,13 @@ import type { LazyLang } from './highlighter-loader';
 const LAZY_IMPORTS: Record<LazyLang, () => Promise<{ default: LanguageRegistration[] }>> = {
   svelte: () => import('@shikijs/langs/svelte'),
   jsonc: () => import('@shikijs/langs/jsonc'),
+  python: () => import('@shikijs/langs/python'),
+  rust: () => import('@shikijs/langs/rust'),
+  c: () => import('@shikijs/langs/c'),
+  cpp: () => import('@shikijs/langs/cpp'),
+  java: () => import('@shikijs/langs/java'),
+  csharp: () => import('@shikijs/langs/csharp'),
+  sql: () => import('@shikijs/langs/sql'),
 };
 
 function isLazy(lang: string): lang is LazyLang {

@@ -13,6 +13,22 @@ const LANG_BY_EXT: Record<string, ShikiLang | LazyLang> = {
   '.mjs': 'javascript',
   '.cjs': 'javascript',
   '.go': 'go',
+  '.py': 'python',
+  '.pyi': 'python',
+  '.pyw': 'python',
+  '.rs': 'rust',
+  '.c': 'c',
+  '.h': 'c',
+  '.cpp': 'cpp',
+  '.cc': 'cpp',
+  '.cxx': 'cpp',
+  '.hpp': 'cpp',
+  '.hh': 'cpp',
+  '.hxx': 'cpp',
+  '.java': 'java',
+  '.cs': 'csharp',
+  '.csx': 'csharp',
+  '.sql': 'sql',
   '.json': 'json',
   '.css': 'css',
   '.html': 'html',
@@ -33,7 +49,9 @@ export function languageForPath(path: string): string | null {
   if (dot <= 0) {
     return null; // no extension, or a dotfile like .gitignore
   }
-  return LANG_BY_EXT[base.slice(dot).toLowerCase()] ?? null;
+  const ext = base.slice(dot);
+  if (ext === '.C' || ext === '.H') return 'cpp';
+  return LANG_BY_EXT[ext.toLowerCase()] ?? null;
 }
 
 type Tok = { content: string; color?: string; italic: boolean };
