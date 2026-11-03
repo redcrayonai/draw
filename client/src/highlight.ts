@@ -49,7 +49,9 @@ export function languageForPath(path: string): string | null {
   if (dot <= 0) {
     return null; // no extension, or a dotfile like .gitignore
   }
-  return LANG_BY_EXT[base.slice(dot).toLowerCase()] ?? null;
+  const ext = base.slice(dot);
+  if (ext === '.C' || ext === '.H') return 'cpp';
+  return LANG_BY_EXT[ext.toLowerCase()] ?? null;
 }
 
 type Tok = { content: string; color?: string; italic: boolean };

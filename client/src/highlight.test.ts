@@ -52,6 +52,8 @@ describe('languageForPath', () => {
     ['src/lib.rs', 'rust'],
     ['src/main.c', 'c'],
     ['include/api.h', 'c'],
+    ['src/main.C', 'cpp'],
+    ['include/api.H', 'cpp'],
     ['src/main.cpp', 'cpp'],
     ['src/main.cc', 'cpp'],
     ['src/main.cxx', 'cpp'],
