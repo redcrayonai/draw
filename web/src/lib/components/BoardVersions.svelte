@@ -2,7 +2,7 @@
   import { authenticatedHref } from '$lib/session';
   import { ago, canvasHref, idTail } from '$lib/boards';
   import { boardVersions, offered, pluginCatalog, pluginOn, workspacePlugins } from '$lib/plugins';
-  import { restoreKey, restoreVersion, saveVersion } from '$lib/versions';
+  import { restoreVersion, saveVersion } from '$lib/versions';
   import { myWorkspaces } from '$lib/workspaces';
   import Button from './Button.svelte';
   let { boardId, workspaceId, canEdit, disabled = false }: { boardId: bigint; workspaceId: bigint; canEdit: boolean; disabled?: boolean } = $props();
@@ -23,12 +23,8 @@
     finally { busy = ''; }
   }
   const save = () => run('save', async () => { restored = null; await saveVersion(boardId); });
-  // A retry after a failure reuses its key: if the first try made the board, the server returns that one.
-  const keys = new Map<bigint, string>();
   const restore = (id: bigint) => run(`restore ${id}`, async () => {
-    if (!keys.has(id)) keys.set(id, restoreKey());
-    const board = await restoreVersion(id, keys.get(id)!);
-    keys.delete(id);
+    const board = await restoreVersion(id);
     restored = { href: authenticatedHref(canvasHref(board.slug)) };
   });
 </script>

@@ -47,10 +47,19 @@ printf 'Iface\tDestination\tGateway\tFlags\tRefCnt\tUse\tMetric\tMask\tMTU\tWind
   ok 'own_networks reads the routing table' || bad 'own_networks reads the routing table'
 
 roles() { env -i "$@" sh -c '. ./runtime-config.sh; role_networks' | paste -sd, -; }
-[ "$(roles VERSIONS_S3_ENDPOINT=https://s3.example.com)" = '169.254.169.254/32,169.254.170.2/32' ] &&
+storage='VERSIONS_S3_ENDPOINT=https://s3.example.com VERSIONS_S3_BUCKET=b VERSIONS_S3_REGION=r'
+[ "$(roles $storage)" = '169.254.169.254/32,169.254.170.2/32' ] &&
   ok 'role_networks opens the credential endpoints for Versions without keys' || bad 'role_networks opens the credential endpoints for Versions without keys'
-[ -z "$(roles VERSIONS_S3_ENDPOINT=https://s3.example.com VERSIONS_S3_ACCESS_KEY_ID=key)" ] &&
+[ "$(roles $storage 'VERSIONS_S3_ACCESS_KEY_ID= ' 'VERSIONS_S3_SECRET_ACCESS_KEY= ')" = '169.254.169.254/32,169.254.170.2/32' ] &&
+  ok 'role_networks: blank keys are no keys' || bad 'role_networks: blank keys are no keys'
+[ -z "$(roles $storage VERSIONS_S3_ACCESS_KEY_ID=key VERSIONS_S3_SECRET_ACCESS_KEY=secret)" ] &&
   ok 'role_networks: none with keys' || bad 'role_networks: none with keys'
+[ -z "$(roles $storage VERSIONS_S3_ACCESS_KEY_ID=key)" ] &&
+  ok 'role_networks: none with only the key id (Versions is off)' || bad 'role_networks: none with only the key id (Versions is off)'
+[ -z "$(roles $storage VERSIONS_S3_SECRET_ACCESS_KEY=secret)" ] &&
+  ok 'role_networks: none with only the secret (Versions is off)' || bad 'role_networks: none with only the secret (Versions is off)'
+[ -z "$(roles VERSIONS_S3_ENDPOINT=https://s3.example.com)" ] &&
+  ok 'role_networks: none with incomplete storage (Versions is off)' || bad 'role_networks: none with incomplete storage (Versions is off)'
 [ -z "$(roles)" ] && ok 'role_networks: none without Versions' || bad 'role_networks: none without Versions'
 
 # db_issuers: a stand-in curl answers POST /v1/identity with an anonymous token of issuer `localhost`.

@@ -35,8 +35,11 @@ own_networks() {
 }
 
 # role_networks: the link-local endpoints a Versions setup without keys gets its machine role from
-# (EC2 instance metadata, the ECS task role), one CIDR per line; nothing with keys or without storage.
+# (EC2 instance metadata, the ECS task role), one CIDR per line; nothing unless Versions is offered and
+# signs with the role (versionsConfigured in web/src/lib/server/versions.ts: blank is unset).
+filled() { case "${1:-}" in *[![:space:]]*) ;; *) return 1 ;; esac; }
 role_networks() {
-  [ -n "${VERSIONS_S3_ENDPOINT:-}" ] && [ -z "${VERSIONS_S3_ACCESS_KEY_ID:-}" ] || return 0
+  filled "${VERSIONS_S3_ENDPOINT:-}" && filled "${VERSIONS_S3_BUCKET:-}" && filled "${VERSIONS_S3_REGION:-}" || return 0
+  ! filled "${VERSIONS_S3_ACCESS_KEY_ID:-}" && ! filled "${VERSIONS_S3_SECRET_ACCESS_KEY:-}" || return 0
   printf '169.254.169.254/32\n169.254.170.2/32\n'
 }

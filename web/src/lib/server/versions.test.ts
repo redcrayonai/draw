@@ -3,7 +3,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { createHash } from 'node:crypto';
 import { env } from '$env/dynamic/private';
 import { restoreVersion, saveVersion, STORAGE_VARS } from './versions';
-import { machineCredentials } from './object-store';
+import { getObject, machineCredentials } from './object-store';
 import { POST as SAVE } from '../../routes/api/versions/+server';
 import { POST as RESTORE } from '../../routes/api/versions/[versionId]/restore/+server';
 import { GET as PLUGINS } from '../../routes/api/plugins/+server';
@@ -13,7 +13,7 @@ const sha = (s: string | Uint8Array) => createHash('sha256').update(s).digest('h
 const BUNDLE = '{"format":"draw.board-bundle","version":1,"sha256":"x","board":{"name":"é ✓ 𝄞"}}';
 const KEY = 'versions/w1/b2/0190-uuid.json';
 const REQUEST = 'r'.repeat(40);
-let objects: Map<string, Uint8Array>;
+let objects: Map<string, Uint8Array<ArrayBuffer>>;
 let calls: { path: string; token: string; args: unknown }[];
 let storeFails: number; // the next N store requests answer 503
 let captured: Record<string, unknown>;
@@ -41,7 +41,7 @@ vi.stubGlobal('fetch', vi.fn(async (input: string | URL, init: RequestInit = {})
     expect((init.headers as Record<string, string>).authorization).toMatch(/^AWS4-HMAC-SHA256 Credential=[\w-]+\/\d{8}\/test-1\/s3\/aws4_request, SignedHeaders=[a-z0-9;-]+, Signature=[0-9a-f]{64}$/);
     const key = decodeURIComponent(url.pathname.replace('/bucket/', ''));
     if (init.method === 'PUT') {
-      const body = init.body as Uint8Array;
+      const body = init.body as Uint8Array<ArrayBuffer>;
       expect((init.headers as Record<string, string>)['x-amz-content-sha256']).toBe(sha(body));
       expect((init.headers as Record<string, string>)['if-none-match']).toBe('*');
       if (objects.has(key)) return new Response('', { status: 412 });
@@ -235,6 +235,15 @@ describe('a machine role instead of keys', () => {
     expect(objects.has(KEY)).toBe(true);
   });
 
+  it('signs with the role when both keys are blank, as the offer check reads them', async () => {
+    env.VERSIONS_S3_ACCESS_KEY_ID = '  ';
+    env.VERSIONS_S3_SECRET_ACCESS_KEY = '  ';
+    env.AWS_CONTAINER_CREDENTIALS_RELATIVE_URI = '/v2/credentials/task';
+    metadata['GET http://169.254.170.2/v2/credentials/task'] = role('ECS-ROLE', 'ecs-session');
+    try { await saveVersion('user-token', 2n); } finally { env.AWS_CONTAINER_CREDENTIALS_RELATIVE_URI = ''; }
+    expect(signed[0].authorization).toContain('Credential=ECS-ROLE/');
+  });
+
   it('reads an EC2 instance profile through IMDSv2 and keeps it until near expiry', async () => {
     const imds = 'http://169.254.169.254/latest';
     metadata[`PUT ${imds}/api/token`] = () => new Response('imds-token');
@@ -275,10 +284,19 @@ describe('routes', () => {
     expect(vi.mocked(console.error).mock.calls.some(([line]) => String(line).includes('SPACETIMEDB_SERVICE_TOKEN'))).toBe(true);
   });
 
+  it('a restore runs as its caller, so it needs no service token', async () => {
+    env.SPACETIMEDB_SERVICE_TOKEN = '';
+    objects.set(KEY, new TextEncoder().encode(BUNDLE));
+    expect((await RESTORE({ request: post({ requestKey: REQUEST }), params: { versionId: '5' }, url } as never)).status).toBe(201);
+  });
+
   it('save and restore validate their input', async () => {
     expect((await SAVE({ request: post({ boardId: 2 }), url } as never)).status).toBe(400);
     expect((await SAVE({ request: new Request('http://dash.test/api/versions', { method: 'POST', body: '{"boardId":"2"}' }), url } as never)).status).toBe(401);
     expect((await SAVE({ request: post({ boardId: '2' }), url } as never)).status).toBe(201);
+    expect((await SAVE({ request: post({ boardId: '18446744073709551615' }), url } as never)).status).toBe(201); // the largest id
+    expect((await SAVE({ request: post({ boardId: '18446744073709551616' }), url } as never)).status).toBe(400);
+    expect((await RESTORE({ request: post({ requestKey: REQUEST }), params: { versionId: '18446744073709551616' }, url } as never)).status).toBe(400);
     objects.clear();
     objects.set(KEY, new TextEncoder().encode(BUNDLE));
     expect((await RESTORE({ request: post({ requestKey: 'short' }), params: { versionId: '5' }, url } as never)).status).toBe(400);
@@ -287,5 +305,23 @@ describe('routes', () => {
     const r = await RESTORE({ request: post({ requestKey: REQUEST, name: 'Copy' }), params: { versionId: '5' }, url } as never);
     expect(r.status).toBe(201);
     expect(await r.json()).toEqual({ boardId: '9', slug: 'new-slug' });
+  });
+});
+
+describe('getObject', () => {
+  const STORE = { endpoint: 'http://store.test', bucket: 'bucket', region: 'test-1', accessKeyId: 'key-id', secretAccessKey: 'key-secret' };
+
+  it('stops reading at the limit, whatever Content-Length says', async () => {
+    let cancelled = false;
+    const endless = new ReadableStream<Uint8Array>({ pull(c) { c.enqueue(new Uint8Array(1024)); }, cancel() { cancelled = true; } });
+    vi.mocked(fetch).mockResolvedValueOnce(new Response(endless, { headers: { 'content-length': '10' } }));
+    await expect(getObject(STORE, 'k', 4096)).rejects.toMatchObject({ status: 413 });
+    expect(cancelled).toBe(true);
+  });
+
+  it('returns an object in several chunks, up to exactly the limit', async () => {
+    const chunks = new ReadableStream<Uint8Array>({ start(c) { c.enqueue(new Uint8Array([1, 2])); c.enqueue(new Uint8Array([3])); c.close(); } });
+    vi.mocked(fetch).mockResolvedValueOnce(new Response(chunks));
+    expect([...(await getObject(STORE, 'k', 3))!]).toEqual([1, 2, 3]);
   });
 });

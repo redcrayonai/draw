@@ -11,12 +11,16 @@ import { notConfigured } from './http';
 export const STORAGE_VARS = ['VERSIONS_S3_ENDPOINT', 'VERSIONS_S3_BUCKET', 'VERSIONS_S3_REGION'];
 const set = (k: string) => Boolean(env[k]?.trim());
 export const versionsConfigured = () => STORAGE_VARS.every(set) && set('VERSIONS_S3_ACCESS_KEY_ID') === set('VERSIONS_S3_SECRET_ACCESS_KEY');
-/** The rest of the server's setup a save or restore needs; the routes answer UNAVAILABLE and log the names when one is missing. */
-export const serverReady = () => notConfigured('UNAVAILABLE: this server is not set up to save or restore versions. Ask the deployment operator.', ['SPACETIMEDB_URL', 'SPACETIMEDB_DB', 'SPACETIMEDB_SERVICE_TOKEN']);
+/** The rest of the server's setup; the routes answer UNAVAILABLE and log the names when one is missing. */
+const ready = (...names: string[]) => notConfigured('UNAVAILABLE: this server is not set up to save or restore versions. Ask the deployment operator.', ['SPACETIMEDB_URL', 'SPACETIMEDB_DB', ...names]);
+export const saveReady = () => ready('SPACETIMEDB_SERVICE_TOKEN'); // only the service lists a stored version
+export const restoreReady = () => ready(); // a restore runs entirely as its caller
+/** A database id in range: a larger one would reach the database and come back as an outage. */
+export const isId = (s: string) => /^[1-9]\d{0,19}$/.test(s) && BigInt(s) <= 18446744073709551615n;
 
 const store = async (): Promise<StoreConfig> => ({
   endpoint: env.VERSIONS_S3_ENDPOINT!, bucket: env.VERSIONS_S3_BUCKET!, region: env.VERSIONS_S3_REGION!,
-  ...(env.VERSIONS_S3_ACCESS_KEY_ID ? { accessKeyId: env.VERSIONS_S3_ACCESS_KEY_ID, secretAccessKey: env.VERSIONS_S3_SECRET_ACCESS_KEY! } : await machineCredentials(env))
+  ...(set('VERSIONS_S3_ACCESS_KEY_ID') ? { accessKeyId: env.VERSIONS_S3_ACCESS_KEY_ID!, secretAccessKey: env.VERSIONS_S3_SECRET_ACCESS_KEY! } : await machineCredentials(env))
 });
 
 export class VersionError extends Error {

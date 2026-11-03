@@ -13,8 +13,12 @@ async function post(path: string, body: unknown): Promise<Record<string, string>
 
 export const saveVersion = (boardId: bigint) => post('/api/versions', { boardId: boardId.toString() });
 
-/** A new restore request key; send the same one again to retry, so a lost answer never makes a second board. */
-export const restoreKey = () => crypto.randomUUID().replaceAll('-', '') + crypto.randomUUID().replaceAll('-', '');
+// A retry after a failure reuses its key, also with the panel closed in between: if the first try made the board, the server returns that one.
+const keys = new Map<bigint, string>();
 
-export const restoreVersion = (versionId: bigint, requestKey: string) =>
-  post(`/api/versions/${versionId}/restore`, { requestKey }) as Promise<{ boardId: string; slug: string }>;
+export async function restoreVersion(versionId: bigint) {
+  if (!keys.has(versionId)) keys.set(versionId, crypto.randomUUID().replaceAll('-', '') + crypto.randomUUID().replaceAll('-', ''));
+  const board = await post(`/api/versions/${versionId}/restore`, { requestKey: keys.get(versionId) }) as { boardId: string; slug: string };
+  keys.delete(versionId);
+  return board;
+}

@@ -9,13 +9,13 @@ export interface StoreConfig extends Credentials { endpoint: string; bucket: str
 
 const enc = new TextEncoder();
 const hex = (buf: ArrayBuffer) => [...new Uint8Array(buf)].map((b) => b.toString(16).padStart(2, '0')).join('');
-export const sha256Hex = async (data: Uint8Array | string) => hex(await crypto.subtle.digest('SHA-256', typeof data === 'string' ? enc.encode(data) : data));
-const hmac = async (key: Uint8Array | ArrayBuffer, text: string) =>
+export const sha256Hex = async (data: Uint8Array<ArrayBuffer> | string) => hex(await crypto.subtle.digest('SHA-256', typeof data === 'string' ? enc.encode(data) : data));
+const hmac = async (key: Uint8Array<ArrayBuffer> | ArrayBuffer, text: string) =>
   crypto.subtle.sign('HMAC', await crypto.subtle.importKey('raw', key, { name: 'HMAC', hash: 'SHA-256' }, false, ['sign']), enc.encode(text));
 const encodeKey = (key: string) => key.split('/').map((s) => encodeURIComponent(s).replace(/[!'()*]/g, (c) => `%${c.charCodeAt(0).toString(16).toUpperCase()}`)).join('/');
 
 /** The signed request, for tests and for objectRequest. `now` is the signing time. */
-export async function signedRequest(config: StoreConfig, method: string, key: string, init: { body?: Uint8Array; headers?: Record<string, string>; now?: Date } = {}) {
+export async function signedRequest(config: StoreConfig, method: string, key: string, init: { body?: Uint8Array<ArrayBuffer>; headers?: Record<string, string>; now?: Date } = {}) {
   const url = new URL(`${config.endpoint.replace(/\/+$/, '')}/${encodeURIComponent(config.bucket)}/${encodeKey(key)}`);
   const amzDate = (init.now ?? new Date()).toISOString().replace(/[-:]|\.\d{3}/g, '');
   const day = amzDate.slice(0, 8);
@@ -34,7 +34,7 @@ export async function signedRequest(config: StoreConfig, method: string, key: st
   return { url, headers };
 }
 
-async function objectRequest(config: StoreConfig, method: string, key: string, init: { body?: Uint8Array; headers?: Record<string, string> } = {}): Promise<Response> {
+async function objectRequest(config: StoreConfig, method: string, key: string, init: { body?: Uint8Array<ArrayBuffer>; headers?: Record<string, string> } = {}): Promise<Response> {
   const { url, headers } = await signedRequest(config, method, key, init);
   return fetch(url, { method, headers, body: init.body, signal: AbortSignal.timeout(60_000) });
 }
@@ -82,7 +82,7 @@ export async function machineCredentials(vars: Record<string, string | undefined
  * Writes `body` at `key` only if nothing is there (If-None-Match: *), so no write replaces an object.
  * 'exists' when the key is taken. The store checks the body against its signed SHA-256.
  */
-export async function putNew(config: StoreConfig, key: string, body: Uint8Array): Promise<'stored' | 'exists'> {
+export async function putNew(config: StoreConfig, key: string, body: Uint8Array<ArrayBuffer>): Promise<'stored' | 'exists'> {
   const r = await objectRequest(config, 'PUT', key, { body, headers: { 'if-none-match': '*', 'content-type': 'application/json' } });
   await r.body?.cancel();
   if (r.ok) return 'stored';
@@ -92,12 +92,18 @@ export async function putNew(config: StoreConfig, key: string, body: Uint8Array)
 }
 
 /** The object's bytes, refusing one longer than `maxBytes`; undefined when there is none. */
-export async function getObject(config: StoreConfig, key: string, maxBytes: number): Promise<Uint8Array | undefined> {
+export async function getObject(config: StoreConfig, key: string, maxBytes: number): Promise<Uint8Array<ArrayBuffer> | undefined> {
   const r = await objectRequest(config, 'GET', key);
   if (r.status === 404) { await r.body?.cancel(); return undefined; }
   if (!r.ok) { await r.body?.cancel(); throw new StoreError(r.status, `the object store answered ${r.status} to a read`); }
-  if (Number(r.headers.get('content-length') ?? 0) > maxBytes) { await r.body?.cancel(); throw new StoreError(413, 'the stored object is larger than expected'); }
-  const bytes = new Uint8Array(await r.arrayBuffer());
-  if (bytes.length > maxBytes) throw new StoreError(413, 'the stored object is larger than expected');
-  return bytes;
+  // Counted as it arrives: a store may omit or misstate Content-Length.
+  const reader = r.body?.getReader(), parts: Uint8Array<ArrayBuffer>[] = [];
+  for (let length = 0; reader;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    length += value.length;
+    if (length > maxBytes) { await reader.cancel(); throw new StoreError(413, 'the stored object is larger than expected'); }
+    parts.push(value);
+  }
+  return new Uint8Array(await new Blob(parts).arrayBuffer());
 }

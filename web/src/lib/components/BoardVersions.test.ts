@@ -1,5 +1,5 @@
 import { beforeEach, expect, it, vi } from 'vitest';
-import { render, screen, fireEvent } from '@testing-library/svelte';
+import { render, screen, fireEvent, waitFor } from '@testing-library/svelte';
 import { Identity, Timestamp } from 'spacetimedb';
 import { boardVersions, pluginCatalog, resetPlugins, workspacePlugins } from '$lib/plugins';
 import { myWorkspaces } from '$lib/workspaces';
@@ -78,6 +78,28 @@ it('retries a failed restore with the same request key', async () => {
   await screen.findByRole('link', { name: 'Open it' });
   const [first, second] = h.fetch.mock.calls.map(([, init]) => JSON.parse(init.body).requestKey);
   expect(second).toBe(first);
+});
+
+it('keeps the request key when the panel closes, until a restore succeeds', async () => {
+  enabled();
+  boardVersions.set([version(11n)]);
+  h.fetch.mockResolvedValueOnce(Response.json({ error: 'UNCONFIRMED: the board server did not confirm the restore.' }, { status: 503 }))
+    .mockResolvedValueOnce(Response.json({ boardId: '9', slug: 'fresh' }, { status: 201 }))
+    .mockResolvedValueOnce(Response.json({ boardId: '10', slug: 'other' }, { status: 201 }));
+  const panel = { props: { boardId: 2n, workspaceId: 4n, canEdit: true } };
+  const first = render(BoardVersions, panel);
+  await fireEvent.click(screen.getByRole('button', { name: /Restore the version/ }));
+  await screen.findByRole('alert');
+  first.unmount();
+  render(BoardVersions, panel);
+  await fireEvent.click(screen.getByRole('button', { name: /Restore the version/ }));
+  await screen.findByRole('link', { name: 'Open it' });
+  await screen.findByText('restore as copy');
+  await fireEvent.click(screen.getByRole('button', { name: /Restore the version/ }));
+  await waitFor(() => expect(h.fetch).toHaveBeenCalledTimes(3));
+  const [lost, retry, next] = h.fetch.mock.calls.map(([, init]) => JSON.parse(init.body).requestKey);
+  expect(retry).toBe(lost);
+  expect(next).not.toBe(lost);
 });
 
 it("shows the server's refusal", async () => {

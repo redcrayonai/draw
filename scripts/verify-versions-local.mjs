@@ -329,7 +329,7 @@ test('two restores by one person at once both finish (two tabs)', async () => {
   await ok(O, 'stage_board_version_chunk', [S2, k2, 0, b0]); // piece 0 of another restore keeps the first's pieces
   await ok(O, 'stage_board_version_chunk', [S1, k1, 1, a1]);
   await ok(O, 'stage_board_version_chunk', [S2, k2, 1, b1]);
-  const [r1, r2] = [await restoreCall(O, [S1, k1, '']), await restoreCall(O, [S2, k2, ''])];
+  const [r1, r2] = await Promise.all([restoreCall(O, [S1, k1, '']), restoreCall(O, [S2, k2, ''])]);
   assert.equal(r1.error, undefined, r1.error);
   assert.equal(r2.error, undefined, r2.error);
   assert.notEqual(r1.boardId, r2.boardId);
@@ -345,6 +345,20 @@ test('a restored incident board is an ordinary lasting board, with its window', 
   assert.deepEqual(await sql(OWNER, `SELECT board_id FROM incident WHERE board_id = ${R}`), []);
   assert.deepEqual(await sql(OWNER, `SELECT board_id FROM board_lifetime WHERE board_id = ${R}`), []);
   assert.equal((await sql(OWNER, `SELECT board_id FROM board_window WHERE board_id = ${R}`)).length, 1);
+});
+
+test('abandoned restores keep a bounded number of staged pieces, oldest dropped first', async () => {
+  const { who: P, W } = await ownWorkspace('snap-pieces');
+  const L = await board(P, W, 'snap-pieces');
+  await nodeOn(P, L, 'root');
+  const S = await save(P, L);
+  const oldest = key();
+  await ok(P, 'stage_board_version_chunk', [S, oldest, 0, '']);
+  for (let i = 0; i < 70; i++) await ok(P, 'stage_board_version_chunk', [S, key(), 0, '']);
+  const pieces = await sql(OWNER, `SELECT request_key FROM board_version_chunk WHERE version_id = ${S}`);
+  assert.equal(pieces.length, 64);
+  assert.ok(!pieces.some(p => p.requestKey === oldest));
+  await denied(P, 'stage_board_version_chunk', [S, key(), 32, 'x'], 'at most 32 pieces');
 });
 
 test('a retried restore makes one board; a failed one leaves none and can be retried', async () => {

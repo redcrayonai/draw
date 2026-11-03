@@ -44,6 +44,8 @@ const admin = (ctx: any, workspaceId: bigint) => ['owner', 'admin'].includes(mem
 const boardScope = (ctx: any, boardId: bigint) => ctx.db.boardWorkspace.boardId.find(boardId)?.workspaceId;
 const OFF = 'the Versions plugin is off in this workspace; a workspace owner or admin can turn it on';
 const MIB = 1048576;
+// A restore's staged pieces. The dashboard server sends at most 28: MAX_BUNDLE_BYTES in pieces of 600,000 (web/src/lib/server/versions.ts).
+const MAX_PIECES = 32;
 
 // The version's own board, still in the version's workspace, at `rank` or better; or a workspace
 // owner or admin (every board's manager, and the only way to a deleted or moved board's versions).
@@ -155,6 +157,7 @@ export function versionFeatures(db: any, hooks: VersionHooks): any {
     // Restore, step 1 of n: the stored bundle, one piece at a time. Index 0 drops the caller's earlier pieces.
     stageBoardVersionChunk: reducer({ versionId: t.u64(), requestKey: t.string(), index: t.u32(), data: t.string() }, (ctx: any, { versionId, requestKey, index, data }: any) => {
       const s = restorable(ctx, versionId);
+      if (index >= MAX_PIECES) fail(`a restore has at most ${MAX_PIECES} pieces`);
       const same = (c: any) => c.versionId === versionId && c.requestKey === requestKey;
       const mine = [...ctx.db.boardVersionChunk.owner.filter(ctx.sender)];
       if (index === 0) for (const c of mine.filter(same)) ctx.db.boardVersionChunk.id.delete(c.id);
@@ -164,10 +167,10 @@ export function versionFeatures(db: any, hooks: VersionHooks): any {
       const total = staged.reduce((n: number, c: any) => n + c.data.length, data.length);
       if (total > Number(s.bytes)) fail('the staged bundle is larger than the stored version');
       // The person's other restores (another tab) keep their pieces, up to two bundles in all; the oldest pieces go first.
-      let kept = total;
+      let kept = total, pieces = staged.length + 1;
       for (const c of mine.filter((c: any) => !same(c)).sort((a: any, b: any) => (a.id < b.id ? 1 : -1))) {
         kept += c.data.length;
-        if (kept > 2 * MAX_BUNDLE_BYTES) ctx.db.boardVersionChunk.id.delete(c.id);
+        if (kept > 2 * MAX_BUNDLE_BYTES || ++pieces > 2 * MAX_PIECES) ctx.db.boardVersionChunk.id.delete(c.id);
       }
       ctx.db.boardVersionChunk.insert({ id: 0n, owner: ctx.sender, versionId, requestKey, index, data });
     }),

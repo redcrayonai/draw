@@ -12,7 +12,7 @@ and no event bus. Two switches decide whether it runs:
 
 | Switch | Who | Where | Effect |
 |---|---|---|---|
-| Deployment | The operator | Server settings. A plugin is offered only when every variable it needs is set (`web/src/lib/server/plugins.ts`). | Unoffered plugins show as "not configured" and their API answers `UNAVAILABLE`. |
+| Deployment | The operator | Server settings. A plugin is offered only when its `configured()` check passes (`web/src/lib/server/plugins.ts`). | Unoffered plugins show greyed out and their API answers `UNAVAILABLE`. |
 | Workspace | A workspace owner or admin | `workspace_plugin` row through `set_workspace_plugin` (`module/src/plugins.ts`). | Off by default. Off stops every action of the plugin in that workspace and keeps its data. |
 
 Members see their workspaces' switches through the `my_workspace_plugins` view.
@@ -94,8 +94,9 @@ before it hashes anything.
 2. It sends the text in pieces of at most 600,000 UTF-16 units (the database takes
    at most 2 MiB per call) with `stage_board_version_chunk`, **as the person**. Piece 0
    drops earlier pieces of the same request; pieces must arrive in order; the total
-   cannot exceed the indexed size. The person's other restores (another tab) keep
-   their pieces, up to two bundles in all, oldest dropped first.
+   cannot exceed the indexed size, in at most 32 pieces. The person's other restores
+   (another tab) keep their pieces, up to two bundles or 64 pieces in all, oldest
+   dropped first.
 3. `restore_board_version(id, requestKey, name)`, **as the person**, joins the pieces
    and, in one transaction: checks length and SHA-256 against the index again (so a
    person calling the database directly cannot restore forged content), parses and
@@ -268,7 +269,7 @@ settings (the server log does). Object keys contain workspace and board ids only
 - Restored code refs and citations have no code text until the next checkpoint.
 - A restore lands in the version's workspace only.
 - Staged pieces of an abandoned restore stay until that person's staged pieces pass
-  two bundles' worth.
+  two bundles' worth or 64 pieces.
 - Only path-style addressing.
 - The dashboard panel is the only UI; the canvas has none.
 
