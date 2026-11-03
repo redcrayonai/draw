@@ -348,9 +348,12 @@ const iconOn = async (t: T, nodeId: SafeU64) =>
 
 // The library icons by section, from the registry the module checks (spec 2026-10-18).
 const ICON_LIST = ICON_SECTIONS.map(s => `${s.title.toLowerCase()}: ${ICONS.filter(i => i.section === s.id).map(i => i.id).join(', ')}`).join('; ');
-const ICON_RULE =
-  ` icon (optional): a library icon drawn above the label (beside a boundary's heading), one of ${ICON_LIST}. ` +
+// create_node carries the list once; update_node points to it, so the pack icons do not repeat.
+const iconRule = (which: string) =>
+  ` icon (optional): a library icon drawn above the label (beside a boundary's heading)${which}. ` +
   'Give one when the node is that kind of thing (an agent, a model, a queue) or that product or cloud (claude, aws); leave it out otherwise. Not on notes, charts or architecture boards. A node with an icon needs about 40 px more height (160x96 shows icon, label and sublabel).';
+const ICON_RULE = iconRule(`, one of ${ICON_LIST}`);
+const ICON_RULE_SHORT = iconRule('; icon ids are listed on create_node');
 const FIT_RULE =
   'The board draws exactly the stored box: the label wraps to at most 2 lines inside w (16 px padding each side; ellipse and pill rows are narrower) and is cut off after that; the sublabel takes one line below it; a node with code refs keeps a row for its badge. At 15 px a label and sublabel need h=48 on one line and 68 on two. ' +
   'When the box cuts something off, the result says so and names the size that shows it: "(label wraps to N lines; cut off below w=W — widen to W to show it in full)", "(sublabel cut off below w=W)", "(needs h=H to show label and sublabel)".';
@@ -420,7 +423,7 @@ export const TOOLS: Record<string, ToolDef> = {
         focal: z.boolean(),
         kind: z.string().optional().describe('service|datastore|external|boundary|note|text (charts: use create_chart)'),
         doc: z.string().optional().describe('at most two sentences: what this is and why'),
-        icon: z.string().optional().describe('library icon id, e.g. agent, model, queue, claude, aws'),
+        icon: z.string().optional().describe('library icon id, e.g. agent, model, queue, aws-s3, postgres'),
       })
       .strict(),
     async run({ board, icon, ...input }, t) {
@@ -502,7 +505,7 @@ export const TOOLS: Record<string, ToolDef> = {
     scope: 'board:write',
     description:
       'Update any of label, sublabel, token, focal, kind, icon on a node. Omitted fields keep their current value; icon "" removes the icon. A chart cannot change kind and no node can become a chart; chart data changes with set_chart_data.' +
-      ICON_RULE + ' ' + FIT_RULE,
+      ICON_RULE_SHORT + ' ' + FIT_RULE,
     input: z
       .object({
         board: boardArg,

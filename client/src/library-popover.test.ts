@@ -4,7 +4,7 @@ import type { LibraryItem } from './module_bindings/types';
 import { CHART_CONTRACTS, CHART_TYPES } from '../../module/src/chart-contracts';
 import { ICONS, ICON_SECTIONS } from '../../module/src/node-icons';
 import { LibraryPopover, EMPTY_LIBRARY, type LibraryPick } from './library-popover';
-import { loadLogos } from './node-icons';
+import { drawableIcons, loadLogos } from './node-icons';
 
 const PAYLOAD = JSON.stringify({
   version: 1,
@@ -54,7 +54,9 @@ const type = (search: HTMLInputElement, text: string) => {
 };
 const chartTitles = CHART_TYPES.map(t => CHART_CONTRACTS[t].title);
 const iconNames = (section: string) => ICONS.filter(i => i.section === section).map(i => i.name);
-const SECTIONS = ['Objects', ...ICON_SECTIONS.map(s => s.title), 'Charts', 'My library'];
+// Packs show only the sections that have a drawing; the rest wait for their art.
+const SHOWN = ICON_SECTIONS.filter(s => drawableIcons().some(i => i.section === s.id));
+const SECTIONS = ['Objects', ...SHOWN.map(s => s.title), 'Charts', 'My library'];
 
 describe('LibraryPopover', () => {
   beforeAll(() => loadLogos());
@@ -68,12 +70,13 @@ describe('LibraryPopover', () => {
     expect(names(host, 'Systems')).toEqual(iconNames('systems'));
     expect(names(host, 'AI logos')).toEqual(iconNames('ai'));
     expect(names(host, 'Cloud logos')).toEqual(iconNames('cloud'));
+    expect(names(host, 'Databases')).toEqual(drawableIcons().filter(i => i.section === 'databases').map(i => i.name));
     expect(names(host, 'Charts')).toEqual(chartTitles);
     expect(names(host, 'My library')).toEqual(['API gateway']);
     expect(host.querySelectorAll('.lib-section[aria-label="Charts"] svg.lib-icon')).toHaveLength(11);
     expect(host.querySelectorAll('.lib-section[aria-label="Objects"] .lib-tile svg')).toHaveLength(5);
     // every icon and logo tile has its drawing, hidden from assistive tech: the tile's text names it
-    for (const s of ICON_SECTIONS) {
+    for (const s of SHOWN) {
       const tiles = host.querySelectorAll(`.lib-section[aria-label="${s.title}"] .lib-tile`);
       expect(tiles.length).toBeGreaterThan(0);
       for (const t of tiles) expect(t.querySelector('svg.lib-node-icon')?.getAttribute('aria-hidden')).toBe('true');
@@ -145,7 +148,8 @@ describe('LibraryPopover', () => {
     type(search, 'anthropic');
     expect(names(host, 'AI logos')).toEqual(['Claude', 'Claude Code']);
     type(search, 'k8s');
-    expect(names(host, 'Cloud logos')).toEqual(['Kubernetes']);
+    expect(names(host, 'Kubernetes')[0]).toBe('Kubernetes');
+    expect(names(host, 'Cloud logos')).toEqual([]);
     expect(names(host, 'Objects')).toEqual([]);
     type(search, 'mcp-server');
     expect(names(host, 'Agents')).toEqual(['MCP server']);
@@ -235,7 +239,7 @@ describe('LibraryPopover', () => {
     expect(press(tileNamed(host, agents[1]), 'ArrowUp')).toBe(tileNamed(host, 'Datastore'));
     expect(press(tileNamed(host, agents[1]), 'ArrowDown')).toBe(tileNamed(host, agents[5]));
     // the last logo section → Charts, and back up to its last row, same column
-    const cloud = iconNames('cloud');
+    const cloud = names(host, SHOWN[SHOWN.length - 1].title) as string[];
     expect(press(chart(0), 'ArrowLeft')).toBe(tileNamed(host, cloud[cloud.length - 1]));
     // the column is clamped to the last tile of a short row
     expect(press(chart(3), 'ArrowUp')).toBe(tileNamed(host, cloud[Math.min(Math.floor((cloud.length - 1) / 4) * 4 + 3, cloud.length - 1)]));

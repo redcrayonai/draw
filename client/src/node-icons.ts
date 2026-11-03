@@ -12,7 +12,7 @@
  * authored icons, a board fetches the logos it shows, and a logo draws once its
  * chunk has arrived (setLogoListener redraws then).
  */
-import { ICONS, iconSpec, type IconSpec } from '../../module/src/node-icons';
+import { ICONS, iconSpec, type IconSection, type IconSpec } from '../../module/src/node-icons';
 import { LOGO_LOADERS, type LogoArt, type LogoDrawing, type LogoNode } from './node-logos';
 import { svgEl } from './charts/svg';
 
@@ -91,12 +91,53 @@ const STROKES: Readonly<Record<string, Stroke>> = {
   sandbox: { d: 'M3 2.5h10a1.5 1.5 0 0 1 1.5 1.5v8a1.5 1.5 0 0 1-1.5 1.5H3A1.5 1.5 0 0 1 1.5 12V4A1.5 1.5 0 0 1 3 2.5ZM4.5 6l2.25 2-2.25 2M8.5 10.5h3' },
 };
 
+/** Neutral glyphs on the same grid: they stand for a pack, and for the products whose owners
+ *  have not cleared a mark (GENERIC). Never a brand's colour or a brand's shape. */
+const GLYPHS: Readonly<Record<string, Stroke>> = {
+  database: { d: 'M2.5 3.5a5.5 2 0 1 0 11 0 5.5 2 0 1 0-11 0ZM2.5 3.5v9c0 1.1 2.5 2 5.5 2s5.5-.9 5.5-2v-9M2.5 8c0 1.1 2.5 2 5.5 2s5.5-.9 5.5-2' },
+  cloud: { d: 'M4.5 12.5a3 3 0 0 1-.3-5.98A4 4 0 0 1 12 7.2a2.65 2.65 0 0 1-.5 5.3Z' },
+  hexagon: { d: 'M8 1.5 13.6 4.75v6.5L8 14.5l-5.6-3.25v-6.5Z' },
+};
+
+/** Registry ids drawn with a neutral stroke icon: an authored one, or a glyph. */
+const GENERIC: Readonly<Record<string, string>> = {
+  cloudflare: 'cloud',
+  'cloudflare-cdn': 'gateway',
+  'cloudflare-load-balancing': 'gateway',
+  'cloudflare-waf': 'gateway',
+  'cloudflare-dns': 'gateway',
+  'cloudflare-zero-trust': 'gateway',
+  'cloudflare-tunnel': 'gateway',
+  'cloudflare-workers': 'function',
+  'cloudflare-pages': 'function',
+  'cloudflare-durable-objects': 'function',
+  'cloudflare-workers-ai': 'function',
+  'cloudflare-r2': 'database',
+  'cloudflare-d1': 'database',
+  'cloudflare-kv': 'database',
+  'cloudflare-queues': 'queue',
+  postgres: 'database',
+  mysql: 'database',
+  mongodb: 'database',
+  redis: 'database',
+  keydb: 'database',
+  dragonfly: 'database',
+};
+
+const own = (o: object, k: string) => Object.prototype.hasOwnProperty.call(o, k);
+
+/** The stroke drawing for `id`, if it has one. */
+function strokeOf(id: string): Stroke | undefined {
+  const key = own(GENERIC, id) ? GENERIC[id] : id;
+  return own(STROKES, key) ? STROKES[key] : own(GLYPHS, key) ? GLYPHS[key] : undefined;
+}
+
 export type IconPaint = 'stroke' | 'brand';
 
 /** How `id` is drawn; null when this client has no drawing for it (a newer or a withdrawn id). */
 export function iconPaint(id: string): IconPaint | null {
-  if (Object.prototype.hasOwnProperty.call(STROKES, id)) return 'stroke';
-  return Object.prototype.hasOwnProperty.call(LOGO_LOADERS, id) ? 'brand' : null;
+  if (strokeOf(id) !== undefined) return 'stroke';
+  return own(LOGO_LOADERS, id) ? 'brand' : null;
 }
 
 /** The registry entry, only when this client can draw it. */
@@ -136,6 +177,22 @@ function round(v: number, places = 2): string {
   return String(r === 0 ? 0 : r);
 }
 
+function strokeArt(art: Stroke, size: number): SVGGElement {
+  const s = svgEl('g', {
+    transform: `scale(${round(size / 16, 4)})`,
+    fill: 'none',
+    stroke: 'currentColor',
+    'stroke-width': '1.3',
+    'stroke-linecap': 'round',
+    'stroke-linejoin': 'round',
+  });
+  s.append(svgEl('path', { d: art.d }));
+  for (const [cx, cy, r] of art.dots ?? []) {
+    s.append(svgEl('circle', { cx: String(cx), cy: String(cy), r: String(r), fill: 'currentColor', stroke: 'none' }));
+  }
+  return s;
+}
+
 /**
  * The drawing for `id` in a fresh <g class="node-icon …">, size × size with its
  * top-left at 0,0 (the caller translates it). Null when there is no drawing, or
@@ -151,20 +208,7 @@ export function iconGroup(id: string, size: number): SVGGElement | null {
   }
   const g = svgEl('g', { class: `node-icon node-icon-${paint}` });
   if (paint === 'stroke') {
-    const art = STROKES[id];
-    const s = svgEl('g', {
-      transform: `scale(${round(size / 16, 4)})`,
-      fill: 'none',
-      stroke: 'currentColor',
-      'stroke-width': '1.3',
-      'stroke-linecap': 'round',
-      'stroke-linejoin': 'round',
-    });
-    s.append(svgEl('path', { d: art.d }));
-    for (const [cx, cy, r] of art.dots ?? []) {
-      s.append(svgEl('circle', { cx: String(cx), cy: String(cy), r: String(r), fill: 'currentColor', stroke: 'none' }));
-    }
-    g.append(s);
+    g.append(strokeArt(strokeOf(id)!, size));
     return g;
   }
   const { light, dark, fit } = logo!;
@@ -176,6 +220,17 @@ export function iconGroup(id: string, size: number): SVGGElement | null {
     g.append(placeArt(light, size, fit, 'logo-art logo-on-light'), placeArt(dark, size, fit, 'logo-art logo-on-dark'));
   }
   return g;
+}
+
+/** The neutral glyph that stands for a pack with no logo of its own, as a chrome <svg>; null for the others. */
+export function packGlyph(section: IconSection, size: number): SVGSVGElement | null {
+  const glyph = section === 'databases' ? GLYPHS.database : section === 'cncf' ? GLYPHS.hexagon : undefined;
+  if (glyph === undefined) return null;
+  const svg = svgEl('svg', { class: 'lib-node-icon', width: String(size), height: String(size), viewBox: '0 0 16 16', 'aria-hidden': 'true' });
+  const g = svgEl('g', { class: 'node-icon node-icon-stroke' });
+  g.append(strokeArt(glyph, 16));
+  svg.append(g);
+  return svg;
 }
 
 /** A standalone <svg> of `id` for chrome (library tiles), hidden from assistive tech: the tile names it. */

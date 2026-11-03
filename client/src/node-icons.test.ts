@@ -2,7 +2,7 @@ import { describe, it, expect, beforeAll } from 'vitest';
 import { ICONS, ICON_IDS, ICON_SECTIONS, ICON_NODE_KINDS, isIconId, iconSpec } from '../../module/src/node-icons';
 import { THEMES } from '../../shared/themes';
 import { LOGO_LOADERS, type LogoDrawing, type LogoNode } from './node-logos';
-import { drawableIcon, drawableIcons, iconGroup, iconPaint, iconSvg, loadLogo, loadLogos, logosReady, setLogoListener } from './node-icons';
+import { drawableIcon, drawableIcons, iconGroup, iconPaint, iconSvg, loadLogo, loadLogos, logosReady, packGlyph, setLogoListener } from './node-icons';
 
 /** Every logo's drawing, read straight from its chunk. */
 const LOGOS: Record<string, LogoDrawing> = {};
@@ -37,19 +37,44 @@ describe('the icon registry (module/src/node-icons.ts)', () => {
     expect(ICON_NODE_KINDS).toEqual(['service', 'datastore', 'external', 'boundary']);
   });
 
-  it('holds the agreed inventory: 12 agents, 8 systems, and the AI and cloud logos whose brand rules allow it', () => {
-    const count = (s: string) => ICONS.filter(i => i.section === s).length;
-    expect(ICON_SECTIONS.map(s => s.title)).toEqual(['Agents', 'Systems', 'AI logos', 'Cloud logos']);
-    expect([count('agents'), count('systems')]).toEqual([12, 8]);
-    expect(ICONS.filter(i => i.section === 'ai').map(i => i.id)).toEqual([
-      'claude', 'claude-code', 'openai', 'grok', 'mistral', 'hugging-face', 'openrouter', 'cursor', 'github-copilot', 'windsurf', 'devin', 'openclaw', 'hermes-agent', 'opencode',
-    ]);
-    expect(ICONS.filter(i => i.section === 'cloud').map(i => i.id)).toEqual(['aws', 'azure', 'vercel', 'supabase', 'firebase', 'neon', 'kubernetes']);
-    // AWS and Azure take the names their brand rules ask for
+  it('holds the agreed inventory, in its sections', () => {
+    const ids = (s: string) => ICONS.filter(i => i.section === s).map(i => i.id);
+    expect(ICON_SECTIONS.map(s => s.title)).toEqual(['Agents', 'Systems', 'AI logos', 'Cloud logos', 'AWS', 'Microsoft Azure', 'Google Cloud', 'Cloudflare', 'Databases', 'Kubernetes', 'CNCF']);
+    expect(ids('cloud')).toEqual(['vercel', 'supabase', 'firebase', 'neon']);
+    expect(ids('aws')[0]).toBe('aws');
+    expect(ids('azure')[0]).toBe('azure');
+    expect(ids('gcp')[0]).toBe('google-cloud');
+    expect(ids('cloudflare')[0]).toBe('cloudflare');
+    expect(ids('kubernetes')[0]).toBe('kubernetes');
+    expect(ids('databases')).toEqual(['postgres', 'mysql', 'mongodb', 'redis', 'valkey', 'keydb', 'dragonfly']);
     expect(iconSpec('aws')?.name).toBe('AWS Cloud');
     expect(iconSpec('azure')?.name).toBe('Microsoft Azure');
-    // every logo is a product outside the repo
-    expect(ICONS.filter(i => i.section === 'ai' || i.section === 'cloud').every(i => i.kind === 'external')).toBe(true);
+    expect(iconSpec('aws-s3')?.name).toBe('Amazon S3');
+    expect(iconSpec('aws-s3')?.kind).toBe('datastore');
+    expect(iconSpec('aws-lambda')?.kind).toBe('service');
+    for (const id of ['aws-s3', 'gcp-cloud-storage', 'cloudflare-r2', 'azure-blob-storage']) {
+      expect(iconSpec(id)?.terms, id).toEqual(expect.arrayContaining(['blob', 'object storage']));
+    }
+    for (const i of ICONS) expect(`${i.id} ${i.name}`, i.id).not.toMatch(/wasm|energy/i);
+    expect(ICON_SECTIONS.filter(s => s.pack).map(s => [s.id, s.logo])).toEqual([
+      ['aws', 'aws'], ['azure', 'azure'], ['gcp', 'google-cloud'], ['cloudflare', 'cloudflare'], ['databases', undefined], ['kubernetes', 'kubernetes'], ['cncf', undefined],
+    ]);
+    // every Kubernetes term list carries k8s, so a search for it still places the logo first
+    for (const i of ICONS.filter(i => i.section === 'kubernetes')) expect(i.terms, i.id).toContain('k8s');
+  });
+
+  it('draws brands with no cleared mark as neutral strokes', () => {
+    for (const id of ['cloudflare', 'cloudflare-r2', 'cloudflare-workers', 'postgres', 'mysql', 'mongodb', 'redis', 'keydb', 'dragonfly']) {
+      expect(iconPaint(id), id).toBe('stroke');
+      expect(LOGO_LOADERS[id], id).toBeUndefined();
+      expect(iconGroup(id, 28)!.getAttribute('class'), id).toBe('node-icon node-icon-stroke');
+    }
+  });
+
+  it('draws a pack glyph for Databases and CNCF only', () => {
+    expect(packGlyph('databases', 20)?.getAttribute('class')).toBe('lib-node-icon');
+    expect(packGlyph('cncf', 20)?.querySelector('path')).not.toBeNull();
+    for (const s of ['aws', 'azure', 'gcp', 'cloudflare', 'kubernetes', 'agents'] as const) expect(packGlyph(s, 20), s).toBeNull();
   });
 });
 
@@ -78,11 +103,13 @@ describe('logo artwork loads one chunk per logo', () => {
 describe('the drawings', () => {
   beforeAll(() => loadLogos());
 
-  it('every registry id has one: stroke for agents and systems, the brand\'s own artwork for logos', () => {
+  it('every id in the first four sections has one: stroke for agents and systems, the brand\'s own artwork for logos', () => {
     const paint = { agents: 'stroke', systems: 'stroke', ai: 'brand', cloud: 'brand' } as const;
-    for (const i of ICONS) expect(iconPaint(i.id), i.id).toBe(paint[i.section]);
-    expect(drawableIcons()).toEqual([...ICONS]);
-    expect(Object.keys(LOGO_LOADERS).sort()).toEqual(ICONS.filter(i => i.section === 'ai' || i.section === 'cloud').map(i => i.id).sort());
+    const first = ICONS.filter(i => i.section in paint);
+    for (const i of first) expect(iconPaint(i.id), i.id).toBe(paint[i.section as keyof typeof paint]);
+    // pack ids without art yet are hidden, never drawn as a blank
+    expect(drawableIcons()).toEqual(expect.arrayContaining(first));
+    expect(drawableIcons().map(i => i.id)).not.toContain('gcp-bigquery');
   });
 
   it('an unknown or withdrawn id draws nothing', () => {

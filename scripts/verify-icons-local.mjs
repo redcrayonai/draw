@@ -169,7 +169,7 @@ test('IC every id in the registry is accepted; kinds service, datastore, externa
 test('IC refusals leave nothing behind: unknown icon, note and chart kinds, bad kind, off-grid, focal limit', async () => {
   const who = await mint();
   const B = await createBoardAs(who, named('ic-refuse'));
-  await rejects(who.token, 'create_icon_node', iconNodeArgs(B, 'x', 'clippy'), "icon 'clippy' is not allowed; must be one of: agent, orchestrator");
+  await rejects(who.token, 'create_icon_node', iconNodeArgs(B, 'x', 'clippy'), "icon 'clippy' is not allowed; see the library's icon list");
   await rejects(who.token, 'create_icon_node', iconNodeArgs(B, 'x', ''), "icon '' is not allowed");
   await rejects(who.token, 'create_icon_node', iconNodeArgs(B, 'x', 'agent', { kind: 'note' }), ICON_KIND_RULE);
   await rejects(who.token, 'create_icon_node', iconNodeArgs(B, 'x', 'agent', { kind: 'chart' }), ICON_KIND_RULE);

@@ -57,7 +57,7 @@ import {
 } from './threats';
 import { ISSUERS } from './issuers'; // written per environment by scripts/module-env.mjs
 import { LIMITS } from './limits';
-import { ARCHITECTURE_ICON_RULE, ICON_IDS, ICON_KIND_RULE, ICON_NODE_KINDS, isIconId } from './node-icons';
+import { ARCHITECTURE_ICON_RULE, ICON_KIND_RULE, ICON_NODE_KINDS, isIconId } from './node-icons';
 import { isAccountSender, isBrowserSession, isLinkMode, isShareToken } from './link-share';
 import { workspaceTables, workspaceFeatures, humanBoardRole, humanBoardIds, nativeBoardRole, membership, assignBoardWorkspace } from './workspaces';
 import { workspaceServiceAccountTables, workspaceApiKeyExpiry, workspaceServiceAccountFeatures, isWorkspaceMachine, workspaceMachineBoardRole, workspaceMachineBoardIds, registerWorkspaceMachine } from './workspace-service-accounts';
@@ -2182,7 +2182,7 @@ export const createNode = reducer(nodeArgs(), (ctx, args) => {
 function assertIconFor(ctx: any, boardId: bigint, kind: string, icon: string): void {
   // Before any architectureEdit: fact boards would answer with their own rule.
   if (ctx.db.architectureVersion.boardId.find(boardId)?.assertionMode === 'fact') throw new SenderError(ARCHITECTURE_ICON_RULE);
-  if (!isIconId(icon)) throw new SenderError(`icon '${icon}' is not allowed; must be one of: ${ICON_IDS.join(', ')}`);
+  if (!isIconId(icon)) throw new SenderError(`icon '${icon}' is not allowed; see the library's icon list`);
   // An unknown kind is left to assertKind, whose sentence lists the kinds.
   if (ALLOWED_KINDS.includes(kind) && !ICON_NODE_KINDS.includes(kind)) throw new SenderError(ICON_KIND_RULE);
 }
