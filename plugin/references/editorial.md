@@ -95,7 +95,8 @@ own mistakes freely.
   - Aim for under 2,500 px wide. After `layout_board`, check `get_board`: if the
     board is more than about twice as wide as tall, arrange it by hand with
     `resize_node`.
-  - Draw one edge per pair of nodes, and never point an edge at a boundary.
+  - Draw one edge per flow. Merge parallel edges only when they describe the same
+    flow, and never point an edge at a boundary.
   - Put the main insight on the focal nodes.
 - **Size for the text.** The board draws exactly the box you store. The label
   wraps to at most two lines inside `w` (16 px padding each side) and is cut off

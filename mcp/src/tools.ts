@@ -351,9 +351,9 @@ const EDITORIAL_RULES = `Editorial rules (enforced where noted):
 - deletion is the strongest edit; target density ~4/10 with generous whitespace
 - containers are large nodes drawn behind smaller ones: create big, move members inside
 - layout reads left→right: entry points left, services middle, data stores right; 48px+ gutters
-- up to about 10 nodes: after drawing, call layout_board; it places nodes left to right and fits boundaries
+- up to about 10 nodes: after drawing, call layout_board unless a person has arranged the board; it places nodes left to right and fits boundaries
 - larger boards: skip layout_board and plan positions in layers, lined up so most edges run straight, 160px+ between nodes in a row, 80px+ between rows, under about 2,500px wide
-- one edge per pair of nodes; never point an edge at a boundary`;
+- one edge per flow; merge parallel edges only when they describe the same flow; never point an edge at a boundary`;
 
 const BOARD_SUFFIX = ' Returns texts ending in board=<name>, the board it acted on.';
 
