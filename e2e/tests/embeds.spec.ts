@@ -297,6 +297,8 @@ test('board embeds publish visual content only and pause real diagram playback',
     await viewer.emulateMedia({ reducedMotion: 'reduce' });
     await expect(frame.getByRole('button', { name: 'Replay', exact: true })).toBeDisabled();
     await expect(frame.locator('#embed-progress')).toHaveText('Reduced motion · static view');
+    // Flows highlight every connection, which says nothing without motion.
+    await expect(frame.locator('#world .embed-path, #world .embed-reached')).toHaveCount(0);
     await f.page.getByRole('switch', { name: 'Enable embed access' }).uncheck();
     await expect(frame.locator('#embed-title')).toHaveText('Board unavailable');
     await expect(frame.locator('#world .node')).toHaveCount(0);
@@ -389,14 +391,31 @@ test('session routes highlight paths in order; source deletion revokes a board c
   const url = new URL('embed.html?kind=board', stack.url); url.hash = `e=${token}`;
   const viewer = await guest(); await viewer.goto(url.href);
   await expect(viewer.locator('#world .node')).toHaveCount(3);
+  // Before a run, and after a flows run, the board shows its own colours.
+  const highlights = viewer.locator('#world .embed-path, #world .embed-reached, #world .embed-flow-dot:visible');
+  await expect(highlights).toHaveCount(0);
+  // Looping: a one-shot run can end before the first look at its dots.
+  const loop = viewer.getByRole('checkbox', { name: 'Loop', exact: true });
+  await loop.check();
+  await viewer.getByRole('button', { name: 'Play', exact: true }).click();
+  await expect(viewer.locator('#world .embed-flow-dot:visible').first()).toBeVisible();
+  await loop.uncheck();
+  await expect(viewer.locator('#embed-progress')).toHaveText('100%');
+  await expect(highlights).toHaveCount(0);
   await viewer.locator('#embed-mode').selectOption('route');
+  await expect(highlights).toHaveCount(0);
   await viewer.getByRole('button', { name: 'Play', exact: true }).click();
   await expect(viewer.locator('#world .embed-path')).toHaveCount(2);
   await expect(viewer.locator('#world .embed-reached')).toHaveCount(3);
   await expect(viewer.locator('#embed-progress')).toHaveText('100%');
-  await viewer.getByRole('checkbox', { name: 'Loop', exact: true }).check();
+  await loop.check();
   await viewer.getByRole('button', { name: 'Replay', exact: true }).click();
   await expect.poll(() => viewer.locator('#world').getAttribute('data-playback-ms')).not.toBe('0');
+  // Reduced motion has no run to watch, so a route's static view is its path.
+  await viewer.emulateMedia({ reducedMotion: 'reduce' });
+  await expect(viewer.locator('#embed-progress')).toHaveText('Reduced motion · static view');
+  await expect(viewer.locator('#world .embed-path')).toHaveCount(2);
+  await expect(viewer.locator('#world .embed-reached')).toHaveCount(3);
   await stack.callReducer(owner, 'delete_board', [boardId]);
   await expect(viewer.locator('#embed-title')).toHaveText('Board unavailable');
   await expect(viewer.locator('#world .node')).toHaveCount(0);

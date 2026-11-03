@@ -184,13 +184,16 @@ export class EmbedBoard {
     this.world.dataset.playbackMs = String(Math.round(ms));
     this.world.querySelectorAll('.embed-path, .embed-reached').forEach(n => n.classList.remove('embed-path', 'embed-reached'));
     const p = Math.min(1, ms / this.duration);
+    // At rest the board shows its own colours. A finished route or threat keeps its path: that is the result.
+    const atRest = ms === 0 || (ms >= this.duration && this.mode.value === 'flows');
     for (const hop of this.hops) {
-      const active = ms >= hop.start && ms <= hop.end && !this.reduced;
+      const active = !atRest && ms >= hop.start && ms <= hop.end && !this.reduced;
       hop.dot.style.display = active ? '' : 'none';
       if (active) {
         const at = hop.sample.at(easeInOut((ms - hop.start) / (hop.end - hop.start)));
         if (at) { hop.dot.setAttribute('cx', String(at.x)); hop.dot.setAttribute('cy', String(at.y)); }
       }
+      if (atRest) continue;
       if (ms >= hop.start || this.reduced) {
         this.world.querySelector(`.edge-hit[data-edge-id="${hop.leg.edgeId}"]`)?.closest('.edge')?.classList.add('embed-path');
         this.world.querySelector(`.node[data-id="${hop.leg.from}"]`)?.classList.add('embed-reached');
