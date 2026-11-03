@@ -33,16 +33,16 @@ beforeEach(() => {
 });
 
 describe('highlighter loader (G52)', () => {
-  it('ships the eleven grammars eagerly and keeps svelte and jsonc out of the first build', async () => {
+  it('ships the eleven core grammars eagerly and keeps lazy grammars out of the first build', async () => {
     const { SHIKI_LANGS, LAZY_LANGS, loadHighlighter } = await import('./highlighter-loader');
     expect(SHIKI_LANGS).toHaveLength(11);
-    expect(SHIKI_LANGS).not.toContain('svelte');
-    expect(SHIKI_LANGS).not.toContain('jsonc');
-    expect(LAZY_LANGS).toEqual(['svelte', 'jsonc']);
+    expect(LAZY_LANGS).toEqual(['svelte', 'jsonc', 'python', 'rust', 'c', 'cpp', 'java', 'csharp', 'sql']);
     await loadHighlighter('typescript');
     expect(createHighlighterCore).toHaveBeenCalledTimes(1);
-    expect(loaded.has('svelte')).toBe(false);
-    expect(loaded.has('jsonc')).toBe(false);
+    for (const lang of LAZY_LANGS) {
+      expect(SHIKI_LANGS).not.toContain(lang);
+      expect(loaded.has(lang)).toBe(false);
+    }
     expect(loadLanguage).not.toHaveBeenCalled();
   });
 
