@@ -727,8 +727,13 @@ test('SKILL.md (G30): input-validation, budget and citability texts are explaine
   assert.ok(flat.includes('Nothing was written. Fix the argument'));
   // every hosted input is strict, so an unknown argument (a retired one such as force) is refused
   const tools = hosted.slice(hosted.indexOf('export const TOOLS'), hosted.indexOf('export const TOOL_NAMES')).split(/^ {2}(?=\w+: \{$)/m).slice(1);
-  assert.equal(tools.length, 39);
-  for (const t of tools) assert.match(t.slice(t.indexOf('input:'), t.indexOf('async run')), /\.strict\(\),\s*$/, t.slice(0, 20));
+  assert.equal(tools.length, 40);
+  for (const t of tools) {
+    if (t.startsWith('apply_board:')) {
+      assert.match(t, /get input\(\) \{ return applyBoardInput\(TOOLS.create_node.input, TOOLS.create_edge.input\); \}/);
+      assert.match(readFileSync(new URL('../mcp/src/apply-board.ts', import.meta.url), 'utf8'), /\}\)\.strict\(\)\.superRefine/);
+    } else assert.match(t.slice(t.indexOf('input:'), t.indexOf('async run')), /\.strict\(\),\s*$/, t.slice(0, 20));
+  }
   assert.ok(flat.includes('an unknown argument'));
   assert.ok(sessionTs.includes('call again to continue'));
   assert.ok(sessionTs.includes('call again to record the checkpoint'));

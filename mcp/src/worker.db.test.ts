@@ -126,6 +126,39 @@ describe.skipIf(!url || !db)('the Worker on a real DB', () => {
         return { client: client as ClientV1, call };
       }
 
+      it('applies one drawing pass, preserving ids on a retry and refusing endpoints on another board', async () => {
+        const { client, call } = await connect('tok_ada');
+        try {
+          const started = JSON.parse((await call('start_session', { name: `batch-${era}` })).text);
+          const board = String(started.id);
+          const node = (key: string, x: number) => ({ key, label: key, sublabel: '', x, y: 0, w: 160, h: 64, token: 'ink', focal: false });
+          const indistinguishable = await call('apply_board', { board, nodes: [node('api', 0), { ...node('api', 0), key: 'replica' }] });
+          expect(indistinguishable.isError).toBe(true);
+          expect(indistinguishable.text).toContain('nodes must differ');
+          expect(JSON.parse((await call('get_board', { board })).text).nodes).toHaveLength(0);
+          const args = { board, nodes: [node('api', 0), node('store', 240)], edges: [{ fromNode: '$api', toNode: '$store', label: 'writes', evidence: 'agent:user described the topology' }], layout: true };
+          const first = await call('apply_board', args);
+          expect(first.isError, first.text).toBe(false);
+          const result = JSON.parse(first.text);
+          expect(result).toMatchObject({ complete: true, nodes: { api: expect.stringMatching(/^\d+$/), store: expect.stringMatching(/^\d+$/) }, edges: [expect.stringMatching(/^\d+$/)] });
+          const retry = await call('apply_board', args);
+          expect(retry.isError, retry.text).toBe(false);
+          expect(JSON.parse(retry.text).nodes).toEqual(result.nodes);
+          const snapshot = JSON.parse((await call('get_board', { board })).text);
+          expect(snapshot.nodes).toHaveLength(2);
+          expect(snapshot.edges).toHaveLength(1);
+          expect(snapshot.edges[0]).toMatchObject({ from: result.nodes.api, to: result.nodes.store });
+
+          const other = JSON.parse((await call('start_session', { name: `batch-other-${era}` })).text);
+          const denied = await call('apply_board', { board: String(other.id), edges: [{ ...args.edges[0], fromNode: result.nodes.api, toNode: result.nodes.store }] });
+          expect(denied.isError).toBe(true);
+          expect(denied.text).toMatch(/^REJECTED/);
+          expect(JSON.parse((await call('get_board', { board: String(other.id) })).text).edges).toHaveLength(0);
+        } finally {
+          await client.close();
+        }
+      });
+
       async function workspaceBoard(scenario: string, bobRole = 'editor') {
         const http = dbHttp(url!, db!);
         const ada = await browserToken('user_ada'), bob = await browserToken('user_bob');
@@ -645,10 +678,12 @@ describe.skipIf(!url || !db)('the Worker on a real DB', () => {
       expect(await hashes()).toHaveLength(1);
       // Opted out, the same citation keeps its hash and no text.
       await http2.sqlAs(owner!, `UPDATE code_consent SET store_code = false WHERE key = 'user:${ada}'`);
-      const bare = await call('create_edge', { board, fromNode: limiter, toNode: server, label: 'used by', evidence: 'source:src/server.ts:2', capture: await capture(repo, 'cite', 'src/server.ts', '--board', board) });
+      const bare = await call('apply_board', { board, edges: [{ fromNode: limiter, toNode: server, label: 'used by', evidence: 'source:src/server.ts:2', capture: await capture(repo, 'cite', 'src/server.ts', '--board', board) }] });
       await http2.sqlAs(owner!, `UPDATE code_consent SET store_code = true WHERE key = 'user:${ada}'`);
-      expect(bare).toEqual({ isError: false, text: expect.stringMatching(/^committed id=\d+ board=hosted$/) });
-      expect((await http2.sqlAs(owner!, `SELECT * FROM edge WHERE id = ${/id=(\d+)/.exec(bare.text)![1]}`))[0]).toMatchObject({ evidence_snippet: '', evidence_status: 'ok' });
+      expect(bare.isError, bare.text).toBe(false);
+      const bareId = JSON.parse(bare.text).edges[0];
+      expect(bareId).toMatch(/^\d+$/);
+      expect((await http2.sqlAs(owner!, `SELECT * FROM edge WHERE id = ${bareId}`))[0]).toMatchObject({ evidence_snippet: '', evidence_status: 'ok' });
       expect(await hashes()).toHaveLength(2);
 
       // The ref's lines shift and its body changes: the checkpoint follows the symbol, and the edit is covered by it.

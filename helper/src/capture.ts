@@ -73,10 +73,11 @@ export class HelperError extends Error {
 }
 
 /** The tools the plugin hook captures for, under every prefix Claude Code gives them (P0.6); group 3 is the tool. */
-export const HOOK_MATCHER = '^mcp__(plugin_draw_)?(?:draw|redcrayon)(-dev)?__(start_session|add_code_ref|mark_checkpoint|create_edge|arrive)$';
+export const HOOK_MATCHER = '^mcp__(plugin_draw_)?(?:draw|redcrayon)(-dev)?__(start_session|add_code_ref|mark_checkpoint|create_edge|arrive|apply_board)$';
 
 export const BOARD_RE = /^[0-9]{1,20}$/;
 const SHA_RE = /^[0-9a-f]{40}(?:[0-9a-f]{24})?$/;
+const remainingMs = (deadline?: number) => deadline === undefined ? undefined : Math.max(1, deadline - Date.now());
 
 export const DEFAULT_ORIGIN = 'http://localhost:8788';
 // REDCRAYON_MCP_URL is also the plugin's server URL (plugin/.mcp.json), so one variable moves both.
@@ -90,20 +91,20 @@ export const origin = () => {
  * shared by its worktrees and kept per server: board ids from a dev, staging
  * and production server must not share cited lists or base shas.
  */
-export function checkout(cwd: string): { root: string; state: string } {
+export function checkout(cwd: string, deadline?: number): { root: string; state: string } {
   try {
-    execFileSync('git', ['--version'], { stdio: 'ignore' });
+    execFileSync('git', ['--version'], { stdio: 'ignore', timeout: remainingMs(deadline) });
   } catch (err) {
     if ((err as { code?: string }).code === 'ENOENT') throw new HelperError(say.gitMissing);
     throw err;
   }
   let root: string;
   try {
-    root = realpathSync(gitTopLevel(cwd));
+    root = realpathSync(gitTopLevel(cwd, remainingMs(deadline)));
   } catch {
     throw new HelperError(say.notRepo(resolve(cwd)));
   }
-  return { root, state: join(gitCommonDir(root), 'redcrayon', new URL(origin()).host.replace(/[^A-Za-z0-9.-]/g, '_')) };
+  return { root, state: join(gitCommonDir(root, remainingMs(deadline)), 'redcrayon', new URL(origin()).host.replace(/[^A-Za-z0-9.-]/g, '_')) };
 }
 
 // ---------- state ----------
@@ -171,7 +172,7 @@ export function firstRun(state: string): boolean {
  * when it is on the secret list, ignored by git, a symlink, outside the repo,
  * binary or over 1 MB. MissingFileError passes through for checkpoints.
  */
-function readCitable(root: string, asked: string): WireFile {
+function readCitable(root: string, asked: string, deadline?: number): WireFile {
   if (isSecretFile(asked)) throw new HelperError(say.secret(asked));
   let abs: string;
   try {
@@ -181,8 +182,8 @@ function readCitable(root: string, asked: string): WireFile {
     throw new HelperError(`redcrayon: ${(err as Error).message}.`); // escapes, symlinks, non-files: readSource's own sentences
   }
   // the flows' spelling: on disk (realpath), then git's (G17)
-  const path = gitSpelling(root, canonicalRepoPath(root, asked));
-  if (isSecretFile(path) || !gitIsCitable(root, path)) throw new HelperError(say.secret(asked));
+  const path = gitSpelling(root, canonicalRepoPath(root, asked), remainingMs(deadline));
+  if (isSecretFile(path) || !gitIsCitable(root, path, remainingMs(deadline))) throw new HelperError(say.secret(asked));
   const size = statSync(abs).size;
   if (size > MAX_FILE_BYTES) throw new HelperError(say.tooLarge(asked, size));
   let bytes: Buffer;
@@ -193,14 +194,14 @@ function readCitable(root: string, asked: string): WireFile {
     throw err;
   }
   if (bytes.length > MAX_FILE_BYTES) throw new HelperError(say.tooLarge(asked, bytes.length));
-  return { path, bytes: bytes.toString('base64'), sha: gitHashObject(root, path, bytes), citable: true };
+  return { path, bytes: bytes.toString('base64'), sha: gitHashObject(root, path, bytes, remainingMs(deadline)), citable: true };
 }
 
 // A cited file the helper will not upload is not a refusal of the checkpoint:
 // the flow reads it as missing (its refs go stale) or unreadable (left as they are).
-function checkpointFile(root: string, path: string): WireFile | AbsentFile {
+function checkpointFile(root: string, path: string, deadline?: number): WireFile | AbsentFile {
   try {
-    return { ...readCitable(root, path), path };
+    return { ...readCitable(root, path, deadline), path };
   } catch (err) {
     if (err instanceof MissingFileError) return { path, missing: true };
     if (err instanceof HelperError) return { path, unreadable: true };
@@ -257,11 +258,11 @@ export type CaptureOpts = {
 };
 
 /** The body `POST /facts` takes for one capture (spec §5 Upload table); throws HelperError on a local refusal. */
-export function buildCapture(kind: CaptureKind, opts: CaptureOpts): CaptureBody {
-  const { root, state } = checkout(opts.cwd);
-  const objectFormat = gitObjectFormat(root);
-  const remote = githubRemote(gitRemoteUrl(root));
-  const common = { v: CAPTURE_VERSION, helper: HELPER_VERSION, toplevel: root, objectFormat, head: gitHead(root), ...(remote === undefined ? {} : { remote }) } as const;
+export function buildCapture(kind: CaptureKind, opts: CaptureOpts, deadline?: number): CaptureBody {
+  const { root, state } = checkout(opts.cwd, deadline);
+  const objectFormat = gitObjectFormat(root, remainingMs(deadline));
+  const remote = githubRemote(gitRemoteUrl(root, remainingMs(deadline)));
+  const common = { v: CAPTURE_VERSION, helper: HELPER_VERSION, toplevel: root, objectFormat, head: gitHead(root, remainingMs(deadline)), ...(remote === undefined ? {} : { remote }) } as const;
   if (kind === 'start') return { ...common, kind };
 
   if (kind === 'ref' || kind === 'cite') {
@@ -269,7 +270,7 @@ export function buildCapture(kind: CaptureKind, opts: CaptureOpts): CaptureBody 
     if (opts.board !== undefined) boardId(opts.board);
     let file: WireFile;
     try {
-      file = readCitable(root, opts.path);
+      file = readCitable(root, opts.path, deadline);
     } catch (err) {
       if (err instanceof MissingFileError) throw new HelperError(`redcrayon: ${err.message}.`);
       throw err;
@@ -283,19 +284,19 @@ export function buildCapture(kind: CaptureKind, opts: CaptureOpts): CaptureBody 
   if (!SHA_RE.test(base)) throw new HelperError(`redcrayon: --base takes the session's baseSha, not '${base}'.`);
   // What git says changed, exactly as mark_checkpoint asks it locally: the
   // index first, then git's content check for each stat-only candidate.
-  const candidates = gitChangeCandidates(root, base);
-  const answers = gitConfirmChanged(root, base, candidates.filter(c => !c.sure).map(c => c.path));
+  const candidates = gitChangeCandidates(root, base, remainingMs(deadline));
+  const answers = gitConfirmChanged(root, base, candidates.filter(c => !c.sure).map(c => c.path), remainingMs(deadline));
   const uncompared: Record<string, string> = {};
   for (const [p, a] of answers) if (a.reason) uncompared[p] = a.reason;
   const changed = candidates.filter(c => c.sure || answers.get(c.path)?.changed).map(c => c.path);
-  const files = [...new Set([...readCited(state, opts.board), ...(opts.also ?? [])])].map(p => checkpointFile(root, p));
+  const files = [...new Set([...readCited(state, opts.board), ...(opts.also ?? [])])].map(p => checkpointFile(root, p, deadline));
   const changedSet = new Set(changed);
   const hunks: CheckpointBody['hunks'] = {};
   // An unreadable file's ok refs stay ok, so coverage still asks for its hunks: numbers only.
   for (const f of files) {
     if ('missing' in f || !changedSet.has(f.path)) continue;
     try {
-      hunks[f.path] = gitHunks(root, base, f.path).map(h => [h.start, h.end]);
+      hunks[f.path] = gitHunks(root, base, f.path, remainingMs(deadline)).map(h => [h.start, h.end]);
     } catch (err) {
       if (!(err instanceof GitOutputTooLargeError || err instanceof GitTimeoutError)) throw err;
       hunks[f.path] = err.detail; // the flow notes it: the file's changed lines are unknown
@@ -307,12 +308,12 @@ export function buildCapture(kind: CaptureKind, opts: CaptureOpts): CaptureBody 
     base,
     changed,
     uncompared,
-    untracked: gitUntracked(root),
-    deleted: gitDeleted(root, base),
+    untracked: gitUntracked(root, remainingMs(deadline)),
+    deleted: gitDeleted(root, base, remainingMs(deadline)),
     hunks,
     files,
-    pushed: gitHeadPushed(root),
-    dirty: gitDirtyPaths(root, files.map(f => f.path)),
+    pushed: gitHeadPushed(root, remainingMs(deadline)),
+    dirty: gitDirtyPaths(root, files.map(f => f.path), remainingMs(deadline)),
   };
   const size = Buffer.byteLength(JSON.stringify(body));
   if (size > MAX_BODY_BYTES) throw new HelperError(say.bodyTooLarge(size));
