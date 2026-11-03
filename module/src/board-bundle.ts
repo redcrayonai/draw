@@ -9,7 +9,7 @@ export const BUNDLE_VERSION = 1;
 /** UTF-8 bytes of a whole bundle file. */
 export const MAX_BUNDLE_BYTES = 16 * 1024 * 1024;
 
-type Codec = 'u64' | 'u32' | 'i32' | 'f32' | 'bool' | 'string' | 'time' | 'identity' | 'u64[]' | 'string[]' | 'u64?';
+type Codec = 'u64' | 'u32' | 'i32' | 'f32' | 'f64' | 'bool' | 'string' | 'time' | 'identity' | 'u64[]' | 'string[]' | 'u64?';
 type Cols = Record<string, Codec>;
 
 // Format v1. Each section is one board-owned table; its columns, in key order. A column left out
@@ -23,6 +23,7 @@ export const SECTIONS = {
   edgeEvidenceHashes: { table: 'edgeEvidenceHash', cols: { edgeId: 'u64', lineHash: 'string' } },
   charts: { table: 'chart', cols: { nodeId: 'u64', type: 'string', csv: 'string', options: 'string', source: 'string', updatedAt: 'time' } },
   nodeIcons: { table: 'nodeIcon', cols: { nodeId: 'u64', icon: 'string' } },
+  chartAnchors: { table: 'chartAnchor', cols: { nodeId: 'u64', targetKind: 'string', targetId: 'u64' } },
   hideSets: { table: 'hideSet', cols: { id: 'u64', name: 'string', createdBy: 'string' } },
   hideSetMembers: { table: 'hideSetMember', cols: { setId: 'u64', targetKind: 'string', targetId: 'u64' } },
   repoFiles: { table: 'repoFile', cols: { path: 'string' } },
@@ -36,6 +37,7 @@ export const SECTIONS = {
   sessionRoute: { table: 'sessionRoute', one: true, cols: { nodeIds: 'u64[]', currentIndex: 'i32', revision: 'u32', currentCheckpoint: 'u32', updatedAt: 'time' } },
   sessionRemote: { table: 'sessionRemote', one: true, cols: { remoteUrl: 'string', pushedHead: 'string', dirtyPaths: 'string[]' } },
   tracePlayback: { table: 'tracePlayback', one: true, cols: { spans: 'string', source: 'string', title: 'string', seq: 'u32', playedAt: 'time' } },
+  boardWindow: { table: 'boardWindow', one: true, cols: { startMs: 'f64', endMs: 'f64', updatedAt: 'time' } },
 } as const satisfies Record<string, { table: string; one?: true; cols: Cols }>;
 
 // Every other table and why a bundle leaves it out: the coverage inventory. scripts/verify-versions-local.mjs
@@ -51,6 +53,7 @@ export const LEFT_OUT: Record<string, string> = {
   workspaceBoardGrant: AUTH, workspaceTeamGrant: AUTH, workspaceInvite: AUTH, publicBoard: AUTH,
   linkShare: 'share token', linkVisit: 'share token', chartEmbed: 'share token', chartEmbedVisit: 'share token',
   boardEmbed: 'share token', boardEmbedVisit: 'share token', guestBoard: AUTH, guestClaimOffer: AUTH, boardCreation: 'creation receipt',
+  boardLifetime: 'a restored board lasts, whatever the saved one was', incident: 'belongs to its live alert group: a restored copy must not catch that group\'s next notification',
   boardStats: 'derived; recomputed for the restored board', activityOutbox: 'activity feed; the restored board starts its own',
   markWaiter: LIVE, cursor: LIVE, selection: LIVE, openBoard: LIVE, markRead: "each person's read position",
   nodeTouch: 'the agent that last edited a node, which routes new marks to it: agent access',
@@ -95,6 +98,7 @@ function decode(codec: Codec, v: unknown, at: string, conv: Convert): unknown {
     case 'u32': return int(0, 4294967295);
     case 'i32': return int(-2147483648, 2147483647);
     case 'f32': return typeof v === 'number' && Number.isFinite(v) && Math.abs(v) <= 3.4028234663852886e38 ? v : fail(`${at} must be a finite number`);
+    case 'f64': return typeof v === 'number' && Number.isFinite(v) ? v : fail(`${at} must be a finite number`);
     case 'bool': return typeof v === 'boolean' ? v : fail(`${at} must be true or false`);
     case 'string': return typeof v === 'string' ? v : fail(`${at} must be a string`);
     case 'time': return typeof v === 'string' && /^-?(0|[1-9]\d{0,18})$/.test(v) ? conv.time(BigInt(v)) : fail(`${at} must be microseconds as a decimal string`);
@@ -173,10 +177,11 @@ function checkRelations(b: any): void {
   };
   const charts = new Set(b.nodes.filter((n: any) => n.kind === 'chart').map((n: any) => n.id));
   for (const e of b.edges) { target('node', e.fromNode, `edge ${e.id}`); target('node', e.toNode, `edge ${e.id}`); }
-  for (const [section, key, within] of [['edgeWeights', 'edgeId', edges], ['edgeMotions', 'edgeId', edges], ['edgeEvidenceHashes', 'edgeId', edges], ['charts', 'nodeId', charts], ['nodeIcons', 'nodeId', nodes], ['codeRefHashes', 'refId', refs]] as const) {
-    for (const id of keys(b[section], key, section)) if (!within.has(id)) fail(`${section} names ${key} ${id}, which is not in the bundle${section === 'charts' ? ' as a chart node' : ''}`);
+  for (const [section, key, within] of [['edgeWeights', 'edgeId', edges], ['edgeMotions', 'edgeId', edges], ['edgeEvidenceHashes', 'edgeId', edges], ['charts', 'nodeId', charts], ['chartAnchors', 'nodeId', charts], ['nodeIcons', 'nodeId', nodes], ['codeRefHashes', 'refId', refs]] as const) {
+    for (const id of keys(b[section], key, section)) if (!within.has(id)) fail(`${section} names ${key} ${id}, which is not in the bundle${within === charts ? ' as a chart node' : ''}`);
   }
   for (const m of b.hideSetMembers) { if (!sets.has(m.setId)) fail(`a hide set member names set ${m.setId}, which is not in the bundle`); target(m.targetKind, m.targetId, `hide set ${m.setId}`); }
+  for (const a of b.chartAnchors) target(a.targetKind, a.targetId, `chart pin ${a.nodeId}`);
   for (const r of b.codeRefs) target(r.targetKind, r.targetId, `code ref ${r.id}`);
   for (const n of b.changeNotes) { target('node', n.anchorId, 'a change note'); if (!refs.has(n.refId)) fail(`a change note names code ref ${n.refId}, which is not in the bundle`); }
   for (const t of b.threats) target('node', t.anchorId, 'a threat');
@@ -225,6 +230,7 @@ export function restoreBoard(ctx: any, b: BundleBoard, boardId: bigint, epoch: u
   for (const h of b.edgeEvidenceHashes) db.edgeEvidenceHash.insert({ ...h, edgeId: to(edges, h.edgeId), boardId });
   for (const c of b.charts) db.chart.insert({ ...c, nodeId: to(nodes, c.nodeId), boardId });
   for (const i of b.nodeIcons) db.nodeIcon.insert({ ...i, nodeId: to(nodes, i.nodeId), boardId });
+  for (const a of b.chartAnchors) db.chartAnchor.insert({ ...a, nodeId: to(nodes, a.nodeId), boardId, targetId: target(a.targetKind, a.targetId) });
   for (const s of b.hideSets) sets.set(s.id, db.hideSet.insert({ ...s, id: 0n, boardId }).id);
   for (const m of b.hideSetMembers) db.hideSetMember.insert({ id: 0n, setId: to(sets, m.setId), targetKind: m.targetKind, targetId: target(m.targetKind, m.targetId) });
   for (const f of b.repoFiles) db.repoFile.insert({ id: 0n, boardId, path: f.path });
@@ -237,6 +243,7 @@ export function restoreBoard(ctx: any, b: BundleBoard, boardId: bigint, epoch: u
   for (const t of b.threats) db.threat.insert({ ...t, id: 0n, boardId, anchorId: to(nodes, t.anchorId) });
   for (const m of b.marks) db.mark.insert({ ...m, id: 0n, boardId, nodeId: to(nodes, m.nodeId), preferredAgent: '', claimedBy: '', leaseUntil: epoch, claimGen: 0 });
   for (const e of b.routeEvents) db.routeEvent.insert({ ...e, id: 0n, boardId, nodeId: e.nodeId === undefined ? undefined : to(nodes, e.nodeId), nodeIds: e.nodeIds.map((id: bigint) => to(nodes, id)) });
+  if (b.boardWindow) db.boardWindow.insert({ ...b.boardWindow, boardId });
   if (b.session) db.session.insert({ ...b.session, id: 0n, boardId });
   if (b.sessionRoute) db.sessionRoute.insert({ ...b.sessionRoute, boardId, nodeIds: b.sessionRoute.nodeIds.map((id: bigint) => to(nodes, id)) });
   if (b.sessionRemote) db.sessionRemote.insert({ ...b.sessionRemote, boardId });

@@ -150,7 +150,7 @@ v2 and a decoder from v1 into it. A server refuses a bundle with a newer version
 A restore validates, before any write: size, JSON, format, version, checksum,
 every field's type, unique ids and keys, and these relationships, which the live
 board keeps by cascade: edge ends, edge weights and line hashes, charts on chart
-nodes, icons, hide-set members and their sets, code ref targets, code-ref hashes,
+nodes, chart pins, icons, hide-set members and their sets, code ref targets, code-ref hashes,
 change-note anchors and main refs, threat anchors. It does not re-run editorial
 rules (grid, tokens, chart contracts): rows were valid when written, and older
 rows may predate a rule, as undo already assumes.
@@ -168,6 +168,8 @@ In the bundle (`SECTIONS` in `module/src/board-bundle.ts`):
 | `edgeEvidenceHashes` | `edge_evidence_hash` | Line hashes stay, so citations can be re-checked. |
 | `charts` | `chart` | Chart nodes only. |
 | `nodeIcons` | `node_icon` | |
+| `chartAnchors` | `chart_anchor` | A chart's pin. Chart and target remapped. |
+| `boardWindow` | `board_window` | The shared time window. |
 | `hideSets`, `hideSetMembers` | `hide_set`, `hide_set_member` | Hidden content and its named sets. |
 | `repoFiles` | `repo_file` | |
 | `codeRefs` | `code_ref` | All columns but `snippet` (code text). |
@@ -192,6 +194,8 @@ table in neither list):
 | `mark_read` | Each person's read position. |
 | `node_touch` | Routes new marks to the agent that last edited a node: agent access. |
 | `board_stats` | Derived; recomputed. |
+| `board_lifetime` | A restored board lasts, whatever the saved one was. |
+| `incident` | Belongs to its live alert group. A restored copy must not catch that group's next notification. |
 | `activity_outbox` | Activity feed; the restored board starts its own. |
 | `board_creation` | Creation receipts. |
 | `code_consent` | Each person's setting. |

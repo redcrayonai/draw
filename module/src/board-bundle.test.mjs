@@ -37,6 +37,8 @@ function seed(db, boardId = 7n) {
   db.edgeEvidenceHash.insert({ edgeId: 11n, boardId, lineHash: 'f'.repeat(32) });
   db.chart.insert({ nodeId: 3n, boardId, type: 'bars', csv: 'a,1', options: '{}', source: 'human:x', updatedAt: time(5n) });
   db.nodeIcon.insert({ nodeId: 1n, boardId, icon: 'database' });
+  db.chartAnchor.insert({ nodeId: 3n, boardId, targetKind: 'edge', targetId: 11n });
+  db.boardWindow.insert({ boardId, startMs: 1700000000000.5, endMs: 1700000900000, updatedAt: time(8n) });
   db.hideSet.insert({ id: 21n, boardId, name: 'vendor', createdBy: 'someone' });
   db.hideSetMember.insert({ id: 22n, setId: 21n, targetKind: 'node', targetId: 2n });
   db.hideSetMember.insert({ id: 23n, setId: 21n, targetKind: 'edge', targetId: 11n });
@@ -84,6 +86,8 @@ test('capture, parse and restore round-trip every row with consistent new ids', 
   assert.equal(e.evidenceSnippet, '');
   assert.deepEqual(again.hideSetMembers.map(m => m.targetId), [n2, String(e.id)]);
   assert.equal(again.charts[0].nodeId, String(ids.get('n3')));
+  assert.deepEqual(again.chartAnchors, [{ nodeId: String(ids.get('n3')), targetKind: 'edge', targetId: String(e.id) }]);
+  assert.deepEqual(again.boardWindow, { startMs: 1700000000000.5, endMs: 1700000900000, updatedAt: '8' });
   assert.equal(again.codeRefs[0].targetId, n1);
   assert.deepEqual(JSON.parse(again.changeNotes[0].readers).map(r => r.refId), [again.codeRefs[0].id, '0']);
   assert.equal(again.marks[0].nodeId, '0', 'a mark on a deleted node never points at another row');
@@ -113,6 +117,9 @@ test('parseBundle refuses corrupt, unsupported, oversized and inconsistent bundl
   const resealed = b => bundleText(b);
   rejects(resealed({ ...board, edges: [{ ...board.edges[0], toNode: '4242' }] }), 'points at node 4242');
   rejects(resealed({ ...board, charts: [{ ...board.charts[0], nodeId: board.nodes[0].id }] }), 'as a chart node');
+  rejects(resealed({ ...board, chartAnchors: [{ ...board.chartAnchors[0], nodeId: board.nodes[0].id }] }), 'as a chart node');
+  rejects(resealed({ ...board, chartAnchors: [{ ...board.chartAnchors[0], targetId: '4242' }] }), 'points at edge 4242');
+  rejects(resealed({ ...board, boardWindow: { ...board.boardWindow, startMs: '1' } }), 'board.boardWindow.startMs must be a finite number');
   rejects(resealed({ ...board, nodes: [...board.nodes, board.nodes[0]] }), 'nodes repeats id');
   rejects(resealed({ ...board, nodes: [{ ...board.nodes[0], x: 1.5 }] }), 'board.nodes[0].x must be an integer');
   rejects(resealed({ ...board, nodes: [{ ...board.nodes[0], extra: 1 }] }), 'must have exactly the fields');

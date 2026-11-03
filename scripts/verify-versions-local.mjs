@@ -205,6 +205,9 @@ before(async () => {
     JSON.stringify([{ label: 'drop name', startLine: 1, endLine: 2 }]), '', JSON.stringify([{ table: 'customers', column: 'name' }]), '[]', 'agent']);
   await ok(O, 'add_threat', [B, a, 'vulnerable', 'high', 'openssl RCE', 'Heap overflow.', '9.8', 'openssl@3.0.1', '3.0.7', '["cve"]', '', 'agent']);
   await ok(O, 'create_chart', [B, 'latency', '', 0, 160, 352, 224, 'timeseries', 'time,p99\n10:00,40\n10:05,44\n', NONE, NONE]);
+  const [latency] = await sql(OWNER, `SELECT id FROM node WHERE board_id = ${B} AND kind = 'chart'`);
+  await ok(O, 'anchor_chart', [latency.id, 'edge', edge.id]);
+  await ok(O, 'set_board_window', [B, 1700000000000, 1700000900000]);
   await ok(O, 'set_node_icon', [a, 'queue']);
   await ok(O, 'set_edge_weight', [edge.id, 'bold']);
   await ok(O, 'set_edge_motion', [edge.id, 'dots', 'fast']);
@@ -271,6 +274,10 @@ test('save, list and restore a complete board into a new private board; the orig
   const [chart] = await sql(OWNER, `SELECT * FROM chart WHERE board_id = ${R}`);
   assert.equal(chart.nodeId, byLabel.latency.id);
   assert.equal(chart.csv, 'time,p99\n10:00,40\n10:05,44\n');
+  const [pin] = await sql(OWNER, `SELECT * FROM chart_anchor WHERE board_id = ${R}`);
+  assert.deepEqual([pin.nodeId, pin.targetKind, pin.targetId], [byLabel.latency.id, 'edge', calls.id]);
+  const [window] = await sql(OWNER, `SELECT * FROM board_window WHERE board_id = ${R}`);
+  assert.deepEqual([window.startMs, window.endMs], [1700000000000, 1700000900000]);
   const [newRef] = await sql(OWNER, `SELECT * FROM code_ref WHERE board_id = ${R}`);
   assert.deepEqual([newRef.targetId, newRef.snippet, newRef.symbol], [byLabel.a.id, '', 'verify']);
   const [note] = await sql(OWNER, `SELECT * FROM change_note WHERE board_id = ${R}`);
@@ -326,6 +333,18 @@ test('two restores by one person at once both finish (two tabs)', async () => {
   assert.equal(r1.error, undefined, r1.error);
   assert.equal(r2.error, undefined, r2.error);
   assert.notEqual(r1.boardId, r2.boardId);
+});
+
+test('a restored incident board is an ordinary lasting board, with its window', async () => {
+  const { who: P, W } = await ownWorkspace('snap-incident');
+  const L = await board(P, W, 'snap-incident');
+  await nodeOn(P, L, 'root');
+  await ok(P, 'open_incident', [L, 'group-1', 'Checkout down', 'firing', 1700000000000]);
+  const [incident] = await sql(OWNER, `SELECT board_id FROM incident WHERE source_board_id = ${L}`);
+  const R = await restore(P, await save(P, incident.boardId));
+  assert.deepEqual(await sql(OWNER, `SELECT board_id FROM incident WHERE board_id = ${R}`), []);
+  assert.deepEqual(await sql(OWNER, `SELECT board_id FROM board_lifetime WHERE board_id = ${R}`), []);
+  assert.equal((await sql(OWNER, `SELECT board_id FROM board_window WHERE board_id = ${R}`)).length, 1);
 });
 
 test('a retried restore makes one board; a failed one leaves none and can be retried', async () => {
