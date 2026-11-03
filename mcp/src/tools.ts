@@ -351,7 +351,9 @@ const EDITORIAL_RULES = `Editorial rules (enforced where noted):
 - deletion is the strongest edit; target density ~4/10 with generous whitespace
 - containers are large nodes drawn behind smaller ones: create big, move members inside
 - layout reads left→right: entry points left, services middle, data stores right; 48px+ gutters
-- After drawing, call layout_board; it places nodes left to right and fits boundaries.`;
+- up to about 5 nodes: after drawing, call layout_board unless a person has arranged the board; it places nodes left to right and fits boundaries
+- larger boards: skip layout_board and plan positions in layers, lined up so most edges run straight, 160px+ between nodes in a row, 80px+ between rows, under about 2,500px wide
+- one edge per flow; merge parallel edges only when they describe the same flow; never point an edge at a boundary`;
 
 const BOARD_SUFFIX = ' Returns texts ending in board=<name>, the board it acted on.';
 
@@ -447,7 +449,7 @@ export const TOOLS: Record<string, ToolDef> = {
     title: 'Lay out board',
     scope: 'board:write',
     description:
-      'Lay out the board left to right: entry points left, data stores right, members kept inside their containers, room left for edge labels. Moves nodes and resizes containers (boundaries, and any non-chart node drawn around others) to fit their members; hidden nodes stay where they are; other node sizes do not change. Call it after a pass that added nodes or edges, before mark_checkpoint; skip it when a person has arranged the board. Returns "committed layout: moved <n>, resized <m> board=<name>".',
+      'Lay out the board left to right: entry points left, data stores right, members kept inside their containers, room left for edge labels. Moves nodes and resizes containers (boundaries, and any non-chart node drawn around others) to fit their members; hidden nodes stay where they are; other node sizes do not change. Call it after a pass that added nodes or edges, before mark_checkpoint; skip it when a person has arranged the board or you planned the positions of a larger board, since it can make even a board of about 10 nodes very wide. If the result is more than about twice as wide as tall, arrange it by hand with resize_node. Returns "committed layout: moved <n>, resized <m> board=<name>".',
     input: z.object({ board: boardArg }).strict(),
     async run({ board }, t) {
       const b = await boardOf(t, board);
@@ -1347,7 +1349,7 @@ export const TOOLS: Record<string, ToolDef> = {
       'nodes take create_node fields except board, plus a unique key (a letter followed by up to 39 letters, digits, underscores or hyphens). Nodes must differ in label, sublabel, x or y. ' +
       'edges take create_edge fields except board; fromNode and toNode accept existing numeric ids or "$key" for a node in this batch. Each source edge needs its own capture; the plugin fills these in. ' +
       'Independent creates run up to 3 at a time; edges run one at a time when any edge cites source. Each operation has the same checks and counts as one tool call. ' +
-      'Set layout=true only when a person has not arranged the board; when time is short it asks for a separate layout_board call. Returns JSON { complete, nodes: { key: id }, edges: [id or null], results }. edges matches input order; null means no confirmed id. results lists attempted operations in input order, nodes then edges then layout. ' +
+      'Set layout=true only on a board of about 5 nodes or fewer that a person has not arranged; give a larger board planned x and y instead. When time is short it asks for a separate layout_board call. Returns JSON { complete, nodes: { key: id }, edges: [id or null], results }. edges matches input order; null means no confirmed id. results lists attempted operations in input order, nodes then edges then layout. ' +
       'This is not a transaction: a failure stops later operations after in-flight calls settle and returns completed ids. Call get_board before retrying; do not repeat the whole batch blindly.',
     get input() { return applyBoardInput(TOOLS.create_node.input, TOOLS.create_edge.input); },
     async run(args, t) {

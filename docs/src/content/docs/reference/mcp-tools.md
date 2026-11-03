@@ -33,7 +33,7 @@ says why, and the first word tells the agent what to do:
 | `update_node` | Changes a node's label, sublabel, colour, kind or focus. |
 | `move_node` | Moves a node. |
 | `resize_node` | Resizes a node. |
-| `layout_board` | Lays the board out left to right: entry points left, data stores right. |
+| `layout_board` | Lays the board out left to right: entry points left, data stores right. Best for about 5 nodes or fewer; plan positions on larger boards. |
 | `hide_node` | Hides a node and its edges without deleting them. |
 | `delete_node` | Deletes a node and its edges. |
 | `create_edge` | Connects two nodes, with a label and the source line that proves the link. |
