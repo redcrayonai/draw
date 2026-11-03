@@ -83,3 +83,37 @@ REDCRAYON_MCP_URL=http://localhost:8788/mcp claude
 This sets the server and the code-ref helper to the same local endpoint.
 Other MCP clients use the URL directly. For their code refs, run
 `REDCRAYON_MCP_URL=http://localhost:8788/mcp npx -y @redcrayonai/draw@1 capture`.
+
+## Versions (optional)
+
+The Versions plugin keeps saved versions of boards in an S3-compatible bucket
+you run or rent ([PLUGINS.md](PLUGINS.md)). It needs real sign-in, because
+workspaces do. Put these in `.env`, then run `docker compose up --build`:
+
+| Variable | Value |
+|---|---|
+| `VERSIONS_S3_ENDPOINT` | the store's URL; requests are path-style (`<endpoint>/<bucket>/<key>`) |
+| `VERSIONS_S3_BUCKET` | an existing, empty bucket only this deployment writes |
+| `VERSIONS_S3_REGION` | the region the store expects, e.g. `us-east-1` |
+| `VERSIONS_S3_ACCESS_KEY_ID` | optional: a key that can read and write objects in the bucket |
+| `VERSIONS_S3_SECRET_ACCESS_KEY` | optional: its secret; it stays on the dashboard server |
+
+Set the endpoint, bucket and region: the dashboard offers Versions, and each
+workspace's owners and admins turn it on under **Settings › Plugins**.
+
+Set both keys, or leave both empty to use the machine's role instead: an EC2
+instance profile, read through the instance metadata service (IMDSv2), or an
+ECS task role. The role needs read and write on the bucket's objects. On EC2,
+set the instance's metadata hop limit to 2, or containers cannot reach it.
+EKS roles (IRSA, Pod Identity) are not read; give those deployments keys. The dashboard container reaches
+the store over the network: `localhost` there is the container, so use a service
+on the stack's network or a public address (Docker Desktop: `host.docker.internal`).
+
+To check a store before you use it, run the end-to-end suite against it from a
+checkout (it writes a few small objects under `versions/`):
+
+```sh
+VERSIONS_S3_ENDPOINT=http://127.0.0.1:9000 VERSIONS_S3_BUCKET=draw-versions-test \
+VERSIONS_S3_REGION=us-east-1 VERSIONS_S3_ACCESS_KEY_ID=... VERSIONS_S3_SECRET_ACCESS_KEY=... \
+  nix develop --command scripts/stdb-test.sh versions
+```

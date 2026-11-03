@@ -36,6 +36,9 @@ The 2026-10-23 true-up added cases for code consent (RC-690), agent grants, gues
 Each case cites the decided behavior it checks; cases where main does not yet do what was decided are marked `test.fail()` with a `divergent (<id>)` comment, so fixing the product flips them red until the mark is removed.
 `signIn`, `signOut`, `signInOnRequest` and `providerDown` drive the test auth provider per browser context, and `test.use({ clientEnv })` builds a file's own canvas (for example with `VITE_MCP_URL`).
 
+The Versions save and restore case (`tests/board-versions.spec.ts`) needs an S3-compatible store: set the
+`VERSIONS_S3_*` variables ([SELF_HOSTING.md](../SELF_HOSTING.md#versions-optional)). Without them it is skipped.
+
 To test an existing canvas, set its URL:
 
 ```sh

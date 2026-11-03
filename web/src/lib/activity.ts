@@ -63,6 +63,8 @@ export function phrase(e: ActivityEvent, board: string): string {
   switch (e.type) {
     case 'board.created':
       return `created ${board}`;
+    case 'board.restored':
+      return `restored ${board} from a saved version`;
     case 'board.shared':
       return `shared ${board} with a team`;
     case 'board.unshared':

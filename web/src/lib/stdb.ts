@@ -13,6 +13,7 @@ import { DbConnection } from '../module_bindings';
 import type { AgentGrantRow, AgentLinkRow, BoardSlugRow, MyBoard, MyCodeConsentRow } from '../module_bindings/types';
 import { config } from './config';
 import { attachWorkspaces, resetWorkspaces } from './workspaces';
+import { attachPlugins, resetPlugins } from './plugins';
 import { toEvent, type ActivityResult } from './activity';
 import type { ArchitectureHistory, ArchitectureVersion } from './history';
 import { clearAnonymousToken, readAnonymousToken, saveAnonymousToken } from './anonymous-identity';
@@ -162,6 +163,7 @@ export function disconnect(): void {
   conn = null;
   c?.disconnect(); // its callbacks are now stale
   resetWorkspaces();
+  resetPlugins();
   boards.set([]);
   links.set([]);
   grants.set([]);
@@ -254,6 +256,7 @@ async function open(g: number, tokens: TokenSource): Promise<void> {
         table.onUpdate(sync);
       }
       attachWorkspaces(c, stale);
+      attachPlugins(c, stale);
       // The feed has a subscription of its own: a server without my_activity
       // blanks the Activity panel, not the boards.
       const feed = () => {

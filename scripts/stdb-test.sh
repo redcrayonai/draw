@@ -14,6 +14,9 @@
 #                                                  git, then helper captures), stop
 #   scripts/stdb-test.sh mcp                       start, publish fresh, run the mcp
 #                                                  Worker's tools against it, stop
+#   scripts/stdb-test.sh versions                  start, publish fresh, run the dashboard's
+#                                                  Versions code against it and the store in
+#                                                  VERSIONS_S3_*, stop
 #   scripts/stdb-test.sh failclosed                start, publish the committed
 #                                                  `none` issuers, check that it
 #                                                  refuses every sender, stop
@@ -112,6 +115,9 @@ suite() {
     node --test "$REPO/scripts/verify-workspaces-local.mjs"
   STDB_URL="$URL" STDB_DB="$DB" STDB_OWNER_TOKEN="$(cat "$ROOT/owner-token")" \
     node --test "$REPO/scripts/verify-workspace-service-accounts-local.mjs"
+  # Versions serves the same issuer key and port, so it runs alone too.
+  STDB_URL="$URL" STDB_DB="$DB" STDB_OWNER_TOKEN="$(cat "$ROOT/owner-token")" \
+    node --test "$REPO/scripts/verify-versions-local.mjs"
   # Skips itself unless the module was published with REDCRAYON_LIMITS=on.
   STDB_URL="$URL" STDB_DB="$DB" STDB_OWNER_TOKEN="$(cat "$ROOT/owner-token")" \
     node --test "$REPO/scripts/verify-limits-local.mjs"
@@ -136,6 +142,15 @@ mcp() {
   STDB_URL="$URL" STDB_DB="$DB" STDB_OWNER_TOKEN="$(cat "$ROOT/owner-token")" pnpm --dir "$REPO/mcp" run test:worker
 }
 
+# Versions end to end (PLUGINS.md): the dashboard server's Versions code against this database and
+# the S3-compatible store the VERSIONS_S3_* variables name, e.g. a local server with an empty bucket.
+versions() {
+  : "${VERSIONS_S3_ENDPOINT:?set VERSIONS_S3_ENDPOINT and the other VERSIONS_S3_* variables (SELF_HOSTING.md) to a local store}"
+  [ -d "$REPO/web/node_modules" ] || pnpm --dir "$REPO/web" install --frozen-lockfile
+  VERSIONS_E2E=1 STDB_URL="$URL" STDB_DB="$DB" STDB_OWNER_TOKEN="$(cat "$ROOT/owner-token")" \
+    pnpm --dir "$REPO/web" exec vitest run src/lib/server/versions.e2e.test.ts
+}
+
 cmd="${1:-}"
 shift || true
 case "$cmd" in
@@ -151,7 +166,7 @@ case "$cmd" in
     legacy
     suite "$@"
     ;;
-  parity|mcp)
+  parity|mcp|versions)
     trap stop EXIT
     start
     publish
@@ -166,7 +181,7 @@ case "$cmd" in
       node --test "$@" "$REPO/scripts/verify-issuers-local.mjs"
     ;;
   *)
-    echo "usage: scripts/stdb-test.sh run|start|publish|legacy|test|parity|mcp|failclosed|stop [node --test args]" >&2
+    echo "usage: scripts/stdb-test.sh run|start|publish|legacy|test|parity|mcp|versions|failclosed|stop [node --test args]" >&2
     exit 2
     ;;
 esac

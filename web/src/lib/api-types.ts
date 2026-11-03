@@ -16,3 +16,6 @@ export interface ApiError { error: string }
 
 /** Legacy organization labels used when displaying older board shares. */
 export type Team = { id: string; name: string; role: string };
+
+/** GET /api/plugins: what this deployment offers; each workspace turns an available plugin on. */
+export interface PluginInfo { id: string; name: string; description: string; available: boolean }

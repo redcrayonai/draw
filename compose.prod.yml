@@ -115,6 +115,12 @@ services:
       IMPORT_RUNNER_SECRET: &import-secret ${IMPORT_RUNNER_SECRET:?set IMPORT_RUNNER_SECRET in .env}
       IMPORT_CALLBACK_URL: &import-callback http://dashboard:5174/api/imports/complete
       IMPORTS_ANONYMOUS: ${IMPORTS_ANONYMOUS:-}
+      # Versions plugin (.env.example): offered with the endpoint, bucket and region; keys or the machine's role.
+      VERSIONS_S3_ENDPOINT: ${VERSIONS_S3_ENDPOINT:-}
+      VERSIONS_S3_BUCKET: ${VERSIONS_S3_BUCKET:-}
+      VERSIONS_S3_REGION: ${VERSIONS_S3_REGION:-}
+      VERSIONS_S3_ACCESS_KEY_ID: ${VERSIONS_S3_ACCESS_KEY_ID:-}
+      VERSIONS_S3_SECRET_ACCESS_KEY: ${VERSIONS_S3_SECRET_ACCESS_KEY:-}
     volumes: [state:/state:ro]
     depends_on:
       module-setup: { condition: service_completed_successfully }

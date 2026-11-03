@@ -8,3 +8,4 @@ export { DbError, type DbRow } from '$shared/db-http';
 const db = () => dbHttp(env.SPACETIMEDB_URL!, env.SPACETIMEDB_DB!);
 export const sqlAs: DbHttp['sqlAs'] = (...args) => db().sqlAs(...args);
 export const callAs: DbHttp['callAs'] = (...args) => db().callAs(...args);
+export const procedureAs: DbHttp['procedureAs'] = (...args) => db().procedureAs(...args);

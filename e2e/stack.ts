@@ -26,8 +26,8 @@ export async function withStack(use: (stack: {
   databaseName: string;
   /** A signed browser session token; claims override the payload, and an undefined value drops that claim. */
   accountToken(claims?: Record<string, unknown>): string;
-  /** Native dashboard with either the signed-in fixture or the real generic OIDC adapter. */
-  startDashboard(provider?: 'fixture' | 'oidc'): Promise<string>;
+  /** Native dashboard with either the signed-in fixture or the real generic OIDC adapter; serverEnv adds its private settings (one dashboard per set). */
+  startDashboard(provider?: 'fixture' | 'oidc', serverEnv?: Record<string, string>): Promise<string>;
   oidcExchanges(): number;
   /** A reducer call as the given token's identity; throws on refusal. */
   callReducer(token: string, reducer: string, args: unknown[]): Promise<void>;
@@ -190,14 +190,15 @@ export async function withStack(use: (stack: {
       databaseUrl: `http://127.0.0.1:${dbPort}`,
       databaseName: env.STDB_TEST_DB,
       oidcExchanges: () => exchanges,
-      async startDashboard(provider = 'fixture') {
-        const existing = dashboards.get(provider);
+      async startDashboard(provider = 'fixture', serverEnv = {}) {
+        const key = `${provider}${JSON.stringify(serverEnv)}`;
+        const existing = dashboards.get(key);
         if (existing) return existing.url;
         const dashboardPort = await freePort();
         const dashboardUrl = `http://127.0.0.1:${dashboardPort}`;
         // Each provider gets its own Svelte output and no local environment files.
         // A simultaneous type-check/build of the checkout must not reload browser tests.
-        const dashboardRoot = join(root, `dashboard-${provider}`);
+        const dashboardRoot = join(root, `dashboard-${provider}-${dashboards.size}`);
         const dashboardWeb = join(dashboardRoot, 'web');
         await mkdir(dashboardWeb, { recursive: true });
         await cp(join(repo, 'web/src'), join(dashboardWeb, 'src'), { recursive: true });
@@ -212,9 +213,9 @@ export async function withStack(use: (stack: {
           VITE_OIDC_ISSUER: browserIssuer, VITE_OIDC_CLIENT_ID: 'redcrayon-e2e',
           VITE_SPACETIME_URI: `ws://127.0.0.1:${dbPort}`, VITE_SPACETIME_DB: env.STDB_TEST_DB,
           VITE_SPACETIME_DB_ALLOWED: '', VITE_CANVAS_URL: url,
-          VITE_REQUIRE_AUTH: '', VITE_MCP_URL: '',
+          VITE_REQUIRE_AUTH: '', VITE_MCP_URL: '', ...serverEnv,
         });
-        dashboards.set(provider, { child, url: dashboardUrl });
+        dashboards.set(key, { child, url: dashboardUrl });
         const deadline = Date.now() + 20_000;
         while (!await fetch(dashboardUrl).then(response => response.ok, () => false)) {
           if (child.exitCode !== null || Date.now() > deadline) throw new Error(`Dashboard did not start; see ${logPath}`);

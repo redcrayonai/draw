@@ -58,6 +58,7 @@ const EXEMPT = {
   workspace_invite: 'created by a signed-in manager, with a server timestamp: the same native board deletion test verifies pending invitation cleanup',
   workspace_service_account: 'board_ids are retained policy references, not owned board data: verify-workspace-service-accounts-local.mjs "machine keys cannot delete histories" proves deleted boards stay inaccessible',
   workspace_api_key: 'retained key audit and scope records: the same machine deletion test proves stale references grant no access',
+  board_version: 'a saved version outlives its board by design (PLUGINS.md): verify-versions-local.mjs "a deleted board keeps its versions for workspace owners and admins only"',
   incident: 'only an incident board has one (B is a session board): verify-incidents-local.mjs "IN deleting an incident board removes its incident, lifetime and window rows"',
   board_lifetime: 'written for incident boards: the same verify-incidents-local.mjs test',
 };

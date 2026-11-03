@@ -11,6 +11,7 @@ import { activityEvent as ev } from './test-rows';
 describe('phrase', () => {
   it.each([
     ['created payments', ev({ type: 'board.created', payload: { name: 'payments', via: 'manual' } })],
+    ['restored payments from a saved version', ev({ type: 'board.restored', payload: { versionId: '5', from: '2' } })],
     ['shared payments with a team', ev({ type: 'board.shared', payload: { orgId: 'org_1' } })],
     ['stopped sharing payments with a team', ev({ type: 'board.unshared', payload: { orgId: 'org_1' } })],
     ['shared payments with an agent', ev({ type: 'board.agent_shared', payload: {} })],
