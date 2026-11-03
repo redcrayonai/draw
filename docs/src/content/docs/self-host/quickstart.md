@@ -175,6 +175,29 @@ dashboard sidebar to create a workspace. Invite collaborators under that
 workspace’s **Settings → Members & access → Invitations**.
 Board and workspace grants control access independently of snippet consent. See [Workspaces and access](/capabilities/workspaces/).
 
+## Upgrade and roll back
+
+For the prebuilt production stack (`compose.prod.yml`), back up the board
+database volume (`stdb`), CLI identity volume (`stdb-cli`), Postgres (`pg`),
+and `.env` before changing releases. Keep the CLI identity: it owns the
+database and is needed to publish updates.
+
+To upgrade, set `REDCRAYON_VERSION` in `.env` to the release you want, then run:
+
+```sh
+docker compose -f compose.prod.yml up -d
+```
+
+To roll back, set `REDCRAYON_VERSION` to the previous release and run the same
+command. When publishing refuses only because the older image lacks live
+columns or tables that contain data, setup logs `kept the live module` and starts
+the apps with the newer database program and its data intact. Empty tables
+can be dropped without a refusal, so not every rollback skips publication.
+
+After a skipped publish, the module’s baked sign-in issuers and
+`REDCRAYON_LIMITS` keep their last published values until you roll forward to
+newer images. Other publish failures still stop setup.
+
 ## Next
 
 Production images, with TLS and real hostnames, are coming to these docs.

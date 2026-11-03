@@ -84,6 +84,29 @@ This sets the server and the code-ref helper to the same local endpoint.
 Other MCP clients use the URL directly. For their code refs, run
 `REDCRAYON_MCP_URL=http://localhost:8788/mcp npx -y @redcrayonai/draw@1 capture`.
 
+## Upgrade and roll back
+
+For the prebuilt production stack (`compose.prod.yml`), back up the board
+database volume (`stdb`), CLI identity volume (`stdb-cli`), Postgres (`pg`),
+and `.env` before changing releases. Keep the CLI identity: it owns the
+database and is needed to publish updates.
+
+To upgrade, set `REDCRAYON_VERSION` in `.env` to the release you want, then run:
+
+```sh
+docker compose -f compose.prod.yml up -d
+```
+
+To roll back, set `REDCRAYON_VERSION` to the previous release and run the same
+command. When publishing refuses only because the older image lacks live
+columns or tables that contain data, setup logs `kept the live module` and starts
+the apps with the newer database program and its data intact. Empty tables
+can be dropped without a refusal, so not every rollback skips publication.
+
+After a skipped publish, the module’s baked sign-in issuers and
+`REDCRAYON_LIMITS` keep their last published values until you roll forward to
+newer images. Other publish failures still stop setup.
+
 ## Versions (optional)
 
 The Versions plugin keeps saved versions of boards in an S3-compatible bucket
