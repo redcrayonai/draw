@@ -121,7 +121,7 @@ test('ci-ready requires every additional caller prerequisite', () => {
 test('local module publishers backfill board slugs after publication', () => {
   for (const script of ['scripts/dev.sh', 'scripts/dev-dashboard.sh', 'docker/prod/module-setup.sh']) {
     const text = read(script);
-    const published = text.search(/spacetime publish |publish-module\.sh\n/);
+    const published = text.search(/spacetime publish |publish-module\.sh(?:\n|;)/);
     assert.ok(published !== -1 && text.indexOf('/call/backfill_board_slugs') > published, `${script} runs backfill_board_slugs after its publish`);
   }
   // docker/setup.sh publishes through scripts/dev-dashboard.sh

@@ -86,10 +86,10 @@ Other MCP clients use the URL directly. For their code refs, run
 
 ## Upgrade and roll back
 
-For the prebuilt production stack (`compose.prod.yml`), back up the board
-database volume (`stdb`), CLI identity volume (`stdb-cli`), Postgres (`pg`),
-and `.env` before changing releases. Keep the CLI identity: it owns the
-database and is needed to publish updates.
+For the prebuilt production stack, back up the board database, CLI identity,
+and Postgres volumes listed in `compose.prod.yml`, plus `.env`, before changing
+releases. Keep the CLI identity: it owns the database and is needed to publish
+updates.
 
 To upgrade, set `REDCRAYON_VERSION` in `.env` to the release you want, then run:
 
