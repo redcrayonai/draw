@@ -364,6 +364,27 @@ test('edit links combine with viewer membership and survive explicit workspace m
   await denied(viewer, 'create_node', nodeArgs(B, 'viewer after revocation'), 'read only');
 });
 
+test('a view link on a workspace board hands its token to the visitor who opened it', async () => {
+  const creator = person(), companyOwner = person(), viewer = person(), visitor = person();
+  const W = await workspace(companyOwner, 'view-link-company');
+  await member(companyOwner, W, creator);
+  await member(companyOwner, W, viewer);
+  const B = await board(creator, W, 'view-link-board');
+  await ok(companyOwner, 'set_workspace_board_member', [B, id(viewer), 'viewer']);
+  const share = token();
+  await ok(creator, 'set_link_share', [B, 'view', share]);
+  assert.equal((await boardRows(viewer, 'my_boards', B))[0].linkToken, '', 'a viewer who has not opened the link does not get its token');
+  await ok(visitor, 'open_shared_link', [share]);
+  const row = (await boardRows(visitor, 'my_boards', B))[0];
+  assert.equal(row.linkToken, share, 'the canvas finds a #s= board by this token');
+  assert.equal(row.linkMode, 'view');
+  await ok(viewer, 'open_shared_link', [share]);
+  assert.equal((await boardRows(viewer, 'my_boards', B))[0].linkToken, share, 'a viewer gets it once they open the link');
+  await ok(creator, 'stop_link_share', [B]);
+  assert.equal(await sees(visitor, B), false);
+  assert.equal((await boardRows(viewer, 'my_boards', B))[0].linkToken, '', 'revoking the link takes the token back');
+});
+
 test('invitations are private, seven-day, one-use links with cancellation', async () => {
   const owner = person(), recipient = person(), other = person(), stranger = person();
   const W = await workspace(owner, 'one-use-invites');
@@ -488,6 +509,20 @@ test('revoking a human editor removes delegated agent content from live and HTTP
     await denied(service, 'grant_hosted_agent_board', [id(a), id(editor), String(B)], 'unavailable');
     await node(owner, B, 'owner retained access');
   } finally { tab.disconnect(); }
+});
+
+test('a linked agent that opens an incident from a workspace board keeps editing the incident board', async () => {
+  const owner = person(), a = agent();
+  const W = await workspace(owner, 'incident-agent');
+  const B = await board(owner, W, 'incident-source');
+  await node(owner, B, 'api');
+  await ok(service, 'link_hosted_agent', [id(a), id(owner)]);
+  await ok(owner, 'grant_agent_board', [B, id(a)]);
+  await ok(a, 'open_incident', [B, 'agent:checkout errors', 'Incident: checkout errors', 'firing', 0]);
+  const [inc] = (await rows(a, 'my_incidents')).filter(row => row.sourceBoardId === B);
+  assert.ok(inc, 'the agent reads the incident it opened');
+  await node(a, inc.boardId, 'agent finding');
+  assert.equal(await sees(owner, inc.boardId), true, 'the workspace owner reads it too');
 });
 
 test('assigning an agent workspace membership cannot replace an explicit board delegation', async () => {

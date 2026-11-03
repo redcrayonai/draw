@@ -80,8 +80,9 @@ test('the live switch shows with a hosted server, and with no tap offers a promp
 
   await liveRow(page).click();
   await expect(liveRow(page)).toHaveAttribute('aria-pressed', 'true');
-  await expect(statusLine(page)).toHaveText('No live source on this board yet.');
-  await liveStatus(page).getByRole('button', { name: 'Copy a prompt for your agent' }).click();
+  await expect(statusLine(page)).toHaveText('No live source yet. Your agent starts one with a tap.');
+  await liveStatus(page).getByRole('button', { name: 'Copy prompt for agent' }).click();
+  await expect(liveStatus(page).getByRole('button', { name: 'Copied · paste to agent' })).toBeVisible();
   await expect.poll(() => page.evaluate(() => navigator.clipboard.readText())).toBe(
     `Start a live tap for board ${B} (call start_tap, write .redcrayon/tap.json, run the command it returns) so I can watch live traffic.`,
   );
@@ -154,9 +155,9 @@ test("a tap's windows make edges flow with rates, errors and direction, then fal
   send(channel, traffic(web, api));
   await expect(edge).toHaveClass(/(^|\s)live(\s|$)/);
   send(channel, { tap: 'gone' });
-  await expect(statusLine(page)).toHaveText('No live source on this board yet.');
+  await expect(statusLine(page)).toHaveText('No live source yet. Your agent starts one with a tap.');
   await expect(edge).not.toHaveClass(/live/);
-  await expect(statusLine(page)).toHaveText('No live source on this board yet.');
+  await expect(statusLine(page)).toHaveText('No live source yet. Your agent starts one with a tap.');
   await expect(liveRow(page)).toHaveAttribute('aria-pressed', 'true');
 });
 

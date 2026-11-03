@@ -3,6 +3,11 @@
 export const REDUCER_ARGS = {
   add_change_note: [['boardId', 'u64', false], ['anchorId', 'u64', false], ['kind', 'string', false], ['severity', 'string', false], ['title', 'string', false], ['summary', 'string', false], ['refId', 'u64', false], ['steps', 'string', false], ['schema', 'string', false], ['subjects', 'string', false], ['readers', 'string', false], ['author', 'string', false]],
   add_code_ref: [['boardId', 'u64', false], ['targetKind', 'string', false], ['targetId', 'u64', false], ['path', 'string', false], ['symbol', 'string', false], ['startLine', 'u32', false], ['endLine', 'u32', false], ['blobSha', 'string', false], ['snippet', 'string', false], ['author', 'string', false]],
+  anchor_chart: [['nodeId', 'u64', false], ['targetKind', 'string', false], ['targetId', 'u64', false]],
+  clear_board_window: [['boardId', 'u64', false]],
+  open_incident: [['sourceBoardId', 'u64', false], ['groupKey', 'string', false], ['title', 'string', false], ['status', 'string', false], ['startsAtMs', 'f64', false]],
+  set_board_window: [['boardId', 'u64', false], ['startMs', 'f64', false], ['endMs', 'f64', false]],
+  unanchor_chart: [['nodeId', 'u64', false]],
   add_repo_files: [['boardId', 'u64', false], ['paths', 'array', false]],
   add_threat: [['boardId', 'u64', false], ['anchorId', 'u64', false], ['stage', 'string', false], ['severity', 'string', false], ['title', 'string', false], ['summary', 'string', false], ['cvss', 'string', false], ['package', 'string', false], ['fixedIn', 'string', false], ['flags', 'string', false], ['source', 'string', false], ['author', 'string', false]],
   arrive_at_checkpoint: [['boardId', 'u64', false], ['nodeId', 'u64', false], ['expectedRevision', 'u32', false], ['expectedCheckpoint', 'u32', false], ['headSha', 'string', false], ['coverage', 'string', false]],

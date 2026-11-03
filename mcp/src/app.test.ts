@@ -3,7 +3,7 @@ import { createApp, ipKey, MARKS_WAIT_MS, MAX_BODY } from './app';
 import { mintMarks, mintTap } from './issuer';
 import { resetAuthCaches, type VerifyBearer } from './auth';
 import type { Env } from './env';
-import { TOOL_NAMES } from './tools';
+import { TOOL_NAMES, TOOLS } from './tools';
 import { memoryCaptures, testEnv } from './test/env';
 import { identityFromClaims } from '../../shared/identity';
 import { MAX_BODY_BYTES } from '../../shared/capture';
@@ -160,7 +160,80 @@ describe('MCP discovery', () => {
 });
 
 describe('tool calls', () => {
-  afterEach(() => vi.unstubAllGlobals());
+  afterEach(() => { vi.unstubAllGlobals(); vi.restoreAllMocks(); });
+
+  it('batches through the usual gate, counting each operation and refusing read-only credentials', async () => {
+    vi.stubGlobal('fetch', async () => new Response(''));
+    const logs = vi.spyOn(console, 'log').mockImplementation(() => {});
+    const writeDataPoint = vi.fn();
+    env.CALLS = { writeDataPoint };
+    const run = vi.spyOn(TOOLS.create_node, 'run').mockImplementation(async args => ({ content: [{ type: 'text', text: `committed id=${args.label === 'api' ? 11 : 12} board=main` }] }));
+    const check = vi.fn(async () => true);
+    const charge = vi.fn(async () => ({ ok: true, used: 1 }));
+    const metered = createApp({ verifyBearer: async auth => {
+      const principal = await verifyBearer(auth);
+      return principal ? { ...principal, userId: 'user_batch' } : null;
+    }, ledger: () => ({ charge, claim: async () => ({ first: true }), settle: async () => {} }), captures: memoryCaptures(), quota: { check } });
+    const node = (key: string) => ({ key, label: key, sublabel: '', x: 0, y: 0, w: 160, h: 64, token: 'ink', focal: false });
+    const send = (token: string, args: Record<string, unknown>) => metered.fetch(new Request(`${BASE}/mcp`, {
+      method: 'POST',
+      headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json', accept: 'application/json, text/event-stream', 'mcp-protocol-version': '2025-06-18' },
+      body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name: 'apply_board', arguments: args } }),
+    }), env);
+    const args = { board: '1', nodes: [node('api'), node('db')] };
+    expect((await send('tok_read', args)).status).toBe(403);
+    expect(run).not.toHaveBeenCalled();
+    const result = (await rpcBody(await send('tok_ok', args))).result;
+    expect(result.isError).not.toBe(true);
+    expect(result.structuredContent).toMatchObject({ complete: true, nodes: { api: '11', db: '12' } });
+    expect(run).toHaveBeenCalledTimes(2);
+    expect(check.mock.calls).toEqual([['user_batch', 1], ['user_batch', 1]]);
+    expect(charge).toHaveBeenCalledTimes(2);
+    expect(logs.mock.calls.map(([line]) => JSON.parse(String(line)).tool)).toEqual(['create_node', 'create_node', 'apply_board']);
+    expect(writeDataPoint).toHaveBeenCalledTimes(3);
+    expect(writeDataPoint.mock.calls[2][0]).toMatchObject({ blobs: ['apply_board', 'ok', 'client_a', 'oauth', '1', expect.any(String)] });
+    expect(writeDataPoint.mock.calls[2][0].doubles.slice(1, 3)).toEqual([0, 0]);
+
+    run.mockClear();
+    check.mockResolvedValue(false);
+    const denied = (await rpcBody(await send('tok_ok', args))).result;
+    expect(denied.isError).toBe(true);
+    expect(run).not.toHaveBeenCalled();
+    expect(charge).toHaveBeenCalledTimes(2);
+    expect(denied.structuredContent).toMatchObject({ complete: false, nodes: {} });
+    expect(JSON.parse(String(logs.mock.calls.at(-1)![0]))).toMatchObject({ tool: 'apply_board', outcome: 'rejected' });
+  });
+
+  it.each(['UNCONFIRMED', 'UNAVAILABLE', 'REJECTED'])('logs and traces a returned batch failure: %s', async prefix => {
+    vi.spyOn(TOOLS.apply_board, 'run').mockResolvedValue({ isError: true, content: [{ type: 'text', text: `${prefix}: batch stopped` }] });
+    const logs = vi.spyOn(console, 'log').mockImplementation(() => {});
+    const writeDataPoint = vi.fn();
+    env.CALLS = { writeDataPoint };
+    const setAttributes = vi.fn();
+    const setStatus = vi.fn();
+    const tracing = { enterSpan: (_name: string, run: (span: Span) => unknown) => run({ setAttributes, setStatus } as unknown as Span) } as Pick<Tracing, 'enterSpan'>;
+    const traced = createApp({ verifyBearer, ledger: () => ({ charge: async () => ({ ok: true, used: 1 }), claim: async () => ({ first: true }), settle: async () => {} }), captures: memoryCaptures(), tracing });
+    const res = await traced.fetch(new Request(`${BASE}/mcp`, {
+      method: 'POST', headers: { authorization: 'Bearer tok_ok', 'content-type': 'application/json', accept: 'application/json, text/event-stream', 'mcp-protocol-version': '2025-06-18' },
+      body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name: 'apply_board', arguments: { board: '1', layout: true } } }),
+    }), env);
+    expect((await rpcBody(res)).result.isError).toBe(true);
+    expect(setAttributes).toHaveBeenCalledWith(expect.objectContaining({ tool: 'apply_board', outcome: prefix.toLowerCase() }));
+    expect(JSON.parse(String(logs.mock.calls.at(-1)![0]))).toMatchObject({ tool: 'apply_board', outcome: prefix.toLowerCase() });
+    expect(writeDataPoint).toHaveBeenCalledWith(expect.objectContaining({ blobs: ['apply_board', prefix.toLowerCase(), 'client_a', 'oauth', '1', expect.any(String)] }));
+    if (prefix !== 'REJECTED') expect(setStatus).toHaveBeenCalledWith({ code: 'error' });
+  });
+
+  it('records the recovery ref when a batch throws unexpectedly', async () => {
+    vi.spyOn(TOOLS.apply_board, 'run').mockRejectedValue(new Error('private details'));
+    const logs = vi.spyOn(console, 'log').mockImplementation(() => {});
+    const errors = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const body = await rpcBody(await rpc({ jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name: 'apply_board', arguments: { board: '1', layout: true } } }));
+    const line = JSON.parse(String(logs.mock.calls.at(-1)![0]));
+    expect(line).toMatchObject({ tool: 'apply_board', outcome: 'unavailable', ref: expect.any(String) });
+    expect(body.result.content[0].text).toContain(line.ref);
+    expect(JSON.parse(String(errors.mock.calls.at(-1)![0]))).toEqual({ event: 'tool.error', ref: line.ref, error: 'Error' });
+  });
 
   // A cold isolate links and joins the agent first: those 2 writes are not the tool's.
   it("a failing first call on a cold isolate does not claim an earlier write", async () => {
@@ -575,5 +648,71 @@ describe('GET /marks/wait', () => {
     const res = await wait(await mintMarks(env, 'agent:user_1', 5n, SEAT));
     expect(res.status).toBe(500);
     expect(((await res.json()) as any).error).toBe('internal_error');
+  });
+});
+
+describe('POST /hooks/alert', () => {
+  afterEach(() => vi.unstubAllGlobals());
+
+  const U64 = { U64: [] };
+  const STR = { String: [] };
+  const table = (cols: [string, unknown][], rows: unknown[][]) =>
+    JSON.stringify([{ schema: { elements: cols.map(([n, t]) => ({ name: { some: n }, algebraic_type: t })) }, rows }]);
+  /** A fake database: visible_board knows slug abc as board 5; my_incidents answers `incidents` ([boardId, slug, groupKey, status]). */
+  function fakeDb(opts: { incidents?: [number, string, string, string][]; refuse?: string }) {
+    const seen = { calls: [] as string[], queries: [] as string[] };
+    vi.stubGlobal('fetch', async (url: string, init?: RequestInit) => {
+      const path = new URL(url).pathname;
+      if (!path.endsWith('/sql')) {
+        seen.calls.push(`${path.split('/').pop()} ${String(init?.body)}`);
+        return opts.refuse ? new Response(opts.refuse, { status: 530 }) : new Response('');
+      }
+      const query = String(init?.body);
+      seen.queries.push(query);
+      if (query.includes('visible_board')) return new Response(table([['id', U64]], query.includes("'abc'") ? [[5]] : []));
+      return new Response(table([['board_id', U64], ['slug', STR], ['group_key', STR], ['status', STR]], opts.incidents ?? []));
+    });
+    return seen;
+  }
+  const ALERT = { version: '4', groupKey: '{}:{alertname="HighLatency"}', status: 'firing', commonLabels: { alertname: 'HighLatency' }, alerts: [{ startsAt: '2026-10-31T14:32:00Z' }, { startsAt: '2026-10-31T14:30:00Z' }] };
+  const post = (body: unknown, headers: Record<string, string> = { authorization: 'Bearer tok_ok' }, board = 'abc') =>
+    app.fetch(new Request(`${BASE}/hooks/alert?board=${board}`, { method: 'POST', headers, body: typeof body === 'string' ? body : JSON.stringify(body) }), env);
+
+  it('401 without a token, 403 from a browser or without board:write', async () => {
+    const seen = fakeDb({});
+    expect((await post(ALERT, {})).status).toBe(401);
+    expect((await post(ALERT, { authorization: 'Bearer tok_ok', origin: 'https://evil.test' })).status).toBe(403);
+    expect((await post(ALERT, { authorization: 'Bearer tok_read' })).status).toBe(403);
+    expect(seen.calls).toEqual([]);
+  });
+
+  it('400 for a body that is not an alert', async () => {
+    const seen = fakeDb({});
+    expect((await post('not json')).status).toBe(400);
+    expect((await post({ status: 'firing' })).status).toBe(400);
+    expect((await post({ groupKey: 'g', status: 'pending' })).status).toBe(400);
+    expect(seen.calls).toEqual([]);
+  });
+
+  it('opens the incident as the caller and answers with its link', async () => {
+    const seen = fakeDb({ incidents: [[8, 'old', ALERT.groupKey, 'resolved'], [9, 'new9', ALERT.groupKey, 'firing'], [10, 'other', 'g2', 'firing']] });
+    const res = await post(ALERT);
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ status: 'firing', board: 'new9', url: 'https://app.redcrayon.test/#b=new9' });
+    expect(seen.calls).toEqual([`open_incident [5,${JSON.stringify(ALERT.groupKey)},"Incident: HighLatency","firing",${Date.parse('2026-10-31T14:30:00Z')}]`]);
+    expect(seen.queries[1]).toBe('SELECT * FROM my_incidents WHERE source_board_id = 5');
+  });
+
+  it('a resolved alert with nothing open answers board null; an unknown board 404s', async () => {
+    fakeDb({});
+    expect(await (await post({ ...ALERT, status: 'resolved' })).json()).toEqual({ status: 'resolved', board: null });
+    expect((await post(ALERT, undefined, 'zzz')).status).toBe(404);
+  });
+
+  it("passes a module refusal through as 403 with the rule's sentence", async () => {
+    fakeDb({ refuse: 'not authorized: board is read only' });
+    const res = await post(ALERT);
+    expect(res.status).toBe(403);
+    expect(((await res.json()) as any).error_description).toMatch(/board is read only/);
   });
 });

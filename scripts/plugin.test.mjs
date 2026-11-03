@@ -16,7 +16,7 @@ const root = join(dirname(fileURLToPath(import.meta.url)), '..');
 const read = rel => readFileSync(join(root, rel), 'utf8');
 const json = rel => JSON.parse(read(rel));
 
-const MATCHER = '^mcp__(plugin_draw_)?(?:draw|redcrayon)(-dev)?__(start_session|add_code_ref|mark_checkpoint|create_edge|arrive)$';
+const MATCHER = '^mcp__(plugin_draw_)?(?:draw|redcrayon)(-dev)?__(start_session|add_code_ref|mark_checkpoint|create_edge|arrive|apply_board)$';
 const COMMAND = `sh -c 'command -v node >/dev/null || exit 0; exec node "\${CLAUDE_PLUGIN_ROOT}/bin/redcrayon.mjs" hook'`;
 const DISCLOSURE = 'To check code refs, redcrayon uploads each file your agent cites and deletes it within 10 minutes. It keeps paths, line numbers, git hashes, hashes of the cited lines and the GitHub repo address. It keeps the cited lines themselves only if you turn on storing code.';
 const PREFLIGHT = 'The draw server is not connected. Run /mcp, choose draw, and sign in.';
@@ -29,7 +29,8 @@ const TOOL_NAMES = blocks.map(b => b.match(/^(\w+):/)[1]);
 const takesCapture = blocks.filter(b => /^\s+capture,$|, capture \}/m.test(b)).map(b => b.match(/^(\w+):/)[1]);
 
 test('tools.ts parses into the hosted tool list', () => {
-  assert.equal(TOOL_NAMES.length, 39);
+  assert.equal(TOOL_NAMES.length, 43);
+  assert.ok(TOOL_NAMES.includes('apply_board'));
   for (const t of ['start_session', 'get_board', 'add_code_ref', 'mark_checkpoint', 'arrive', 'describe_charts', 'add_threat', 'update_threat', 'remove_threat', 'create_branch', 'submit_branch', 'wait_for_marks', 'watch_marks', 'reply_to_mark', 'list_marks']) assert.ok(TOOL_NAMES.includes(t), t);
   assert.ok(!TOOL_NAMES.includes('link_dashboard'));
 });
@@ -86,7 +87,7 @@ test('hook matcher: every tool that takes a capture, under all three prefixes, a
   const re = new RegExp(MATCHER);
   assert.deepEqual(takesCapture.sort(), ['add_code_ref', 'arrive', 'create_edge', 'mark_checkpoint', 'start_session']);
   for (const prefix of ['mcp__plugin_draw_draw__', 'mcp__draw__', 'mcp__draw-dev__', 'mcp__plugin_draw_redcrayon__', 'mcp__redcrayon__', 'mcp__redcrayon-dev__']) {
-    for (const tool of TOOL_NAMES) assert.equal(re.test(prefix + tool), takesCapture.includes(tool), prefix + tool);
+    for (const tool of TOOL_NAMES) assert.equal(re.test(prefix + tool), takesCapture.includes(tool) || tool === 'apply_board', prefix + tool);
   }
   for (const other of ['mcp__redcrayon-live__start_session', 'mcp__plugin_other_redcrayon__add_code_ref', 'mcp__plugin_redcrayon_redcrayon__add_code_ref', 'mcp__redcrayon__add_code_ref_x']) {
     assert.equal(re.test(other), false, other);
@@ -167,7 +168,7 @@ test('skill: start_session result and board ids match the hosted server', () => 
   assert.ok(flat.includes('Every tool except `start_session` and `describe_charts` takes `board`'));
   for (const name of TOOL_NAMES) {
     const block = blocks.find(b => b.startsWith(`${name}:`));
-    const takesBoard = /board: boardArg/.test(block);
+    const takesBoard = /board: boardArg/.test(block) || (name === 'apply_board' && /board: node.shape.board/.test(read('mcp/src/apply-board.ts')));
     assert.equal(takesBoard, !['start_session', 'describe_charts'].includes(name), name);
   }
 });
@@ -189,6 +190,31 @@ test('skill: captures — the plugin fills them; otherwise the command the text 
   assert.ok(flat.includes('`REJECTED: <tool> needs a capture of your local file. …`'));
   assert.ok(flat.includes('Leave `capture` empty: the redcrayon plugin fills it in'));
   assert.ok(flat.includes('Run the `npx -y @redcrayonai/draw@1 capture …` command the text names'));
+});
+
+// ---- the triage skill ----
+
+const triageMd = read('plugin/skills/triage/SKILL.md');
+
+test('triage skill: frontmatter, the same allowed-tools, preflight and link handling', () => {
+  const head = triageMd.match(/^---\n([^]*?)\n---\n/)[1];
+  assert.match(head, /^name: triage$/m);
+  assert.match(head, /^allowed-tools: mcp__draw__\*, mcp__plugin_draw_draw__\*, Bash\(git:\*\), Read$/m);
+  assert.ok(triageMd.includes(PREFLIGHT));
+  assert.match(triageMd, /`\{ "link": "<the word>" \}`/);
+  assert.match(triageMd.replace(/\s+/g, ' '), /`REJECTED: no board at <link>\. …`, relay that text word for word and stop/);
+});
+
+test('triage skill: links only shared modules, names only registered tools, and stays off focal', () => {
+  for (const [, f] of triageMd.matchAll(/\]\(\.\.\/\.\.\/references\/([\w-]+\.md)\)/g)) assert.ok(modules.includes(f), f);
+  const words = new Set(triageMd.replace(/mcp__[\w-]*?__/g, ' ').match(/\b[a-z]+(?:_[a-z]+)+\b/g));
+  for (const w of words) assert.ok(TOOL_NAMES.includes(w), `triage names ${w}, which mcp/src/tools.ts does not register`);
+  for (const t of ['open_incident', 'pin_chart', 'set_time_window', 'create_chart', 'get_board']) assert.ok(words.has(t), t);
+  assert.match(triageMd, /never on the lasting one/);
+  assert.match(triageMd.replace(/\s+/g, ' '), /Check the `window` in the reply/);
+  assert.match(triageMd, /Do not set or\s+clear `focal`/);
+  assert.doesNotMatch(triageMd, VENDOR);
+  assert.doesNotMatch(triageMd, INTERNALS);
 });
 
 // ---- the README ----

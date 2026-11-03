@@ -201,6 +201,63 @@ async function marksWait(request: Request, env: Env, o: Origins): Promise<Respon
   }
 }
 
+export const MAX_ALERT_BODY = 64 * 1024;
+// C0 and C1 controls: a board name is one line (the module's board name rule).
+const CONTROL = /[\u0000-\u001f\u007f-\u009f]/g;
+
+/**
+ * POST /hooks/alert?board=<slug>: an alert webhook (the Alertmanager payload:
+ * groupKey, status, commonLabels.alertname, alerts[].startsAt) opens an
+ * incident board copied from <slug>, or finds the one open for groupKey, or
+ * resolves it. The caller is the bearer's principal, as on /mcp: a workspace
+ * API key with edit rights on the board. Answers with the incident board's link.
+ */
+async function alertHook(request: Request, env: Env, o: Origins, verify: VerifyBearer): Promise<Response> {
+  if (request.method !== 'POST') return json(405, { error: 'method_not_allowed' }, { allow: 'POST' });
+  const verdict = await authenticate(env, request, verify, Date.now(), () => ipLimited(env, request));
+  if (!verdict.ok) {
+    if (verdict.status === 429) return TOO_MANY();
+    if (verdict.status === 503) return json(503, { error: 'temporarily_unavailable' }, { 'retry-after': '30' });
+    return json(401, { error: 'invalid_token' });
+  }
+  const principal = verdict.principal;
+  if (!principal.scopes.includes('board:write')) return json(403, { error: 'insufficient_scope', error_description: MISSING_SCOPE });
+  const slug = safeToken(new URL(request.url).searchParams.get('board') ?? '');
+  if (!slug) return json(400, { error: 'invalid_request', error_description: 'Pass the board to copy as ?board=<link id>.' });
+  const bytes = await readCapped(request, MAX_ALERT_BODY);
+  if (!bytes) return json(413, { error: 'request_too_large' });
+  let body: { groupKey?: unknown; status?: unknown; commonLabels?: { alertname?: unknown }; alerts?: { startsAt?: unknown }[] };
+  try {
+    body = JSON.parse(new TextDecoder().decode(bytes));
+  } catch {
+    return json(400, { error: 'invalid_request', error_description: 'The body is not JSON.' });
+  }
+  const groupKey = typeof body?.groupKey === 'string' ? body.groupKey : '';
+  const status = body?.status === 'resolved' ? 'resolved' : body?.status === 'firing' ? 'firing' : '';
+  if (!groupKey || !status) return json(400, { error: 'invalid_request', error_description: 'Send an alert webhook body with groupKey and status firing or resolved.' });
+  const alertname = typeof body.commonLabels?.alertname === 'string' ? body.commonLabels.alertname : '';
+  const title = `Incident: ${alertname || groupKey}`.replace(CONTROL, ' ').slice(0, 100).trim();
+  const starts = (Array.isArray(body.alerts) ? body.alerts : []).map(a => Date.parse(String(a?.startsAt))).filter(ms => Number.isFinite(ms) && ms > 0);
+  const startsAtMs = starts.length ? Math.min(...starts) : 0;
+
+  const db = database(env, () => mint(env, principalSubject(principal)));
+  try {
+    const [board] = await db.read<{ id: bigint }>(sql`SELECT * FROM visible_board WHERE slug = '${slug}'`);
+    if (!board) return json(404, { error: 'not_found', error_description: 'No board you can read has that link id.' });
+    const source = safeU64(board.id)!;
+    await db.call('open_incident', { sourceBoardId: source, groupKey, title, status, startsAtMs });
+    const rows = await db.read<{ boardId: bigint; slug: string; groupKey: string; status: string }>(sql`SELECT * FROM my_incidents WHERE source_board_id = ${source}`);
+    // Newest first (ids grow), an open one before a resolved one.
+    const row = rows.filter(r => r.groupKey === groupKey).sort((a, b) => Number(a.status !== 'firing') - Number(b.status !== 'firing') || (a.boardId < b.boardId ? 1 : -1))[0];
+    console.log(JSON.stringify({ event: 'alert.received', status, opened: Boolean(row), via: principal.via }));
+    if (!row) return json(200, { status, board: null });
+    return json(200, { status: row.status, board: row.slug, url: o.boardUrl(row.slug) });
+  } catch (err) {
+    if (err instanceof DbError && err.status === 530 && isModuleSentence(err.message)) return json(403, { error: 'forbidden', error_description: ruleViolation(err.message, undefined) });
+    throw err;
+  }
+}
+
 /** Distinct people with the board open, not counting this agent or any other agent: the helper stops watching once nobody has it open. */
 async function peopleOn(db: Database, board: SafeU64, self: string): Promise<number> {
   const open = await db.read<{ identity: string; boardIds: bigint[] }>(sql`SELECT * FROM visible_board_people`);
@@ -320,6 +377,8 @@ export function createApp(deps: Deps) {
     if (url.host !== o.host) return notFound();
     const path = url.pathname;
     if (path === '/facts') return facts(request, env);
+    // A machine endpoint, like /facts: a browser never posts here.
+    if (path === '/hooks/alert') return request.headers.has('origin') ? json(403, { error: 'forbidden_origin' }) : alertHook(request, env, o, deps.verifyBearer);
     const known = path === '/mcp' || path === '/marks/wait' || path.startsWith('/.well-known/') || path.startsWith('/agent-id/') || path === '/health';
     if (!known) return notFound();
     if (!originAllowed(env, request)) return json(403, { error: 'forbidden_origin' });

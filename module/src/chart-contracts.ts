@@ -218,14 +218,14 @@ const EPOCH_RE = /^\d+$/;
 const TIME_HELP = 'use ISO 8601 (2026-10-09T10:00:00Z), HH:MM[:SS], or epoch milliseconds';
 const KIND_WORDS: Record<XKind, string> = { iso: 'ISO 8601', clock: 'HH:MM[:SS]', epoch: 'epoch milliseconds' };
 /** The last instant a Date can hold (year 275760): a later epoch has no date to draw or label. */
-const MAX_EPOCH_MS = 8.64e15;
+export const MAX_EPOCH_MS = 8.64e15;
 /** Why `s` is not a time, said of `where` (a cell or an option). Only an epoch past MAX_EPOCH_MS is all digits. */
 const notATime = (where: string, s: string) => (EPOCH_RE.test(s)
   ? `${where}: '${s}' is past the last date a chart can show; epoch milliseconds go up to ${MAX_EPOCH_MS}`
   : `${where}: '${s}' is not a time; ${TIME_HELP}`);
 
 // ISO date-times without an offset are UTC, so the server and every browser get the same instant.
-function timeValue(s: string): { kind: XKind; ms: number } | null {
+export function timeValue(s: string): { kind: XKind; ms: number } | null {
   const iso = ISO_RE.exec(s);
   if (iso) {
     const y = +iso[1], mo = +iso[2], d = +iso[3];

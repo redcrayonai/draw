@@ -28,6 +28,7 @@ says why, and the first word tells the agent what to do:
 
 | Tool | What it does |
 |---|---|
+| `apply_board` | Creates nodes and their edges, then optionally lays them out, in one call. Uses temporary node keys; at most 16 operations. Nodes must differ in label, sublabel or position. Returned edge IDs match input order, with `null` for unconfirmed IDs. |
 | `create_node` | Adds a component: a service, data store, external system, boundary, note or text block. |
 | `update_node` | Changes a node's label, sublabel, colour, kind or focus. |
 | `move_node` | Moves a node. |
@@ -47,6 +48,9 @@ says why, and the first word tells the agent what to do:
 | `create_chart` | Adds a chart node from CSV data, with a note on where the data came from. |
 | `set_chart_data` | Replaces a chart's data. |
 | `get_chart` | Reads a chart's type, data and options. |
+| `pin_chart` | Pins a chart to the edge or component it measures, or unpins it. |
+| `set_time_window` | Sets or clears the board's shared time window, which every time chart shows. |
+| `open_incident` | Opens an ephemeral incident board copied from a board, or returns the incident board it is given. |
 
 ## Code refs, notes and threats
 

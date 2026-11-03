@@ -36,12 +36,13 @@ vi.mock('../../agent/src/routes', async importOriginal => {
 
 const VENDOR = /spacetime|maincloud|bsatn|clockwork|\bstdb\b/i;
 const HOSTED = [
-  'get_board', 'create_node', 'move_node', 'update_node', 'resize_node', 'delete_node', 'create_edge', 'hide_node', 'hide_edge', 'set_edge_latency', 'play_trace', 'start_tap', 'create_branch', 'submit_branch',
+  'get_board', 'create_node', 'move_node', 'update_node', 'resize_node', 'delete_node', 'create_edge', 'hide_node', 'hide_edge', 'set_edge_latency', 'play_trace', 'start_tap', 'create_branch', 'submit_branch', 'apply_board',
   'delete_edge', 'describe_charts', 'create_chart', 'set_chart_data', 'get_chart', 'start_session', 'add_code_ref',
   'mark_checkpoint', 'plan_route', 'arrive', 'reroute', 'remove_code_ref', 'set_node_doc', 'set_selection', 'layout_board',
   'add_change_note', 'update_change_note', 'remove_change_note',
   'add_threat', 'update_threat', 'remove_threat',
   'wait_for_marks', 'watch_marks', 'reply_to_mark', 'list_marks',
+  'pin_chart', 'set_time_window', 'open_incident',
 ];
 const keysOf = (schema: z.ZodType): string[] => {
   const json = z.toJSONSchema(schema) as { properties?: Record<string, unknown> };
@@ -297,6 +298,107 @@ describe('set_edge_latency on the hosted server', () => {
 
   it('accepts only prod, local or estimate as a source', () => {
     expect(TOOLS.set_edge_latency.input.safeParse({ board: '1', edgeId: '30', latencyMs: 5, source: 'guess' }).success).toBe(false);
+  });
+});
+
+describe('open_incident on the hosted server', () => {
+  const run = async (input: Record<string, unknown>, incidentBoard = false) => {
+    const calls: { reducer: string; args: Record<string, any> }[] = [];
+    const db = {
+      stats: { dbCalls: 0, dbMs: 0, writes: 0 },
+      async read(q: { text: string }) {
+        if (q.text.includes('visible_board_window WHERE board_id = 9')) return [{ boardId: 9n, startMs: Date.parse('2026-10-31T14:17:00Z'), endMs: Date.parse('2026-10-31T14:47:00Z') }];
+        if (q.text.includes('visible_board_window')) return [];
+        if (q.text.includes('visible_board')) return [{ id: 1n, name: 'checkout prod' }];
+        if (q.text.includes('my_incidents WHERE board_id')) return incidentBoard ? [{ boardId: 1n, slug: 'inc1' }] : [];
+        if (q.text.includes('my_incidents WHERE source_board_id')) return calls.length ? [{ boardId: 9n, slug: 'inc9', groupKey: 'agent:checkout errors', status: 'firing' }] : [];
+        throw new Error(`unexpected read ${q.text}`);
+      },
+      async call(reducer: string, args: Record<string, any>) {
+        calls.push({ reducer, args });
+      },
+    };
+    const o = { boardUrl: (slug: string) => `http://app/#b=${slug}` };
+    const t = { ctx: { db, o }, signal: new AbortController().signal, named: () => {}, deadline: Date.now() + 15_000 } as never;
+    const def = TOOLS.open_incident;
+    try {
+      return { calls, out: text(await def.run(def.input.parse(input) as never, t)) };
+    } catch (err) {
+      return { calls, out: scrub(err, { write: true }).text };
+    }
+  };
+
+  it('opens an incident board from a lasting board and returns its id and link', async () => {
+    const r = await run({ board: '1', title: 'checkout errors', since: '2026-10-31T14:32:00Z' });
+    expect(r.calls).toEqual([{ reducer: 'open_incident', args: { sourceBoardId: 1n, groupKey: 'agent:checkout errors', title: 'Incident: checkout errors', status: 'firing', startsAtMs: Date.parse('2026-10-31T14:32:00Z') } }]);
+    // The stored window comes back, so an agent can catch a misread date.
+    expect(JSON.parse(r.out)).toEqual({ board: 'Incident: checkout errors', id: 9, url: 'http://app/#b=inc9', opened: true, window: { start: '2026-10-31T14:17:00.000Z', end: '2026-10-31T14:47:00.000Z' } });
+  });
+
+  it('returns an incident board as it is, and refuses a since it cannot read', async () => {
+    const same = await run({ board: '1', title: 'checkout errors' }, true);
+    expect(same.calls).toEqual([]);
+    expect(JSON.parse(same.out)).toEqual({ board: 'checkout prod', id: 1, url: 'http://app/#b=inc1', opened: false, window: null });
+    const bad = await run({ board: '1', title: 'checkout errors', since: 'an hour ago' });
+    expect(bad.calls).toEqual([]);
+    expect(bad.out).toMatch(/^REJECTED: pass since as ISO 8601/);
+  });
+});
+
+describe('set_time_window and pin_chart on the hosted server', () => {
+  const run = async (tool: 'set_time_window' | 'pin_chart', input: Record<string, unknown>) => {
+    const calls: { reducer: string; args: Record<string, any> }[] = [];
+    const db = {
+      stats: { dbCalls: 0, dbMs: 0, writes: 0 },
+      async read(q: { text: string }) {
+        if (q.text.includes('visible_board')) return [{ id: 1n, name: 'main' }];
+        if (q.text.includes('visible_chart')) return [{ nodeId: 40n, boardId: 1n }];
+        if (q.text.includes('visible_edge')) return [{ id: 30n, boardId: 1n }];
+        if (q.text.includes('visible_node')) return [{ id: 7n, boardId: q.text.includes('= 8') ? 2n : 1n }];
+        throw new Error(`unexpected read ${q.text}`);
+      },
+      async call(reducer: string, args: Record<string, any>) {
+        calls.push({ reducer, args });
+      },
+    };
+    const t = { ctx: { db }, signal: new AbortController().signal, named: () => {}, deadline: Date.now() + 15_000 } as never;
+    const def = TOOLS[tool];
+    try {
+      return { calls, out: text(await def.run(def.input.parse(input) as never, t)) };
+    } catch (err) {
+      return { calls, out: scrub(err, { write: true }).text };
+    }
+  };
+
+  it('sets the window from ISO or epoch ms, and clears it', async () => {
+    expect(await run('set_time_window', { board: '1', start: '2026-10-09T14:30:00Z', end: '1760021400000' })).toEqual({
+      calls: [{ reducer: 'set_board_window', args: { boardId: 1n, startMs: Date.parse('2026-10-09T14:30:00Z'), endMs: 1760021400000 } }],
+      out: 'committed board=main',
+    });
+    expect((await run('set_time_window', { board: '1', clear: true })).calls).toEqual([{ reducer: 'clear_board_window', args: { boardId: 1n } }]);
+    // Date.parse would roll February 31 over to March 3.
+    const shifted = await run('set_time_window', { board: '1', start: '2026-02-31T14:00:00Z', end: '2026-03-04T14:00:00Z' });
+    expect(shifted.calls).toEqual([]);
+    expect(shifted.out).toMatch(/^REJECTED: pass start and end/);
+    const bad = await run('set_time_window', { board: '1', start: 'yesterday', end: '1' });
+    expect(bad.calls).toEqual([]);
+    expect(bad.out).toMatch(/^REJECTED: pass start and end/);
+  });
+
+  it('pins a chart to one edge or node, refuses both or neither, and unpins', async () => {
+    expect(await run('pin_chart', { board: '1', chart: '40', edge: '30' })).toEqual({
+      calls: [{ reducer: 'anchor_chart', args: { nodeId: 40n, targetKind: 'edge', targetId: 30n } }],
+      out: 'committed board=main',
+    });
+    expect((await run('pin_chart', { board: '1', chart: '40', node: '7' })).calls[0].args).toEqual({ nodeId: 40n, targetKind: 'node', targetId: 7n });
+    for (const input of [{ edge: '30', node: '7' }, {}]) {
+      const r = await run('pin_chart', { board: '1', chart: '40', ...input });
+      expect(r.calls).toEqual([]);
+      expect(r.out).toMatch(/^REJECTED: pass exactly one of edge or node/);
+    }
+    // a node on another board is not found, and nothing is written
+    expect((await run('pin_chart', { board: '1', chart: '40', node: '8' })).calls).toEqual([]);
+    expect((await run('pin_chart', { board: '1', chart: '40', unpin: true })).calls).toEqual([{ reducer: 'unanchor_chart', args: { nodeId: 40n } }]);
   });
 });
 
@@ -615,16 +717,21 @@ describe('red crayon review marks', () => {
 describe('create_edge on the hosted server: the cited line stays out unless the board stores code (RC-690)', () => {
   const HASH = 'ab'.repeat(16);
   const LINE = 'const limiter = new Limiter();';
-  const run = async (stores: boolean, turnedOff = false) => {
+  const run = async (stores: boolean, turnedOff = false, abortSnapshot?: AbortController) => {
     vi.mocked(claim).mockResolvedValue({ kind: 'cite', toplevel: '/repo', head: 'h', file: { path: 'src/s.ts' }, asked: 'src/s.ts' } as never);
     vi.mocked(prepareSourceEvidence).mockResolvedValue({ evidence: 'source:src/s.ts:1', evidenceSnippet: LINE, evidenceHash: HASH });
     vi.mocked(boardStoresCode).mockResolvedValue(stores);
+    if (abortSnapshot) vi.mocked(boardStoresCode).mockImplementationOnce(call => call('read', async () => false));
     const calls: { reducer: string; args: Record<string, any> }[] = [];
     const edges: Record<string, unknown>[] = [];
     let refuse = turnedOff;
     const db = {
       stats: { dbCalls: 0, dbMs: 0, writes: 0 },
-      http: {},
+      http: { sqlTypedAs: async (_token: string, _query: string, signal?: AbortSignal) => {
+        abortSnapshot?.abort();
+        signal?.throwIfAborted();
+        return { columns: [], rows: [] };
+      } },
       token: async () => 'tok',
       async read(q: { text: string }) {
         if (q.text.includes('visible_session')) return [{ boardId: 1n, baseSha: 'h', repoRoot: '/repo' }];
@@ -643,12 +750,16 @@ describe('create_edge on the hosted server: the cited line stays out unless the 
       },
     };
     const ledger = { claim: async () => ({ first: true }), settle: async () => {} };
-    const t = { ctx: { db, ledger }, signal: new AbortController().signal, named: () => {}, deadline: Date.now() + 15_000 } as never;
+    const t = { ctx: { db, ledger }, signal: (abortSnapshot ?? new AbortController()).signal, named: () => {}, deadline: Date.now() + 15_000 } as never;
     const input = TOOLS.create_edge.input.parse({ board: '1', fromNode: '1', toNode: '2', label: 'uses', evidence: 'source:src/s.ts:1', capture: 'cap_' + 'A'.repeat(22) });
     const out = text(await TOOLS.create_edge.run(input as never, t));
     return { calls, out };
   };
   const edge = { boardId: 1n, fromNode: 1n, toNode: 2n, label: 'uses', evidence: 'source:src/s.ts:1' };
+
+  it('aborts source snapshot reads when the enclosing tool or batch expires', async () => {
+    await expect(run(false, false, new AbortController())).rejects.toMatchObject({ name: 'AbortError' });
+  });
 
   it('without consent: the edge has no line, then the line hash', async () => {
     const { calls, out } = await run(false);
