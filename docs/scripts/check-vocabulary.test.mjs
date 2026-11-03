@@ -11,12 +11,16 @@ const scan = workflow.match(/      - name: Check page vocabulary\n        run: \
 const cases = [
   ['self-host/quickstart.md', 'SpacetimeDB and VITE_SPACETIME_URI', true],
   ['self-host/quickstart.md', 'SPACETIME_DB SPACETIMEDB_SERVICE_TOKEN', true],
+  ['self-host/quickstart.md', '`stdb` and `stdb-cli`', true],
+  ['self-host/quickstart.md', '`stdb-unknown`', false],
+  ['self-host/quickstart.md', '`stdb` clerk', false],
   ['self-host/quickstart.md', 'SpacetimeDB clerk', false],
   ['self-host/quickstart.md', 'SPACETIMEDB_UNKNOWN', false],
   ['self-host/quickstart.md', 'SPACETIMEDB_URL_DEBUG', false],
   ['connect.md', 'SpacetimeDB', false],
   ['connect.md', 'VITE_SPACETIME_URI', false],
   ['connect.md', 'clockwork', false],
+  ['connect.md', '`stdb`', false],
 ];
 
 for (const [page, content, allowed] of cases) {
