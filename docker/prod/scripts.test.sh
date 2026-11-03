@@ -78,14 +78,18 @@ if issuers "$tmp/cli.toml" >/dev/null 2>&1; then bad 'db_issuers fails when the 
 
 # Refusals captured with the pinned CLI (2.8.1), 2026-10-31.
 cat >"$tmp/columns.log" <<'LOG'
+Checking for breaking changes...
 Errors occurred:
 Removing a column added_field from table board requires a manual migration
 Removing a column another_field from table board requires a manual migration
 Aborting publish due to required manual migration.
 Error: Aborting because publishing would require manual migration or deletion of data and --delete-data was not specified.
 LOG
-printf '\033[31mError: Failed to create or update the database: Cannot remove table `plugin_data`: table contains data. Clear the table\047s rows (e.g. via a reducer) before removing it from your schema.\033[0m\n' >"$tmp/table.log"
+printf '\033[1m\033[31mRemoved\033[0m table: \033[1m\033[36mplugin_data\033[0m\nPublishing module...\n\033[31mError: Failed to create or update the database: Cannot remove table `plugin_data`: table contains data. Clear the table\047s rows (e.g. via a reducer) before removing it from your schema.\033[0m\n' >"$tmp/table.log"
 sed '/ Clear the table/ s/ Clear the table.*//' "$tmp/table.log" >"$tmp/table-short.log"
+sed 's/plugin_data/import_failure/' "$tmp/table.log" >"$tmp/table-word.log"
+printf 'Removed table: connection failed\n' >"$tmp/plan-words.log"
+cat "$tmp/table.log" >>"$tmp/plan-words.log"
 sed '/Aborting publish/i\
 Changing the type of column title in table board requires a manual migration
 ' "$tmp/columns.log" >"$tmp/mixed.log"
@@ -108,10 +112,10 @@ for diagnostic in 'error[E0308]: mismatched types' 'FATAL: could not publish' 'p
   cat "$tmp/columns.log" >>"$tmp/diagnostic.log"
   if rollback_accepts "$tmp/diagnostic.log"; then bad "rollback rejects $diagnostic"; else ok "rollback rejects $diagnostic"; fi
 done
-for fixture in columns table table-short; do
+for fixture in columns table table-short table-word; do
   if rollback_accepts "$tmp/$fixture.log"; then ok "rollback accepts $fixture"; else bad "rollback accepts $fixture"; fi
 done
-for fixture in mixed truncated empty missing connection unknown-error prior-error prior-connection prior-timeout timeout; do
+for fixture in mixed truncated empty missing connection plan-words unknown-error prior-error prior-connection prior-timeout timeout; do
   if rollback_accepts "$tmp/$fixture.log"; then bad "rollback rejects $fixture"; else ok "rollback rejects $fixture"; fi
 done
 

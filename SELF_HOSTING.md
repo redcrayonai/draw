@@ -86,26 +86,8 @@ Other MCP clients use the URL directly. For their code refs, run
 
 ## Upgrade and roll back
 
-For the prebuilt production stack, back up the board database, CLI identity,
-and Postgres volumes listed in `compose.prod.yml`, plus `.env`, before changing
-releases. Keep the CLI identity: it owns the database and is needed to publish
-updates.
-
-To upgrade, set `REDCRAYON_VERSION` in `.env` to the release you want, then run:
-
-```sh
-docker compose -f compose.prod.yml up -d
-```
-
-To roll back, set `REDCRAYON_VERSION` to the previous release and run the same
-command. When publishing refuses only because the older image lacks live
-columns or tables that contain data, setup logs `kept the live module` and starts
-the apps with the newer database program and its data intact. Empty tables
-can be dropped without a refusal, so not every rollback skips publication.
-
-After a skipped publish, the module’s baked sign-in issuers and
-`REDCRAYON_LIMITS` keep their last published values until you roll forward to
-newer images. Other publish failures still stop setup.
+For the prebuilt production stack, see
+[Upgrade and roll back](https://docs.redcrayon.ai/self-host/quickstart/#upgrade-and-roll-back).
 
 ## Versions (optional)
 

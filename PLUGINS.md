@@ -26,8 +26,8 @@ To add a plugin:
 
 ### Design: plugins outside this repo
 
-Status: direction agreed 2026-10-31; not built. Supersedes the "To add a plugin"
-steps above once built.
+Status: direction agreed 2026-10-31; not built, except the rollback skip in
+decision 7. Supersedes the "To add a plugin" steps above once built.
 
 **Intent.** Plugins keep being built in this repo, in the open. Anyone may also
 keep a plugin in a repo of their own, private or public: an operator with
@@ -108,8 +108,8 @@ repo.
    table quietly; both refusals leave the data and the running program as they
    were (tested 2026-10-31). So publishing an older database program after a
    newer one added a column, or a table that was used, fails, for the core as
-   for plugins, and today `module-setup` would then keep the whole stack from
-   starting. `module-setup` therefore skips the publish, and logs it, when
+   for plugins, and that used to keep the whole stack from starting.
+   `module-setup` now skips the publish, and logs it, when
    these are the only refusals: its database program lacks columns or
    data-holding tables the live database has. The stack starts on the newer
    database. Rolling forward again finds the data where it was.
@@ -183,7 +183,7 @@ repo.
      tarball, which runs no scripts.
    - pnpm 10 runs no dependency's install scripts unless it is listed in
      `onlyBuiltDependencies`; this repo lists none (`esbuild`, `sharp` and
-     `workerd` sit in `ignoredBuiltDependencies`). Builds also set
+     `workerd` sit in `ignoredBuiltDependencies`). The builder will also set
      `strict-dep-builds`, so a new dependency that wants a script fails the
      install until someone lists it (pnpm 10.34.5 exits 1 with
      `ERR_PNPM_IGNORED_BUILDS`).
