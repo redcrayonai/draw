@@ -248,6 +248,7 @@ describe('renderBoard keyed patching', () => {
       'defs',
       'g.layer-containers',
       'g.layer-edges',
+      'g.layer-anchors',
       'g.layer-nodes',
       'g.layer-edge-labels',
       'g.layer-outlines',
@@ -2648,5 +2649,42 @@ describe('library icons on nodes (spec 2026-10-18)', () => {
     expect(world.querySelector('[data-id="1"]')!.classList.contains('color-blue')).toBe(true);
     expect(world.querySelector('[data-id="2"]')!.classList.contains('focal')).toBe(true);
     expect(world.querySelectorAll('.node-icon-stroke')).toHaveLength(2);
+  });
+});
+
+describe('incident triage: the time window and chart pins', () => {
+  const CSV = 'time,p95\n2026-10-31T14:00:00Z,1\n2026-10-31T14:10:00Z,2\n2026-10-31T14:20:00Z,3';
+  const T = (hhmm: string) => Date.parse(`2026-10-31T${hhmm}:00Z`);
+  const chart = (over: Partial<Chart> = {}): Chart => ({
+    nodeId: 9n, boardId: 1n, type: 'timeseries', csv: CSV, options: '{}', source: 'live tap',
+    updatedAt: { microsSinceUnixEpoch: 1000n } as unknown as Chart['updatedAt'], ...over,
+  });
+  const chartNode = mkNode(9, { kind: 'chart', label: 'latency', x: 300, y: 400, w: 352, h: 224 });
+
+  it('draws only the points inside the board window, and says so when none are', () => {
+    const world = mkWorld();
+    const charts = new Map([[9n, chart()]]);
+    renderBoard(world, [chartNode], [], mkState({ charts }));
+    expect(world.querySelectorAll('rect.chart-hit[data-t]')).toHaveLength(3);
+    renderBoard(world, [chartNode], [], mkState({ charts, window: { startMs: T('14:05'), endMs: T('14:25') } }));
+    expect([...world.querySelectorAll<SVGRectElement>('rect.chart-hit')].map(r => Number(r.dataset.t))).toEqual([T('14:10'), T('14:20')]);
+    renderBoard(world, [chartNode], [], mkState({ charts, window: { startMs: T('15:00'), endMs: T('16:00') } }));
+    expect(world.querySelector('.chart-plot > .chart-empty')!.textContent).toBe('outside the time window');
+  });
+
+  it('leads a pinned chart to the middle of its edge or the centre of its node, and drops a pin whose target is gone', () => {
+    const world = mkWorld();
+    const nodes = [mkNode(1), mkNode(2), chartNode];
+    const edges = [mkEdge(5, 1, 2)];
+    const pins = (targetKind: string, targetId: bigint) => new Map([[9n, { targetKind, targetId }]]);
+    renderBoard(world, nodes, edges, mkState({ anchors: pins('edge', 5n) }));
+    const lead = world.querySelector('.layer-anchors line.chart-pin')!;
+    const seg = routeEdges([{ id: 5n, from: 1n, to: 2n }], new Map(nodes.map(n => [n.id, nodeRect(n, new Map())])), new Map(nodes.map(n => [n.id, 'rect']))).get(5n)!.seg;
+    expect([lead.getAttribute('x2'), lead.getAttribute('y2')]).toEqual([String(Math.round((seg.a.x + seg.b.x) / 2)), String(Math.round((seg.a.y + seg.b.y) / 2))]);
+    expect(Number(lead.getAttribute('y1'))).toBe(400); // the chart's top edge, below the hop
+    renderBoard(world, nodes, edges, mkState({ anchors: pins('node', 1n) }));
+    expect(world.querySelector('.layer-anchors line')!.getAttribute('x2')).toBe('380');
+    renderBoard(world, nodes, [], mkState({ anchors: pins('edge', 5n) }));
+    expect(world.querySelector('.layer-anchors')!.childElementCount).toBe(0);
   });
 });

@@ -19,6 +19,7 @@ import {
   HUMAN_SOURCE_RESERVED,
   isHumanSource,
   ARCHITECTURE_CHART_RULE,
+  MAX_EPOCH_MS,
 } from './chart-contracts';
 import {
   checkAliases,
@@ -385,6 +386,55 @@ const tables = {
       nodeId: t.u64().primaryKey(),
       boardId: t.u64().index('btree'),
       icon: t.string(),
+    }
+  ),
+  // A chart pinned to the node or edge it measures, keyed by the chart's node
+  // id. Its own table: visible_chart's public row shape is frozen. The row goes
+  // with the chart and with its target.
+  chartAnchor: table(
+    {},
+    {
+      nodeId: t.u64().primaryKey(),
+      boardId: t.u64().index('btree'),
+      targetKind: t.string(), // 'node' | 'edge'
+      targetId: t.u64().index('btree'),
+    }
+  ),
+  // The board's shared time window: every viewer's time-axis charts show this
+  // range. No row means each chart shows all of its data.
+  boardWindow: table(
+    {},
+    {
+      boardId: t.u64().primaryKey(),
+      startMs: t.f64(),
+      endMs: t.f64(),
+      updatedAt: t.timestamp(),
+    }
+  ),
+  // Per-board lifetime flags, beside board: visible_board's public row shape is
+  // frozen, so a column on board would break older clients. No row = a
+  // lasting board. Nothing expires ephemeral boards yet.
+  boardLifetime: table(
+    {},
+    {
+      boardId: t.u64().primaryKey(),
+      isEphemeral: t.bool(),
+      createdAt: t.timestamp(),
+    }
+  ),
+  // An incident board opened from an alert (open_incident): a copy of its
+  // source board's drawing. groupKey is the alert group's identity, so a
+  // repeated notification finds the open incident instead of copying again.
+  incident: table(
+    {},
+    {
+      boardId: t.u64().primaryKey(),
+      sourceBoardId: t.u64().index('btree'),
+      groupKey: t.string().index('btree'),
+      title: t.string(),
+      status: t.string(), // 'firing' | 'resolved'
+      openedAt: t.timestamp(),
+      updatedAt: t.timestamp(),
     }
   ),
   // Change notes (spec 2026-10-16): an agent flags a big or risky change on the
@@ -889,7 +939,7 @@ export const embeddedBoard = spacetimedb.view({ name: 'embedded_board', public: 
 // readable board (the switcher, ⌘K, the history rail); the rest return the
 // boards the caller has open (viewBoardIds, RC-605).
 export const visibleRows = spacetimedb.exportGroup({
-  ...Object.fromEntries(['board', 'architectureVersion', 'node', 'edge', 'edgeWeight', 'edgeMotion', 'hideSet', 'sessionRoute', 'routeEvent', 'chart', 'tracePlayback', 'changeNote', 'nodeIcon'].map(key => [
+  ...Object.fromEntries(['board', 'architectureVersion', 'node', 'edge', 'edgeWeight', 'edgeMotion', 'hideSet', 'sessionRoute', 'routeEvent', 'chart', 'tracePlayback', 'changeNote', 'nodeIcon', 'chartAnchor', 'boardWindow', 'boardLifetime', 'incident'].map(key => [
     `visible${key[0].toUpperCase()}${key.slice(1)}`,
     spacetimedb.view({ name: `visible_${key.replace(/[A-Z]/g, c => `_${c.toLowerCase()}`)}`, public: true }, t.array((tables as any)[key].rowType) as any, ctx => {
       const ids = key === 'board' || key === 'architectureVersion' ? readableBoardIds(ctx) : viewBoardIds(ctx);
@@ -898,6 +948,8 @@ export const visibleRows = spacetimedb.exportGroup({
       const rows = [...ids].flatMap(id => (index.filter ? [...index.filter(id)] : index.find(id) ?? []));
       // A branch's sha is the fork-time base signature, server-side only.
       if (key === 'architectureVersion') return rows.map((row: any) => (row.historyId === 0n && row.sha !== '' ? { ...row, sha: '' } : row));
+      // An alert group key carries its labels (hosts, clusters): link visitors get the incident without it.
+      if (key === 'incident') return rows.map((row: any) => (isBoardMember(ctx, row.boardId) ? row : { ...row, groupKey: '' }));
       if (key !== 'edge') return rows;
       // A source citation's captured line is code: a link that leaves code out gets the edge without it.
       const code = codeViewBoardIds(ctx);
@@ -1875,11 +1927,13 @@ function clearBoardContent(ctx: any, boardId: bigint): void {
   for (const row of [...ctx.db.edgeWeight.boardId.filter(boardId)]) ctx.db.edgeWeight.edgeId.delete(row.edgeId);
   for (const row of [...ctx.db.edgeMotion.boardId.filter(boardId)]) ctx.db.edgeMotion.edgeId.delete(row.edgeId);
   for (const row of [...ctx.db.nodeIcon.boardId.filter(boardId)]) ctx.db.nodeIcon.nodeId.delete(row.nodeId);
+  for (const row of [...ctx.db.chartAnchor.boardId.filter(boardId)]) ctx.db.chartAnchor.nodeId.delete(row.nodeId);
   for (const row of [...ctx.db.nodeTouch.boardId.filter(boardId)]) ctx.db.nodeTouch.nodeId.delete(row.nodeId);
   for (const row of [...ctx.db.codeRefHash.boardId.filter(boardId)]) ctx.db.codeRefHash.refId.delete(row.refId);
   for (const row of [...ctx.db.edgeEvidenceHash.boardId.filter(boardId)]) ctx.db.edgeEvidenceHash.edgeId.delete(row.edgeId);
   ctx.db.sessionRoute.boardId.delete(boardId);
   ctx.db.tracePlayback.boardId.delete(boardId);
+  ctx.db.boardWindow.boardId.delete(boardId);
 }
 
 export const deleteBoard = reducer(
@@ -1914,6 +1968,8 @@ function removeBoard(ctx: any, boardId: bigint): void {
   ctx.db.sessionRemote.boardId.delete(boardId);
   ctx.db.boardStats.boardId.delete(boardId);
   ctx.db.demoReset.boardId.delete(boardId);
+  ctx.db.boardLifetime.boardId.delete(boardId);
+  ctx.db.incident.boardId.delete(boardId);
   ctx.db.publicBoard.boardId.delete(boardId);
   ctx.db.linkShare.boardId.delete(boardId);
   for (const creation of [...ctx.db.boardCreation.boardId.filter(boardId)]) ctx.db.boardCreation.requestKey.delete(creation.requestKey);
@@ -2235,6 +2291,12 @@ function removeEdgeRows(ctx: any, edgeId: bigint): void {
   ctx.db.edgeWeight.edgeId.delete(edgeId); // false (no throw) for a regular edge
   ctx.db.edgeMotion.edgeId.delete(edgeId);
   dropEdgeHash(ctx, edgeId);
+  dropAnchorsOn(ctx, 'edge', edgeId);
+}
+
+/** Unpins every chart pinned to this node or edge. */
+function dropAnchorsOn(ctx: any, targetKind: string, targetId: bigint): void {
+  for (const a of [...ctx.db.chartAnchor.targetId.filter(targetId)]) if (a.targetKind === targetKind) ctx.db.chartAnchor.nodeId.delete(a.nodeId);
 }
 
 /** Deletes a node and everything hanging off it; returns the boards that lost rows. */
@@ -2252,6 +2314,8 @@ function removeNodeRows(ctx: any, node: any): Set<bigint> {
   ctx.db.chart.nodeId.delete(node.id); // false (no throw) for non-chart nodes
   revokeChartEmbed(ctx, node.id);
   ctx.db.nodeIcon.nodeId.delete(node.id); // false (no throw) for nodes without an icon
+  ctx.db.chartAnchor.nodeId.delete(node.id); // a chart's own pin
+  dropAnchorsOn(ctx, 'node', node.id);
   ctx.db.nodeTouch.nodeId.delete(node.id); // its marks stay: they carry the node's label
   return boards;
 }
@@ -2610,12 +2674,7 @@ export const deleteEdge = reducer(
         `provenance rule: edge ${edgeId} was imported; agents may hide imported rows (set_edge_hidden), not delete them`
       );
     }
-    clearMemberships(ctx, 'edge', edgeId);
-    clearCodeRefs(ctx, 'edge', edgeId);
-    ctx.db.edge.id.delete(edgeId);
-    ctx.db.edgeWeight.edgeId.delete(edgeId);
-    ctx.db.edgeMotion.edgeId.delete(edgeId);
-    dropEdgeHash(ctx, edgeId);
+    removeEdgeRows(ctx, edgeId);
     refreshStats(ctx, edge.boardId);
     emit(ctx, edge.boardId, 'edge.deleted', { evidence: evidenceClass(edge.evidence, edge.evidenceStatus) });
   }
@@ -3069,6 +3128,163 @@ export const setChartData = reducer(
 );
 
 // ---------------------------------------------------------------------------
+// Pins a chart to the node or edge it measures; pinning again moves the pin.
+export const anchorChart = reducer(
+  { nodeId: t.u64(), targetKind: t.string(), targetId: t.u64() },
+  (ctx, { nodeId, targetKind, targetId }) => {
+    const node = findNodeOrThrow(ctx, nodeId);
+    if (node.kind !== 'chart' || !ctx.db.chart.nodeId.find(nodeId)) throw new SenderError(`pin rule: node ${nodeId} is not a chart`);
+    assertOneOf('targetKind', targetKind, ['node', 'edge']);
+    const target: any = targetKind === 'node' ? ctx.db.node.id.find(targetId) : ctx.db.edge.id.find(targetId);
+    if (!target || target.boardId !== node.boardId) throw new SenderError(`pin rule: ${targetKind} ${targetId} is not on this chart's board`);
+    if (targetKind === 'node' && target.kind === 'chart') throw new SenderError('pin rule: pin a chart to a component or an edge, not to another chart');
+    const row = { nodeId, boardId: node.boardId, targetKind, targetId };
+    if (ctx.db.chartAnchor.nodeId.find(nodeId)) ctx.db.chartAnchor.nodeId.update(row);
+    else ctx.db.chartAnchor.insert(row);
+    touch(ctx, node.boardId);
+    emit(ctx, node.boardId, 'chart.pinned', { targetKind });
+  }
+);
+
+export const unanchorChart = reducer(
+  { nodeId: t.u64() },
+  (ctx, { nodeId }) => {
+    const node = findNodeOrThrow(ctx, nodeId);
+    if (!ctx.db.chartAnchor.nodeId.delete(nodeId)) return;
+    touch(ctx, node.boardId);
+    emit(ctx, node.boardId, 'chart.unpinned', {});
+  }
+);
+
+// The shared time window, in epoch milliseconds. A month at most: wider than
+// any incident, and every viewer's charts redraw on each change.
+const WINDOW_MAX_MS = 31 * 24 * 3600 * 1000;
+const WINDOW_RULE = `window rule: startMs and endMs are epoch milliseconds with startMs < endMs, at most ${WINDOW_MAX_MS / (24 * 3600 * 1000)} days apart and no later than ${MAX_EPOCH_MS}`;
+
+function writeBoardWindow(ctx: any, boardId: bigint, startMs: number, endMs: number): void {
+  if (!Number.isFinite(startMs) || !Number.isFinite(endMs) || startMs < 0 || endMs <= startMs || endMs - startMs > WINDOW_MAX_MS || endMs > MAX_EPOCH_MS) throw new SenderError(WINDOW_RULE);
+  const row = { boardId, startMs, endMs, updatedAt: ctx.timestamp };
+  if (ctx.db.boardWindow.boardId.find(boardId)) ctx.db.boardWindow.boardId.update(row);
+  else ctx.db.boardWindow.insert(row);
+}
+
+export const setBoardWindow = reducer(
+  { boardId: t.u64(), startMs: t.f64(), endMs: t.f64() },
+  (ctx, { boardId, startMs, endMs }) => {
+    assertBoardWrite(ctx, boardId);
+    writeBoardWindow(ctx, boardId, startMs, endMs);
+    touch(ctx, boardId);
+    emit(ctx, boardId, 'window.set', { startMs, endMs });
+  }
+);
+
+export const clearBoardWindow = reducer(
+  { boardId: t.u64() },
+  (ctx, { boardId }) => {
+    assertBoardWrite(ctx, boardId);
+    if (!ctx.db.boardWindow.boardId.delete(boardId)) return;
+    touch(ctx, boardId);
+    emit(ctx, boardId, 'window.cleared', {});
+  }
+);
+
+// Open incidents one board can have at once: each is a full copy of it.
+const INCIDENTS_PER_BOARD = 20;
+const GROUP_KEY_MAX = 512;
+// The window a new incident board opens on: this long either side of the alert's start.
+const INCIDENT_WINDOW_MS = 15 * 60 * 1000;
+// An alert that fires again this soon after resolving reopens its board instead of copying the source again.
+const INCIDENT_REOPEN_MICROS = 60n * MINUTE_MICROS;
+
+// The window around an alert's start. An unknown start (0) or one too late to draw leaves the window as it is.
+function alertWindow(ctx: any, boardId: bigint, startsAtMs: number): void {
+  if (startsAtMs > INCIDENT_WINDOW_MS && startsAtMs + INCIDENT_WINDOW_MS <= MAX_EPOCH_MS) writeBoardWindow(ctx, boardId, startsAtMs - INCIDENT_WINDOW_MS, startsAtMs + INCIDENT_WINDOW_MS);
+}
+
+// An alert opens an incident board: a copy of the source board's drawing with
+// no suspects (focal) marked, flagged ephemeral, its window around the alert's
+// start. The same groupKey while the incident is firing finds it again;
+// status 'resolved' closes it, and firing within the hour reopens it. A service account with edit rights on the
+// source board may call this: it is the one board it can make, and the board
+// goes to the source's workspace, never to the machine.
+export const openIncident = reducer(
+  { sourceBoardId: t.u64(), groupKey: t.string(), title: t.string(), status: t.string(), startsAtMs: t.f64() },
+  (ctx, { sourceBoardId, groupKey, title, status, startsAtMs }) => {
+    assertBoardWrite(ctx, sourceBoardId);
+    assertOneOf('status', status, ['firing', 'resolved']);
+    if (groupKey.trim() === '' || groupKey.length > GROUP_KEY_MAX) throw new SenderError(`incident rule: groupKey must be 1–${GROUP_KEY_MAX} characters`);
+    assertBoardName(title);
+    if (ctx.db.incident.boardId.find(sourceBoardId)) throw new SenderError('incident rule: open incidents from a lasting board, not from another incident');
+    const firing = [...ctx.db.incident.sourceBoardId.filter(sourceBoardId)].filter((i: any) => i.status === 'firing');
+    const open = firing.find((i: any) => i.groupKey === groupKey);
+    if (open) {
+      if (status === 'resolved') {
+        ctx.db.incident.boardId.update({ ...open, status, updatedAt: ctx.timestamp });
+        emit(ctx, open.boardId, 'incident.resolved', {});
+      }
+      return;
+    }
+    if (status === 'resolved') return; // nothing open to close
+    // Nothing for this group is firing, so a match is resolved: a flapping alert reuses its board.
+    const recent = [...ctx.db.incident.groupKey.filter(groupKey)]
+      .find((i: any) => i.sourceBoardId === sourceBoardId && ctx.timestamp.microsSinceUnixEpoch - i.updatedAt.microsSinceUnixEpoch < INCIDENT_REOPEN_MICROS);
+    if (recent) {
+      ctx.db.incident.boardId.update({ ...recent, status, updatedAt: ctx.timestamp });
+      // A window that already shows the new start stays; one that cannot is moved to it.
+      const w = ctx.db.boardWindow.boardId.find(recent.boardId);
+      if (!w || startsAtMs < w.startMs || startsAtMs > w.endMs) alertWindow(ctx, recent.boardId, startsAtMs);
+      emit(ctx, recent.boardId, 'incident.reopened', {});
+      return;
+    }
+    if (firing.length >= INCIDENTS_PER_BOARD) throw new SenderError(`incident rule: a board has at most ${INCIDENTS_PER_BOARD} open incidents; resolve one first`);
+    if (limitsApply(ctx)) {
+      let count = 0;
+      for (const _n of ctx.db.node.boardId.filter(sourceBoardId)) if (++count > LIMITS.forkMaxNodes) throw new SenderError(`limit rule: only a board with at most ${LIMITS.forkMaxNodes} nodes can open an incident`);
+    }
+    const board = ctx.db.board.insert({ id: 0n, name: title, slug: newSlug(ctx.db.board, ctx.random) });
+    copyDrawing(ctx, sourceBoardId, board.id, false);
+    if (isWorkspaceMachine(ctx)) {
+      refreshStats(ctx, board.id, { init: true });
+      emit(ctx, board.id, 'board.created', { name: title, via: 'incident' });
+    } else {
+      initCallerBoard(ctx, board.id, title, 'incident');
+    }
+    const link = ctx.db.agentLink.agent.find(ctx.sender);
+    inheritWorkspaceBoard(ctx, sourceBoardId, board.id, link?.owner ?? ctx.sender);
+    // A workspace drops agent grants (assignBoardWorkspace): a linked agent keeps editing the board it opened, as with branches.
+    if (link && !findAgentGrant(ctx, board.id, ctx.sender)) ctx.db.agentGrant.insert({ id: 0n, boardId: board.id, agent: ctx.sender, grantedBy: link.owner });
+    ctx.db.boardLifetime.insert({ boardId: board.id, isEphemeral: true, createdAt: ctx.timestamp });
+    ctx.db.incident.insert({ boardId: board.id, sourceBoardId, groupKey, title, status, openedAt: ctx.timestamp, updatedAt: ctx.timestamp });
+    alertWindow(ctx, board.id, startsAtMs);
+    emit(ctx, sourceBoardId, 'incident.opened', { title });
+  }
+);
+
+const IncidentRow = t.row('IncidentRow', {
+  boardId: t.u64().primaryKey(),
+  slug: t.string(),
+  sourceBoardId: t.u64(),
+  groupKey: t.string(),
+  title: t.string(),
+  status: t.string(),
+  openedAt: t.timestamp(),
+  updatedAt: t.timestamp(),
+});
+// Incidents opened from, or on, the boards the caller reads, with the incident
+// board's link id: how the alert webhook answers with a link.
+export const myIncidents = spacetimedb.view({ name: 'my_incidents', public: true }, t.array(IncidentRow), ctx => {
+  const out = new Map<bigint, any>();
+  for (const id of readableBoardIds(ctx)) {
+    for (const row of ctx.db.incident.sourceBoardId.filter(id)) out.set(row.boardId, row);
+    const own = ctx.db.incident.boardId.find(id);
+    if (own) out.set(own.boardId, own);
+  }
+  return [...out.values()].flatMap(row => {
+    const board = ctx.db.board.id.find(row.boardId);
+    return board ? [{ ...row, slug: board.slug }] : [];
+  });
+});
+
 // Chart library: personal saved selections. The client builds and checks the
 // payload shape; the server checks ownership, the name, the size, that the
 // JSON is an object with version 1, and the per-owner cap.
@@ -4408,6 +4624,34 @@ function inheritWorkspaceBoard(ctx: any, source: bigint, target: bigint, creator
   for (const grant of ctx.db.teamGrant.boardId.filter(source)) ctx.db.teamGrant.insert({ ...grant, id: 0n, boardId: target });
 }
 
+// The drawing of one board onto another: nodes with their icons and charts,
+// edges with their weights, motion and evidence hashes, and chart pins. Returns the
+// old-to-new id maps for the caller's own rows.
+function copyDrawing(ctx: any, from: bigint, to: bigint, keepFocal = true): { nodes: Map<bigint, bigint>; edges: Map<bigint, bigint> } {
+  const nodes = new Map<bigint, bigint>(), edges = new Map<bigint, bigint>();
+  for (const n of ctx.db.node.boardId.filter(from)) {
+    const row = ctx.db.node.insert({ ...n, id: 0n, boardId: to, focal: keepFocal && n.focal }); nodes.set(n.id, row.id);
+    const icon = ctx.db.nodeIcon.nodeId.find(n.id);
+    if (icon) ctx.db.nodeIcon.insert({ nodeId: row.id, boardId: to, icon: icon.icon });
+    const chart = ctx.db.chart.nodeId.find(n.id);
+    if (chart) ctx.db.chart.insert({ ...chart, nodeId: row.id, boardId: to });
+  }
+  for (const e of ctx.db.edge.boardId.filter(from)) {
+    const row = ctx.db.edge.insert({ ...e, id: 0n, boardId: to, fromNode: nodes.get(e.fromNode)!, toNode: nodes.get(e.toNode)! }); edges.set(e.id, row.id);
+    const weight = ctx.db.edgeWeight.edgeId.find(e.id);
+    if (weight) ctx.db.edgeWeight.insert({ edgeId: row.id, boardId: to, weight: weight.weight });
+    const motion = ctx.db.edgeMotion.edgeId.find(e.id);
+    if (motion) ctx.db.edgeMotion.insert({ ...motion, edgeId: row.id, boardId: to });
+    const hash = ctx.db.edgeEvidenceHash.edgeId.find(e.id);
+    if (hash) ctx.db.edgeEvidenceHash.insert({ ...hash, edgeId: row.id, boardId: to });
+  }
+  for (const a of ctx.db.chartAnchor.boardId.filter(from)) {
+    const nodeId = nodes.get(a.nodeId), targetId = (a.targetKind === 'node' ? nodes : edges).get(a.targetId);
+    if (nodeId !== undefined && targetId !== undefined) ctx.db.chartAnchor.insert({ ...a, nodeId, boardId: to, targetId });
+  }
+  return { nodes, edges };
+}
+
 function architectureVersionOrThrow(ctx: any, boardId: bigint, mode?: string): any {
   const v = ctx.db.architectureVersion.boardId.find(boardId);
   if (!v || (mode && v.assertionMode !== mode)) throw new SenderError(`architecture board ${boardId} must be ${mode ?? 'a version'}`);
@@ -4610,23 +4854,8 @@ export const createArchitectureProposal = reducer(
       let count = 0;
       for (const _n of ctx.db.node.boardId.filter(baseBoardId)) if (++count > LIMITS.forkMaxNodes) throw new SenderError(`limit rule: only a board with at most ${LIMITS.forkMaxNodes} nodes can be branched`);
     }
-    const board = insertBoard(ctx, name), nodes = new Map<bigint, bigint>(), edges = new Map<bigint, bigint>();
-    for (const n of ctx.db.node.boardId.filter(baseBoardId)) {
-      const row = ctx.db.node.insert({ ...n, id: 0n, boardId: board.id }); nodes.set(n.id, row.id);
-      const icon = ctx.db.nodeIcon.nodeId.find(n.id);
-      if (icon) ctx.db.nodeIcon.insert({ nodeId: row.id, boardId: board.id, icon: icon.icon });
-      const chart = ctx.db.chart.nodeId.find(n.id);
-      if (chart) ctx.db.chart.insert({ ...chart, nodeId: row.id, boardId: board.id });
-    }
-    for (const e of ctx.db.edge.boardId.filter(baseBoardId)) {
-      const row = ctx.db.edge.insert({ ...e, id: 0n, boardId: board.id, fromNode: nodes.get(e.fromNode)!, toNode: nodes.get(e.toNode)! }); edges.set(e.id, row.id);
-      const weight = ctx.db.edgeWeight.edgeId.find(e.id);
-      if (weight) ctx.db.edgeWeight.insert({ edgeId: row.id, boardId: board.id, weight: weight.weight });
-      const motion = ctx.db.edgeMotion.edgeId.find(e.id);
-      if (motion) ctx.db.edgeMotion.insert({ ...motion, edgeId: row.id, boardId: board.id });
-      const hash = ctx.db.edgeEvidenceHash.edgeId.find(e.id);
-      if (hash) ctx.db.edgeEvidenceHash.insert({ ...hash, edgeId: row.id, boardId: board.id });
-    }
+    const board = insertBoard(ctx, name);
+    const { nodes, edges } = copyDrawing(ctx, baseBoardId, board.id);
     for (const f of ctx.db.repoFile.boardId.filter(baseBoardId)) ctx.db.repoFile.insert({ ...f, id: 0n, boardId: board.id });
     for (const set of ctx.db.hideSet.boardId.filter(baseBoardId)) {
       const row = ctx.db.hideSet.insert({ ...set, id: 0n, boardId: board.id });

@@ -221,6 +221,8 @@ export function renderTimeseries(d: TimeseriesData, box: PlotBox, dense: boolean
       fill: 'transparent',
       class: 'chart-hit',
       'data-x': num(sx(i)),
+      // The instant itself, for the board's time window brush; clock times have no date.
+      ...(d.xKind === 'clock' ? {} : { 'data-t': String(d.xs[i]) }),
       'data-tip': [head, ...rows.map(r => `${r.name}: ${r.value}`)].join('\n'),
       'data-tip-head': head,
       'data-tip-rows': JSON.stringify(rows),

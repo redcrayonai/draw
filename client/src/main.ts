@@ -22,6 +22,7 @@ import {
   initAccountBar,
   initSignInButton,
   copyText,
+  agentPromptButton,
   nodeName,
   renderBoardCounts,
   renderExposure,
@@ -32,7 +33,8 @@ import {
 } from './chrome';
 import { paintAccessLine } from './access-line';
 import { renderBoard, focusOf, ghostEdges, contentBounds, evidenceClass, hasMachineEvidence, nodeRect, type RefBadge, type EdgeRefBadge, type LiveEdge, type EdgeMotion } from './render';
-import { LiveSession, liveUrl, resolveLive, tapPrompt, type LiveState } from './live';
+import { LIVE_CHART_SOURCE, LiveSession, liveCsv, liveUrl, recordLive, resolveLive, tapPrompt, type LivePoint, type LiveState } from './live';
+import { formatWindow, mountWindowBrush, zoomOut, type TimeWindow } from './time-window';
 import { Glide, type XY } from './glide';
 import { Viewport, chromeInsets } from './viewport';
 import { History, Ops, type ChartPatch } from './ops';
@@ -555,6 +557,53 @@ async function boot(conn: DbConnection, identityHex: string, signedIn: boolean):
       const rebuildIcons = () => {
         icons = new Map([...conn.db.visibleNodeIcon.iter()].filter(r => r.boardId === boardId).map(r => [r.nodeId, r.icon]));
       };
+      // Incident triage, like icons: chart pins, the shared time window, and the
+      // incident and lifetime rows (empty on a module that predates them).
+      let anchors = new Map<bigint, { targetKind: string; targetId: bigint }>();
+      let timeWindow: TimeWindow | null = null;
+      let incident: { status: string; title: string } | null = null;
+      let ephemeral = false;
+      const rebuildIncident = () => {
+        anchors = new Map([...conn.db.visibleChartAnchor.iter()].filter(a => a.boardId === boardId).map(a => [a.nodeId, a]));
+        const w = conn.db.visibleBoardWindow.boardId.find(boardId);
+        timeWindow = w ? { startMs: w.startMs, endMs: w.endMs } : null;
+        incident = conn.db.visibleIncident.boardId.find(boardId) ?? null;
+        ephemeral = conn.db.visibleBoardLifetime.boardId.find(boardId)?.isEphemeral ?? false;
+        renderWindow();
+      };
+      const setWindow = (w: TimeWindow | null) => {
+        const call = w ? conn.reducers.setBoardWindow({ boardId, ...w }) : conn.reducers.clearBoardWindow({ boardId });
+        void call.catch(err => showError(`Time window not changed: ${String(err)}`));
+      };
+      // The rail line under Live: incident state, then the shared window and its controls.
+      function renderWindow(): void {
+        const row = document.getElementById('window-row');
+        if (!row) return;
+        row.replaceChildren();
+        const hasTimeChart = [...charts.values()].some(c => c.type === 'timeseries');
+        row.hidden = incident === null && !ephemeral && timeWindow === null && !hasTimeChart;
+        if (incident !== null || ephemeral) {
+          const line = document.createElement('div');
+          line.textContent = incident ? `Incident · ${incident.status}${ephemeral ? ' · ephemeral board' : ''}` : 'Ephemeral board';
+          row.append(line);
+        }
+        if (timeWindow !== null) {
+          const line = document.createElement('div');
+          line.textContent = `Time window · ${formatWindow(timeWindow)}`;
+          row.append(line);
+          if (!publicExample()) {
+            const w = timeWindow;
+            row.append(liveButton('Zoom out', () => setWindow(zoomOut(w))), liveButton('Clear', () => setWindow(null)));
+          }
+        } else if (hasTimeChart && !publicExample()) {
+          const line = document.createElement('div');
+          line.textContent = 'Alt-drag across a time chart to set everyone\'s time window.';
+          row.append(line);
+        }
+      }
+      mountWindowBrush(w => {
+        if (!publicExample()) setWindow(w);
+      });
       // Change notes (spec 2026-10-16): derived from the note rows, this board's
       // refs and its visible edges; rebuilt after rebuildRefs, never per frame.
       let changeNotes: NoteIndex = buildNoteIndex([], new Map(), []);
@@ -1005,6 +1054,52 @@ async function boot(conn: DbConnection, identityHex: string, signedIn: boolean):
       };
       // ---- live tap: connected only while Live is on ----
       let liveMap: ReadonlyMap<bigint, LiveEdge> | undefined;
+      // The last HISTORY_MS of live windows per edge, for "Save as charts".
+      const liveHistory = new Map<bigint, LivePoint[]>();
+      const saveLiveCharts = async () => {
+        const nodesById = new Map(getAllNodes().map(n => [n.id, n]));
+        const placeBoard = boardId, actionOps = ops;
+        // New charts go in a row under the drawing, each under its edge where there is room.
+        const W = 320, H = 176, at = (v: number) => Math.round(v / 4) * 4;
+        const y = at(Math.max(0, ...getAllNodes().map(n => n.y + n.h)) + 48);
+        const placed: number[] = [];
+        let saved = 0;
+        await actionOps.history.batch('save live charts', async () => {
+          for (const [edgeId, points] of liveHistory) {
+            const edge = getEdges().find(e => e.id === edgeId);
+            const csv = liveCsv(points);
+            if (!edge || csv.split('\n').length < 3) continue; // a series needs two rows
+            saved++;
+            // A live chart already pinned to this edge takes the new numbers; otherwise a new one sits beside the edge.
+            // The tables, not the per-frame maps: a second save right after the first must see its pins.
+            const own = [...conn.db.visibleChartAnchor.iter()].find(a => a.targetKind === 'edge' && a.targetId === edgeId && conn.db.visibleChart.nodeId.find(a.nodeId)?.source === LIVE_CHART_SOURCE);
+            if (own) {
+              await actionOps.setChartDataAction(own.nodeId, { csv, source: LIVE_CHART_SOURCE });
+              continue;
+            }
+            const a = nodesById.get(edge.fromNode), b = nodesById.get(edge.toNode);
+            if (!a || !b) continue;
+            let x = at((a.x + a.w / 2 + b.x + b.w / 2) / 2 - W / 2);
+            while (placed.some(p => Math.abs(p - x) < W + 24)) x += W + 24;
+            placed.push(x);
+            const id = await actionOps.createChartAction({
+              boardId: placeBoard,
+              label: `${a.label} → ${b.label}`,
+              sublabel: 'live p50 / p95',
+              x,
+              y,
+              w: W,
+              h: H,
+              type: 'timeseries',
+              csv,
+              options: '{"unit":"ms"}',
+              source: LIVE_CHART_SOURCE,
+            });
+            await conn.reducers.anchorChart({ nodeId: id, targetKind: 'edge', targetId: edgeId });
+          }
+        });
+        if (saved === 0) showError('Live needs about 20 seconds of traffic on an edge before it can save a chart.');
+      };
       let liveSession: LiveSession | null = null;
       let liveState: LiveState | null = null;
       const liveRow = document.getElementById('live-row') as HTMLButtonElement;
@@ -1013,14 +1108,15 @@ async function boot(conn: DbConnection, identityHex: string, signedIn: boolean):
         if (auth?.hasSession()) return auth.freshToken().catch(() => null);
         return readAnonymousToken(ANON_TOKEN_KEY, SHARE_LOCAL_GUEST) ?? null;
       };
-      const liveButton = (label: string, run: () => void) => {
+      // A rail action under Live and under the time window; a declaration, so renderWindow above can use it.
+      function liveButton(label: string, run: () => void): HTMLButtonElement {
         const b = document.createElement('button');
         b.type = 'button';
         b.className = 'session-route-play live-action';
         b.textContent = label;
         b.addEventListener('click', run);
         return b;
-      };
+      }
       const renderLive = () => {
         const on = liveSession !== null;
         liveRow.setAttribute('aria-pressed', on ? 'true' : 'false');
@@ -1031,21 +1127,22 @@ async function boot(conn: DbConnection, identityHex: string, signedIn: boolean):
         const s = liveState;
         line.textContent =
           s.kind === 'connecting' ? 'Connecting…'
-          : s.kind === 'no-tap' ? 'No live source on this board yet.'
+          : s.kind === 'no-tap' ? 'No live source yet. Your agent starts one with a tap.'
           : s.kind === 'waiting' ? 'Tap connected. Waiting for traffic.'
           : s.kind === 'live' ? `Live · ${s.edges} edge${s.edges === 1 ? '' : 's'}${s.unmapped > 0 ? ` · ${s.unmapped} unmapped call${s.unmapped === 1 ? '' : 's'}` : ''}`
           : s.reason;
         liveStatus.append(line);
-        if (s.kind === 'no-tap') {
-          liveStatus.append(liveButton('Copy a prompt for your agent', () => {
-            void copyText(tapPrompt(boardId)).then(ok => { if (!ok) showError(tapPrompt(boardId)); });
-          }));
-        }
+        if (s.kind === 'no-tap') liveStatus.append(agentPromptButton(() => tapPrompt(boardId), showError));
         if (s.kind === 'live' && !publicExample() && liveMap && liveMap.size > 0) {
           liveStatus.append(liveButton('Pin as latency', () => {
             const pins = [...(liveMap ?? new Map<bigint, LiveEdge>())];
             void Promise.all(pins.map(([edgeId, e]) => conn.reducers.setEdgeLatency({ edgeId, latencyMs: e.p50, source: 'local' })))
               .catch(err => showError(`Pin failed: ${String(err)}`));
+          }));
+        }
+        if (!publicExample() && liveHistory.size > 0) {
+          liveStatus.append(liveButton('Save as charts', () => {
+            void saveLiveCharts().catch(err => showError(`Save failed: ${String(err)}`));
           }));
         }
       };
@@ -1059,6 +1156,7 @@ async function boot(conn: DbConnection, identityHex: string, signedIn: boolean):
       };
       const startLive = () => {
         if (config.mcpUrl === undefined) return;
+        liveHistory.clear();
         const session = new LiveSession({
           url: liveUrl(config.mcpUrl, boardId),
           token: liveToken,
@@ -1070,6 +1168,7 @@ async function boot(conn: DbConnection, identityHex: string, signedIn: boolean):
           onWindow: w => {
             if (liveSession !== session) return;
             liveMap = w ? resolveLive(w, getEdges()) : undefined;
+            if (w && liveMap) recordLive(liveHistory, w.t * 1000, liveMap);
             renderLive();
             rerender();
           },
@@ -1316,6 +1415,10 @@ async function boot(conn: DbConnection, identityHex: string, signedIn: boolean):
         copyRef: (ref: RefSummary) => copyText(`${ref.path}:${ref.startLine}-${ref.endLine}`),
         // `ops` is read per call: it is replaced on a board switch.
         setChartData: (nodeId: bigint, patch: ChartPatch) => ops.setChartDataAction(nodeId, patch),
+        pinChart: (nodeId: bigint, target: { targetKind: string; targetId: bigint } | null) => {
+          const call = target ? conn.reducers.anchorChart({ nodeId, ...target }) : conn.reducers.unanchorChart({ nodeId });
+          call.catch(err => showError((err as Error).message));
+        },
         // D12: the module refuses agents and anyone without edit access; the button only shows to people who may.
         markReviewed: (id: bigint, reviewed: boolean) => {
           conn.reducers.markChangeNoteReviewed({ id, reviewed }).catch(err => showError((err as Error).message));
@@ -1427,6 +1530,8 @@ async function boot(conn: DbConnection, identityHex: string, signedIn: boolean):
           nodeDiff: showDiff ? comparison?.nodeDiff : undefined,
           edgeDiff: showDiff ? comparison?.edgeDiff : undefined,
           charts,
+          window: timeWindow,
+          anchors,
           edgeWeights,
           edgeMotions,
           icons,
@@ -1462,6 +1567,7 @@ async function boot(conn: DbConnection, identityHex: string, signedIn: boolean):
             deletedPaths: deletedPaths(),
             refRow: id => refRows.get(id),
             chartRow: id => conn.db.visibleChart.nodeId.find(id) ?? undefined,
+            chartPin: id => anchors.get(id),
             changeNotes: changeNotes.byAnchor,
             canReview: signedIn && !publicExample(),
             threats: threats.byAnchor,
@@ -2103,6 +2209,7 @@ async function boot(conn: DbConnection, identityHex: string, signedIn: boolean):
         rebuildCharts();
         rebuildEdgeWeights();
         rebuildIcons();
+        rebuildIncident();
         rebuildRoute();
         syncCodeOverlay();
         editor.pruneSelection();
@@ -2142,6 +2249,10 @@ async function boot(conn: DbConnection, identityHex: string, signedIn: boolean):
         conn.db.visibleNodeIcon,
         conn.db.visibleChangeNote,
         conn.db.visibleThreat,
+        conn.db.visibleChartAnchor,
+        conn.db.visibleBoardWindow,
+        conn.db.visibleBoardLifetime,
+        conn.db.visibleIncident,
       ]) {
         table.onInsert(scheduleTableChange);
         table.onUpdate(scheduleTableChange);
@@ -2395,6 +2506,7 @@ async function boot(conn: DbConnection, identityHex: string, signedIn: boolean):
       rebuildCharts();
       rebuildEdgeWeights();
       rebuildIcons();
+      rebuildIncident();
       rebuildRoute();
       syncCodeOverlay();
       syncShare(); // after the refs and threats rebuild, as in onTableChange
