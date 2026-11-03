@@ -76,15 +76,27 @@ own mistakes freely.
   rows; series: …) board=<name>`; read its warnings (folded slices, cut rows). A
   chart is at least 224×144. `set_chart_data` changes the data, `get_board` shows
   a chart's summary, and `get_chart` returns its CSV.
-- Place new nodes anywhere on the grid — members fully inside their boundary
-  (membership is geometric) — then, on a pass that added nodes or edges, call
-  `layout_board`: it lays the board out left to right (entry points left, data
-  stores right), keeps members inside their boundaries, and leaves room for edge
-  labels. Do not hand-tune positions after it. When `get_board` shows positions
+- Keep members fully inside their boundary (membership is geometric). On a board
+  of about 10 nodes or fewer, place new nodes anywhere on the grid, then, on a
+  pass that added nodes or edges, call `layout_board`: it lays the board out left
+  to right (entry points left, data stores right), keeps members inside their
+  boundaries, and leaves room for edge labels. When `get_board` shows positions
   you did not leave (a human arranged the board), skip `layout_board` and say so
   in your final answer. Default node 160×80. On a node 200 px or
   wider the ref badge can also name a symbol (`3 refs · Limiter.allow`); a
   narrower node shows the count only.
+- **Readable boards.** On a larger board, plan positions first, pass them to
+  `apply_board`, and leave `layout` off.
+  - Arrange by layers: top to bottom for a stack, or one row per path when writes
+    and reads are separate.
+  - Line up what flows together, so most edges run straight.
+  - Leave at least 160 px between nodes in a row for edge labels, and 80 px
+    between rows.
+  - Aim for under 2,500 px wide. After `layout_board`, check `get_board`: if the
+    board is more than about twice as wide as tall, arrange it by hand with
+    `resize_node`.
+  - Draw one edge per pair of nodes, and never point an edge at a boundary.
+  - Put the main insight on the focal nodes.
 - **Size for the text.** The board draws exactly the box you store. The label
   wraps to at most two lines inside `w` (16 px padding each side) and is cut off
   with `…` after that; the sublabel takes one line below it and is dropped when

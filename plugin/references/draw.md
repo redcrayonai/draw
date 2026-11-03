@@ -7,8 +7,10 @@ match `create_node` and `create_edge`, without their `board`. Pass `board` once
 on the batch. Nodes must differ in label, sublabel, x or y so the server can
 identify their committed ids. The plugin fills in a separate capture for each
 source edge; never reuse a capture on two edges.
-Set `layout: true` only when no person has arranged the board. A batch holds
-at most 16 operations, including layout. Returned `nodes` maps keys to ids;
+Set `layout: true` only on a board of about 10 nodes or fewer that no person has
+arranged; give a larger board planned positions instead
+([editorial.md](editorial.md)). A batch holds at most 16 operations, including
+layout. Returned `nodes` maps keys to ids;
 use those ids for code refs, sent together after the batch. Returned `edges`
 matches input order, with `null` where no id was confirmed. Read every result.
 Edges run one at a time when any edge cites source, to bound snapshot load.
@@ -47,9 +49,10 @@ several are ready. Each call in a batch succeeds or fails on its own: act on a
    the edge's `evidence` already cites its call site. Set `author` to your
    subagent name if you are one; otherwise omit it.
 5. **Layout** — `layout_board` once, after the nodes and edges of this pass
-   exist, and only if this pass added nodes or edges. Skip it when step 1's
-   `get_board` shows positions you did not leave (a human moved things), and say
-   so in your final answer.
+   exist, and only if this pass added nodes or edges. Skip it on a larger board
+   whose positions you planned ([editorial.md](editorial.md)). Skip it when step
+   1's `get_board` shows positions you did not leave (a human moved things), and
+   say so in your final answer.
 
 **Naming TypeScript/JavaScript symbols** (`.ts .tsx .mts .cts .js .jsx .mjs .cjs`)
 — never pass `startLine`/`endLine` in these files (the server rejects a range

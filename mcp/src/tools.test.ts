@@ -183,7 +183,7 @@ describe('layout_board on the hosted server', () => {
 
   it('uses the stdio description and board:write, with no hints', () => {
     expect(TOOLS.layout_board.description).toBe(
-      'Lay out the board left to right: entry points left, data stores right, members kept inside their containers, room left for edge labels. Moves nodes and resizes containers (boundaries, and any non-chart node drawn around others) to fit their members; hidden nodes stay where they are; other node sizes do not change. Call it after a pass that added nodes or edges, before mark_checkpoint; skip it when a person has arranged the board. Returns "committed layout: moved <n>, resized <m> board=<name>".'
+      'Lay out the board left to right: entry points left, data stores right, members kept inside their containers, room left for edge labels. Moves nodes and resizes containers (boundaries, and any non-chart node drawn around others) to fit their members; hidden nodes stay where they are; other node sizes do not change. Call it after a pass that added nodes or edges, before mark_checkpoint; skip it when a person has arranged the board or you planned the positions of a larger board, since it can make a board of more than about 10 nodes very wide. Returns "committed layout: moved <n>, resized <m> board=<name>".'
     );
     expect(TOOLS.layout_board.scope).toBe(TOOLS.move_node.scope);
     expect(TOOLS.layout_board.annotations).toBeUndefined();

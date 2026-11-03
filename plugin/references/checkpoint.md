@@ -68,6 +68,7 @@ in the code, delete the node.
 stored at the *last checkpoint*, so any board edit, ref, or file edit after it
 leaves the board's ledger wrong.
 Order at the end: finish editing files → draw → `layout_board` (only if this
-pass added nodes or edges and no human moved things) → clear the selection
+pass added nodes or edges, you did not plan the positions of a larger board, and
+no human moved things) → clear the selection
 ([focus.md](focus.md)) → `mark_checkpoint` → answer. Never let the final answer go out with a checkpoint
 older than your last edit.
