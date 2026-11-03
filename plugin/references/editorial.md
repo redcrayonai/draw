@@ -77,7 +77,7 @@ own mistakes freely.
   chart is at least 224×144. `set_chart_data` changes the data, `get_board` shows
   a chart's summary, and `get_chart` returns its CSV.
 - Keep members fully inside their boundary (membership is geometric). On a board
-  of about 10 nodes or fewer, place new nodes anywhere on the grid, then, on a
+  of about 5 nodes or fewer, place new nodes anywhere on the grid, then, on a
   pass that added nodes or edges, call `layout_board`: it lays the board out left
   to right (entry points left, data stores right), keeps members inside their
   boundaries, and leaves room for edge labels. When `get_board` shows positions
@@ -92,9 +92,9 @@ own mistakes freely.
   - Line up what flows together, so most edges run straight.
   - Leave at least 160 px between nodes in a row for edge labels, and 80 px
     between rows.
-  - Aim for under 2,500 px wide. After `layout_board`, check `get_board`: if the
-    board is more than about twice as wide as tall, arrange it by hand with
-    `resize_node`.
+  - Aim for under 2,500 px wide. After any `layout_board`, on a board of any size,
+    check `get_board`: if the board is more than about twice as wide as tall,
+    arrange it by hand with `resize_node`.
   - Draw one edge per flow. Merge parallel edges only when they describe the same
     flow, and never point an edge at a boundary.
   - Put the main insight on the focal nodes.

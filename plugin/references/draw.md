@@ -7,7 +7,7 @@ match `create_node` and `create_edge`, without their `board`. Pass `board` once
 on the batch. Nodes must differ in label, sublabel, x or y so the server can
 identify their committed ids. The plugin fills in a separate capture for each
 source edge; never reuse a capture on two edges.
-Set `layout: true` only on a board of about 10 nodes or fewer that no person has
+Set `layout: true` only on a board of about 5 nodes or fewer that no person has
 arranged; give a larger board planned positions instead
 ([editorial.md](editorial.md)). A batch holds at most 16 operations, including
 layout. Returned `nodes` maps keys to ids;
