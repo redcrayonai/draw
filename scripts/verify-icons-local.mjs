@@ -155,7 +155,8 @@ test('IC create_icon_node writes the node and its icon row in one call', async (
 });
 
 test('IC every id in the registry is accepted; kinds service, datastore, external and boundary take an icon', async () => {
-  const who = await mint();
+  // A service account: the registry holds more ids than a guest's write budget allows in a minute.
+  const who = svc;
   const B = await createBoardAs(who, named('ic-ids'));
   for (const [i, icon] of ICON_IDS.entries()) {
     await ok(who.token, 'create_icon_node', iconNodeArgs(B, `n${i}`, icon, { x: (i % 10) * 200, y: Math.floor(i / 10) * 120 }));
