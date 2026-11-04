@@ -34,6 +34,34 @@ describe('get_board icons', () => {
   });
 });
 
+describe('get_board references', () => {
+  const ref = (id: bigint, targetKind: string, targetId: bigint) => ({ id, targetKind, targetId, path: 'src/a.ts', symbol: 'f', startLine: 1, endLine: 2, checkpoint: 0, status: 'ok' });
+
+  it('keeps reference order and separates a node and edge with the same id', () => {
+    const rows = board(2);
+    rows.nodes[0].hidden = true;
+    rows.edges = [{ id: 1n, fromNode: 1n, toNode: 2n, label: '', evidence: '', evidenceStatus: '', latencyMs: -1, hidden: false }];
+    rows.refs = [ref(3n, 'node', 1n), ref(1n, 'edge', 1n), ref(2n, 'node', 1n)];
+    const out = JSON.parse(boardText(rows, 1n));
+    expect(out.nodes[0].refs.map((r: { id: string }) => r.id)).toEqual(['3', '2']);
+    expect(out.edges[0].refs.map((r: { id: string }) => r.id)).toEqual(['1']);
+    expect(out.nodes[1].refs).toEqual([]);
+    expect(out.nodes[0].refs[0]).toEqual({ id: '3', path: 'src/a.ts', symbol: 'f', startLine: 1, endLine: 2, checkpoint: 0, status: 'ok' });
+  });
+
+  it('visits reference targets only once even when an oversized board is trimmed repeatedly', () => {
+    const rows = board(200);
+    let visits = 0;
+    rows.refs = rows.nodes.map(n => ({ ...ref(n.id, 'node', n.id), get targetKind() { visits++; return 'node'; } }));
+    const text = boardText(rows, 1n);
+    expect(text.length).toBeLessThanOrEqual(45_000);
+    const out = JSON.parse(text);
+    expect(out.omitted.nodes).toBeGreaterThan(0);
+    expect(out.nodes.every((n: { id: string; refs: { id: string }[] }) => n.refs.length === 1 && n.refs[0].id === n.id)).toBe(true);
+    expect(visits).toBe(rows.refs.length);
+  });
+});
+
 describe('get_board threats', () => {
   it('lists threats, and leaves the key out when there are none', () => {
     const rows = board(2);
