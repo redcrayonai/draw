@@ -930,6 +930,7 @@ export const TOOLS: Record<string, ToolDef> = {
       const start = cap === undefined ? undefined : await claim(t.ctx.captures, cap, { tool: 'start_session' });
       let boardId: SafeU64;
       let boardName: string;
+      let boardRow: Row | undefined;
       let session: Record<string, unknown> = { session: false, note: NO_CAPTURE_NOTE };
       if (link !== undefined) {
         const found = boardInLink(o, link, t.ctx.env.DB_NAME);
@@ -943,6 +944,7 @@ export const TOOLS: Record<string, ToolDef> = {
           if (!row && (await grantOwnBoard(t, String(found)))) [row] = await byLink();
         }
         if (!row) throw new Refusal(linkNotFound(link));
+        boardRow = row;
         boardId = row.id;
         boardName = row.name;
         if (start) {
@@ -984,15 +986,15 @@ export const TOOLS: Record<string, ToolDef> = {
         await absolute(() => db.call('create_requested_board', { name: name!, orgId: '', requestKey }, t.signal));
         const [made] = await db.read<Row>(sql`SELECT * FROM my_board_creations WHERE request_key = '${requestKey}'`, t.signal);
         if (!made) throw new Refusal(boardNotFound(name!));
-        const [row] = await db.read<Row>(sql`SELECT * FROM visible_board WHERE id = ${made.boardId as SafeU64}`, t.signal);
+        [boardRow] = await db.read<Row>(sql`SELECT * FROM visible_board WHERE id = ${made.boardId as SafeU64}`, t.signal);
         boardId = made.boardId;
-        boardName = row?.name ?? name!;
+        boardName = boardRow?.name ?? name!;
       }
       t.named(boardName);
       await showPresence(t, boardId);
       if (start && session.session === true) await recordRemote(t, boardId, start);
-      const [board] = await db.read<Row>(sql`SELECT * FROM visible_board WHERE id = ${boardId}`, t.signal);
-      return okResult(jsonText({ board: boardName, id: Number(boardId), url: o.boardUrl(String(board?.slug ?? '')), seat: newSeat(), ...session, ...(devCaller(t.ctx) ? await devLinkOffer(t) : {}) }));
+      if (!boardRow) [boardRow] = await db.read<Row>(sql`SELECT * FROM visible_board WHERE id = ${boardId}`, t.signal);
+      return okResult(jsonText({ board: boardName, id: Number(boardId), url: o.boardUrl(String(boardRow?.slug ?? '')), seat: newSeat(), ...session, ...(devCaller(t.ctx) ? await devLinkOffer(t) : {}) }));
     },
   },
 

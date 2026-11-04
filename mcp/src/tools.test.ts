@@ -952,6 +952,32 @@ describe('create_edge round trips', () => {
   });
 });
 
+describe('start_session board reads', () => {
+  it.each([{ name: 'main' }, { link: 'https://draw.example.com/#b=abc123' }])('reuses the board row for its URL (%j)', async input => {
+    const reads: string[] = [];
+    const call = vi.fn(async () => {});
+    const db = {
+      read: async (q: { text: string }) => {
+        reads.push(q.text);
+        if (q.text.includes('my_board_creations')) return [{ boardId: 1n }];
+        if (q.text.includes('visible_board')) return [{ id: 1n, name: 'main', slug: 'abc123' }];
+        if (q.text.includes('visible_selection')) return [];
+        throw new Error(`unexpected read ${q.text}`);
+      },
+      call,
+    };
+    const ctx = {
+      db, principal: { userId: 'session_reader' }, env: { DB_NAME: 'test' },
+      o: { issuer: 'https://mcp.example.com', app: 'https://draw.example.com', boardUrl: (slug: string) => `https://draw.example.com/#b=${slug}` },
+    };
+    const t = { ctx, signal: new AbortController().signal, named: () => {} } as never;
+    const result = await TOOLS.start_session.run(input as never, t);
+    expect(JSON.parse(text(result))).toMatchObject({ id: 1, board: 'main', url: 'https://draw.example.com/#b=abc123', session: false });
+    expect(call).toHaveBeenCalledWith('set_selection', { boardId: 1n, nodeIds: [] }, expect.any(AbortSignal));
+    expect(reads.filter(q => q.includes('visible_board'))).toHaveLength(1);
+  });
+});
+
 describe('the repo remote on the hosted server (RC-690)', () => {
   const HEAD = 'a'.repeat(40);
   const REMOTE = 'https://github.com/o/r.git';
