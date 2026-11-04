@@ -217,7 +217,11 @@ async function boardAndTarget(t: T, board: string, kind: 'node' | 'edge' | 'code
  */
 async function nodesOnBoard(t: T, b: { id: SafeU64; name: string }, ids: SafeU64[]) {
   if (ids.length === 0) return;
-  const on = new Set((await t.ctx.db.read<Row>(sql`SELECT id FROM visible_node WHERE board_id = ${b.id}`, t.signal)).map(n => n.id as bigint));
+  assertNodesOn(await t.ctx.db.read<Row>(sql`SELECT id FROM visible_node WHERE board_id = ${b.id}`, t.signal), b, ids);
+}
+
+function assertNodesOn(rows: Row[], b: { name: string }, ids: SafeU64[]) {
+  const on = new Set(rows.map(n => n.id as bigint));
   const missing = ids.find(id => !on.has(id));
   if (missing !== undefined) throw new Refusal(targetNotFound('node', missing, b.name));
 }
@@ -565,7 +569,10 @@ export const TOOLS: Record<string, ToolDef> = {
       '"agent:<basis>" is only for a flow no code shows, such as a scenario the user describes: <basis> says what it rests on (e.g. "agent:user described the topology"), and the board draws it as an unverified agent claim. When code shows the flow, cite source. "human:" is refused: a person drawing on the canvas gets it. Returns "committed id=<n> board=<name>".',
     input: z.object({ board: boardArg, fromNode: id, toNode: id, label: z.string(), evidence: z.string(), capture }).strict(),
     async run({ board, fromNode, toNode, label, evidence: given, capture: cap }, t) {
-      let b: { id: SafeU64; name: string } = await boardOf(t, board);
+      const boardId = u64(board);
+      const from = u64(fromNode);
+      const to = u64(toNode);
+      let found: Promise<{ id: SafeU64; name: string }>;
       let evidence: string = given;
       let evidenceSnippet: string | undefined;
       let evidenceHash: string | undefined;
@@ -583,12 +590,15 @@ export const TOOLS: Record<string, ToolDef> = {
         evidence = src.evidence;
         evidenceSnippet = src.evidenceSnippet;
         evidenceHash = src.evidenceHash;
-        b = s;
+        found = Promise.resolve(s);
+      } else {
+        found = boardOf(t, board);
       }
-      const from = u64(fromNode);
-      const to = u64(toNode);
-      await nodesOnBoard(t, b, [from, to]);
-      const edges = () => t.ctx.db.read<Row>(sql`SELECT id, board_id, from_node, to_node, label, evidence FROM visible_edge WHERE board_id = ${b.id}`, t.signal);
+      // The board, node and edge reads are independent: one round trip, not three. Nothing is written until all pass.
+      const nodes = t.ctx.db.read<Row>(sql`SELECT id FROM visible_node WHERE board_id = ${boardId}`, t.signal);
+      const checked = Promise.all([found, nodes]).then(([b, rows]) => assertNodesOn(rows, b, [from, to]));
+      checked.catch(() => {});
+      const edges = () => t.ctx.db.read<Row>(sql`SELECT id, board_id, from_node, to_node, label, evidence FROM visible_edge WHERE board_id = ${boardId}`, t.signal);
       const matches = (e: Row) => e.fromNode === from && e.toNode === to && e.label === label && e.evidence === evidence;
       // RC-690: the cited line only where the board keeps code; elsewhere ok without it, and its hash after.
       let kept = false;
@@ -597,26 +607,29 @@ export const TOOLS: Record<string, ToolDef> = {
         t,
         'create_edge',
         { board, fromNode, toNode, label, evidence },
-        async () => new Set((await edges()).map(e => e.id as bigint)),
+        async () => new Set((await Promise.all([edges(), checked]))[0].map(e => e.id as bigint)),
         async () => {
           kept = await writeCode(storeCode, withText =>
             t.ctx.db.call(
               'create_edge',
-              { boardId: b.id, fromNode: from, toNode: to, label, evidence, ...(evidenceHash === undefined || withText ? { evidenceSnippet } : { evidenceSnippet: '', evidenceStatus: 'ok' }) },
+              { boardId, fromNode: from, toNode: to, label, evidence, ...(evidenceHash === undefined || withText ? { evidenceSnippet } : { evidenceSnippet: '', evidenceStatus: 'ok' }) },
               t.signal
             )
           );
         },
-        async before => (landed = ownNewIds(before, (await edges()) as never[], b.id, matches)),
+        async before => (landed = ownNewIds(before, (await edges()) as never[], boardId, matches)),
         t.batch ? async key => {
+          await checked;
           kept = await writeCode(storeCode, async withText => {
             landed = [await t.batch!.wave.submit(t.batch!.slot, key, 'create_edge',
-              { boardId: b.id, fromNode: from, toNode: to, label, evidence, ...(evidenceHash === undefined || withText ? { evidenceSnippet } : { evidenceSnippet: '', evidenceStatus: 'ok' }) },
+              { boardId, fromNode: from, toNode: to, label, evidence, ...(evidenceHash === undefined || withText ? { evidenceSnippet } : { evidenceSnippet: '', evidenceStatus: 'ok' }) },
               t.ctx.db, t.signal)];
           });
           return landed[0];
         } : undefined
       );
+      await checked; // a repeated call skips the write, not the check
+      const b = await found;
       if (evidenceHash !== undefined) {
         for (const edgeId of landed) {
           await absolute(async () => {
@@ -1425,8 +1438,8 @@ export function boardInLink(o: Origins, link: string, dbName: string): SafeU64 |
 
 /** A board with a session row: code refs, checkpoints and routes need one. */
 async function sessionBoard(t: T, board: string) {
-  const b = await boardOf(t, board);
-  const [session] = await t.ctx.db.read<Row>(sql`SELECT * FROM visible_session WHERE board_id = ${b.id}`, t.signal);
+  const boardId = u64(board);
+  const [b, [session]] = await Promise.all([boardOf(t, board), t.ctx.db.read<Row>(sql`SELECT * FROM visible_session WHERE board_id = ${boardId}`, t.signal)]);
   if (!session) throw new Refusal(noSession(b.name));
   return { ...b, baseSha: session.baseSha as string, repoRoot: session.repoRoot as string };
 }

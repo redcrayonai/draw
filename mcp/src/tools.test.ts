@@ -13,6 +13,7 @@ import { ICON_IDS } from '../../module/src/node-icons';
 import { CODE_CONSENT_RULE, boardStoresCode, markCheckpointFlow, prepareSourceEvidence, startSessionFlow } from '../../agent/src/session';
 import { arriveFlow } from '../../agent/src/routes';
 import { claim } from './captures';
+import { CreateBatch } from './create-batch';
 
 // create_edge's capture, source line and consent are stood in for; the rest of both modules is real.
 vi.mock('./captures', async importOriginal => {
@@ -787,6 +788,89 @@ describe('create_edge on the hosted server: the cited line stays out unless the 
       { reducer: 'create_edge', args: { ...edge, evidenceSnippet: '', evidenceStatus: 'ok' } },
       { reducer: 'set_edge_evidence_code', args: { edgeId: 77n, lineHash: HASH } },
     ]);
+  });
+});
+
+describe('create_edge round trips', () => {
+  const CAP = 'cap_' + 'A'.repeat(22);
+  const setup = (opts: { board?: boolean; nodes?: bigint[]; first?: boolean; batch?: boolean } = {}) => {
+    const { board = true, nodes = [1n, 2n], first = true, batch = false } = opts;
+    const edges: Record<string, unknown>[] = [];
+    const calls: string[] = [];
+    let inFlight = 0;
+    const stats = { rounds: 0 };
+    // Requests in flight together are one round trip; a far database charges for each round, not each request.
+    const trip = async <R>(answer: () => R): Promise<R> => {
+      if (inFlight++ === 0) stats.rounds += 1;
+      await new Promise(resolve => setTimeout(resolve, 1));
+      inFlight -= 1;
+      return answer();
+    };
+    const db = {
+      stats: { dbCalls: 0, dbMs: 0, writes: 0 },
+      token: async () => 'tok',
+      read: (q: { text: string }) => trip(() => {
+        if (q.text.includes('visible_session')) return [{ boardId: 1n, baseSha: 'h', repoRoot: '/repo' }];
+        if (q.text.includes('visible_board')) return board ? [{ id: 1n, name: 'main' }] : [];
+        if (q.text.includes('visible_node')) return nodes.map(id => ({ id }));
+        if (q.text.includes('visible_edge')) return edges;
+        throw new Error(`unexpected read ${q.text}`);
+      }),
+      call: (reducer: string, args: Record<string, any>) => trip(() => {
+        calls.push(reducer);
+        if (reducer === 'create_edge') edges.push({ id: 77n, boardId: 1n, fromNode: args.fromNode, toNode: args.toNode, label: args.label, evidence: args.evidence });
+      }),
+      procedure: (name: string) => trip(() => {
+        calls.push(name);
+        return [{ id: 77n }];
+      }),
+    };
+    const ledger = { claim: async () => (first ? { first: true } : { first: false, text: 'committed id=77', ageS: 1 }), settle: async () => {} };
+    const t = { ctx: { db, ledger }, signal: new AbortController().signal, named: () => {}, deadline: Date.now() + 15_000, ...(batch ? { batch: { wave: new CreateBatch(1), slot: 0 } } : {}) } as never;
+    const edge = (evidence: string, capture?: string) =>
+      TOOLS.create_edge.run(TOOLS.create_edge.input.parse({ board: '1', fromNode: '1', toNode: '2', label: 'uses', evidence, ...(capture ? { capture } : {}) }) as never, t);
+    return { calls, edge, stats };
+  };
+  const standIn = () => {
+    vi.mocked(claim).mockResolvedValue({ kind: 'cite', toplevel: '/repo', head: 'h', file: { path: 'src/s.ts' }, asked: 'src/s.ts' } as never);
+    vi.mocked(prepareSourceEvidence).mockResolvedValue({ evidence: 'source:src/s.ts:1', evidenceSnippet: 'x', evidenceHash: 'ab'.repeat(16) });
+    vi.mocked(boardStoresCode).mockResolvedValue(false);
+  };
+
+  it('sends the board, node and edge reads together: reads, write, read back', async () => {
+    const { edge, stats } = setup();
+    expect(text(await edge('agent:user described it'))).toBe('committed id=77 board=main');
+    expect(stats.rounds).toBe(3);
+  });
+
+  it('a source edge reads the board once, with its session, then as a plain edge plus its line hash', async () => {
+    standIn();
+    const { edge, stats } = setup();
+    expect(text(await edge('source:src/s.ts:1', CAP))).toBe('committed id=77 board=main');
+    expect(stats.rounds).toBe(5);
+  });
+
+  it('in a batch, sends the board and node reads together before the batched write', async () => {
+    const { calls, edge, stats } = setup({ batch: true });
+    expect(text(await edge('agent:user described it'))).toBe('committed id=77 board=main');
+    expect(calls).toEqual(['create_board_items']);
+    expect(stats.rounds).toBe(2);
+  });
+
+  it.each([
+    ['alone', {}],
+    ['in a batch', { batch: true }],
+    ['repeated', { first: false }],
+  ])('writes nothing when a node is not on the board (%s)', async (_name, opts) => {
+    const { calls, edge } = setup({ ...opts, nodes: [1n] });
+    await expect(edge('agent:user described it')).rejects.toThrow('node 2 not found on board "main"');
+    expect(calls).toEqual([]);
+  });
+
+  it('writes nothing on an unknown board', async () => {
+    const { calls, edge } = setup({ board: false });
+    await expect(edge('agent:user described it')).rejects.toThrow(/board/);
+    expect(calls).toEqual([]);
   });
 });
 
