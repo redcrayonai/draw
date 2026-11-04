@@ -43,7 +43,6 @@ describe('the icon registry (module/src/node-icons.ts)', () => {
     expect(ids('cloud')).toEqual(['vercel', 'supabase', 'firebase', 'neon']);
     expect(ids('aws')[0]).toBe('aws');
     expect(ids('azure')[0]).toBe('azure');
-    expect(ids('gcp')[0]).toBe('google-cloud');
     expect(ids('cloudflare')[0]).toBe('cloudflare');
     expect(ids('kubernetes')[0]).toBe('kubernetes');
     expect(ids('databases')).toEqual(['postgres', 'mysql', 'mongodb', 'redis', 'valkey', 'keydb', 'dragonfly']);
@@ -57,7 +56,7 @@ describe('the icon registry (module/src/node-icons.ts)', () => {
     }
     for (const i of ICONS) expect(`${i.id} ${i.name}`, i.id).not.toMatch(/wasm|energy/i);
     expect(ICON_SECTIONS.filter(s => s.pack).map(s => [s.id, s.logo])).toEqual([
-      ['aws', 'aws'], ['azure', 'azure'], ['gcp', 'google-cloud'], ['cloudflare', 'cloudflare'], ['databases', undefined], ['kubernetes', 'kubernetes'], ['cncf', undefined],
+      ['aws', 'aws'], ['azure', 'azure'], ['gcp', undefined], ['cloudflare', 'cloudflare'], ['databases', undefined], ['kubernetes', 'kubernetes'], ['cncf', undefined],
     ]);
     // every Kubernetes term list carries k8s, so a search for it still places the logo first
     for (const i of ICONS.filter(i => i.section === 'kubernetes')) expect(i.terms, i.id).toContain('k8s');
@@ -71,10 +70,11 @@ describe('the icon registry (module/src/node-icons.ts)', () => {
     }
   });
 
-  it('draws a pack glyph for Databases and CNCF only', () => {
+  it('draws a pack glyph for the packs with no logo: Databases, Google Cloud and CNCF', () => {
     expect(packGlyph('databases', 20)?.getAttribute('class')).toBe('lib-node-icon');
     expect(packGlyph('cncf', 20)?.querySelector('path')).not.toBeNull();
-    for (const s of ['aws', 'azure', 'gcp', 'cloudflare', 'kubernetes', 'agents'] as const) expect(packGlyph(s, 20), s).toBeNull();
+    expect(packGlyph('gcp', 20)?.querySelector('path')).not.toBeNull();
+    for (const s of ['aws', 'azure', 'cloudflare', 'kubernetes', 'agents'] as const) expect(packGlyph(s, 20), s).toBeNull();
   });
 });
 
@@ -103,13 +103,12 @@ describe('logo artwork loads one chunk per logo', () => {
 describe('the drawings', () => {
   beforeAll(() => loadLogos());
 
-  it('every id in the first four sections has one: stroke for agents and systems, the brand\'s own artwork for logos', () => {
-    const paint = { agents: 'stroke', systems: 'stroke', ai: 'brand', cloud: 'brand' } as const;
-    const first = ICONS.filter(i => i.section in paint);
-    for (const i of first) expect(iconPaint(i.id), i.id).toBe(paint[i.section as keyof typeof paint]);
-    // pack ids without art yet are hidden, never drawn as a blank
-    expect(drawableIcons()).toEqual(expect.arrayContaining(first));
-    expect(drawableIcons().map(i => i.id)).not.toContain('gcp-bigquery');
+  it('every registry id draws: logos from their own art, everything else as a stroke', () => {
+    expect(drawableIcons()).toEqual([...ICONS]);
+    for (const i of ICONS) {
+      expect(iconPaint(i.id), i.id).toBe(i.id in LOGO_LOADERS ? 'brand' : 'stroke');
+    }
+    for (const s of ICON_SECTIONS) if (s.logo) expect(ICONS.find(i => i.section === s.id)?.id, s.id).toBe(s.logo);
   });
 
   it('an unknown or withdrawn id draws nothing', () => {
@@ -213,6 +212,17 @@ describe('vendored logo artwork (scripts/vendor-logos.mjs)', () => {
         });
         for (const i of ids) expect(i, id).toMatch(new RegExp(`^rcl-${id}-${variant}-\\d+$`));
         for (const r of refs) expect(ids.has(r), `${id} #${r}`).toBe(true);
+      }
+    }
+  });
+
+  it('nothing a shape refers to is empty: every gradient has its stops, every clip and mask its content', () => {
+    for (const [id, logo] of Object.entries(LOGOS)) {
+      for (const art of [logo.light, logo.dark]) {
+        if (art === null) continue;
+        walk(art.tree, ([tag, attrs, kids]) => {
+          if (['linearGradient', 'radialGradient', 'clipPath', 'mask'].includes(tag)) expect(kids?.length ?? 0, `${id} <${tag} ${attrs.id}>`).toBeGreaterThan(0);
+        });
       }
     }
   });

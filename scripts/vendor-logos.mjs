@@ -42,6 +42,8 @@ function classRules(css) {
   for (const m of body.matchAll(/([^{}]+)\{([^}]*)\}/g)) {
     const decls = m[2].split(';').map(d => d.trim()).filter(Boolean).map(d => d.split(':').map(s => s.trim()));
     for (const sel of m[1].split(',').map(s => s.trim())) {
+      // Illustrator's enable-background on the root paints nothing.
+      if (sel === 'svg' && decls.every(([k]) => k === 'enable-background')) continue;
       if (!/^\.[\w-]+$/.test(sel)) fail(`unsupported <style> selector '${sel}'`);
       rules.set(sel.slice(1), [...(rules.get(sel.slice(1)) ?? []), ...decls]);
     }
@@ -60,6 +62,44 @@ function vendor(file, prefix) {
   const styles = new Map();
   for (const s of root.querySelectorAll('style')) for (const [k, v] of classRules(s.textContent)) styles.set(k, [...(styles.get(k) ?? []), ...v]);
 
+  // The client resolves url(#id) only, so what a file shares by href or filter is written out here.
+  const hrefTarget = el => {
+    const id = (el.getAttribute('href') ?? el.getAttribute('xlink:href') ?? '').replace(/^#/, '');
+    const found = [...root.querySelectorAll('*')].find(e => e.getAttribute('id') === id);
+    return found ?? fail(`${file}: <${el.localName}> has no local target`);
+  };
+  // A gradient inherits its stops and the attributes it does not set.
+  for (const g of root.querySelectorAll('linearGradient, radialGradient')) {
+    if (!g.hasAttribute('href') && !g.hasAttribute('xlink:href')) continue;
+    const from = hrefTarget(g);
+    if (from.hasAttribute('href') || from.hasAttribute('xlink:href')) fail(`${file}: chained gradient #${g.getAttribute('id')}`);
+    for (const { name, value } of from.attributes) if (name !== 'id' && !g.hasAttribute(name)) g.setAttribute(name, value);
+    if (g.children.length === 0) g.append(...[...from.children].map(c => c.cloneNode(true)));
+  }
+  // A bare <use> is a copy of its target.
+  for (const u of root.querySelectorAll('use')) {
+    if ([...u.attributes].some(a => a.name !== 'href' && a.name !== 'xlink:href')) fail(`${file}: <use> with its own attributes is not vendored`);
+    const copy = hrefTarget(u).cloneNode(true);
+    copy.removeAttribute('id');
+    u.replaceWith(copy);
+  }
+  // Illustrator's mask filter (a flood with the source over it) paints the same as a flood-coloured rect behind the source.
+  for (const f of root.querySelectorAll('filter')) {
+    const [flood, blend, more] = f.children;
+    const plain = flood?.localName === 'feFlood' && blend?.localName === 'feBlend' && !more && blend.getAttribute('in') === 'SourceGraphic' && blend.getAttribute('in2') === flood.getAttribute('result') && !blend.hasAttribute('mode');
+    if (!plain) fail(`${file}: <filter> is not vendored`);
+    const ref = `url(#${f.getAttribute('id')})`;
+    for (const el of root.querySelectorAll('*')) {
+      const viaClass = (el.getAttribute('class') ?? '').split(/\s+/).some(c => (styles.get(c) ?? []).some(([k, v]) => k === 'filter' && v === ref));
+      if (!viaClass && el.getAttribute('filter') !== ref) continue;
+      const rect = doc.createElementNS(SVG_NS, 'rect');
+      for (const a of ['x', 'y', 'width', 'height']) rect.setAttribute(a, f.getAttribute(a) ?? fail(`${file}: <filter> without ${a}`));
+      rect.setAttribute('fill', flood.getAttribute('flood-color') ?? fail(`${file}: feFlood without a colour`));
+      el.before(rect);
+    }
+    f.remove();
+  }
+
   // Ids that something references survive (renamed); the rest are dropped.
   const used = new Set();
   for (const m of text.matchAll(/url\(\s*['"]?#([^'")\s]+)['"]?\s*\)|href="#([^"]+)"/g)) used.add(m[1] ?? m[2]);
@@ -69,18 +109,21 @@ function vendor(file, prefix) {
   // Root presentation attributes (Lobe's fill="currentColor" fill-rule="evenodd") move onto the tree's top group.
   const rootPaint = {};
   for (const name of PAINT) if (root.hasAttribute(name)) rootPaint[name] = root.getAttribute(name);
+  // A shape with no fill is black in its own file; written out, so a parent's fill cannot change it.
+  rootPaint.fill ??= '#000';
 
   const walk = el => {
-    const tag = el.localName;
+    // An <a> with no link is Inkscape's group.
+    const tag = el.localName === 'a' && !el.hasAttribute('href') && !el.hasAttribute('xlink:href') ? 'g' : el.localName;
     // Editor metadata (Inkscape's sodipodi:namedview and the like) is not artwork.
     if (el.namespaceURI !== SVG_NS || DROPPED.has(tag)) return null;
     if (!ELEMENTS.has(tag)) fail(`${file}: <${tag}> is not vendored`);
     const attrs = {};
     for (const cls of (el.getAttribute('class') ?? '').split(/\s+/).filter(Boolean)) {
-      for (const [k, v] of styles.get(cls) ?? []) if (PAINT.includes(k)) attrs[k] = v;
+      for (const [k, v] of styles.get(cls) ?? []) if (PAINT.includes(k)) attrs[k] = rename(v);
     }
     for (const d of (el.getAttribute('style') ?? '').split(';').map(s => s.split(':').map(t => t.trim()))) {
-      if (d.length === 2 && PAINT.includes(d[0])) attrs[d[0]] = d[1];
+      if (d.length === 2 && PAINT.includes(d[0])) attrs[d[0]] = rename(d[1]);
     }
     for (const { name, value } of el.attributes) {
       if (name === 'id') {

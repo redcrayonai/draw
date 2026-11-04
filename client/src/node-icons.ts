@@ -224,7 +224,7 @@ export function iconGroup(id: string, size: number): SVGGElement | null {
 
 /** The neutral glyph that stands for a pack with no logo of its own, as a chrome <svg>; null for the others. */
 export function packGlyph(section: IconSection, size: number): SVGSVGElement | null {
-  const glyph = section === 'databases' ? GLYPHS.database : section === 'cncf' ? GLYPHS.hexagon : undefined;
+  const glyph = section === 'databases' ? GLYPHS.database : section === 'cncf' ? GLYPHS.hexagon : section === 'gcp' ? GLYPHS.cloud : undefined;
   if (glyph === undefined) return null;
   const svg = svgEl('svg', { class: 'lib-node-icon', width: String(size), height: String(size), viewBox: '0 0 16 16', 'aria-hidden': 'true' });
   const g = svgEl('g', { class: 'node-icon node-icon-stroke' });
