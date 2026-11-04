@@ -1744,7 +1744,7 @@ async function invoke(name: string, def: ToolDef, args: Record<string, unknown>,
         outcome = 'limited';
         return errorResult(planLimit(limit, monthName(now), ctx.o.support));
       }
-      await ensureAgent(ctx, info, t.signal);
+      if (name !== 'describe_charts') await ensureAgent(ctx, info, t.signal);
     }
     writesBefore = ctx.db.stats.writes; // link and join are not this call's writes
     const run = () => def.run(args, t);
