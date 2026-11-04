@@ -172,6 +172,8 @@ function thumbRects(payload: string): Rect[] {
 interface RowInfo { group: string; highlight: readonly number[]; term?: string; q: string }
 
 const HINT = '↵ place top result · ↑↓ move · drag to canvas';
+/** Every rendered row fetches its art: one typed letter must not fetch the whole library. */
+const MAX_RESULTS = 40;
 
 /** `text` into `into` as text nodes, a <mark> per contiguous run of the indexes `at`. */
 function appendMarked(into: HTMLElement, text: string, at: readonly number[]): void {
@@ -574,9 +576,10 @@ export class LibraryPopover {
     // Icons and logos (spec 2026-10-18): a logo whose artwork is still loading holds a same-size
     // placeholder, filled in place when it lands (fillLogos): no rebuild, so a drag in
     // progress, keyboard focus and the tile layout all survive it. Only what this render
-    // shows is fetched, and a chunk that fails leaves its placeholder and the others filled.
+    // shows is fetched, and each chunk fills as it lands, so a slow one holds up no other.
     const ids = [...this.body.querySelectorAll<SVGSVGElement>(PENDING)].map(p => p.dataset.icon!);
-    void Promise.allSettled(ids.map(id => loadLogo(id))).then(() => this.fillLogos());
+    // A failed logo keeps its placeholder; its tile still works.
+    for (const id of new Set(ids)) void loadLogo(id).then(() => this.fillLogos(), () => {});
   }
 
   private renderSections(icons: readonly IconSpec[]): HTMLElement[] {
@@ -698,12 +701,16 @@ export class LibraryPopover {
     if (ranked.length === 0) {
       return [emptyLine(`Nothing matches "${query}"`)];
     }
-    const hint = document.createElement('p');
-    hint.className = 'lib-hint';
-    hint.textContent = HINT;
+    const hintLine = (text: string) => {
+      const p = document.createElement('p');
+      p.className = 'lib-hint';
+      p.textContent = text;
+      return p;
+    };
     return [
-      this.section('Search results', 1, ranked.map(r => r.value({ group: r.group, highlight: r.highlight, term: r.term, q })), false),
-      hint,
+      this.section('Search results', 1, ranked.slice(0, MAX_RESULTS).map(r => r.value({ group: r.group, highlight: r.highlight, term: r.term, q })), false),
+      ...(ranked.length > MAX_RESULTS ? [hintLine(`Showing ${MAX_RESULTS} of ${ranked.length} · keep typing to narrow`)] : []),
+      hintLine(HINT),
     ];
   }
 

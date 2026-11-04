@@ -43,7 +43,7 @@ describe('LibraryPopover while logo artwork loads', () => {
     // the same button is still there, now with its artwork, and still focused
     expect(tile.isConnected).toBe(true);
     expect(tile.querySelector('svg.lib-node-icon .logo-art')).not.toBeNull();
-    expect(row.querySelector('.lib-node-icon-pending')).toBeNull();
+    await vi.waitFor(() => expect(row.querySelector('.lib-node-icon-pending')).toBeNull(), { timeout: 5000 });
     expect(row.querySelector('svg.lib-node-icon .logo-art')).not.toBeNull();
     expect(row.querySelector('svg.lib-node-icon')?.getAttribute('width')).toBe('16');
     expect(document.activeElement).toBe(tile);
@@ -61,5 +61,21 @@ describe('LibraryPopover while logo artwork loads', () => {
     expect(lambda).toHaveBeenCalled();
     const tile = [...host.querySelectorAll<HTMLElement>('.lib-tile')].find(t => t.title === 'AWS Lambda')!;
     await vi.waitFor(() => expect(tile.querySelector('.lib-node-icon-pending')).toBeNull(), { timeout: 5000 });
+  });
+
+  it('a search fetches art only for the rows it renders', () => {
+    // 'a' ranks about 220 rows: RDS is in the top 40, Prometheus (a term-only match, in the last pack) far past it.
+    const inside = vi.spyOn(LOGO_LOADERS as Record<string, () => Promise<LogoDrawing>>, 'aws-rds');
+    const past = vi.spyOn(LOGO_LOADERS as Record<string, () => Promise<LogoDrawing>>, 'prometheus');
+    const { pop, host } = setup();
+    pop.open();
+    const search = host.querySelector<HTMLInputElement>('.lib-search')!;
+    search.value = 'a';
+    search.dispatchEvent(new Event('input'));
+    const titles = [...host.querySelectorAll<HTMLElement>('.lib-row')].map(r => r.title);
+    expect(titles).toContain('Amazon RDS');
+    expect(titles).not.toContain('Prometheus');
+    expect(inside).toHaveBeenCalled();
+    expect(past).not.toHaveBeenCalled();
   });
 });

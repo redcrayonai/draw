@@ -4,6 +4,7 @@ import type { LibraryItem } from './module_bindings/types';
 import { CHART_CONTRACTS, CHART_TYPES } from '../../module/src/chart-contracts';
 import { ICONS, ICON_SECTIONS } from '../../module/src/node-icons';
 import { LibraryPopover, EMPTY_LIBRARY, type LibraryPick } from './library-popover';
+import { rankEntries } from './library-rank';
 import { loadLogos } from './node-icons';
 
 const PAYLOAD = JSON.stringify({
@@ -361,6 +362,38 @@ describe('LibraryPopover', () => {
     expect(results(host)[0]).toBe('AWS Lambda');
     expect(host.querySelector('.lib-row .lib-group')!.textContent).toBe('AWS');
     expect(host.querySelector('.lib-hint')!.textContent).toBe('↵ place top result · ↑↓ move · drag to canvas');
+  });
+
+  it('renders the top 40 rows of a long list and says how many there are; Enter and arrows work on those', () => {
+    const { pop, host, deps, search } = setup();
+    pop.open();
+    type(search, 'a');
+    const entry = (name: string, id: string, terms: readonly string[], group: string) => ({ value: name, name, id, terms, group, onBoard: false });
+    const all = rankEntries('a', [
+      ...['Service', 'Datastore', 'External', 'Boundary', 'Note'].map(n => entry(n, n.toLowerCase(), [], 'Objects')),
+      ...ICONS.map(i => entry(i.name, i.id, i.terms, ICON_SECTIONS.find(s => s.id === i.section)!.title)),
+      ...CHART_TYPES.map(t => entry(CHART_CONTRACTS[t].title, t, ['chart'], 'Charts')),
+    ]);
+    expect(all.length).toBeGreaterThan(40);
+    expect(host.querySelectorAll('.lib-row')).toHaveLength(40);
+    expect(results(host)).toEqual(all.slice(0, 40).map(r => r.name));
+    expect([...host.querySelectorAll('.lib-hint')].map(h => h.textContent)).toEqual([
+      `Showing 40 of ${all.length} · keep typing to narrow`,
+      '↵ place top result · ↑↓ move · drag to canvas',
+    ]);
+    const rows = [...host.querySelectorAll<HTMLElement>('.lib-row')];
+    rows[39].focus();
+    key(rows[39], { key: 'ArrowDown' });
+    expect(document.activeElement).toBe(rows[39]);
+    key(search, { key: 'Enter' });
+    expect(deps.onPick).toHaveBeenCalledTimes(1);
+  });
+
+  it('a list inside the cap shows no count line', () => {
+    const { pop, host, search } = setup();
+    pop.open();
+    type(search, 'clstor');
+    expect([...host.querySelectorAll('.lib-hint')].map(h => h.textContent)).toEqual(['↵ place top result · ↑↓ move · drag to canvas']);
   });
 
   it('highlights matched letters and shows the term when only a term matched', () => {
