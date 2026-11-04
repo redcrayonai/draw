@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { z } from 'zod';
 import { DbError } from '../../shared/db-http';
 import { identityFromClaims } from '../../shared/identity';
@@ -870,6 +870,9 @@ describe('create_chart round trips', () => {
 });
 
 describe('create_edge round trips', () => {
+  // Native hashing must not race the simulated database timers under CPU load.
+  beforeEach(() => { vi.spyOn(crypto.subtle, 'digest').mockResolvedValue(new ArrayBuffer(32)); });
+  afterEach(() => vi.restoreAllMocks());
   const CAP = 'cap_' + 'A'.repeat(22);
   const setup = (opts: { board?: boolean; nodes?: bigint[]; first?: boolean; batch?: boolean } = {}) => {
     const { board = true, nodes = [1n, 2n], first = true, batch = false } = opts;

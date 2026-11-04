@@ -52,7 +52,7 @@ it('the shared Worker entry checks managed keys fresh and uses a machine identit
       ], role ? [[keyId, hash, 44, 9, 'Build bot', role]] : []);
     }
     calls.push({ reducer: new URL(_url).pathname.split('/').pop()!, sub });
-    return new Response('');
+    return new Response(_url.endsWith('/read_board_snapshot') ? JSON.stringify('{}') : '');
   });
   const fallback = vi.fn(async () => null);
   const directory = vi.fn(async () => ({ name: 'Employee', plan: 'self-hosted' }));
@@ -62,9 +62,9 @@ it('the shared Worker entry checks managed keys fresh and uses a machine identit
   const charge = vi.fn(async () => ({ ok: true, used: 1 }));
   const ledger = { charge };
   const env = await testEnv({ USER: { idFromName: (name: string) => name, get: () => ledger } as never });
-  const call = (name: string) => worker.fetch(new Request('https://mcp.redcrayon.test/mcp', {
+  const call = (name: string, args = {}) => worker.fetch(new Request('https://mcp.redcrayon.test/mcp', {
     method: 'POST', headers: { authorization: `Bearer ${bearer}`, 'content-type': 'application/json', accept: 'application/json, text/event-stream', 'mcp-protocol-version': '2025-06-18' },
-    body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name, arguments: {} } }),
+    body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name, arguments: args } }),
   }), env);
 
   const allowed = await call('describe_charts');
@@ -72,11 +72,17 @@ it('the shared Worker entry checks managed keys fresh and uses a machine identit
   expect(await allowed.text()).not.toContain('"isError":true');
   expect(charge).toHaveBeenCalledWith(expect.any(String), PLANS.free.callsPerMonth);
   expect(directory).not.toHaveBeenCalled();
-  expect(calls).toEqual([{ reducer: 'join_board', sub: `machine:${keyId}` }]);
+  expect(calls).toEqual([]);
+  const board = await call('get_board', { board: '1' });
+  expect(await board.text()).toContain('board 1 not found');
+  expect(calls).toEqual([
+    { reducer: 'join_board', sub: `machine:${keyId}` },
+    { reducer: 'read_board_snapshot', sub: `machine:${keyId}` },
+  ]);
   role = 'viewer';
   expect((await call('create_node')).status).toBe(403);
   role = undefined;
   expect((await call('describe_charts')).status).toBe(401);
-  expect(lookups).toBe(3);
+  expect(lookups).toBe(4);
   expect(fallback).not.toHaveBeenCalled();
 });
