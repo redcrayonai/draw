@@ -155,7 +155,8 @@ test('IC create_icon_node writes the node and its icon row in one call', async (
 });
 
 test('IC every id in the registry is accepted; kinds service, datastore, external and boundary take an icon', async () => {
-  const who = await mint();
+  // A service account: the registry holds more ids than a guest's write budget allows in a minute.
+  const who = svc;
   const B = await createBoardAs(who, named('ic-ids'));
   for (const [i, icon] of ICON_IDS.entries()) {
     await ok(who.token, 'create_icon_node', iconNodeArgs(B, `n${i}`, icon, { x: (i % 10) * 200, y: Math.floor(i / 10) * 120 }));
@@ -169,7 +170,7 @@ test('IC every id in the registry is accepted; kinds service, datastore, externa
 test('IC refusals leave nothing behind: unknown icon, note and chart kinds, bad kind, off-grid, focal limit', async () => {
   const who = await mint();
   const B = await createBoardAs(who, named('ic-refuse'));
-  await rejects(who.token, 'create_icon_node', iconNodeArgs(B, 'x', 'clippy'), "icon 'clippy' is not allowed; must be one of: agent, orchestrator");
+  await rejects(who.token, 'create_icon_node', iconNodeArgs(B, 'x', 'clippy'), "icon 'clippy' is not allowed; must be one of: the ids listed on create_node");
   await rejects(who.token, 'create_icon_node', iconNodeArgs(B, 'x', ''), "icon '' is not allowed");
   await rejects(who.token, 'create_icon_node', iconNodeArgs(B, 'x', 'agent', { kind: 'note' }), ICON_KIND_RULE);
   await rejects(who.token, 'create_icon_node', iconNodeArgs(B, 'x', 'agent', { kind: 'chart' }), ICON_KIND_RULE);

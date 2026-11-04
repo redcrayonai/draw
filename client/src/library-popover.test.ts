@@ -4,6 +4,7 @@ import type { LibraryItem } from './module_bindings/types';
 import { CHART_CONTRACTS, CHART_TYPES } from '../../module/src/chart-contracts';
 import { ICONS, ICON_SECTIONS } from '../../module/src/node-icons';
 import { LibraryPopover, EMPTY_LIBRARY, type LibraryPick } from './library-popover';
+import { rankEntries } from './library-rank';
 import { loadLogos } from './node-icons';
 
 const PAYLOAD = JSON.stringify({
@@ -18,7 +19,7 @@ const PAYLOAD = JSON.stringify({
 const item = (id: number, name: string, payload = PAYLOAD): LibraryItem =>
   ({ id: BigInt(id), owner: {}, orgId: '', name, payload, createdAt: {} }) as unknown as LibraryItem;
 
-function setup(items: LibraryItem[] = []) {
+function setup(items: LibraryItem[] = [], icons: string[] = []) {
   document.body.innerHTML = html;
   const anchor = document.getElementById('tool-library') as HTMLButtonElement;
   const host = document.getElementById('library-popover') as HTMLElement;
@@ -30,6 +31,7 @@ function setup(items: LibraryItem[] = []) {
     onDrop: vi.fn<(pick: LibraryPick, clientX: number, clientY: number) => void>(),
     onRename: vi.fn<(item: LibraryItem) => void>(),
     onDelete: vi.fn<(item: LibraryItem) => void>(),
+    boardIcons: () => icons,
   };
   const pop = new LibraryPopover(host, deps);
   pop.setItems(items);
@@ -39,6 +41,11 @@ function setup(items: LibraryItem[] = []) {
 
 const names = (host: HTMLElement, section: string) =>
   [...host.querySelectorAll(`.lib-section[aria-label="${section}"] .lib-name`)].map(e => e.textContent);
+/** The flat search list: row names in rank order. */
+const results = (host: HTMLElement) => [...host.querySelectorAll('.lib-row .lib-name')].map(e => e.textContent);
+/** Names of the rows whose group label is `group`, in rank order. */
+const inGroup = (host: HTMLElement, group: string) =>
+  [...host.querySelectorAll<HTMLElement>('.lib-row')].filter(r => r.querySelector('.lib-group')!.textContent === group).map(r => r.querySelector('.lib-name')!.textContent);
 const tileNamed = (host: HTMLElement, name: string) =>
   [...host.querySelectorAll<HTMLElement>('.lib-tile')].find(t => t.title === name)!;
 const key = (target: EventTarget, init: KeyboardEventInit) => {
@@ -54,11 +61,13 @@ const type = (search: HTMLInputElement, text: string) => {
 };
 const chartTitles = CHART_TYPES.map(t => CHART_CONTRACTS[t].title);
 const iconNames = (section: string) => ICONS.filter(i => i.section === section).map(i => i.name);
-const SECTIONS = ['Objects', ...ICON_SECTIONS.map(s => s.title), 'Charts', 'My library'];
+const PLAIN = ICON_SECTIONS.filter(s => !s.pack);
+const SECTIONS = ['Objects', 'Icon packs', ...PLAIN.map(s => s.title), 'Charts', 'My library'];
+const pack = (host: HTMLElement, id: string) => host.querySelector<HTMLElement>(`[data-pack="${id}"]`)!;
 
 describe('LibraryPopover', () => {
   beforeAll(() => loadLogos());
-  it('renders Objects, Agents, Systems, AI logos, Cloud logos, Charts and My library in that order, with five objects and eleven charts', () => {
+  it('renders Objects, Icon packs, Agents, Systems, AI logos, Cloud logos, Charts and My library in that order, with five objects and eleven charts', () => {
     const { pop, host } = setup([item(1, 'API gateway')]);
     pop.open();
     expect([...host.querySelectorAll('.lib-section')].map(s => s.getAttribute('aria-label'))).toEqual(SECTIONS);
@@ -73,7 +82,7 @@ describe('LibraryPopover', () => {
     expect(host.querySelectorAll('.lib-section[aria-label="Charts"] svg.lib-icon')).toHaveLength(11);
     expect(host.querySelectorAll('.lib-section[aria-label="Objects"] .lib-tile svg')).toHaveLength(5);
     // every icon and logo tile has its drawing, hidden from assistive tech: the tile's text names it
-    for (const s of ICON_SECTIONS) {
+    for (const s of PLAIN) {
       const tiles = host.querySelectorAll(`.lib-section[aria-label="${s.title}"] .lib-tile`);
       expect(tiles.length).toBeGreaterThan(0);
       for (const t of tiles) expect(t.querySelector('svg.lib-node-icon')?.getAttribute('aria-hidden')).toBe('true');
@@ -81,6 +90,190 @@ describe('LibraryPopover', () => {
     expect(host.querySelectorAll('.lib-grid[data-cols="4"]').length).toBeGreaterThanOrEqual(5);
     // series colour comes from classes only, never inline hex (logos keep their vendors' own colours)
     expect(host.querySelector('.lib-section[aria-label="Charts"]')!.innerHTML).not.toMatch(/#[0-9a-f]{3,8}\b/i);
+  });
+
+  it('every pack, opened and shown in full, holds its whole section with each tile drawn and hidden from assistive tech', () => {
+    const { pop, host } = setup();
+    pop.open();
+    for (const s of ICON_SECTIONS.filter(s => s.pack)) {
+      pack(host, s.id).querySelector<HTMLButtonElement>('.lib-pack-row')!.click();
+      pack(host, s.id).querySelector<HTMLButtonElement>('.lib-pack-more')?.click();
+      const tiles = [...pack(host, s.id).querySelectorAll<HTMLElement>('.lib-tile')];
+      expect(tiles.map(t => t.title).sort()).toEqual(iconNames(s.id).sort());
+      for (const t of tiles) expect(t.querySelector('svg.lib-node-icon')?.getAttribute('aria-hidden')).toBe('true');
+      expect(pack(host, s.id).querySelector('.lib-grid')!.getAttribute('data-cols')).toBe('4');
+    }
+  });
+
+  it('orders sections, packs sit under Objects, all closed on a fresh board', () => {
+    const { pop, host } = setup();
+    pop.open();
+    expect([...host.querySelectorAll('.lib-section')].map(s => s.getAttribute('aria-label'))).toEqual(['Objects', 'Icon packs', 'Agents', 'Systems', 'AI logos', 'Cloud logos', 'Charts', 'My library']);
+    expect([...host.querySelectorAll('.lib-section[aria-label="Icon packs"] .lib-packs > .lib-pack')].map(p => (p as HTMLElement).dataset.pack)).toEqual(['aws', 'azure', 'gcp', 'cloudflare', 'databases', 'kubernetes', 'cncf']);
+    expect(host.querySelectorAll('.lib-pack-open')).toHaveLength(0);
+    expect(host.querySelector('[data-pack] .lib-tile')).toBeNull();
+    const row = pack(host, 'aws').querySelector('.lib-pack-row')!;
+    expect(row.getAttribute('aria-expanded')).toBe('false');
+    expect(row.textContent).toContain('AWS');
+    expect(row.textContent).toContain(String(iconNames('aws').length));
+    expect(row.textContent).not.toContain('on this board');
+  });
+
+  it('a pack with no logo wears its neutral glyph, and a pack with one wears it', () => {
+    const { pop, host } = setup();
+    pop.open();
+    for (const id of ['aws', 'cloudflare', 'databases', 'cncf']) {
+      const icon = pack(host, id).querySelector('.lib-pack-row svg.lib-node-icon')!;
+      expect(icon.getAttribute('width'), id).toBe('16');
+      expect(icon.getAttribute('aria-hidden'), id).toBe('true');
+      expect(icon.classList.contains('lib-node-icon-pending'), id).toBe(false);
+    }
+  });
+
+  it('opens the packs this board uses, first, with its icons leading and the company logo next', () => {
+    const { pop, host } = setup([], ['aws-s3', 'aws-lambda', 'cloudflare-r2', 'gcp-cloud-storage', 'agent']);
+    pop.open();
+    expect([...host.querySelectorAll('.lib-pack-open')].map(p => (p as HTMLElement).dataset.pack)).toEqual(['aws', 'gcp', 'cloudflare']);
+    const aws = pack(host, 'aws');
+    expect(aws.querySelector('.lib-pack-row')!.textContent).toContain('2 on this board');
+    expect(aws.querySelector('.lib-pack-row')!.getAttribute('aria-expanded')).toBe('true');
+    const tiles = [...aws.querySelectorAll<HTMLElement>('.lib-tile')];
+    expect(tiles).toHaveLength(8);
+    expect(tiles.slice(0, 3).map(t => t.title)).toEqual(['AWS Lambda', 'Amazon S3', 'AWS Cloud']);
+    expect(tiles[1].querySelector('.lib-name')!.textContent).toBe('S3');
+    expect(tiles[2].querySelector('.lib-name')!.textContent).toBe('AWS Cloud');
+    expect([...host.querySelectorAll<HTMLElement>('[data-pack]')].map(p => p.dataset.pack)).toEqual(['aws', 'gcp', 'cloudflare', 'azure', 'databases', 'kubernetes', 'cncf']);
+  });
+
+  it('a pack tile drops the provider word from its label, keeps the full name as its title, and places the full id', () => {
+    const { pop, host, deps } = setup([], ['azure-blob-storage', 'cloudflare-r2', 'aws-lambda', 'aws-s3']);
+    pop.open();
+    const label = (name: string) => tileNamed(host, name).querySelector('.lib-name')!.textContent;
+    expect(label('Azure Blob Storage')).toBe('Blob Storage');
+    expect(label('Cloudflare R2')).toBe('R2');
+    expect(label('AWS Lambda')).toBe('Lambda');
+    expect(label('Amazon S3')).toBe('S3');
+    expect(label('Microsoft Azure')).toBe('Microsoft Azure');
+    expect(label('Cloudflare')).toBe('Cloudflare');
+    tileNamed(host, 'Amazon S3').click();
+    expect(deps.onPick).toHaveBeenCalledWith({ kind: 'icon', icon: 'aws-s3' });
+  });
+
+  it('counts an icon once however many nodes wear it', () => {
+    const { pop, host } = setup([], ['aws-s3', 'aws-s3', 'aws-s3']);
+    pop.open();
+    expect(pack(host, 'aws').querySelector('.lib-pack-row')!.textContent).toContain('1 on this board');
+  });
+
+  it('Show all reveals the pack, a closed row opens in place, and neither survives closing', () => {
+    const { pop, host } = setup([], ['aws-s3']);
+    pop.open();
+    expect(pack(host, 'aws').querySelector('.lib-pack-more')!.textContent).toBe(`Show all ${iconNames('aws').length}`);
+    (pack(host, 'aws').querySelector('.lib-pack-more') as HTMLButtonElement).click();
+    expect(pack(host, 'aws').querySelectorAll('.lib-tile').length).toBe(ICONS.filter(i => i.section === 'aws').length);
+    expect(pack(host, 'aws').querySelector('.lib-pack-more')).toBeNull();
+    (pack(host, 'databases').querySelector('.lib-pack-row') as HTMLButtonElement).click();
+    expect([...pack(host, 'databases').querySelectorAll('.lib-tile')].map(t => (t as HTMLElement).title)).toEqual(['Postgres', 'MySQL', 'MongoDB', 'Redis', 'Valkey', 'KeyDB', 'Dragonfly']);
+    expect(pack(host, 'databases').querySelector('.lib-pack-more')).toBeNull();
+    pop.close();
+    pop.open();
+    expect(pack(host, 'databases').classList.contains('lib-pack-open')).toBe(false);
+    expect(pack(host, 'aws').querySelectorAll('.lib-tile')).toHaveLength(8);
+  });
+
+  it('a hand-opened pack keeps its place, and an on-board pack closed by hand keeps its own, until the popover closes', () => {
+    const { pop, host } = setup([], ['cloudflare-r2']);
+    const order = () => [...host.querySelectorAll<HTMLElement>('[data-pack]')].map(p => p.dataset.pack);
+    const before = ['cloudflare', 'aws', 'azure', 'gcp', 'databases', 'kubernetes', 'cncf'];
+    pop.open();
+    expect(order()).toEqual(before);
+    (pack(host, 'gcp').querySelector('.lib-pack-row') as HTMLButtonElement).click();
+    expect(order()).toEqual(before);
+    expect(pack(host, 'gcp').classList.contains('lib-pack-open')).toBe(true);
+    (pack(host, 'gcp').querySelector('.lib-pack-row') as HTMLButtonElement).click();
+    expect(pack(host, 'gcp').classList.contains('lib-pack-open')).toBe(false);
+    (pack(host, 'cloudflare').querySelector('.lib-pack-row') as HTMLButtonElement).click();
+    expect(order()).toEqual(before);
+    const closed = pack(host, 'cloudflare');
+    expect(closed.classList.contains('lib-pack-open')).toBe(false);
+    expect(closed.querySelector('.lib-pack-row')!.getAttribute('aria-expanded')).toBe('false');
+    expect(closed.querySelector('.lib-pack-row')!.textContent).toContain('1 on this board');
+    (closed.querySelector('.lib-pack-row') as HTMLButtonElement).click();
+    expect(pack(host, 'cloudflare').classList.contains('lib-pack-open')).toBe(true);
+    (pack(host, 'cloudflare').querySelector('.lib-pack-row') as HTMLButtonElement).click();
+    expect(pack(host, 'cloudflare').classList.contains('lib-pack-open')).toBe(false);
+    pop.close();
+    pop.open();
+    expect(pack(host, 'cloudflare').classList.contains('lib-pack-open')).toBe(true);
+  });
+
+  it('an id no client draws counts for nothing', () => {
+    const { pop, host } = setup([], ['clippy', 'aws-withdrawn']);
+    pop.open();
+    expect(host.querySelectorAll('.lib-pack-open')).toHaveLength(0);
+  });
+
+  it('reads the board again on each open', () => {
+    const icons: string[] = [];
+    const { pop, host } = setup([], icons);
+    pop.open();
+    expect(pack(host, 'aws').classList.contains('lib-pack-open')).toBe(false);
+    pop.close();
+    icons.push('aws-s3');
+    pop.open();
+    expect(pack(host, 'aws').classList.contains('lib-pack-open')).toBe(true);
+  });
+
+  it('Enter on a pack row toggles it and keeps focus, placing nothing', () => {
+    const { pop, host, deps } = setup();
+    pop.open();
+    const row = pack(host, 'azure').querySelector<HTMLButtonElement>('.lib-pack-row')!;
+    row.focus();
+    const evt = key(row, { key: 'Enter' });
+    expect(evt.defaultPrevented).toBe(false); // the browser's own click toggles it
+    row.click();
+    expect(deps.onPick).not.toHaveBeenCalled();
+    expect(document.activeElement).toBe(pack(host, 'azure').querySelector('.lib-pack-row'));
+    expect(pack(host, 'azure').querySelector('.lib-pack-row')!.getAttribute('aria-expanded')).toBe('true');
+  });
+
+  it('Show all puts focus on the first tile it revealed', () => {
+    const { pop, host } = setup([], ['aws-s3']);
+    pop.open();
+    const more = pack(host, 'aws').querySelector<HTMLButtonElement>('.lib-pack-more')!;
+    more.focus();
+    more.click();
+    expect(document.activeElement).toBe(pack(host, 'aws').querySelectorAll('.lib-tile')[8]);
+  });
+
+  it('arrows cross from an open pack into the next section', () => {
+    const { pop, host } = setup([], ['aws-s3']);
+    pop.open();
+    const tiles = [...pack(host, 'aws').querySelectorAll<HTMLElement>('.lib-tile')];
+    tiles[7].focus();
+    key(tiles[7], { key: 'ArrowDown' });
+    expect(document.activeElement).toBe(host.querySelector('.lib-section[aria-label="Agents"] .lib-tile:nth-child(4)'));
+  });
+
+  it('search finds icons in closed packs and ranks packs on this board first', () => {
+    const { pop, host, search } = setup([], ['aws-s3', 'cloudflare-r2', 'gcp-cloud-storage']);
+    pop.open();
+    type(search, 'blob');
+    expect(results(host).slice(0, 4)).toEqual(['Amazon S3', 'Cloud Storage', 'Cloudflare R2', 'Azure Blob Storage']);
+  });
+
+  it('an icon outside a pack is not a pack on this board, so it earns no search boost', () => {
+    const { pop, host, search } = setup([], ['agent']);
+    pop.open();
+    type(search, 'blob');
+    expect(results(host)[0]).toBe('Azure Blob Storage');
+    expect(host.querySelectorAll('.lib-pack-open')).toHaveLength(0);
+  });
+
+  it('Vercel, Supabase, Firebase and Neon stay in Cloud logos', () => {
+    const { pop, host } = setup();
+    pop.open();
+    expect(names(host, 'Cloud logos')).toEqual(['Vercel', 'Supabase', 'Firebase', 'Neon']);
   });
 
   it('the dock button toggles it and tracks aria-expanded; opening focuses the search', () => {
@@ -103,21 +296,22 @@ describe('LibraryPopover', () => {
     expect(EMPTY_LIBRARY).toBe('No saved items yet — select nodes and press ⇧L');
   });
 
-  it('search filters all three sections by name, ignoring case, and says when nothing matches', () => {
+  it('search lists matches by name, ignoring case, with the group beside each row, and says when nothing matches', () => {
     const { pop, host, search } = setup([item(1, 'API gateway'), item(2, 'SLO panel')]);
     pop.open();
     type(search, 'slo');
-    expect(names(host, 'Objects')).toEqual([]);
-    expect(names(host, 'Charts')).toEqual(chartTitles.filter(t => t.toLowerCase().includes('slo')));
-    expect(names(host, 'My library')).toEqual(['SLO panel']);
+    expect(inGroup(host, 'Objects')).toEqual([]);
+    expect(inGroup(host, 'Charts')).toEqual(chartTitles.filter(t => t.toLowerCase().includes('slo')));
+    expect(inGroup(host, 'My library')).toEqual(['SLO panel']);
     type(search, 'SERV');
-    expect(names(host, 'Objects')).toEqual(['Service']);
-    expect(names(host, 'Charts')).toEqual(chartTitles.filter(t => t.toLowerCase().includes('serv')));
-    expect(host.querySelector('.lib-section[aria-label="My library"]')).toBeNull();
+    expect(inGroup(host, 'Objects')).toEqual(['Service']);
+    expect(inGroup(host, 'Charts')).toEqual(chartTitles.filter(t => t.toLowerCase().includes('serv')));
+    expect(inGroup(host, 'My library')).toEqual([]);
     type(search, CHART_CONTRACTS.table.title.toUpperCase());
-    expect(names(host, 'Charts')).toContain(CHART_CONTRACTS.table.title);
+    expect(inGroup(host, 'Charts')).toContain(CHART_CONTRACTS.table.title);
     type(search, 'zzz');
     expect(host.querySelectorAll('.lib-section')).toHaveLength(0);
+    expect(host.querySelector('.lib-hint')).toBeNull();
     expect(host.querySelector('.lib-empty')?.textContent).toBe('Nothing matches "zzz"');
   });
 
@@ -125,36 +319,143 @@ describe('LibraryPopover', () => {
     const { pop, host, search } = setup();
     pop.open();
     type(search, 'timeseries');
-    expect(names(host, 'Charts')).toEqual([CHART_CONTRACTS.timeseries.title]);
+    expect(inGroup(host, 'Charts')).toEqual([CHART_CONTRACTS.timeseries.title]);
     type(search, 'TOPLIST');
-    expect(names(host, 'Charts')).toEqual([CHART_CONTRACTS.toplist.title]);
+    expect(inGroup(host, 'Charts')).toEqual([CHART_CONTRACTS.toplist.title]);
     type(search, 'chart');
-    expect(names(host, 'Charts')).toEqual(chartTitles);
-    expect(names(host, 'Objects')).toEqual([]);
+    expect(inGroup(host, 'Charts')).toEqual(chartTitles);
+    expect(inGroup(host, 'Objects')).toEqual([]);
     type(search, 'datastore');
-    expect(names(host, 'Objects')).toEqual(['Datastore']);
+    expect(inGroup(host, 'Objects')).toEqual(['Datastore']);
   });
 
   it('icons and logos match their name, id, search terms and section title', () => {
     const { pop, host, search } = setup();
     pop.open();
     type(search, 'rag');
-    expect(names(host, 'Agents')).toEqual(['Knowledge base']);
+    expect(results(host)[0]).toBe('Knowledge base');
+    expect(host.querySelector('.lib-row .lib-term')!.textContent).toBe('rag');
     type(search, 'COGNITION');
-    expect(names(host, 'AI logos')).toEqual(['Windsurf', 'Devin']);
+    expect(inGroup(host, 'AI logos')).toEqual(['Windsurf', 'Devin']);
     type(search, 'anthropic');
-    expect(names(host, 'AI logos')).toEqual(['Claude', 'Claude Code']);
+    expect(inGroup(host, 'AI logos')).toEqual(['Claude', 'Claude Code']);
     type(search, 'k8s');
-    expect(names(host, 'Cloud logos')).toEqual(['Kubernetes']);
-    expect(names(host, 'Objects')).toEqual([]);
+    expect(inGroup(host, 'Kubernetes')[0]).toBe('Kubernetes');
+    expect(inGroup(host, 'Objects')).toEqual([]);
     type(search, 'mcp-server');
-    expect(names(host, 'Agents')).toEqual(['MCP server']);
+    expect(inGroup(host, 'Agents')).toEqual(['MCP server']);
     type(search, 'logo');
-    expect(names(host, 'AI logos')).toEqual(iconNames('ai'));
-    expect(names(host, 'Cloud logos')).toEqual(iconNames('cloud'));
-    expect(names(host, 'Agents')).toEqual([]);
+    expect(inGroup(host, 'AI logos')).toEqual(iconNames('ai'));
+    expect(inGroup(host, 'Cloud logos')).toEqual(iconNames('cloud'));
+    expect(inGroup(host, 'Agents')).toEqual([]);
     type(search, 'systems');
-    expect(names(host, 'Systems')).toEqual(iconNames('systems'));
+    expect(inGroup(host, 'Systems')).toEqual(iconNames('systems'));
+  });
+
+  it('a query shows one ranked list with the group beside each row, and the hint', () => {
+    const { pop, host, search } = setup([item(1, 'My lambda notes')]);
+    pop.open();
+    type(search, 'lambda');
+    expect([...host.querySelectorAll('.lib-section')].map(s => s.getAttribute('aria-label'))).toEqual(['Search results']);
+    expect(host.querySelector('.lib-section .eyebrow')).toBeNull();
+    expect(host.querySelectorAll('.lib-grid[data-cols="1"] .lib-tile.lib-row').length).toBe(results(host).length);
+    expect(results(host)[0]).toBe('AWS Lambda');
+    expect(host.querySelector('.lib-row .lib-group')!.textContent).toBe('AWS');
+    expect(host.querySelector('.lib-hint')!.textContent).toBe('↵ place top result · ↑↓ move · drag to canvas');
+  });
+
+  it('renders the top 40 rows of a long list and says how many there are; Enter and arrows work on those', () => {
+    const { pop, host, deps, search } = setup();
+    pop.open();
+    type(search, 'a');
+    const entry = (name: string, id: string, terms: readonly string[], group: string) => ({ value: name, name, id, terms, group, onBoard: false });
+    const all = rankEntries('a', [
+      ...['Service', 'Datastore', 'External', 'Boundary', 'Note'].map(n => entry(n, n.toLowerCase(), [], 'Objects')),
+      ...ICONS.map(i => entry(i.name, i.id, i.terms, ICON_SECTIONS.find(s => s.id === i.section)!.title)),
+      ...CHART_TYPES.map(t => entry(CHART_CONTRACTS[t].title, t, ['chart'], 'Charts')),
+    ]);
+    expect(all.length).toBeGreaterThan(40);
+    expect(host.querySelectorAll('.lib-row')).toHaveLength(40);
+    expect(results(host)).toEqual(all.slice(0, 40).map(r => r.name));
+    expect(host.querySelectorAll('.lib-foot > .lib-hint')).toHaveLength(2);
+    expect([...host.querySelectorAll('.lib-hint')].map(h => h.textContent)).toEqual([
+      `Showing 40 of ${all.length} · keep typing to narrow`,
+      '↵ place top result · ↑↓ move · drag to canvas',
+    ]);
+    const rows = [...host.querySelectorAll<HTMLElement>('.lib-row')];
+    rows[39].focus();
+    key(rows[39], { key: 'ArrowDown' });
+    expect(document.activeElement).toBe(rows[39]);
+    key(search, { key: 'Enter' });
+    expect(deps.onPick).toHaveBeenCalledTimes(1);
+  });
+
+  it('a list inside the cap shows no count line', () => {
+    const { pop, host, search } = setup();
+    pop.open();
+    type(search, 'clstor');
+    expect([...host.querySelectorAll('.lib-hint')].map(h => h.textContent)).toEqual(['↵ place top result · ↑↓ move · drag to canvas']);
+  });
+
+  it('highlights matched letters and shows the term when only a term matched', () => {
+    const { pop, host, search } = setup();
+    pop.open();
+    type(search, 'clstor');
+    expect([...tileNamed(host, 'Cloud Storage').querySelectorAll('mark')].map(m => m.textContent)).toEqual(['Cl', 'Stor']);
+    expect(tileNamed(host, 'Cloud Storage').querySelector('.lib-term')).toBeNull();
+    type(search, 'blob');
+    const s3 = tileNamed(host, 'Amazon S3');
+    expect(s3.querySelector('.lib-term')!.textContent).toContain('blob');
+    expect([...s3.querySelectorAll('.lib-term mark')].map(m => m.textContent)).toEqual(['blob']);
+    expect(s3.querySelectorAll('.lib-name mark')).toHaveLength(0);
+  });
+
+  it('shows no highlight on the name when only the id or the group matched', () => {
+    const { pop, host, search } = setup();
+    pop.open();
+    type(search, 'gcp-cloud-storage');
+    const row = tileNamed(host, 'Cloud Storage');
+    expect(row.querySelector('mark')).toBeNull();
+    expect(row.querySelector('.lib-term')).toBeNull();
+    expect(row.querySelector('.lib-group')!.textContent).toBe('Google Cloud');
+    type(search, 'chart');
+    expect(inGroup(host, 'Charts')).toEqual(chartTitles);
+    for (const t of chartTitles) expect(tileNamed(host, t).querySelectorAll('.lib-name mark')).toHaveLength(0);
+  });
+
+  it('renders a saved name as text, never markup', () => {
+    const evil = '<img src=x onerror=alert(1)>';
+    const { pop, host, search } = setup([item(1, evil)]);
+    pop.open();
+    type(search, 'img');
+    expect(host.querySelector('.lib-row img, .lib-saved img')).toBeNull();
+    expect(results(host)).toContain(evil);
+  });
+
+  it('a saved row keeps its ⋯ menu and arms a saved pick', () => {
+    const { pop, host, deps, search } = setup([item(1, 'My lambda notes')]);
+    pop.open();
+    type(search, 'lambda notes');
+    const saved = host.querySelector<HTMLElement>('.lib-saved')!;
+    expect(saved.querySelector('.lib-tile.lib-row .lib-group')!.textContent).toBe('My library');
+    saved.querySelector<HTMLButtonElement>('.lib-more')!.click();
+    host.querySelector<HTMLButtonElement>('.lib-menu [data-act="rename"]')!.click();
+    expect(deps.onRename).toHaveBeenCalledWith(expect.objectContaining({ name: 'My lambda notes' }));
+    saved.querySelector<HTMLElement>('.lib-tile')!.click();
+    expect(deps.onPick).toHaveBeenLastCalledWith({ kind: 'saved', item: expect.objectContaining({ name: 'My lambda notes' }) });
+  });
+
+  it('Enter and ArrowDown work on the list', () => {
+    const { pop, host, deps, search } = setup();
+    pop.open();
+    type(search, 'clstor');
+    key(search, { key: 'ArrowDown' });
+    expect(document.activeElement).toBe(host.querySelector('.lib-row'));
+    key(document.activeElement!, { key: 'ArrowDown' });
+    expect((document.activeElement as HTMLElement).title).toBe(host.querySelectorAll<HTMLElement>('.lib-row')[1].title);
+    type(search, 'clstor');
+    key(search, { key: 'Enter' });
+    expect(deps.onPick).toHaveBeenCalledWith({ kind: 'icon', icon: 'gcp-cloud-storage' });
   });
 
   it('an icon tile arms an icon pick by click, by Enter from the search, and names itself by its text', () => {
@@ -179,16 +480,35 @@ describe('LibraryPopover', () => {
       ['kube', { kind: 'icon', icon: 'kubernetes' }],
       ['openai', { kind: 'icon', icon: 'openai' }],
       ['rag', { kind: 'icon', icon: 'knowledge-base' }],
+      ['xai', { kind: 'icon', icon: 'grok' }],
+      ['k8s', { kind: 'icon', icon: 'kubernetes' }],
+      ['lb', { kind: 'icon', icon: 'aws-elb' }],
+      ['aws s3', { kind: 'icon', icon: 'aws-s3' }],
+      ['google cloud storage', { kind: 'icon', icon: 'gcp-cloud-storage' }],
     ] as const) {
       pop.open();
       type(search, query);
       key(search, { key: 'Enter' });
       expect(deps.onPick, query).toHaveBeenLastCalledWith(pick);
     }
-    // the generic Model icon still lists for "claude"
+    pop.open();
+    type(search, 'chart');
+    key(search, { key: 'Enter' });
+    expect((deps.onPick.mock.lastCall![0] as { kind: string }).kind).toBe('chart');
+    pop.open();
+    type(search, 'apiserver');
+    key(search, { key: 'Enter' });
+    expect(deps.onPick).toHaveBeenLastCalledWith({ kind: 'icon', icon: 'k8s-control-plane' });
+    pop.open();
+    type(search, 'auth');
+    key(search, { key: 'Enter' });
+    const authId = (deps.onPick.mock.lastCall![0] as { icon: string }).icon;
+    expect(ICONS.find(i => i.id === authId)!.terms).toContain('auth');
+    // the generic Model icon still lists for "claude", after the logo named so
     pop.open();
     type(search, 'claude');
-    expect(names(host, 'Agents')).toContain('Model');
+    expect(inGroup(host, 'Agents')).toContain('Model');
+    expect(results(host)[0]).toBe('Claude');
   });
 
   it('a click arms the tile and closes the popover', () => {
@@ -235,7 +555,7 @@ describe('LibraryPopover', () => {
     expect(press(tileNamed(host, agents[1]), 'ArrowUp')).toBe(tileNamed(host, 'Datastore'));
     expect(press(tileNamed(host, agents[1]), 'ArrowDown')).toBe(tileNamed(host, agents[5]));
     // the last logo section → Charts, and back up to its last row, same column
-    const cloud = iconNames('cloud');
+    const cloud = names(host, PLAIN[PLAIN.length - 1].title) as string[];
     expect(press(chart(0), 'ArrowLeft')).toBe(tileNamed(host, cloud[cloud.length - 1]));
     // the column is clamped to the last tile of a short row
     expect(press(chart(3), 'ArrowUp')).toBe(tileNamed(host, cloud[Math.min(Math.floor((cloud.length - 1) / 4) * 4 + 3, cloud.length - 1)]));
@@ -377,6 +697,19 @@ describe('LibraryPopover', () => {
     expect(rule).toMatch(/touch-action:\s*pan-y/);
   });
 
+  it('style.css: a long pack name shrinks with an ellipsis instead of pushing the chevron out', async () => {
+    const fsModule = 'node:fs';
+    const { readFileSync } = (await import(/* @vite-ignore */ fsModule)) as { readFileSync(path: string, encoding: 'utf8'): string };
+    const cwd = (globalThis as unknown as { process: { cwd(): string } }).process.cwd();
+    const css = readFileSync(`${cwd}/src/style.css`, 'utf8');
+    const start = css.indexOf('\n.lib-pack-name {');
+    expect(start).toBeGreaterThan(0);
+    const rule = css.slice(start, css.indexOf('}', start));
+    expect(rule).not.toMatch(/flex:\s*none/);
+    expect(rule).toMatch(/min-width:\s*0/);
+    expect(rule).toMatch(/text-overflow:\s*ellipsis/);
+  });
+
   it('lists saved items newest first, each with a thumbnail rect per node', () => {
     const { pop, host } = setup([item(1, 'Old')]);
     pop.open();
@@ -514,6 +847,7 @@ describe('LibraryPopover', () => {
         onDrop: vi.fn(),
         onRename: vi.fn(),
         onDelete: vi.fn(),
+        boardIcons: () => [],
       });
       pop.open();
       expect([...host.querySelectorAll('.lib-section')].map(s => s.getAttribute('aria-label'))).toEqual(SECTIONS);

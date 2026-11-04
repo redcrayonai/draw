@@ -1,9 +1,10 @@
 import type { LibraryItem } from './module_bindings/types';
 import type { NodeKind } from './interactions';
 import { CHART_CONTRACTS, CHART_TYPES, type ChartType } from '../../module/src/chart-contracts';
-import { ICON_SECTIONS } from '../../module/src/node-icons';
+import { ICON_SECTIONS, type IconSection, type IconSpec } from '../../module/src/node-icons';
 import { svgEl } from './charts/svg';
-import { drawableIcons, iconSvg, loadLogos, logosReady } from './node-icons';
+import { rankEntries, type SearchEntry } from './library-rank';
+import { drawableIcons, iconSvg, loadLogo, packGlyph } from './node-icons';
 
 /** What a library tile places. */
 export type LibraryPick =
@@ -26,6 +27,8 @@ export interface LibraryPopoverDeps {
   onDrop: (pick: LibraryPick, clientX: number, clientY: number) => void;
   onRename: (item: LibraryItem) => void;
   onDelete: (item: LibraryItem) => void;
+  /** The icon id of each node on this board, duplicates and unknown ids included. */
+  boardIcons: () => Iterable<string>;
 }
 
 export const EMPTY_LIBRARY = 'No saved items yet — select nodes and press ⇧L';
@@ -40,6 +43,10 @@ const OBJECTS: ReadonlyArray<{ kind: NodeKind; name: string }> = [
 
 /** Pointer travel (px) before a press on a tile becomes a drag. */
 const DRAG_SLOP = 4;
+
+const PACKS = ICON_SECTIONS.filter(s => s.pack);
+/** An open pack shows two rows of four until Show all. */
+const PACK_TILES = 8;
 
 type Mark = [keyof SVGElementTagNameMap, Record<string, string>, string?];
 const ROUND = { 'stroke-linecap': 'round', 'stroke-linejoin': 'round' };
@@ -120,9 +127,18 @@ function objectIcon(kind: NodeKind): Element | null {
   return icon === null ? null : (icon.cloneNode(true) as Element);
 }
 
-/** An empty 20 px icon box: a logo tile's placeholder while its artwork loads. */
-function pendingIcon(): SVGSVGElement {
-  return svgEl('svg', { class: 'lib-node-icon lib-node-icon-pending', width: '20', height: '20', viewBox: '0 0 20 20', 'aria-hidden': 'true' });
+/** An empty icon box: a logo's placeholder, in a tile or a pack row, while its artwork loads. */
+function pendingIcon(id: string, size = 20): SVGSVGElement {
+  const px = String(size);
+  return svgEl('svg', { class: 'lib-node-icon lib-node-icon-pending', 'data-icon': id, width: px, height: px, viewBox: `0 0 ${px} ${px}`, 'aria-hidden': 'true' });
+}
+
+const PENDING = '.lib-node-icon-pending[data-icon]';
+
+function chevronIcon(): SVGSVGElement {
+  const svg = svgEl('svg', { class: 'lib-pack-chev', width: '12', height: '12', viewBox: '0 0 12 12', fill: 'none', stroke: 'currentColor', 'stroke-width': '1.5', ...ROUND, 'aria-hidden': 'true' });
+  svg.append(svgEl('path', { d: 'M4.5 2.5 8 6l-3.5 3.5' }));
+  return svg;
 }
 
 function dotsIcon(): SVGSVGElement {
@@ -152,6 +168,38 @@ function thumbRects(payload: string): Rect[] {
   return nodes.every(rect) ? nodes : [];
 }
 
+/** What a search row shows beyond the tile: the group, what matched, the query. */
+interface RowInfo { group: string; highlight: readonly number[]; term?: string; q: string }
+
+const HINT = '↵ place top result · ↑↓ move · drag to canvas';
+/** Every rendered row fetches its art: one typed letter must not fetch the whole library. */
+const MAX_RESULTS = 40;
+
+/** `text` into `into` as text nodes, a <mark> per contiguous run of the indexes `at`. */
+function appendMarked(into: HTMLElement, text: string, at: readonly number[]): void {
+  const on = new Set(at);
+  for (let i = 0; i < text.length;) {
+    let j = i;
+    while (j < text.length && on.has(j) === on.has(i)) j++;
+    const run = text.slice(i, j);
+    if (on.has(i)) {
+      const mark = document.createElement('mark');
+      mark.textContent = run;
+      into.append(mark);
+    } else {
+      into.append(document.createTextNode(run));
+    }
+    i = j;
+  }
+}
+
+function textSpan(className: string, text: string): HTMLSpanElement {
+  const span = document.createElement('span');
+  span.className = className;
+  span.textContent = text;
+  return span;
+}
+
 function emptyLine(text: string): HTMLParagraphElement {
   const p = document.createElement('p');
   p.className = 'lib-empty';
@@ -161,10 +209,10 @@ function emptyLine(text: string): HTMLParagraphElement {
 
 /**
  * The library popover above the dock (spec "Library popover", mock option A):
- * a search field, then Objects, Agents, Systems, AI logos, Cloud logos,
- * Charts and My library. Click or Enter arms a tile, a drag drops it on the
- * canvas, Esc closes. It owns no board state: main.ts turns picks into
- * placements.
+ * a search field, then Objects, Icon packs, Agents, Systems, AI logos, Cloud
+ * logos, Charts and My library. Click or Enter arms a tile, a drag drops it on
+ * the canvas, Esc closes. It owns no board state: main.ts turns picks into
+ * placements and says which icons the board has.
  */
 export class LibraryPopover {
   private readonly search: HTMLInputElement;
@@ -177,6 +225,13 @@ export class LibraryPopover {
   private thumbs = new Map<bigint, SVGSVGElement>();
   private menuFor: { item: LibraryItem; button: HTMLButtonElement } | null = null;
   private drag: { tile: HTMLElement; x: number; y: number; moved: boolean } | null = null;
+  /** Icon ids on this board and the packs they belong to, read on every render. */
+  private board = new Set<string>();
+  private boardPacks = new Set<IconSection>();
+  /** Packs opened or closed by hand and packs shown in full, until the popover closes. */
+  private openPacks = new Set<IconSection>();
+  private closedPacks = new Set<IconSection>();
+  private allShown = new Set<IconSection>();
 
   constructor(
     private readonly host: HTMLElement,
@@ -185,7 +240,7 @@ export class LibraryPopover {
     this.search = document.createElement('input');
     this.search.type = 'search';
     this.search.className = 'lib-search';
-    this.search.placeholder = 'Search objects, agents, logos, charts…';
+    this.search.placeholder = 'Search objects, agents, products, logos, charts…';
     this.search.autocomplete = 'off';
     this.search.spellcheck = false;
     this.search.setAttribute('aria-label', 'Search the library');
@@ -218,6 +273,9 @@ export class LibraryPopover {
     this.host.hidden = false;
     this.deps.anchor.setAttribute('aria-expanded', 'true');
     this.search.value = '';
+    this.openPacks.clear();
+    this.closedPacks.clear();
+    this.allShown.clear();
     this.render();
     this.search.focus();
   }
@@ -271,6 +329,16 @@ export class LibraryPopover {
       if (more !== null) {
         if (this.menuFor?.button === more) this.closeMenu(true);
         else this.openMenu(more);
+        return;
+      }
+      const pack = target.closest<HTMLElement>('[data-pack]')?.dataset.pack as IconSection | undefined;
+      if (pack !== undefined && target.closest('.lib-pack-row') !== null) {
+        this.togglePack(pack);
+        return;
+      }
+      if (pack !== undefined && target.closest('.lib-pack-more') !== null) {
+        this.allShown.add(pack);
+        this.render(`[data-pack="${pack}"] .lib-tile:nth-child(${PACK_TILES + 1})`);
         return;
       }
       const tile = target.closest<HTMLElement>('.lib-tile');
@@ -427,14 +495,9 @@ export class LibraryPopover {
     return [...this.body.querySelectorAll<HTMLElement>('.lib-tile')];
   }
 
-  /** Enter in the search: the tile named exactly what was typed, else the first
-   *  whose name starts with it, else the first match. "claude" places the Claude
-   *  logo, not the generic Model icon that lists claude among its search terms. */
+  /** Enter in the search: the first row; the ranker has already put the best match there. */
   private bestMatch(): HTMLElement | undefined {
-    const tiles = this.tiles();
-    const q = this.search.value.trim().toLowerCase();
-    const name = (t: HTMLElement) => (t.title || '').toLowerCase();
-    return tiles.find(t => name(t) === q) ?? tiles.find(t => q !== '' && name(t).startsWith(q)) ?? tiles[0];
+    return this.tiles()[0];
   }
 
   private choose(tile: HTMLElement, keyboard: boolean): void {
@@ -492,85 +555,201 @@ export class LibraryPopover {
     next?.focus();
   }
 
-  private render(): void {
+  /** Rebuild the body; `focusOn` selects the control that keeps focus, else a focused one yields to the search. */
+  private render(focusOn?: string): void {
     // A focused tile or ⋯ is about to be replaced: focus would drop to <body>.
     const hadFocus = this.body.contains(document.activeElement);
     this.closeMenu(false);
     this.picks.clear();
     const query = this.search.value.trim();
-    const q = query.toLowerCase();
-    const hit = (name: string) => name.toLowerCase().includes(q);
-    const sections: HTMLElement[] = [];
-    // The ids match too: the card tag, the rail and the MCP tools say 'timeseries'.
-    const objects = OBJECTS.filter(o => hit(o.name) || hit(o.kind));
-    if (objects.length > 0) {
-      sections.push(
-        this.section('Objects', 5, objects.map(o => this.tile({ kind: 'node', nodeKind: o.kind }, o.name, objectIcon(o.kind))))
-      );
-    }
-    // Icons and logos (spec 2026-10-18): the name, the id, a search term or the section title.
-    // A logo whose artwork is still loading holds a same-size placeholder,
-    // filled in place when it lands (fillLogos): no rebuild, so a drag in
-    // progress, keyboard focus and the tile layout all survive it.
-    if (!logosReady()) void loadLogos().then(() => this.fillLogos());
     const icons = drawableIcons();
-    for (const { id, title } of ICON_SECTIONS) {
-      const found = icons.filter(i => i.section === id && (hit(i.name) || hit(i.id) || hit(title) || i.terms.some(hit)));
-      if (found.length > 0) {
-        sections.push(this.section(title, 4, found.map(i => this.tile({ kind: 'icon', icon: i.id }, i.name, iconSvg(i.id, 20) ?? pendingIcon()))));
-      }
-    }
-    const charts = CHART_TYPES.filter(t => hit(CHART_CONTRACTS[t].title) || hit(t) || hit('chart'));
-    if (charts.length > 0) {
-      sections.push(
-        this.section('Charts', 4, charts.map(t => this.tile({ kind: 'chart', type: t }, CHART_CONTRACTS[t].title, chartIcon(t))))
-      );
-    }
-    const saved = this.items.filter(i => hit(i.name));
-    if (saved.length > 0) {
-      sections.push(this.section('My library', 3, saved.map(i => this.savedTile(i))));
-    } else if (q === '') {
-      const mine = this.section('My library', 3, []);
-      mine.append(emptyLine(EMPTY_LIBRARY));
-      sections.push(mine);
-    }
-    if (sections.length === 0) {
-      sections.push(emptyLine(`Nothing matches "${query}"`));
-    }
-    this.body.replaceChildren(...sections);
-    if (hadFocus) {
+    this.board = new Set(this.deps.boardIcons());
+    // drawableIcons, so an id this client cannot draw opens no pack.
+    this.boardPacks = new Set(icons.filter(i => this.board.has(i.id) && PACKS.some(s => s.id === i.section)).map(i => i.section));
+    this.body.replaceChildren(...(query === '' ? this.renderSections(icons) : this.renderResults(query, icons)));
+    const next = focusOn === undefined ? null : this.body.querySelector<HTMLElement>(focusOn);
+    if (next !== null) {
+      next.focus();
+    } else if (hadFocus) {
       this.search.focus();
     }
+    // Icons and logos (spec 2026-10-18): a logo whose artwork is still loading holds a same-size
+    // placeholder, filled in place when it lands (fillLogos): no rebuild, so a drag in
+    // progress, keyboard focus and the tile layout all survive it. Only what this render
+    // shows is fetched, and each chunk fills as it lands, so a slow one holds up no other.
+    const ids = [...this.body.querySelectorAll<SVGSVGElement>(PENDING)].map(p => p.dataset.icon!);
+    // A failed logo keeps its placeholder; its tile still works.
+    for (const id of new Set(ids)) void loadLogo(id).then(() => this.fillLogos(), () => {});
   }
 
-  /** Swap each logo placeholder for its artwork, in place. */
+  private renderSections(icons: readonly IconSpec[]): HTMLElement[] {
+    const sections: HTMLElement[] = [
+      this.section('Objects', 5, OBJECTS.map(o => this.tile({ kind: 'node', nodeKind: o.kind }, o.name, objectIcon(o.kind)))),
+      this.renderPacks(icons),
+    ];
+    for (const { id, title, pack } of ICON_SECTIONS) {
+      const found = icons.filter(i => i.section === id);
+      if (!pack && found.length > 0) {
+        sections.push(this.section(title, 4, found.map(i => this.tile({ kind: 'icon', icon: i.id }, i.name, iconSvg(i.id, 20) ?? pendingIcon(i.id)))));
+      }
+    }
+    sections.push(this.section('Charts', 4, CHART_TYPES.map(t => this.tile({ kind: 'chart', type: t }, CHART_CONTRACTS[t].title, chartIcon(t)))));
+    const mine = this.section('My library', 3, this.items.map(i => this.savedTile(i)));
+    if (this.items.length === 0) {
+      mine.append(emptyLine(EMPTY_LIBRARY));
+    }
+    sections.push(mine);
+    return sections;
+  }
+
+  /** Packs on this board first, each group in registry order; a pack opened or closed by hand stays where it was. */
+  private renderPacks(icons: readonly IconSpec[]): HTMLElement {
+    const list = document.createElement('div');
+    list.className = 'lib-packs';
+    for (const here of [true, false]) {
+      for (const s of PACKS.filter(p => this.boardPacks.has(p.id) === here)) {
+        const found = icons.filter(i => i.section === s.id);
+        if (found.length > 0) list.append(this.pack(s, found));
+      }
+    }
+    const section = this.section('Icon packs', 4, []);
+    section.append(list);
+    return section;
+  }
+
+  private pack(s: (typeof PACKS)[number], found: readonly IconSpec[]): HTMLElement {
+    const open = this.isPackOpen(s.id);
+    const box = document.createElement('div');
+    box.className = open ? 'lib-pack lib-pack-open' : 'lib-pack';
+    box.dataset.pack = s.id;
+    const row = document.createElement('button');
+    row.type = 'button';
+    row.className = 'lib-pack-row';
+    row.setAttribute('aria-expanded', String(open));
+    const icon = s.logo === undefined ? packGlyph(s.id, 16) : iconSvg(s.logo, 16) ?? pendingIcon(s.logo, 16);
+    if (icon !== null) row.append(icon);
+    const onBoard = found.filter(i => this.board.has(i.id)).length;
+    row.append(
+      textSpan('lib-pack-name', s.title),
+      textSpan('lib-pack-meta', onBoard > 0 ? `· ${onBoard} on this board` : ''),
+      textSpan('lib-pack-count', String(found.length)),
+      chevronIcon(),
+    );
+    box.append(row);
+    if (!open) {
+      return box;
+    }
+    // sort is stable: registry order within board icons, the company logo, the rest.
+    const rank = (i: IconSpec) => (this.board.has(i.id) ? 0 : i.id === s.logo ? 1 : 2);
+    const ordered = [...found].sort((a, b) => rank(a) - rank(b));
+    const shown = this.allShown.has(s.id) ? ordered : ordered.slice(0, PACK_TILES);
+    box.append(this.grid(4, shown.map(i => {
+      // Inside its own pack a product drops the provider word; the title and a placed node keep the full name.
+      const label = i.id === s.logo ? i.name : i.name.replace(/^(Amazon|AWS|Azure|Cloudflare) /, '');
+      const tile = this.tile({ kind: 'icon', icon: i.id }, label, iconSvg(i.id, 20) ?? pendingIcon(i.id));
+      tile.title = i.name;
+      return tile;
+    })));
+    if (shown.length < found.length) {
+      const more = document.createElement('button');
+      more.type = 'button';
+      more.className = 'lib-pack-more';
+      more.textContent = `Show all ${found.length}`;
+      box.append(more);
+    }
+    return box;
+  }
+
+  private isPackOpen(id: IconSection): boolean {
+    return (this.boardPacks.has(id) && !this.closedPacks.has(id)) || this.openPacks.has(id);
+  }
+
+  private togglePack(id: IconSection): void {
+    if (!this.isPackOpen(id)) {
+      this.openPacks.add(id);
+    } else {
+      this.openPacks.delete(id);
+      if (this.boardPacks.has(id)) this.closedPacks.add(id);
+    }
+    this.render(`[data-pack="${id}"] .lib-pack-row`);
+  }
+
+  /** One ranked list over every object, icon, chart and saved item (spec "Library search"). */
+  private renderResults(query: string, icons: readonly IconSpec[]): HTMLElement[] {
+    type Build = (r: RowInfo) => HTMLElement;
+    // The one place an entry is made.
+    const entry = (build: Build, name: string, id: string, terms: readonly string[], group: string, onBoard = false): SearchEntry<Build> =>
+      ({ value: build, name, id, terms, group, onBoard });
+    const entries: SearchEntry<Build>[] = [];
+    for (const o of OBJECTS) {
+      entries.push(entry(r => this.resultRow({ kind: 'node', nodeKind: o.kind }, o.name, objectIcon(o.kind), r), o.name, o.kind, [], 'Objects'));
+    }
+    for (const { id, title } of ICON_SECTIONS) {
+      for (const i of icons.filter(i => i.section === id)) {
+        entries.push(entry(r => this.resultRow({ kind: 'icon', icon: i.id }, i.name, iconSvg(i.id, 20) ?? pendingIcon(i.id), r), i.name, i.id, i.terms, title, this.boardPacks.has(id)));
+      }
+    }
+    for (const t of CHART_TYPES) {
+      const title = CHART_CONTRACTS[t].title;
+      entries.push(entry(r => this.resultRow({ kind: 'chart', type: t }, title, chartIcon(t), r), title, t, ['chart'], 'Charts'));
+    }
+    for (const i of this.items) {
+      entries.push(entry(r => this.savedTile(i, r), i.name, '', [], 'My library'));
+    }
+    const q = query.toLowerCase();
+    const ranked = rankEntries(query, entries);
+    if (ranked.length === 0) {
+      return [emptyLine(`Nothing matches "${query}"`)];
+    }
+    const hintLine = (text: string) => {
+      const p = document.createElement('p');
+      p.className = 'lib-hint';
+      p.textContent = text;
+      return p;
+    };
+    // Sticky at the popover's bottom, so the count and the keys show without scrolling the rows.
+    const foot = document.createElement('div');
+    foot.className = 'lib-foot';
+    foot.append(...(ranked.length > MAX_RESULTS ? [hintLine(`Showing ${MAX_RESULTS} of ${ranked.length} · keep typing to narrow`)] : []), hintLine(HINT));
+    return [
+      this.section('Search results', 1, ranked.slice(0, MAX_RESULTS).map(r => r.value({ group: r.group, highlight: r.highlight, term: r.term, q })), false),
+      foot,
+    ];
+  }
+
+  /** Swap each logo placeholder, in a tile or a pack row, for its artwork, in place and at its size. */
   private fillLogos(): void {
-    for (const [tile, pick] of this.picks) {
-      const pending = pick.kind === 'icon' ? tile.querySelector('.lib-node-icon-pending') : null;
-      const art = pending && pick.kind === 'icon' ? iconSvg(pick.icon, 20) : null;
-      if (pending && art) pending.replaceWith(art);
+    for (const pending of this.body.querySelectorAll<SVGSVGElement>(PENDING)) {
+      const art = iconSvg(pending.dataset.icon!, Number(pending.getAttribute('width')));
+      if (art) pending.replaceWith(art);
     }
   }
 
-  private section(title: string, cols: number, tiles: HTMLElement[]): HTMLElement {
+  private section(title: string, cols: number, tiles: HTMLElement[], eyebrow = true): HTMLElement {
     const section = document.createElement('section');
     section.className = 'lib-section';
     section.setAttribute('aria-label', title);
-    const eyebrow = document.createElement('div');
-    eyebrow.className = 'eyebrow';
-    eyebrow.textContent = title;
-    section.append(eyebrow);
+    if (eyebrow) {
+      const head = document.createElement('div');
+      head.className = 'eyebrow';
+      head.textContent = title;
+      section.append(head);
+    }
     if (tiles.length > 0) {
-      const grid = document.createElement('div');
-      grid.className = 'lib-grid';
-      grid.dataset.cols = String(cols);
-      grid.append(...tiles);
-      section.append(grid);
+      section.append(this.grid(cols, tiles));
     }
     return section;
   }
 
-  private tile(pick: LibraryPick, name: string, icon: Element | null): HTMLButtonElement {
+  private grid(cols: number, tiles: HTMLElement[]): HTMLElement {
+    const grid = document.createElement('div');
+    grid.className = 'lib-grid';
+    grid.dataset.cols = String(cols);
+    grid.append(...tiles);
+    return grid;
+  }
+
+  private tile(pick: LibraryPick, name: string, icon: Element | null, highlight: readonly number[] = []): HTMLButtonElement {
     const button = document.createElement('button');
     button.type = 'button';
     button.className = 'lib-tile';
@@ -580,13 +759,31 @@ export class LibraryPopover {
     }
     const label = document.createElement('span');
     label.className = 'lib-name';
-    label.textContent = name;
+    appendMarked(label, name, highlight);
     button.append(label);
     this.picks.set(button, pick);
     return button;
   }
 
-  private savedTile(item: LibraryItem): HTMLElement {
+  /** A tile as a search row: the matched letters marked, then why it matched, then its group. */
+  private resultRow(pick: LibraryPick, name: string, icon: Element | null, r: RowInfo): HTMLButtonElement {
+    const button = this.tile(pick, name, icon, r.highlight);
+    button.classList.add('lib-row');
+    if (r.term !== undefined) {
+      const term = document.createElement('span');
+      term.className = 'lib-term';
+      const at = r.term.toLowerCase().indexOf(r.q);
+      appendMarked(term, r.term, at < 0 ? [] : Array.from({ length: r.q.length }, (_, i) => at + i));
+      button.append(term);
+    }
+    const group = document.createElement('span');
+    group.className = 'lib-group';
+    group.textContent = r.group;
+    button.append(group);
+    return button;
+  }
+
+  private savedTile(item: LibraryItem, row?: RowInfo): HTMLElement {
     const wrap = document.createElement('div');
     wrap.className = 'lib-saved';
     const more = document.createElement('button');
@@ -596,7 +793,8 @@ export class LibraryPopover {
     more.setAttribute('aria-haspopup', 'menu');
     more.setAttribute('aria-expanded', 'false');
     more.append(dotsIcon());
-    wrap.append(this.tile({ kind: 'saved', item }, item.name, this.thumb(item)), more);
+    const pick: LibraryPick = { kind: 'saved', item };
+    wrap.append(row ? this.resultRow(pick, item.name, this.thumb(item), row) : this.tile(pick, item.name, this.thumb(item)), more);
     return wrap;
   }
 

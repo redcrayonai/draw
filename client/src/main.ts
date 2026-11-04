@@ -2038,6 +2038,7 @@ async function boot(conn: DbConnection, identityHex: string, signedIn: boolean):
           }
           void conn.reducers.deleteLibraryItem({ id: item.id }).catch(report);
         },
+        boardIcons: () => [...conn.db.visibleNodeIcon.iter()].filter(r => r.boardId === boardId).map(r => r.icon),
       });
       document.getElementById('tb-library')?.addEventListener('click', () => addSelectionToLibrary());
       // my_library is primary-keyed: a rename arrives as an update.

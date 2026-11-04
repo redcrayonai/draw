@@ -2,7 +2,7 @@ import { describe, it, expect, beforeAll } from 'vitest';
 import { ICONS, ICON_IDS, ICON_SECTIONS, ICON_NODE_KINDS, isIconId, iconSpec } from '../../module/src/node-icons';
 import { THEMES } from '../../shared/themes';
 import { LOGO_LOADERS, type LogoDrawing, type LogoNode } from './node-logos';
-import { drawableIcon, drawableIcons, iconGroup, iconPaint, iconSvg, loadLogo, loadLogos, logosReady, setLogoListener } from './node-icons';
+import { drawableIcon, drawableIcons, iconGroup, iconPaint, iconSvg, loadLogo, loadLogos, logosReady, packGlyph, setLogoListener } from './node-icons';
 
 /** Every logo's drawing, read straight from its chunk. */
 const LOGOS: Record<string, LogoDrawing> = {};
@@ -37,19 +37,44 @@ describe('the icon registry (module/src/node-icons.ts)', () => {
     expect(ICON_NODE_KINDS).toEqual(['service', 'datastore', 'external', 'boundary']);
   });
 
-  it('holds the agreed inventory: 12 agents, 8 systems, and the AI and cloud logos whose brand rules allow it', () => {
-    const count = (s: string) => ICONS.filter(i => i.section === s).length;
-    expect(ICON_SECTIONS.map(s => s.title)).toEqual(['Agents', 'Systems', 'AI logos', 'Cloud logos']);
-    expect([count('agents'), count('systems')]).toEqual([12, 8]);
-    expect(ICONS.filter(i => i.section === 'ai').map(i => i.id)).toEqual([
-      'claude', 'claude-code', 'openai', 'grok', 'mistral', 'hugging-face', 'openrouter', 'cursor', 'github-copilot', 'windsurf', 'devin', 'openclaw', 'hermes-agent', 'opencode',
-    ]);
-    expect(ICONS.filter(i => i.section === 'cloud').map(i => i.id)).toEqual(['aws', 'azure', 'vercel', 'supabase', 'firebase', 'neon', 'kubernetes']);
-    // AWS and Azure take the names their brand rules ask for
+  it('holds the agreed inventory, in its sections', () => {
+    const ids = (s: string) => ICONS.filter(i => i.section === s).map(i => i.id);
+    expect(ICON_SECTIONS.map(s => s.title)).toEqual(['Agents', 'Systems', 'AI logos', 'Cloud logos', 'AWS', 'Microsoft Azure', 'Google Cloud', 'Cloudflare', 'Databases', 'Kubernetes', 'CNCF']);
+    expect(ids('cloud')).toEqual(['vercel', 'supabase', 'firebase', 'neon']);
+    expect(ids('aws')[0]).toBe('aws');
+    expect(ids('azure')[0]).toBe('azure');
+    expect(ids('gcp')[0]).toBe('google-cloud');
+    expect(ids('cloudflare')[0]).toBe('cloudflare');
+    expect(ids('kubernetes')[0]).toBe('kubernetes');
+    expect(ids('databases')).toEqual(['postgres', 'mysql', 'mongodb', 'redis', 'valkey', 'keydb', 'dragonfly']);
     expect(iconSpec('aws')?.name).toBe('AWS Cloud');
     expect(iconSpec('azure')?.name).toBe('Microsoft Azure');
-    // every logo is a product outside the repo
-    expect(ICONS.filter(i => i.section === 'ai' || i.section === 'cloud').every(i => i.kind === 'external')).toBe(true);
+    expect(iconSpec('aws-s3')?.name).toBe('Amazon S3');
+    expect(iconSpec('aws-s3')?.kind).toBe('datastore');
+    expect(iconSpec('aws-lambda')?.kind).toBe('service');
+    for (const id of ['aws-s3', 'gcp-cloud-storage', 'cloudflare-r2', 'azure-blob-storage']) {
+      expect(iconSpec(id)?.terms, id).toEqual(expect.arrayContaining(['blob', 'object storage']));
+    }
+    for (const i of ICONS) expect(`${i.id} ${i.name}`, i.id).not.toMatch(/wasm|energy/i);
+    expect(ICON_SECTIONS.filter(s => s.pack).map(s => [s.id, s.logo])).toEqual([
+      ['aws', 'aws'], ['azure', 'azure'], ['gcp', 'google-cloud'], ['cloudflare', 'cloudflare'], ['databases', undefined], ['kubernetes', 'kubernetes'], ['cncf', undefined],
+    ]);
+    // every Kubernetes term list carries k8s, so a search for it still places the logo first
+    for (const i of ICONS.filter(i => i.section === 'kubernetes')) expect(i.terms, i.id).toContain('k8s');
+  });
+
+  it('draws brands with no cleared mark as neutral strokes', () => {
+    for (const id of ['google-cloud', 'cloudflare', 'cloudflare-r2', 'cloudflare-workers', 'postgres', 'mysql', 'mongodb', 'redis', 'keydb', 'dragonfly']) {
+      expect(iconPaint(id), id).toBe('stroke');
+      expect(LOGO_LOADERS[id], id).toBeUndefined();
+      expect(iconGroup(id, 28)!.getAttribute('class'), id).toBe('node-icon node-icon-stroke');
+    }
+  });
+
+  it('draws a pack glyph for Databases and CNCF only', () => {
+    expect(packGlyph('databases', 20)?.getAttribute('class')).toBe('lib-node-icon');
+    expect(packGlyph('cncf', 20)?.querySelector('path')).not.toBeNull();
+    for (const s of ['aws', 'azure', 'gcp', 'cloudflare', 'kubernetes', 'agents'] as const) expect(packGlyph(s, 20), s).toBeNull();
   });
 });
 
@@ -78,11 +103,12 @@ describe('logo artwork loads one chunk per logo', () => {
 describe('the drawings', () => {
   beforeAll(() => loadLogos());
 
-  it('every registry id has one: stroke for agents and systems, the brand\'s own artwork for logos', () => {
-    const paint = { agents: 'stroke', systems: 'stroke', ai: 'brand', cloud: 'brand' } as const;
-    for (const i of ICONS) expect(iconPaint(i.id), i.id).toBe(paint[i.section]);
+  it('every registry id draws: logos from their own art, everything else as a stroke', () => {
     expect(drawableIcons()).toEqual([...ICONS]);
-    expect(Object.keys(LOGO_LOADERS).sort()).toEqual(ICONS.filter(i => i.section === 'ai' || i.section === 'cloud').map(i => i.id).sort());
+    for (const i of ICONS) {
+      expect(iconPaint(i.id), i.id).toBe(i.id in LOGO_LOADERS ? 'brand' : 'stroke');
+    }
+    for (const s of ICON_SECTIONS) if (s.logo) expect(ICONS.find(i => i.section === s.id)?.id, s.id).toBe(s.logo);
   });
 
   it('an unknown or withdrawn id draws nothing', () => {
@@ -168,6 +194,7 @@ describe('vendored logo artwork (scripts/vendor-logos.mjs)', () => {
           for (const [k, v] of Object.entries(attrs)) {
             expect(k.startsWith('on'), `${id} ${k}`).toBe(false);
             expect(v, `${id} ${k}`).not.toMatch(/javascript:|https?:/i);
+            expect(v, `${id} ${k}`).not.toMatch(/url\((?!#)/i);
           }
         });
       }
@@ -186,6 +213,41 @@ describe('vendored logo artwork (scripts/vendor-logos.mjs)', () => {
         });
         for (const i of ids) expect(i, id).toMatch(new RegExp(`^rcl-${id}-${variant}-\\d+$`));
         for (const r of refs) expect(ids.has(r), `${id} #${r}`).toBe(true);
+      }
+    }
+  });
+
+  // Refused before anything is written; a regression here would overwrite the id named below.
+  it.each([
+    ['root paint', '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1 1" fill="url(https://evil.example/x.svg#a)"><path d="M0 0"/></svg>'],
+    ['attribute', '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1 1"><path d="M0 0" mask="url(//evil.example/x.svg#a)"/></svg>'],
+    ['class style', '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1 1"><style>.a{fill:url(//evil.example/x.svg#a)}</style><path class="a" d="M0 0"/></svg>'],
+    ['inline style', '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1 1"><path style="clip-path:url(//evil.example/x.svg#a)" d="M0 0"/></svg>'],
+    ['filter flood', '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1 1"><filter id="f" x="0" y="0" width="1" height="1"><feFlood flood-color="url(//evil.example/x.svg#a)" result="b"/><feBlend in="SourceGraphic" in2="b"/></filter><path filter="url(#f)" d="M0 0"/></svg>'],
+    ['unclosed url', '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1 1"><path fill="url(//evil.example/x.svg#a" d="M0 0"/></svg>'],
+    ['escaped url', '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1 1"><path fill="\\75rl(//evil.example/x.svg#a)" d="M0 0"/></svg>'],
+    ['image function', '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1 1"><path mask="image-set(\'//evil.example/x.png\' 1x)" d="M0 0"/></svg>'],
+  ])('the vendor script refuses a reference outside the file: %s', async (_name, svg) => {
+    const [fsModule, cpModule, osModule] = ['node:fs', 'node:child_process', 'node:os'];
+    const fs = (await import(/* @vite-ignore */ fsModule)) as { mkdtempSync(p: string): string; writeFileSync(p: string, d: string): void };
+    const cp = (await import(/* @vite-ignore */ cpModule)) as { spawnSync(c: string, a: string[], o: { encoding: 'utf8' }): { status: number; stderr: string } };
+    const os = (await import(/* @vite-ignore */ osModule)) as { tmpdir(): string };
+    const proc = (globalThis as unknown as { process: { cwd(): string; execPath: string } }).process;
+    const dir = fs.mkdtempSync(`${os.tmpdir()}/vendor-probe-`);
+    fs.writeFileSync(`${dir}/a.svg`, svg);
+    fs.writeFileSync(`${dir}/sources.json`, JSON.stringify({ vercel: { light: 'a.svg', dark: null, source: 'probe', url: 'probe' } }));
+    const run = cp.spawnSync(proc.execPath, ['--experimental-strip-types', `${proc.cwd()}/../scripts/vendor-logos.mjs`, `${dir}/sources.json`], { encoding: 'utf8' });
+    expect(run.status).not.toBe(0);
+    expect(run.stderr).toContain('external reference');
+  });
+
+  it('nothing a shape refers to is empty: every gradient has its stops, every clip and mask its content', () => {
+    for (const [id, logo] of Object.entries(LOGOS)) {
+      for (const art of [logo.light, logo.dark]) {
+        if (art === null) continue;
+        walk(art.tree, ([tag, attrs, kids]) => {
+          if (['linearGradient', 'radialGradient', 'clipPath', 'mask'].includes(tag)) expect(kids?.length ?? 0, `${id} <${tag} ${attrs.id}>`).toBeGreaterThan(0);
+        });
       }
     }
   });

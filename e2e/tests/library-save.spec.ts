@@ -12,7 +12,8 @@ const NONE = { none: [] };
 const popover = (page: Page) => page.locator('#library-popover');
 const searchbox = (page: Page) => page.getByRole('searchbox', { name: 'Search the library' });
 const section = (page: Page, title: string) => popover(page).locator(`section[aria-label="${title}"]`);
-const tile = (page: Page, name: string) => popover(page).getByRole('button', { name, exact: true });
+// By title: a search row's accessible name also carries its group and term.
+const tile = (page: Page, name: string) => popover(page).locator(`.lib-tile[title="${name}"]`);
 const notice = (page: Page) => page.locator('#error-text');
 const node = (page: Page, label: string) => page.locator('#world g.node', { hasText: label });
 const chart = (page: Page) => page.locator('#world g.node.node-chart');
@@ -95,10 +96,11 @@ test('the library popover opens with its sections and closes back to the dock bu
   const [above, dock] = await Promise.all([popover(page).boundingBox(), page.locator('#dock').boundingBox()]);
   expect(above!.y + above!.height).toBeLessThanOrEqual(dock!.y);
   const sections = popover(page).locator('section.lib-section');
-  await expect(sections).toHaveCount(7);
-  expect(await sections.evaluateAll(all => all.map(s => s.getAttribute('aria-label')))).toEqual(['Objects', 'Agents', 'Systems', 'AI logos', 'Cloud logos', 'Charts', 'My library']);
+  await expect(sections).toHaveCount(8);
+  expect(await sections.evaluateAll(all => all.map(s => s.getAttribute('aria-label')))).toEqual(['Objects', 'Icon packs', 'Agents', 'Systems', 'AI logos', 'Cloud logos', 'Charts', 'My library']);
+  await expect(popover(page).locator('.lib-pack')).toHaveCount(7);
   await expect(section(page, 'My library').locator('.lib-empty')).toHaveText('No saved items yet — select nodes and press ⇧L');
-  await expect(popover(page).locator('.lib-tile')).toHaveCount(57);
+  await expect(popover(page).locator('.lib-tile')).toHaveCount(54);
   await page.keyboard.press('Escape');
   await expect(popover(page)).toBeHidden();
   await expect(button).toBeFocused();
@@ -113,19 +115,20 @@ test('the library popover opens with its sections and closes back to the dock bu
   await expect(popover(page)).toBeHidden();
   await expect(button).toBeFocused();
 
-  // CH-26: name, id, search term or section title. The unfiltered sections hold the same
-  // Agents and Charts tiles, so the section lists prove the filter ran.
+  // CH-26: name, id, search term or section title, as one ranked list. The unfiltered sections hold the same
+  // Agents and Charts tiles, so a single Search results section proves the filter ran.
   const shown = () => sections.evaluateAll(all => all.map(s => s.getAttribute('aria-label')));
+  const rows = popover(page).locator('.lib-row');
+  const titles = () => rows.evaluateAll(all => all.map(r => r.getAttribute('title')));
   await page.keyboard.press('l');
   await searchbox(page).fill('agent');
-  await expect.poll(shown).toEqual(['Agents', 'AI logos']);
-  await expect(section(page, 'Agents').locator('.lib-tile')).toHaveCount(12);
+  await expect.poll(shown).toEqual(['Search results']);
+  await expect.poll(titles).toEqual(expect.arrayContaining(['Agent', 'Orchestrator', 'Evaluator']));
   await searchbox(page).fill('rag');
-  await expect(section(page, 'Agents').locator('.lib-tile')).toHaveCount(1);
-  await expect(section(page, 'Agents').getByRole('button', { name: 'Knowledge base', exact: true })).toBeVisible();
+  await expect(rows.first()).toHaveAttribute('title', 'Knowledge base');
   await searchbox(page).fill('chart');
-  await expect.poll(shown).toEqual(['Charts']);
-  await expect(section(page, 'Charts').locator('.lib-tile')).toHaveCount(11);
+  await expect.poll(shown).toEqual(['Search results']);
+  await expect(rows.filter({ has: page.locator('.lib-group', { hasText: /^Charts$/ }) })).toHaveCount(11);
   await searchbox(page).fill('zzz');
   await expect(popover(page)).toContainText('Nothing matches "zzz"');
   await expect(popover(page).locator('.lib-tile')).toHaveCount(0);
@@ -160,16 +163,17 @@ test('the library popover opens with its sections and closes back to the dock bu
 test('a tile dragged onto the canvas places one item at the drop point', async ({ guest, stack }) => {
   const page = await guest();
   await openBoard(page, stack.url);
+  // Drop left of the popover: a search now lists rows, which cover the middle of the board.
   await page.keyboard.press('l');
   await searchbox(page).fill('queue');
-  const first = await gridAt(page, 700, 450);
-  await drag(page, tile(page, 'Queue'), { x: 700, y: 450 });
+  const first = await gridAt(page, 300, 350);
+  await drag(page, tile(page, 'Queue'), { x: 300, y: 350 });
   await expect(popover(page)).toBeHidden();
   await expect(img(page, 'Queue')).toHaveCount(1);
   await expect(page.locator('#save-status')).toHaveText('Saved');
   const box = await settledBox(page.locator('#world g.node .node-rect').first());
-  expect(Math.abs(box.x - 700)).toBeLessThan(6);
-  expect(Math.abs(box.y - 450)).toBeLessThan(6);
+  expect(Math.abs(box.x - 300)).toBeLessThan(6);
+  expect(Math.abs(box.y - 350)).toBeLessThan(6);
   const B = await boardIdOf(stack, page);
   expect(await stack.sql(`SELECT x, y FROM node WHERE board_id = ${B}`)).toEqual([first]);
 
@@ -182,8 +186,8 @@ test('a tile dragged onto the canvas places one item at the drop point', async (
   await expect(popover(page)).toBeVisible();
   // A real drop after it: writes from one connection land in order, so once it is
   // stored, 2 rows (not 3) proves the miss wrote nothing.
-  const second = await gridAt(page, 420, 300);
-  await drag(page, tile(page, 'Queue'), { x: 420, y: 300 });
+  const second = await gridAt(page, 180, 300);
+  await drag(page, tile(page, 'Queue'), { x: 180, y: 300 });
   await expect.poll(async () => (await stack.sql(`SELECT id FROM node WHERE board_id = ${B} AND x = ${second.x} AND y = ${second.y}`)).length).toBe(1);
   expect(await stack.sql(`SELECT id FROM node WHERE board_id = ${B}`)).toHaveLength(2);
   await expect(img(page, 'Queue')).toHaveCount(2);
