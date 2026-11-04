@@ -12,6 +12,7 @@ import { dbHttp } from '../../shared/db-http';
 import { decodeRows } from './decode';
 import type { Env } from './env';
 import { REDUCER_ARGS } from './reducers.gen';
+import { parseProcedureJson } from '../../module/src/procedure-json';
 
 declare const safe: unique symbol;
 export type SafeU64 = bigint & { readonly [safe]: 'u64' };
@@ -86,6 +87,10 @@ export function database(env: Env, token: () => Promise<string>, stats: Stats = 
     stats,
     http,
     token,
+    async procedure<T>(name: 'read_board_snapshot' | 'create_board_items', args: unknown[], signal?: AbortSignal): Promise<T> {
+      const t = await token();
+      return parseProcedureJson(JSON.parse(await timed(() => http.procedureAs(t, name, args, signalFor(signal))))) as T;
+    },
     /** Rows decoded by their schema (decode.ts): camelCase keys, u64s as bigint, options as value or undefined. */
     async read<T = Record<string, unknown>>(query: Query, signal?: AbortSignal): Promise<T[]> {
       const t = await token();

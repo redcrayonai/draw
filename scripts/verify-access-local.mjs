@@ -462,6 +462,20 @@ test('agent grants end with an unlink, a new owner, a deleted board or a claim',
   assert.deepEqual(await sql(guestAgent, `SELECT * FROM visible_board WHERE id = ${G}`), []);
 });
 
+test('agents sharing a board keep distinct grants when one is revoked', async () => {
+  const owner = await mint(), first = await mint(), second = await mint(), stranger = await mint();
+  const B = await create(owner);
+  for (const agent of [first, second, stranger]) await linkAgent(agent, owner);
+  for (const agent of [first, second]) await ok(owner, 'grant_agent_board', [B, identity(agent)]);
+  await denied(stranger, 'create_node', nodeArgs(B));
+  for (const agent of [first, second]) await ok(agent, 'create_node', nodeArgs(B));
+  await ok(owner, 'revoke_agent_board', [B, identity(first)]);
+  await denied(first, 'create_node', nodeArgs(B));
+  await ok(second, 'create_node', nodeArgs(B));
+  const grants = await sql(operator, `SELECT * FROM agent_grant WHERE board_id = ${B}`);
+  assert.deepEqual(grants.map(g => hex(g.agent)), [second.identity]);
+});
+
 test('participants are listed to people who share a board with them, and to nobody else', async () => {
   const owner = await mint(), member = await mint(), stranger = await mint(), service = await mint();
   await sql(operator, `INSERT INTO service_account (identity, label) VALUES (0x${service.identity}, 'participant-test')`);

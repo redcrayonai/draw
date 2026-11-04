@@ -169,6 +169,8 @@ import RevokeWorkspaceApiKeyReducer from "./revoke_workspace_api_key_reducer";
 
 // Import all procedure arg schemas
 import * as CaptureBoardVersionProcedure from "./capture_board_version_procedure";
+import * as CreateBoardItemsProcedure from "./create_board_items_procedure";
+import * as ReadBoardSnapshotProcedure from "./read_board_snapshot_procedure";
 import * as RestoreBoardVersionProcedure from "./restore_board_version_procedure";
 
 // Import all table schema definitions
@@ -838,6 +840,8 @@ const reducersSchema = __reducers(
 /** The schema information for all procedures in this module. This is defined the same way as the procedures would have been defined in the server. */
 const proceduresSchema = __procedures(
   __procedureSchema("capture_board_version", CaptureBoardVersionProcedure.params, CaptureBoardVersionProcedure.returnType),
+  __procedureSchema("create_board_items", CreateBoardItemsProcedure.params, CreateBoardItemsProcedure.returnType),
+  __procedureSchema("read_board_snapshot", ReadBoardSnapshotProcedure.params, ReadBoardSnapshotProcedure.returnType),
   __procedureSchema("restore_board_version", RestoreBoardVersionProcedure.params, RestoreBoardVersionProcedure.returnType),
 );
 

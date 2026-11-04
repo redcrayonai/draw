@@ -103,6 +103,50 @@ export const BoardCodeConsent = __t.object("BoardCodeConsent", {
 });
 export type BoardCodeConsent = __Infer<typeof BoardCodeConsent>;
 
+export const BoardCreateEdge = __t.object("BoardCreateEdge", {
+  boardId: __t.u64(),
+  fromNode: __t.u64(),
+  toNode: __t.u64(),
+  label: __t.string(),
+  evidence: __t.string(),
+  imported: __t.option(__t.bool()),
+  evidenceSnippet: __t.option(__t.string()),
+  evidenceStatus: __t.option(__t.string()),
+});
+export type BoardCreateEdge = __Infer<typeof BoardCreateEdge>;
+
+export const BoardCreateItem = __t.object("BoardCreateItem", {
+  key: __t.string(),
+  get node() {
+    return __t.option(BoardCreateNode);
+  },
+  get edge() {
+    return __t.option(BoardCreateEdge);
+  },
+});
+export type BoardCreateItem = __Infer<typeof BoardCreateItem>;
+
+export const BoardCreateNode = __t.object("BoardCreateNode", {
+  boardId: __t.u64(),
+  label: __t.string(),
+  sublabel: __t.string(),
+  x: __t.i32(),
+  y: __t.i32(),
+  w: __t.i32(),
+  h: __t.i32(),
+  token: __t.string(),
+  focal: __t.bool(),
+  kind: __t.option(__t.string()),
+  doc: __t.option(__t.string()),
+  imported: __t.option(__t.bool()),
+  shape: __t.option(__t.string()),
+  color: __t.option(__t.string()),
+  strokeStyle: __t.option(__t.string()),
+  size: __t.option(__t.string()),
+  icon: __t.option(__t.string()),
+});
+export type BoardCreateNode = __Infer<typeof BoardCreateNode>;
+
 export const BoardCreation = __t.object("BoardCreation", {
   requestKey: __t.string(),
   owner: __t.identity(),
@@ -149,6 +193,15 @@ export const BoardGrant = __t.object("BoardGrant", {
   role: __t.string(),
 });
 export type BoardGrant = __Infer<typeof BoardGrant>;
+
+export const BoardItemReceipt = __t.object("BoardItemReceipt", {
+  key: __t.string(),
+  boardId: __t.u64(),
+  args: __t.string(),
+  itemId: __t.u64(),
+  at: __t.timestamp(),
+});
+export type BoardItemReceipt = __Infer<typeof BoardItemReceipt>;
 
 export const BoardLifetime = __t.object("BoardLifetime", {
   boardId: __t.u64(),

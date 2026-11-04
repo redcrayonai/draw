@@ -103,6 +103,11 @@ async function nodeAs(who, boardId, label) {
 
 const myBoards = who => sql(who.token, 'SELECT * FROM my_boards');
 const statsOf = async boardId => (await sql(OWNER, `SELECT * FROM board_stats WHERE board_id = ${boardId}`))[0];
+const procedure = async (who, name, args) => {
+  const r = await call(who.token, name, args);
+  assert.equal(r.status, 200, r.text);
+  return JSON.parse(JSON.parse(r.text), (_key, v) => v && typeof v.$bigint === 'string' ? BigInt(v.$bigint) : v);
+};
 const outboxOf = async boardId =>
   (await sql(OWNER, `SELECT * FROM activity_outbox WHERE board_id = ${boardId}`)).sort((a, b) => (a.id < b.id ? -1 : 1));
 
@@ -362,6 +367,87 @@ test('M2 health: a source citation that is not ok counts as stale, never as prov
   assert.deepEqual(pick(await statsOf(X), keys), { shownEdges: 2, evImport: 0, evSource: 0, evStale: 2 });
   const row = (await myBoards(a)).find(r => r.boardId === X);
   assert.deepEqual(pick(row, keys), { shownEdges: 2, evImport: 0, evSource: 0, evStale: 2 });
+});
+
+test('M2 health: ref edits retain counters and touch recency at most once a minute; status changes and missing stats recount', async () => {
+  const a = await mint();
+  const B = await createBoardAs(a, named('ref-stats'));
+  const n = await nodeAs(a, B, 'n');
+  await ok(a.token, 'add_repo_files', [B, ['a.ts']]);
+  await ok(a.token, 'add_code_ref', [B, 'node', n, 'a.ts', 'f', 1, 1, SHA, '', '']);
+  const [ref] = await sql(OWNER, `SELECT * FROM code_ref WHERE board_id = ${B}`);
+  let before = await statsOf(B);
+  let prior = 'ok';
+  const edit = status => ok(a.token, 'update_code_ref', [ref.id, 2, 2, SHA, '', status]);
+  for (const status of ['ok', 'stale', 'stale', 'ambiguous', 'ok']) {
+    await edit(status);
+    const after = await statsOf(B);
+    assert.deepEqual(pick(after, ['refsOk', 'refsStale', 'refsAmbiguous']), {
+      refsOk: Number(status === 'ok'), refsStale: Number(status === 'stale'), refsAmbiguous: Number(status === 'ambiguous'),
+    });
+    assert.equal(micros(after.updatedAt) > micros(before.updatedAt), status !== prior, `${prior} to ${status}`);
+    assert.deepEqual(pick(after, ['createdBy', 'createdAt', 'snapshotAt', 'nodes', 'repoFiles']), pick(before, ['createdBy', 'createdAt', 'snapshotAt', 'nodes', 'repoFiles']));
+    before = after;
+    prior = status;
+  }
+  await sql(OWNER, `DELETE FROM board_stats WHERE board_id = ${B}`);
+  await edit('ok');
+  const restored = await statsOf(B);
+  assert.deepEqual(pick(restored, ['nodes', 'repoFiles', 'refsOk', 'refsStale', 'refsAmbiguous']), { nodes: 1, repoFiles: 1, refsOk: 1, refsStale: 0, refsAmbiguous: 0 });
+  assert.equal(micros(restored.createdAt), 0);
+});
+
+test('batch creates commit per item, return ids, retry safely and preserve counters', async () => {
+  const a = await mint();
+  const B = await createBoardAs(a, named('batch'));
+  const item = (key, label, x = 0) => [key.repeat(64), { some: [...nodeArgs(B, label).map((v, i) => i === 3 ? x : v), NONE] }, NONE];
+  const items = [item('a', 'first'), item('b', 'bad', 1), item('c', 'last')];
+  const results = await procedure(a, 'create_board_items', [items]);
+  assert.equal(results[1].refused, true);
+  assert.match(results[1].error, /grid/);
+  assert.ok(results[0].id && results[2].id);
+  const rows = await sql(OWNER, `SELECT * FROM node WHERE board_id = ${B}`);
+  assert.deepEqual(rows.map(n => n.label).sort(), ['first', 'last']);
+  assert.deepEqual(pick(await statsOf(B), ['nodes', 'shownNodes']), { nodes: 2, shownNodes: 2 });
+  const retry = await procedure(a, 'create_board_items', [[items[0], items[2]]]);
+  assert.deepEqual(retry.map(r => r.id), [results[0].id, results[2].id]);
+  const conflict = await procedure(a, 'create_board_items', [[item('a', 'different')]]);
+  assert.match(conflict[0].error, /key belongs/);
+  const other = await mint();
+  const denied = await procedure(other, 'create_board_items', [[items[0]]]);
+  assert.equal(denied[0].refused, true);
+  assert.equal(denied[0].id, undefined);
+  const C = await createBoardAs(a, named('batch-other'));
+  const foreign = await nodeAs(a, C, 'foreign');
+  const edge = ['e'.repeat(64), NONE, { some: [B, results[0].id, foreign, 'cross-board', 'human:test', NONE, NONE, NONE] }];
+  const crossed = await procedure(a, 'create_board_items', [[edge]]);
+  assert.equal(crossed[0].refused, true);
+  assert.equal((await statsOf(B)).edges, 0);
+});
+
+test('the board snapshot redacts private session paths from link visitors', async () => {
+  const a = await mint(), visitor = await mint();
+  const name = named('snapshot-session');
+  await ok(a.token, 'start_session', [name, '/private/checkout', SHA]);
+  const B = await boardIdOf(name);
+  const token = randomBytes(16).toString('hex');
+  await ok(a.token, 'set_link_share', [B, 'view', token]);
+  await ok(visitor.token, 'open_shared_link', [token]);
+  assert.equal((await procedure(a, 'read_board_snapshot', [B])).session.repoRoot, '/private/checkout');
+  assert.equal((await procedure(visitor, 'read_board_snapshot', [B])).session.repoRoot, '');
+});
+
+test('repo registration deduplicates per board and repairs missing stats', async () => {
+  const a = await mint();
+  const B = await createBoardAs(a, named('file-index'));
+  const C = await createBoardAs(a, named('file-index-other'));
+  for (const board of [B, C]) await ok(a.token, 'add_repo_files', [board, ['same.ts', 'same.ts']]);
+  await ok(a.token, 'add_repo_files', [B, ['same.ts', 'next.ts', 'next.ts']]);
+  assert.equal((await statsOf(B)).repoFiles, 2);
+  assert.equal((await statsOf(C)).repoFiles, 1);
+  await sql(OWNER, `DELETE FROM board_stats WHERE board_id = ${B}`);
+  await ok(a.token, 'add_repo_files', [B, ['third.ts']]);
+  assert.equal((await statsOf(B)).repoFiles, 3);
 });
 
 test('M2 health: a checkpoint stores parsed coverage and emits session.checkpoint', async () => {

@@ -1,6 +1,8 @@
 import { describe, expect, it, vi } from 'vitest';
 import { DbError, type DbHttp, type DbType } from '../../shared/db-http';
 import { createSnapshot } from './snapshot';
+import { addCodeRefFlow, guardSecrets, markCheckpointFlow, startSessionFlow } from '../../agent/src/session';
+import { localDeps } from '../../agent/src/local-deps';
 
 // Column types as /sql's schema states them.
 const U64 = { U64: [] };
@@ -70,6 +72,96 @@ const TABLES = {
 };
 
 describe('createSnapshot', () => {
+  it('checkpoints with only the required views and reads the committed checkpoint', async () => {
+    const tables = { ...TABLES, visible_code_ref: table([], []), visible_edge: table([], []) };
+    const { http, queries, calls } = fakeHttp(tables);
+    const post = http.callAs;
+    http.callAs = async (...args) => {
+      await post(...args);
+      if (args[1] === 'mark_checkpoint') tables.visible_session = {
+        ...TABLES.visible_session, rows: [[3, 7, '/r', 'b', 'h', 1, args[2][2], [1], [2]]],
+      };
+    };
+    const snap = createSnapshot(http, 'tok', 7n);
+    const result = await markCheckpointFlow({ boardId: 7n }, {
+      ...localDeps, call: guardSecrets(snap.call), progress: new Map(),
+      git: { ...localDeps.git, listed: () => [], changeCandidates: () => [], deleted: () => [], untracked: () => [], head: () => 'h' },
+    });
+    expect(result.checkpoint).toBe(1);
+    expect(calls.map(([name]) => name)).toEqual(['mark_checkpoint']);
+    expect(queries).toHaveLength(12);
+    expect(queries.some(q => /visible_(threat|repo_file|board WHERE)/.test(q))).toBe(false);
+  });
+
+  it('adds a reference with six SQL reads and retries with three', async () => {
+    const tables = { ...TABLES, visible_code_ref: { ...TABLES.visible_code_ref, rows: [] as unknown[][] } };
+    const { http, queries, calls } = fakeHttp(tables);
+    const post = http.callAs;
+    http.callAs = async (...args) => {
+      await post(...args);
+      if (args[1] === 'add_code_ref') tables.visible_code_ref.rows = TABLES.visible_code_ref.rows;
+    };
+    const snap = createSnapshot(http, 'tok', 7n);
+    const source = 'function f() {}';
+    const add = () => addCodeRefFlow({ boardId: 7n, repoRoot: '/r', targetKind: 'node', targetId: 5n, path: 'a.ts', symbol: 'f' }, {
+      ...localDeps, call: guardSecrets(snap.call),
+      readSource: () => ({ abs: '/r/a.ts', rel: 'a.ts', text: source, lines: [source], bytes: Buffer.from(source) }),
+      git: { ...localDeps.git, spelling: (_root, path) => path, isCitable: () => true, hashObject: () => 's' },
+    });
+    expect(await add()).toMatchObject({ id: MAX, existing: false });
+    expect(calls.map(([name]) => name)).toEqual(['add_code_ref', 'set_code_ref_hashes']);
+    expect(queries).toHaveLength(6);
+    expect(await add()).toMatchObject({ id: MAX, existing: true });
+    expect(queries).toHaveLength(9);
+    expect(calls).toHaveLength(2);
+  });
+
+  it.each([false, true])('starts a session with four reads even across file chunks (existing=%s)', async existing => {
+    const tables = {
+      ...TABLES,
+      my_boards: existing ? TABLES.my_boards : table([], []),
+      visible_board: table([['id', U64], ['name', S], ['slug', S]], [[7, 'main', 'session-link']]),
+      visible_repo_file: { ...TABLES.visible_repo_file, rows: existing ? [...TABLES.visible_repo_file.rows] : [] },
+    };
+    const { http, queries, calls } = fakeHttp(tables);
+    const post = http.callAs;
+    http.callAs = async (...args) => {
+      await post(...args);
+      if (args[1] === 'start_session') tables.my_boards = TABLES.my_boards;
+      if (args[1] === 'add_repo_files') for (const path of args[2][1] as string[]) tables.visible_repo_file.rows.push([tables.visible_repo_file.rows.length + 1, 7, path]);
+    };
+    const snap = createSnapshot(http, 'tok', mine => mine.find(b => b.name === 'main' && b.isSession)?.boardId);
+    const paths = ['a.ts', ...Array.from({ length: 1001 }, (_, i) => `file-${i}.ts`)];
+    const start = () => startSessionFlow(
+      { name: 'main', repoRoot: '/r', clientUrl: 'https://draw.example.com', dbName: 'test', force: false, activeBoardId: undefined },
+      { ...localDeps, call: snap.call, realpath: p => p, git: { ...localDeps.git, topLevel: () => '/r', head: () => 'b'.repeat(40), listTracked: () => paths } }
+    );
+    expect(await start()).toMatchObject({ boardId: 7n, checkpoint: 0, seeded: existing ? 1001 : 1002 });
+    expect(calls[0][0]).toBe('start_session');
+    expect(calls.slice(1).flatMap(([, args]) => args[1])).toEqual(existing ? paths.slice(1) : paths);
+    expect(queries).toHaveLength(4);
+    const beforeRetry = calls.length;
+    expect(await start()).toMatchObject({ boardId: 7n, seeded: 0 });
+    expect(calls.slice(beforeRetry).map(([name]) => name)).toEqual(['start_session']);
+    expect(queries).toHaveLength(8);
+  });
+
+  it('loads ref paths for guarded writes after a session-only read and invalidates them after writes', async () => {
+    const tables = { ...TABLES };
+    const { http } = fakeHttp(tables);
+    const snap = createSnapshot(http, 'tok', 7n);
+    await snap.call('find session board', async conn => expect([...conn.db.visibleSession.iter()]).toHaveLength(1));
+    await guardSecrets(snap.call)('update_code_ref', async conn => {
+      expect([...conn.db.visibleCodeRef.iter()]).toHaveLength(1);
+      await conn.reducers.updateCodeRef({ id: MAX, startLine: 1, endLine: 2, blobSha: 's', snippet: 'x', status: 'ok' });
+    });
+    expect(await snap.call('read code refs', async conn => [...conn.db.visibleCodeRef.iter()])).toHaveLength(1);
+    await snap.call('start_session', conn => conn.reducers.startSession({ name: 'main', repoRoot: '/r', baseSha: 'b' }));
+    tables.visible_code_ref = table([], []);
+    await snap.call('find session board', async () => undefined);
+    expect(await snap.call('read code refs', async conn => [...conn.db.visibleCodeRef.iter()])).toEqual([]);
+  });
+
   // An empty list would pass for "no notes": a checkpoint would then miss stale readers.
   it.each(['visible_change_note', 'visible_threat'])('fails the read when %s cannot be read', async view => {
     const base = fakeHttp(TABLES);
@@ -81,6 +173,22 @@ describe('createSnapshot', () => {
       },
     };
     await expect(createSnapshot(http, 'tok', 7n).call('read', async conn => [...conn.db.visibleChangeNote.iter()])).rejects.toThrow(/503/);
+  });
+
+  it('writes routes without loading views and refreshes the next route read', async () => {
+    const tables = { ...TABLES };
+    const { http, queries, calls } = fakeHttp(tables);
+    const snap = createSnapshot(http, 'tok', 7n);
+    await snap.call('plan_route', conn => conn.reducers.planRoute({ boardId: 7n, nodeIds: [5n] }));
+    expect(queries).toEqual([]);
+    await snap.call('read route', async conn => expect([...conn.db.visibleSessionRoute.iter()]).toHaveLength(1));
+    const reads = queries.length;
+    await snap.call('reroute', conn => conn.reducers.reroute({ boardId: 7n, addNodeIds: [], addIndices: [], removeNodeIds: [5n], reason: 'skip' }));
+    expect(queries).toHaveLength(reads);
+    tables.visible_session_route = table([], []);
+    await snap.call('read route', async conn => expect([...conn.db.visibleSessionRoute.iter()]).toEqual([]));
+    expect(queries).toHaveLength(reads * 2);
+    expect(calls.map(([name]) => name)).toEqual(['plan_route', 'reroute']);
   });
 
   it('posts set_change_note_readers positionally', async () => {
@@ -175,9 +283,9 @@ describe('createSnapshot', () => {
     for (let i = 0; i < 5; i++) await snap.call('update_code_ref', conn => conn.reducers.updateCodeRef(ref));
     await snap.call('update_edge_evidence', conn => conn.reducers.updateEdgeEvidence({ edgeId: 6n, evidence: 'source:a.ts:2', status: 'ok' }));
     expect(calls).toHaveLength(6);
-    expect(queries).toHaveLength(14);
-    await snap.call('read code refs', async () => undefined);
-    expect(queries).toHaveLength(28);
+    expect(queries).toHaveLength(7);
+    await snap.call('read checkpoint coverage', async () => undefined);
+    expect(queries).toHaveLength(15);
   });
 
   it('a failed write still marks the rows stale: it may have landed', async () => {

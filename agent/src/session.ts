@@ -1271,7 +1271,7 @@ export async function markCheckpointFlow(input: MarkCheckpointInput, deps: Sessi
   //    count: a stale or ambiguous ref is one the board itself flags as wrong,
   //    so it must not clear the debt for the hunk it used to sit on (F16).
   //    Hunks are kept per file sha, so a call that stopped here resumes.
-  const { live, notes: changeNotes, refRows } = await deps.call('read code refs', async conn => {
+  const { live, notes: changeNotes, refRows } = await deps.call('read checkpoint coverage', async conn => {
     const refs = readState(conn).refs;
     return {
       live: refs.filter(r => r.status === 'ok').map(r => ({ path: r.path, startLine: r.startLine, endLine: r.endLine })),
@@ -1425,7 +1425,9 @@ export async function markCheckpointFlow(input: MarkCheckpointInput, deps: Sessi
       const event = [...conn.db.visibleRouteEvent.iter()].find(e => e.boardId === boardId && e.kind === 'arrive' && e.nodeId === input.arrival!.nodeId);
       if (event) return event.checkpoint;
     }
-    return readState(conn).session.checkpoint;
+    const session = [...conn.db.visibleSession.iter()].find(s => s.boardId === boardId);
+    if (!session) throw new Error(`board ${boardId} has no session; call start_session first`);
+    return session.checkpoint;
   });
 
   return {

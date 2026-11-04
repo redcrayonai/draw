@@ -11,57 +11,22 @@ import { chartNodeSummary, type StoredChart } from '../../agent/src/charts';
 import { routeSnapshot } from '../../agent/src/routes';
 import type { SessionConn } from '../../agent/src/session';
 import type { Database, SafeU64 } from './db';
-import { sql } from './db';
 
 export const BOARD_TEXT_MAX = 45_000;
 
 type Row = Record<string, any>;
 const iter = (rows: Row[]) => ({ iter: () => rows as never[] });
 
-/** Every view get_board needs for one board, read in parallel (a Worker keeps 6 open and queues the rest). */
-export async function readBoard(db: Database, board: SafeU64, signal?: AbortSignal) {
-  const [boards, nodes, edges, hideSets, members, refs, sessions, routes, events, charts, versions, notes, threats, icons] = await Promise.all([
-    db.read<Row>(sql`SELECT * FROM visible_board WHERE id = ${board}`, signal),
-    db.read<Row>(sql`SELECT * FROM visible_node WHERE board_id = ${board}`, signal),
-    db.read<Row>(sql`SELECT * FROM visible_edge WHERE board_id = ${board}`, signal),
-    db.read<Row>(sql`SELECT * FROM visible_hide_set WHERE board_id = ${board}`, signal),
-    // hide_set_member has no board column: every readable member, filtered by this board's sets below
-    db.read<Row>(sql`SELECT * FROM visible_hide_set_member`, signal),
-    db.read<Row>(sql`SELECT * FROM visible_code_ref WHERE board_id = ${board}`, signal),
-    db.read<Row>(sql`SELECT * FROM visible_session WHERE board_id = ${board}`, signal),
-    db.read<Row>(sql`SELECT * FROM visible_session_route WHERE board_id = ${board}`, signal),
-    db.read<Row>(sql`SELECT * FROM visible_route_event WHERE board_id = ${board}`, signal),
-    db.read<Row>(sql`SELECT * FROM visible_chart WHERE board_id = ${board}`, signal),
-    db.read<Row>(sql`SELECT * FROM visible_architecture_version WHERE board_id = ${board}`, signal),
-    db.read<Row>(sql`SELECT * FROM visible_change_note WHERE board_id = ${board}`, signal),
-    // members only: a visitor's view has no rows
-    db.read<Row>(sql`SELECT * FROM visible_threat WHERE board_id = ${board}`, signal),
-    db.read<Row>(sql`SELECT * FROM visible_node_icon WHERE board_id = ${board}`, signal),
-  ]);
-  const version = versions[0] as Row | undefined;
-  // A branch names its base; a fact snapshot names its commit.
-  const [baseBoard] = version?.assertionMode === 'intent' ? await db.read<Row>(sql`SELECT * FROM visible_board WHERE id = ${version.baseBoardId as SafeU64}`, signal) : [];
-  const setIds = new Set(hideSets.map(h => h.id));
-  return {
-    board: boards[0] as Row | undefined,
-    nodes,
-    edges,
-    hideSets,
-    members: members.filter(m => setIds.has(m.setId)),
-    refs,
-    session: sessions[0] as Row | undefined,
-    routes,
-    events,
-    charts,
-    version,
-    ...(baseBoard ? { baseName: baseBoard.name as string } : {}),
-    notes,
-    threats,
-    icons,
-  };
+/** One authenticated, consistent snapshot from the board server. */
+export async function readBoard(db: Database, board: SafeU64, signal?: AbortSignal): Promise<BoardRows> {
+  return db.procedure<BoardRows>('read_board_snapshot', [board], signal);
 }
 
-export type BoardRows = Awaited<ReturnType<typeof readBoard>>;
+export type BoardRows = {
+  board?: Row; nodes: Row[]; edges: Row[]; hideSets: Row[]; members: Row[]; refs: Row[];
+  session?: Row; routes: Row[]; events: Row[]; charts: Row[]; version?: Row; baseName?: string;
+  notes: Row[]; threats: Row[]; icons: Row[];
+};
 
 const byId = (a: Row, b: Row) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0);
 

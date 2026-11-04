@@ -7,10 +7,16 @@ import { type Infer as __Infer } from "spacetimedb";
 
 // Import all procedure arg schemas
 import * as CaptureBoardVersionProcedure from "../capture_board_version_procedure";
+import * as CreateBoardItemsProcedure from "../create_board_items_procedure";
+import * as ReadBoardSnapshotProcedure from "../read_board_snapshot_procedure";
 import * as RestoreBoardVersionProcedure from "../restore_board_version_procedure";
 
 export type CaptureBoardVersionArgs = __Infer<typeof CaptureBoardVersionProcedure.params>;
 export type CaptureBoardVersionResult = __Infer<typeof CaptureBoardVersionProcedure.returnType>;
+export type CreateBoardItemsArgs = __Infer<typeof CreateBoardItemsProcedure.params>;
+export type CreateBoardItemsResult = __Infer<typeof CreateBoardItemsProcedure.returnType>;
+export type ReadBoardSnapshotArgs = __Infer<typeof ReadBoardSnapshotProcedure.params>;
+export type ReadBoardSnapshotResult = __Infer<typeof ReadBoardSnapshotProcedure.returnType>;
 export type RestoreBoardVersionArgs = __Infer<typeof RestoreBoardVersionProcedure.params>;
 export type RestoreBoardVersionResult = __Infer<typeof RestoreBoardVersionProcedure.returnType>;
 

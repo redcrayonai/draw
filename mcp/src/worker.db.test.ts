@@ -159,6 +159,31 @@ describe.skipIf(!url || !db)('the Worker on a real DB', () => {
         }
       });
 
+      it('creates twelve nodes in four database batches and reads their snapshot in one request', async () => {
+        const { client, call } = await connect('tok_ada');
+        const fetch = vi.spyOn(globalThis, 'fetch');
+        try {
+          const board = String(JSON.parse((await call('start_session', { name: `batch-count-${era}` })).text).id);
+          fetch.mockClear();
+          const nodes = Array.from({ length: 12 }, (_, i) => ({ key: `n${i}`, label: `n${i}`, sublabel: '', x: i * 160, y: 0, w: 160, h: 64, token: 'ink', focal: false, ...(i === 0 ? { icon: 'agent' } : {}) }));
+          const result = await call('apply_board', { board, nodes });
+          expect(result.isError, result.text).toBe(false);
+          const urls = fetch.mock.calls.map(([url]) => String(url));
+          expect(urls.filter(u => u.endsWith('/call/create_board_items'))).toHaveLength(4);
+          expect(urls.filter(u => u.endsWith('/sql'))).toHaveLength(4);
+          fetch.mockClear();
+          const snapshot = JSON.parse((await call('get_board', { board })).text);
+          expect(snapshot.nodes).toHaveLength(12);
+          expect(snapshot.nodes.find((n: any) => n.label === 'n0').icon).toBe('agent');
+          expect(fetch.mock.calls.map(([url]) => String(url)).filter(u => u.includes('/v1/database/'))).toEqual([`${url}/v1/database/${db}/call/read_board_snapshot`]);
+          const edge = { fromNode: snapshot.nodes[0].id, toNode: snapshot.nodes[1].id, label: 'same', evidence: 'agent:user described the topology' };
+          const duplicate = await call('apply_board', { board, edges: [edge, edge] });
+          expect(duplicate.isError, duplicate.text).toBe(false);
+          const ids = JSON.parse(duplicate.text).edges;
+          expect(ids[0]).toBe(ids[1]);
+        } finally { fetch.mockRestore(); await client.close(); }
+      });
+
       async function workspaceBoard(scenario: string, bobRole = 'editor') {
         const http = dbHttp(url!, db!);
         const ada = await browserToken('user_ada'), bob = await browserToken('user_bob');

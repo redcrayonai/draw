@@ -83,6 +83,8 @@ import {
 } from './marks';
 import { pluginFeatures, workspacePlugin } from './plugins';
 import { versionFeatures, versionTables } from './versions';
+import { procedureJson } from './procedure-json';
+import { sha256Bytes } from './sha256';
 
 const architectureHistory = table({}, {
   id: t.u64().primaryKey().autoInc(),
@@ -148,6 +150,10 @@ const tables = {
   ...versionTables,
   architectureHistory,
   boardCreation,
+  // shortcut: expired receipts are swept on the next create or board deletion; schedule cleanup if idle-board storage becomes material.
+  boardItemReceipt: table({}, {
+    key: t.string().primaryKey(), boardId: t.u64().index('btree'), args: t.string(), itemId: t.u64(), at: t.timestamp(),
+  }),
   architectureVersion: table({}, {
     boardId: t.u64().primaryKey(),
     historyId: t.u64().index('btree'),
@@ -280,7 +286,7 @@ const tables = {
   // files present in the repo an import came from — the validation set for
   // source:<path>:<line> citations
   repoFile: table(
-    {},
+    { indexes: [{ accessor: 'boardPath', algorithm: 'btree', columns: ['boardId', 'path'] }] },
     {
       id: t.u64().primaryKey().autoInc(),
       boardId: t.u64().index('btree'),
@@ -1217,11 +1223,7 @@ function assertRepoPath(ctx: any, boardId: bigint, path: string, rule: string): 
   // The owner's helper uploads every cited path at the next checkpoint, and the
   // checkpoint writes the real code into planted refs: members choose them.
   if (!isBoardMember(ctx, boardId)) throw new SenderError(CITE_RULE);
-  for (const f of ctx.db.repoFile.boardId.filter(boardId)) {
-    if (f.path === path) {
-      return;
-    }
-  }
+  for (const _f of ctx.db.repoFile.boardPath.filter([boardId, path])) return;
   throw new SenderError(
     `${rule}: source path '${path}' does not exist in the repo imported for board ${boardId}`
   );
@@ -1581,7 +1583,8 @@ function ownsBoardAs(ctx: any, boardId: bigint, identity: any): boolean {
 }
 
 function findAgentGrant(ctx: any, boardId: bigint, agent: any): any {
-  for (const grant of ctx.db.agentGrant.agent.filter(agent)) if (grant.boardId === boardId) return grant;
+  // Board listings check each grant: scanning the agent's grants here makes them quadratic.
+  for (const grant of ctx.db.agentGrant.boardId.filter(boardId)) if (grant.agent.isEqual(agent)) return grant;
   return undefined;
 }
 
@@ -1628,9 +1631,9 @@ function memberBoardIds(ctx: any): Set<bigint> {
 }
 
 // Members' boards plus the opened links that include `layer`: the sensitive layers a link leaves out by default.
-function linkLayerBoardIds(ctx: any, layer: 'threats' | 'code'): Set<bigint> {
+function linkLayerBoardIds(ctx: any, layer: 'threats' | 'code', members?: ReadonlySet<bigint>): Set<bigint> {
   if (ctx.db.workspaceAccount.identity.find(ctx.sender)?.disabled) return new Set();
-  const boards = memberBoardIds(ctx);
+  const boards = members ? new Set(members) : memberBoardIds(ctx);
   if (isService(ctx) || isWorkspaceMachine(ctx)) return boards;
   for (const visit of ctx.db.linkVisit.viewer.filter(ctx.sender)) {
     const share = ctx.db.linkShare.boardId.find(visit.boardId);
@@ -1715,6 +1718,40 @@ function markBoardIds(ctx: any): Set<bigint> {
 function viewBoardIds(ctx: any): Set<bigint> {
   return openBoardIds(ctx) ?? readableBoardIds(ctx);
 }
+
+// One consistent read with the same visibility and redactions as the public views.
+export const readBoardSnapshot = spacetimedb.procedure({ boardId: t.u64() }, t.string(), (ctx, { boardId }) =>
+  procedureJson(ctx.withTx(tx => {
+    const empty = { nodes: [], edges: [], hideSets: [], members: [], refs: [], routes: [], events: [], charts: [], notes: [], threats: [], icons: [] };
+    if (!canReadBoard(tx, boardId)) return empty;
+    const board = tx.db.board.id.find(boardId)!;
+    let version = tx.db.architectureVersion.boardId.find(boardId);
+    if (version?.historyId === 0n) version = { ...version, sha: '' };
+    const baseName = version?.assertionMode === 'intent' && canReadBoard(tx, version.baseBoardId) ? tx.db.board.id.find(version.baseBoardId)?.name : undefined;
+    const open = openBoardIds(tx);
+    if (open && !open.has(boardId)) return { ...empty, board, version, baseName };
+    const members = memberBoardIds(tx);
+    const code = linkLayerBoardIds(tx, 'code', members).has(boardId) || (!isWorkspaceMachine(tx) && Boolean(tx.db.publicBoard.boardId.find(boardId)));
+    const threats = linkLayerBoardIds(tx, 'threats', members).has(boardId);
+    const session = tx.db.session.boardId.find(boardId);
+    const hideSets = [...tx.db.hideSet.boardId.filter(boardId)];
+    return {
+      board, version, baseName,
+      nodes: [...tx.db.node.boardId.filter(boardId)],
+      edges: [...tx.db.edge.boardId.filter(boardId)].map(e => code ? e : { ...e, evidenceSnippet: '' }),
+      hideSets,
+      members: hideSets.flatMap(s => [...tx.db.hideSetMember.setId.filter(s.id)]),
+      refs: code ? [...tx.db.codeRef.boardId.filter(boardId)] : [],
+      session: session && (members.has(boardId) ? session : { ...session, repoRoot: '' }),
+      routes: [tx.db.sessionRoute.boardId.find(boardId)].filter(Boolean),
+      events: [...tx.db.routeEvent.boardId.filter(boardId)],
+      charts: [...tx.db.chart.boardId.filter(boardId)],
+      notes: [...tx.db.changeNote.boardId.filter(boardId)],
+      threats: threats ? [...tx.db.threat.boardId.filter(boardId)] : [],
+      icons: [...tx.db.nodeIcon.boardId.filter(boardId)],
+    };
+  }))
+);
 
 // Cursor and selection rows on the sender's boards: through the boardId index on
 // open boards. A sender reading every board scans, as before RC-605: these tables
@@ -1956,6 +1993,7 @@ export const deleteBoard = reducer(
 // Library items saved from it are their owner's copies and stay.
 function removeBoard(ctx: any, boardId: bigint): void {
   revokeBoardEmbed(ctx, boardId);
+  for (const receipt of [...ctx.db.boardItemReceipt.boardId.filter(boardId)]) ctx.db.boardItemReceipt.key.delete(receipt.key);
   for (const embed of [...ctx.db.boardEmbed.comparisonBoardId.filter(boardId)]) {
     ctx.db.boardEmbed.boardId.update({ ...embed, comparisonBoardId: 0n });
   }
@@ -2511,8 +2549,8 @@ export const deleteNode = reducer(
   }
 );
 
-export const createEdge = reducer(
-  {
+function edgeArgs() {
+  return {
     boardId: t.u64(),
     fromNode: t.u64(),
     toNode: t.u64(),
@@ -2521,8 +2559,10 @@ export const createEdge = reducer(
     imported: t.option(t.bool()),
     evidenceSnippet: t.option(t.string()),
     evidenceStatus: t.option(t.string()),
-  },
-  (ctx, { boardId, fromNode, toNode, label, evidence, imported, evidenceSnippet, evidenceStatus }) => {
+  };
+}
+
+function insertEdge(ctx: any, { boardId, fromNode, toNode, label, evidence, imported, evidenceSnippet, evidenceStatus }: any): any {
     assertBoardExists(ctx, boardId);
     architectureEdit(ctx, boardId);
     const from = findNodeOrThrow(ctx, fromNode);
@@ -2554,7 +2594,7 @@ export const createEdge = reducer(
       throw new SenderError('evidence rule: only source citations carry captured evidence');
     }
     if (snippet !== '' && !storesCode(ctx, boardId)) throw new SenderError(CODE_CONSENT_RULE);
-    ctx.db.edge.insert({
+    const edge = ctx.db.edge.insert({
       id: 0n,
       boardId,
       fromNode,
@@ -2573,10 +2613,67 @@ export const createEdge = reducer(
       latencyMs: -1,
       latencySource: '',
     });
-    refreshStats(ctx, boardId);
+    const stats = ctx.db.boardStats.boardId.find(boardId);
+    if (stats) {
+      const shown = !from.hidden && !to.hidden;
+      const kind = evidenceClass(evidence, status);
+      const counter = kind === 'agent' ? 'evNone' : `ev${kind[0].toUpperCase()}${kind.slice(1)}`;
+      ctx.db.boardStats.boardId.update({ ...stats, edges: stats.edges + 1, shownEdges: stats.shownEdges + Number(shown), [counter]: stats[counter] + Number(shown), updatedAt: ctx.timestamp });
+    } else refreshStats(ctx, boardId);
     emit(ctx, boardId, 'edge.created', { from: from.label, to: to.label, evidence: evidenceClass(evidence, status) });
-  }
-);
+    return edge;
+}
+
+export const createEdge = reducer(edgeArgs(), (ctx, args) => { insertEdge(ctx, args); });
+
+// Items commit independently, like apply_board's existing concurrent creates. A lost
+// HTTP response can replay the same keys without creating a second node or edge.
+export const createBoardItems = spacetimedb.procedure({
+  items: t.array(t.object('BoardCreateItem', {
+    key: t.string(),
+    node: t.option(t.object('BoardCreateNode', { ...nodeArgs(), icon: t.option(t.string()) })),
+    edge: t.option(t.object('BoardCreateEdge', edgeArgs())),
+  })),
+}, t.string(), (ctx, { items }) => {
+  if (items.length < 1 || items.length > 16) throw new SenderError('batch rule: pass 1-16 creates');
+  return procedureJson(items.map(item => {
+    try {
+      return ctx.withTx(tx => {
+        if (!/^[0-9a-f]{64}$/.test(item.key) || Boolean(item.node) === Boolean(item.edge)) throw new SenderError('batch rule: each create needs a key and exactly one item');
+        const boardId = (item.node ?? item.edge)!.boardId;
+        assertBoardWrite(tx, boardId);
+        const key = `${tx.sender.toHexString()}:${item.key}`;
+        const args = sha256Bytes(new TextEncoder().encode(procedureJson({ node: item.node, edge: item.edge })));
+        const receipt = tx.db.boardItemReceipt.key.find(key);
+        if (receipt && tx.timestamp.microsSinceUnixEpoch - receipt.at.microsSinceUnixEpoch <= 30_000_000n) {
+          if (receipt.boardId !== boardId || receipt.args !== args) throw new SenderError('batch rule: create key belongs to another item');
+          return { id: receipt.itemId };
+        }
+        spendWrite(tx);
+        let id: bigint;
+        if (item.node) {
+          const { icon, ...input } = item.node;
+          if (icon !== undefined) assertIconFor(tx, boardId, input.kind ?? 'service', icon);
+          const node = insertNode(tx, input);
+          if (icon !== undefined) tx.db.nodeIcon.insert({ nodeId: node.id, boardId, icon });
+          const stats = tx.db.boardStats.boardId.find(boardId);
+          if (stats) tx.db.boardStats.boardId.update({ ...stats, nodes: stats.nodes + 1, shownNodes: stats.shownNodes + 1, updatedAt: tx.timestamp });
+          else refreshStats(tx, boardId);
+          emit(tx, boardId, 'node.created', { label: node.label, kind: node.kind });
+          focusAgentNode(tx, boardId, node.id);
+          id = node.id;
+        } else id = insertEdge(tx, item.edge).id;
+        for (const old of [...tx.db.boardItemReceipt.boardId.filter(boardId)]) {
+          if (tx.timestamp.microsSinceUnixEpoch - old.at.microsSinceUnixEpoch > 30_000_000n) tx.db.boardItemReceipt.key.delete(old.key);
+        }
+        tx.db.boardItemReceipt.insert({ key, boardId, args, itemId: id, at: tx.timestamp });
+        return { id };
+      });
+    } catch (e) {
+      return { error: e instanceof Error ? e.message : String(e), refused: e instanceof SenderError };
+    }
+  }));
+});
 
 function assertEvidenceLine(snippet: string): void {
   if (snippet.length > 0 && (snippet.trim().length === 0 || /[\r\n]/.test(snippet) || snippet.length > 4000)) {
@@ -2694,22 +2791,18 @@ export const addRepoFiles = reducer(
     const limited = limitsApply(ctx);
     if (limited && paths.length > LIMITS.repoFilesPerCall) throw new SenderError(`limit rule: add at most ${LIMITS.repoFilesPerCall} repo files per call`);
     if (limited && paths.some(path => path.length > LIMITS.repoPathChars)) throw new SenderError(`limit rule: a repo file path holds at most ${LIMITS.repoPathChars} characters`);
-    const existing = new Set<string>();
-    for (const f of ctx.db.repoFile.boardId.filter(boardId)) {
-      existing.add(f.path);
-    }
+    const stats = ctx.db.boardStats.boardId.find(boardId);
+    const count = stats?.repoFiles ?? [...ctx.db.repoFile.boardId.filter(boardId)].length;
     let added = 0;
-    for (const path of paths) {
-      if (existing.has(path)) {
-        continue;
-      }
-      existing.add(path);
-      if (limited && existing.size > LIMITS.repoFilesPerBoard) throw new SenderError(`limit rule: a board keeps at most ${LIMITS.repoFilesPerBoard} repo files`);
+    for (const path of new Set(paths)) {
+      if (ctx.db.repoFile.boardPath.filter([boardId, path]).next().done === false) continue;
+      if (limited && count + added >= LIMITS.repoFilesPerBoard) throw new SenderError(`limit rule: a board keeps at most ${LIMITS.repoFilesPerBoard} repo files`);
       ctx.db.repoFile.insert({ id: 0n, boardId, path });
       added++;
     }
     if (added > 0) {
-      refreshStats(ctx, boardId);
+      if (stats) ctx.db.boardStats.boardId.update({ ...stats, repoFiles: count + added, updatedAt: ctx.timestamp });
+      else refreshStats(ctx, boardId);
       emit(ctx, boardId, 'repo.files_added', { added });
     }
   }
@@ -3647,7 +3740,9 @@ function updateRef(ctx: any, { id, startLine, endLine, blobSha, snippet, status 
     const checkpoint = changed ? nextCheckpoint(ctx, ref.boardId) : ref.checkpoint;
     ctx.db.codeRef.id.update({ ...ref, startLine, endLine, blobSha, snippet, status, checkpoint });
   }
-  refreshStats(ctx, ref.boardId);
+  // Ref text and positions do not affect counters: a checkpoint moving many refs is cosmetic to the dashboards.
+  if (status === ref.status && ctx.db.boardStats.boardId.find(ref.boardId)) touch(ctx, ref.boardId);
+  else refreshStats(ctx, ref.boardId);
   if (status !== ref.status) {
     emit(ctx, ref.boardId, 'coderef.status', { symbol: ref.symbol, status });
   }
@@ -4977,7 +5072,7 @@ export const reconcileArchitectureProposal = reducer(
 function citeFile(ctx: any, boardId: bigint, evidence: string): void {
   const match = /^source:(.+):[1-9][0-9]*$/.exec(evidence);
   if (!match) return;
-  for (const f of ctx.db.repoFile.boardId.filter(boardId)) if (f.path === match[1]) return;
+  for (const _f of ctx.db.repoFile.boardPath.filter([boardId, match[1]])) return;
   ctx.db.repoFile.insert({ id: 0n, boardId, path: match[1] });
 }
 
@@ -5834,7 +5929,8 @@ export const myActivity = spacetimedb.view(
     eachMyBoard(ctx, (boardId, access) => {
       if (access !== 'public') boards.add(boardId);
     });
-    const layers = { code: linkLayerBoardIds(ctx, 'code'), threats: linkLayerBoardIds(ctx, 'threats') };
+    const members = memberBoardIds(ctx);
+    const layers = { code: linkLayerBoardIds(ctx, 'code', members), threats: linkLayerBoardIds(ctx, 'threats', members) };
     const rows: any[] = [];
     for (const boardId of boards) {
       for (const row of ctx.db.activityOutbox.boardId.filter(boardId)) {

@@ -250,6 +250,7 @@ before(async () => {
   await peer.reducers.openBoardEmbed({ token: boardEmbed.token });
   // No reducer puts these on a session board: each comes from a board-making reducer of its own.
   await sql(OWNER, `INSERT INTO board_creation (request_key, owner, board_id) VALUES ('${named('del-key')}', 0x${owner.identity}, ${B})`);
+  await ok(owner.token, 'create_board_items', [[['d'.repeat(64), { some: [...nodeArgs(B, 'retry receipt'), NONE] }, NONE]]]);
   await sql(OWNER, `INSERT INTO guest_board (identity, board_id) VALUES (0x${viewer.identity}, ${B})`);
   await sql(OWNER, `INSERT INTO public_board (board_id) VALUES (${B})`);
   await sql(OWNER, `INSERT INTO architecture_version (board_id, history_id, index, assertion_mode, base_board_id, ref, sha, status, request_key, reviewed_signature, implemented_board_id) VALUES (${B}, 0, 0, 'intent', 0, 'main', '${SHA}', 'draft', '${named('del-proposal')}', '', 0)`);
