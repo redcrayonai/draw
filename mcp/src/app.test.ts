@@ -235,6 +235,39 @@ describe('tool calls', () => {
     expect(JSON.parse(String(errors.mock.calls.at(-1)![0]))).toEqual({ event: 'tool.error', ref: line.ref, error: 'Error' });
   });
 
+  it('meters chart documentation without initializing the agent until a board call', async () => {
+    const posted: string[] = [];
+    vi.stubGlobal('fetch', async (url: string) => {
+      posted.push(new URL(url).pathname.split('/').pop()!);
+      return new Response(url.endsWith('/read_board_snapshot') ? JSON.stringify('{}') : '');
+    });
+    const charge = vi.fn(async () => ({ ok: true, used: 1 }));
+    const docs = createApp({
+      verifyBearer: async () => ({ userId: 'user_chart_docs', clientId: 'c', via: 'oauth', scopes: ['board:read'] }),
+      ledger: () => ({ charge, claim: async () => ({ first: true }), settle: async () => {} }),
+      captures: memoryCaptures(),
+    });
+    const call = (name: string, args: Record<string, unknown>) => docs.fetch(new Request(`${BASE}/mcp`, {
+      method: 'POST',
+      headers: { authorization: 'Bearer docs', 'content-type': 'application/json', accept: 'application/json, text/event-stream', 'mcp-protocol-version': '2025-06-18' },
+      body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name, arguments: args } }),
+    }), env).then(rpcBody);
+
+    const result = await call('describe_charts', { type: 'bars' });
+    expect(result.result.isError).not.toBe(true);
+    expect(result.result.content[0].text).toContain('bars');
+    expect(charge).toHaveBeenCalledTimes(1);
+    expect(posted).toEqual([]);
+
+    charge.mockResolvedValueOnce({ ok: false, used: 1 });
+    expect((await call('describe_charts', {})).result.isError).toBe(true);
+    expect(posted).toEqual([]);
+
+    await call('get_board', { board: '42' });
+    expect(posted).toEqual(['link_hosted_agent', 'join_board', 'read_board_snapshot']);
+    expect(charge).toHaveBeenCalledTimes(3);
+  });
+
   // A cold isolate links and joins the agent first: those 2 writes are not the tool's.
   it("a failing first call on a cold isolate does not claim an earlier write", async () => {
     const posted: string[] = [];

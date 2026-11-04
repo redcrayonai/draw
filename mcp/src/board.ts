@@ -45,9 +45,15 @@ export function boardText(rows: BoardRows, boardId: bigint, max = BOARD_TEXT_MAX
       coverage = {};
     }
   }
+  const refsByTarget = new Map<string, Row[]>();
+  for (const ref of rows.refs) {
+    const key = `${ref.targetKind}:${ref.targetId}`;
+    const refs = refsByTarget.get(key) ?? [];
+    refs.push(ref);
+    refsByTarget.set(key, refs);
+  }
   const refsFor = (kind: 'node' | 'edge', targetId: bigint) =>
-    rows.refs
-      .filter(r => r.targetKind === kind && r.targetId === targetId)
+    (refsByTarget.get(`${kind}:${targetId}`) ?? [])
       .map(r => ({ id: r.id.toString(), symbol: r.symbol, path: r.path, startLine: r.startLine, endLine: r.endLine, checkpoint: r.checkpoint, status: r.status }));
   const charts = new Map(rows.charts.map(c => [c.nodeId, c]));
   const icons = new Map(rows.icons.map(i => [i.nodeId, i.icon as string]));

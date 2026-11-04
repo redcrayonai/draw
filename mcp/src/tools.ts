@@ -767,20 +767,23 @@ export const TOOLS: Record<string, ToolDef> = {
       })
       .strict(),
     async run({ board, title, subtitle, x, y, w, h, type, csv, source, options: rawOptions }, t) {
-      const b = await boardOf(t, board);
+      const boardId = u64(board);
+      const found = boardOf(t, board);
+      found.catch(() => {});
       const options = optionsText(rawOptions);
       const check = checkChartInput({ type, csv, options, source });
-      if (!check.ok) throw new Refusal(`REJECTED: ${check.error} board=${b.name}`);
-      const nodes = () => t.ctx.db.read<Row>(sql`SELECT id, board_id, label, sublabel, x, y, kind FROM visible_node WHERE board_id = ${b.id}`, t.signal);
+      if (!check.ok) throw new Refusal(`REJECTED: ${check.error} board=${(await found).name}`);
+      const nodes = () => t.ctx.db.read<Row>(sql`SELECT id, board_id, label, sublabel, x, y, kind FROM visible_node WHERE board_id = ${boardId}`, t.signal);
       const matches = (n: Row) => n.kind === 'chart' && n.label === title && n.sublabel === subtitle && n.x === x && n.y === y;
       const { text, repeat = '' } = await create(
         t,
         'create_chart',
         { board, title, subtitle, x, y, w, h, type, csv, options, source },
-        async () => new Set((await nodes()).map(n => n.id as bigint)),
-        () => t.ctx.db.call('create_chart', { boardId: b.id, label: title, sublabel: subtitle, x, y, w, h, type, csv, options, source }, t.signal),
-        async before => ownNewIds(before, (await nodes()) as never[], b.id, matches)
+        async () => new Set((await Promise.all([found, nodes()]))[1].map(n => n.id as bigint)),
+        () => t.ctx.db.call('create_chart', { boardId, label: title, sublabel: subtitle, x, y, w, h, type, csv, options, source }, t.signal),
+        async before => ownNewIds(before, (await nodes()) as never[], boardId, matches)
       );
+      const b = await found;
       return okResult(`${text}${chartSummaryText(check.summary)} board=${b.name}${repeat}`);
     },
   },
@@ -927,6 +930,7 @@ export const TOOLS: Record<string, ToolDef> = {
       const start = cap === undefined ? undefined : await claim(t.ctx.captures, cap, { tool: 'start_session' });
       let boardId: SafeU64;
       let boardName: string;
+      let boardRow: Row | undefined;
       let session: Record<string, unknown> = { session: false, note: NO_CAPTURE_NOTE };
       if (link !== undefined) {
         const found = boardInLink(o, link, t.ctx.env.DB_NAME);
@@ -940,6 +944,7 @@ export const TOOLS: Record<string, ToolDef> = {
           if (!row && (await grantOwnBoard(t, String(found)))) [row] = await byLink();
         }
         if (!row) throw new Refusal(linkNotFound(link));
+        boardRow = row;
         boardId = row.id;
         boardName = row.name;
         if (start) {
@@ -981,15 +986,15 @@ export const TOOLS: Record<string, ToolDef> = {
         await absolute(() => db.call('create_requested_board', { name: name!, orgId: '', requestKey }, t.signal));
         const [made] = await db.read<Row>(sql`SELECT * FROM my_board_creations WHERE request_key = '${requestKey}'`, t.signal);
         if (!made) throw new Refusal(boardNotFound(name!));
-        const [row] = await db.read<Row>(sql`SELECT * FROM visible_board WHERE id = ${made.boardId as SafeU64}`, t.signal);
+        [boardRow] = await db.read<Row>(sql`SELECT * FROM visible_board WHERE id = ${made.boardId as SafeU64}`, t.signal);
         boardId = made.boardId;
-        boardName = row?.name ?? name!;
+        boardName = boardRow?.name ?? name!;
       }
       t.named(boardName);
       await showPresence(t, boardId);
       if (start && session.session === true) await recordRemote(t, boardId, start);
-      const [board] = await db.read<Row>(sql`SELECT * FROM visible_board WHERE id = ${boardId}`, t.signal);
-      return okResult(jsonText({ board: boardName, id: Number(boardId), url: o.boardUrl(String(board?.slug ?? '')), seat: newSeat(), ...session, ...(devCaller(t.ctx) ? await devLinkOffer(t) : {}) }));
+      if (!boardRow) [boardRow] = await db.read<Row>(sql`SELECT * FROM visible_board WHERE id = ${boardId}`, t.signal);
+      return okResult(jsonText({ board: boardName, id: Number(boardId), url: o.boardUrl(String(boardRow?.slug ?? '')), seat: newSeat(), ...session, ...(devCaller(t.ctx) ? await devLinkOffer(t) : {}) }));
     },
   },
 
@@ -1744,7 +1749,7 @@ async function invoke(name: string, def: ToolDef, args: Record<string, unknown>,
         outcome = 'limited';
         return errorResult(planLimit(limit, monthName(now), ctx.o.support));
       }
-      await ensureAgent(ctx, info, t.signal);
+      if (name !== 'describe_charts') await ensureAgent(ctx, info, t.signal);
     }
     writesBefore = ctx.db.stats.writes; // link and join are not this call's writes
     const run = () => def.run(args, t);

@@ -3191,7 +3191,9 @@ export const createChart = reducer(
       size: 'm',
     });
     ctx.db.chart.insert({ nodeId: node.id, boardId, type, csv, options: opts, source: src, updatedAt: ctx.timestamp });
-    refreshStats(ctx, boardId);
+    const stats = ctx.db.boardStats.boardId.find(boardId);
+    if (stats) ctx.db.boardStats.boardId.update({ ...stats, nodes: stats.nodes + 1, shownNodes: stats.shownNodes + 1, updatedAt: ctx.timestamp });
+    else refreshStats(ctx, boardId);
     emit(ctx, boardId, 'node.created', { label, kind: 'chart' });
     focusAgentNode(ctx, boardId, node.id);
   }
