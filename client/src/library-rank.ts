@@ -4,9 +4,10 @@
  * back best first. The query is only ever compared as text, never built into
  * a RegExp.
  *
- * Sort key, left to right: [exact name, on this board, tier, span, input index].
- * Tier 0 name prefix, 1 word prefix, 2 name substring, 3 name fuzzy (queries of
- * 2+ characters), 4 id, term or section title.
+ * Sort key, left to right: [exact name, strong match on this board, tier, on this
+ * board, span, input index]. Tier 0 name prefix, 1 name word prefix, 2 a term equal
+ * to the query, 3 name substring, 4 name fuzzy (queries of 2+ characters), 5 id,
+ * partial term or section title. A strong match is tier 2 or better.
  */
 
 export interface SearchEntry<T> { value: T; name: string; id: string; terms: readonly string[]; group: string; onBoard: boolean }
@@ -39,16 +40,18 @@ function match<T>(q: string, en: SearchEntry<T>): Hit | null {
   for (let i = name.indexOf(q, 1); i >= 0; i = name.indexOf(q, i + 1)) {
     if (!isWordChar(name[i - 1])) return { exact, tier: 1, span: q.length, highlight: range(i, q.length) };
   }
+  const exactTerm = en.terms.find(t => t.toLowerCase() === q);
+  if (exactTerm !== undefined) return { exact, tier: 2, span: 0, highlight: [], term: exactTerm };
   const at = name.indexOf(q);
-  if (at >= 0) return { exact, tier: 2, span: q.length, highlight: range(at, q.length) };
+  if (at >= 0) return { exact, tier: 3, span: q.length, highlight: range(at, q.length) };
   const fz = q.length > 1 ? fuzzy(name, q) : null;
-  if (fz) return { exact, tier: 3, span: fz[fz.length - 1] - fz[0] + 1, highlight: fz };
+  if (fz) return { exact, tier: 4, span: fz[fz.length - 1] - fz[0] + 1, highlight: fz };
   const id = en.id.toLowerCase();
   if (id.includes(q) || (q.length > 1 && fuzzy(id, q)) || en.group.toLowerCase().includes(q)) {
-    return { exact, tier: 4, span: 0, highlight: [] };
+    return { exact, tier: 5, span: 0, highlight: [] };
   }
   const term = en.terms.find(t => t.toLowerCase().includes(q));
-  return term === undefined ? null : { exact, tier: 4, span: 0, highlight: [], term };
+  return term === undefined ? null : { exact, tier: 5, span: 0, highlight: [], term };
 }
 
 /** The entries that match `query`, best first; an empty or blank query matches nothing. */
@@ -61,7 +64,7 @@ export function rankEntries<T>(query: string, entries: readonly SearchEntry<T>[]
     if (!h) return;
     const out: RankedEntry<T> = { value: en.value, name: en.name, group: en.group, highlight: h.highlight };
     if (h.term !== undefined) out.term = h.term;
-    hits.push({ key: [h.exact ? 0 : 1, en.onBoard ? 0 : 1, h.tier, h.span, i], out });
+    hits.push({ key: [h.exact ? 0 : 1, en.onBoard && h.tier <= 2 ? 0 : 1, h.tier, en.onBoard ? 0 : 1, h.span, i], out });
   });
   hits.sort((a, b) => {
     for (let k = 0; k < a.key.length; k++) if (a.key[k] !== b.key[k]) return a.key[k] - b.key[k];

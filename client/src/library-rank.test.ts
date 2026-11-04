@@ -15,9 +15,21 @@ describe('rankEntries', () => {
     expect(names('blob', list)).toEqual(['Amazon S3', 'Blob Storage']);
     expect(names('blob storage', list)).toEqual(['Blob Storage']);
   });
-  it('orders prefix, word prefix, substring, fuzzy, then term', () => {
-    const list = [e('Zed', { terms: ['stor'] }), e('Cloud Datastore'), e('Restore'), e('My Store'), e('Storage'), e('S T O R')];
+  it('orders prefix, word prefix, exact term, substring, fuzzy, then partial term', () => {
+    const list = [e('Zed', { terms: ['storage'] }), e('Cloud Datastore'), e('Restore'), e('My Store'), e('Storage'), e('S T O R')];
     expect(names('stor', list)).toEqual(['Storage', 'My Store', 'Cloud Datastore', 'Restore', 'S T O R', 'Zed']);
+  });
+  it('an exact term ranks above substring and fuzzy name matches, below prefix and word prefix', () => {
+    const list = [e('Restore'), e('Zed', { terms: ['stor'] }), e('My Store')];
+    expect(names('stor', list)).toEqual(['My Store', 'Zed', 'Restore']);
+    expect(rankEntries('stor', list)[1].term).toBe('stor');
+  });
+  it('a fuzzy on-board hit does not beat an exact term off-board', () => {
+    expect(names('xai', [e('Vertex AI', { onBoard: true }), e('Grok', { terms: ['xai'] })])).toEqual(['Grok', 'Vertex AI']);
+  });
+  it('within a tier, on-board comes first', () => {
+    expect(names('stor', [e('Storage'), e('Store', { onBoard: true })])).toEqual(['Store', 'Storage']);
+    expect(names('stor', [e('Cloud Datastore'), e('Restore', { onBoard: true })])).toEqual(['Restore', 'Cloud Datastore']);
   });
   it('fuzzy prefers the tighter span and reports the letters', () => {
     const r = rankEntries('clstor', [e('Cloud Datastore'), e('Cloud Storage')]);
@@ -50,9 +62,9 @@ describe('rankEntries', () => {
     expect(sub.term).toBeUndefined();
     const [word] = rankEntries('sto', [e('My Store')]);
     expect(word.highlight).toEqual([3, 4, 5]);
-    const [byId] = rankEntries('timeseries', [e('Time series', { id: 'timeseries', terms: ['timeseries'] })]);
+    const [byId] = rankEntries('timeseries', [e('Time series', { id: 'timeseries' })]);
     expect(byId.highlight).toEqual([0, 1, 2, 3, 5, 6, 7, 8, 9, 10]); // fuzzy on name wins first
-    const [byGroup] = rankEntries('ai logos', [e('Grok', { group: 'AI logos', terms: ['ai logos'] })]);
+    const [byGroup] = rankEntries('ai logos', [e('Grok', { group: 'AI logos' })]);
     expect(byGroup.highlight).toEqual([]);
     expect(byGroup.term).toBeUndefined();
   });

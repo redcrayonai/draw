@@ -146,9 +146,8 @@ describe('LibraryPopover', () => {
     const { pop, host, search } = setup();
     pop.open();
     type(search, 'rag');
-    // a term-only match lists after the names that contain the letters ("Storage")
-    expect(results(host).indexOf('Knowledge base')).toBeGreaterThan(results(host).indexOf('Azure Storage Accounts'));
-    expect(host.querySelector('.lib-term')).not.toBeNull();
+    expect(results(host)[0]).toBe('Knowledge base');
+    expect(host.querySelector('.lib-row .lib-term')!.textContent).toBe('rag');
     type(search, 'COGNITION');
     expect(inGroup(host, 'AI logos')).toEqual(['Windsurf', 'Devin']);
     type(search, 'anthropic');
@@ -191,7 +190,7 @@ describe('LibraryPopover', () => {
     expect(s3.querySelectorAll('.lib-name mark')).toHaveLength(0);
   });
 
-  it('shows neither highlight nor term when only the id or the group matched', () => {
+  it('shows no highlight on the name when only the id or the group matched', () => {
     const { pop, host, search } = setup();
     pop.open();
     type(search, 'gcp-cloud-storage');
@@ -201,7 +200,7 @@ describe('LibraryPopover', () => {
     expect(row.querySelector('.lib-group')!.textContent).toBe('Google Cloud');
     type(search, 'chart');
     expect(inGroup(host, 'Charts')).toEqual(chartTitles);
-    for (const t of chartTitles) expect(tileNamed(host, t).querySelectorAll('mark, .lib-term')).toHaveLength(0);
+    for (const t of chartTitles) expect(tileNamed(host, t).querySelectorAll('.lib-name mark')).toHaveLength(0);
   });
 
   it('renders a saved name as text, never markup', () => {
@@ -260,12 +259,21 @@ describe('LibraryPopover', () => {
       ['Claude Code', { kind: 'icon', icon: 'claude-code' }],
       ['kube', { kind: 'icon', icon: 'kubernetes' }],
       ['openai', { kind: 'icon', icon: 'openai' }],
+      ['rag', { kind: 'icon', icon: 'knowledge-base' }],
+      ['xai', { kind: 'icon', icon: 'grok' }],
+      ['k8s', { kind: 'icon', icon: 'kubernetes' }],
+      ['lb', { kind: 'icon', icon: 'aws-elb' }],
     ] as const) {
       pop.open();
       type(search, query);
       key(search, { key: 'Enter' });
       expect(deps.onPick, query).toHaveBeenLastCalledWith(pick);
     }
+    pop.open();
+    type(search, 'auth');
+    key(search, { key: 'Enter' });
+    const authId = (deps.onPick.mock.lastCall![0] as { icon: string }).icon;
+    expect(ICONS.find(i => i.id === authId)!.terms).toContain('auth');
     // the generic Model icon still lists for "claude", after the logo named so
     pop.open();
     type(search, 'claude');
