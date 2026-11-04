@@ -3,6 +3,7 @@ import type { NodeKind } from './interactions';
 import { CHART_CONTRACTS, CHART_TYPES, type ChartType } from '../../module/src/chart-contracts';
 import { ICON_SECTIONS } from '../../module/src/node-icons';
 import { svgEl } from './charts/svg';
+import { rankEntries, type SearchEntry } from './library-rank';
 import { drawableIcons, iconSvg, loadLogos, logosReady } from './node-icons';
 
 /** What a library tile places. */
@@ -152,6 +153,29 @@ function thumbRects(payload: string): Rect[] {
   return nodes.every(rect) ? nodes : [];
 }
 
+/** What a search row shows beyond the tile: the group, what matched, the query. */
+interface RowInfo { group: string; highlight: readonly number[]; term?: string; q: string }
+
+const HINT = '↵ place top result · ↑↓ move · drag to canvas';
+
+/** `text` into `into` as text nodes, a <mark> per contiguous run of the indexes `at`. */
+function appendMarked(into: HTMLElement, text: string, at: readonly number[]): void {
+  const on = new Set(at);
+  for (let i = 0; i < text.length;) {
+    let j = i;
+    while (j < text.length && on.has(j) === on.has(i)) j++;
+    const run = text.slice(i, j);
+    if (on.has(i)) {
+      const mark = document.createElement('mark');
+      mark.textContent = run;
+      into.append(mark);
+    } else {
+      into.append(document.createTextNode(run));
+    }
+    i = j;
+  }
+}
+
 function emptyLine(text: string): HTMLParagraphElement {
   const p = document.createElement('p');
   p.className = 'lib-empty';
@@ -185,7 +209,7 @@ export class LibraryPopover {
     this.search = document.createElement('input');
     this.search.type = 'search';
     this.search.className = 'lib-search';
-    this.search.placeholder = 'Search objects, agents, logos, charts…';
+    this.search.placeholder = 'Search objects, agents, products, logos, charts…';
     this.search.autocomplete = 'off';
     this.search.spellcheck = false;
     this.search.setAttribute('aria-label', 'Search the library');
@@ -427,14 +451,9 @@ export class LibraryPopover {
     return [...this.body.querySelectorAll<HTMLElement>('.lib-tile')];
   }
 
-  /** Enter in the search: the tile named exactly what was typed, else the first
-   *  whose name starts with it, else the first match. "claude" places the Claude
-   *  logo, not the generic Model icon that lists claude among its search terms. */
+  /** Enter in the search: the first row; the ranker has already put the best match there. */
   private bestMatch(): HTMLElement | undefined {
-    const tiles = this.tiles();
-    const q = this.search.value.trim().toLowerCase();
-    const name = (t: HTMLElement) => (t.title || '').toLowerCase();
-    return tiles.find(t => name(t) === q) ?? tiles.find(t => q !== '' && name(t).startsWith(q)) ?? tiles[0];
+    return this.tiles()[0];
   }
 
   private choose(tile: HTMLElement, keyboard: boolean): void {
@@ -498,49 +517,71 @@ export class LibraryPopover {
     this.closeMenu(false);
     this.picks.clear();
     const query = this.search.value.trim();
-    const q = query.toLowerCase();
-    const hit = (name: string) => name.toLowerCase().includes(q);
-    const sections: HTMLElement[] = [];
-    // The ids match too: the card tag, the rail and the MCP tools say 'timeseries'.
-    const objects = OBJECTS.filter(o => hit(o.name) || hit(o.kind));
-    if (objects.length > 0) {
-      sections.push(
-        this.section('Objects', 5, objects.map(o => this.tile({ kind: 'node', nodeKind: o.kind }, o.name, objectIcon(o.kind))))
-      );
-    }
-    // Icons and logos (spec 2026-10-18): the name, the id, a search term or the section title.
-    // A logo whose artwork is still loading holds a same-size placeholder,
-    // filled in place when it lands (fillLogos): no rebuild, so a drag in
+    // Icons and logos (spec 2026-10-18): a logo whose artwork is still loading holds a same-size
+    // placeholder, filled in place when it lands (fillLogos): no rebuild, so a drag in
     // progress, keyboard focus and the tile layout all survive it.
     if (!logosReady()) void loadLogos().then(() => this.fillLogos());
+    this.body.replaceChildren(...(query === '' ? this.renderSections() : this.renderResults(query)));
+    if (hadFocus) {
+      this.search.focus();
+    }
+  }
+
+  private renderSections(): HTMLElement[] {
+    const sections: HTMLElement[] = [
+      this.section('Objects', 5, OBJECTS.map(o => this.tile({ kind: 'node', nodeKind: o.kind }, o.name, objectIcon(o.kind)))),
+    ];
     const icons = drawableIcons();
     for (const { id, title } of ICON_SECTIONS) {
-      const found = icons.filter(i => i.section === id && (hit(i.name) || hit(i.id) || hit(title) || i.terms.some(hit)));
+      const found = icons.filter(i => i.section === id);
       if (found.length > 0) {
         sections.push(this.section(title, 4, found.map(i => this.tile({ kind: 'icon', icon: i.id }, i.name, iconSvg(i.id, 20) ?? pendingIcon()))));
       }
     }
-    const charts = CHART_TYPES.filter(t => hit(CHART_CONTRACTS[t].title) || hit(t) || hit('chart'));
-    if (charts.length > 0) {
-      sections.push(
-        this.section('Charts', 4, charts.map(t => this.tile({ kind: 'chart', type: t }, CHART_CONTRACTS[t].title, chartIcon(t))))
-      );
-    }
-    const saved = this.items.filter(i => hit(i.name));
-    if (saved.length > 0) {
-      sections.push(this.section('My library', 3, saved.map(i => this.savedTile(i))));
-    } else if (q === '') {
-      const mine = this.section('My library', 3, []);
+    sections.push(this.section('Charts', 4, CHART_TYPES.map(t => this.tile({ kind: 'chart', type: t }, CHART_CONTRACTS[t].title, chartIcon(t)))));
+    const mine = this.section('My library', 3, this.items.map(i => this.savedTile(i)));
+    if (this.items.length === 0) {
       mine.append(emptyLine(EMPTY_LIBRARY));
-      sections.push(mine);
     }
-    if (sections.length === 0) {
-      sections.push(emptyLine(`Nothing matches "${query}"`));
+    sections.push(mine);
+    return sections;
+  }
+
+  /** One ranked list over every object, icon, chart and saved item (spec "Library search"). */
+  private renderResults(query: string): HTMLElement[] {
+    type Build = (r: RowInfo) => HTMLElement;
+    // The one place an entry is made: Task 6 sets onBoard here.
+    const entry = (build: Build, name: string, id: string, terms: readonly string[], group: string): SearchEntry<Build> =>
+      ({ value: build, name, id, terms, group, onBoard: false });
+    const entries: SearchEntry<Build>[] = [];
+    for (const o of OBJECTS) {
+      entries.push(entry(r => this.resultRow({ kind: 'node', nodeKind: o.kind }, o.name, objectIcon(o.kind), r), o.name, o.kind, [], 'Objects'));
     }
-    this.body.replaceChildren(...sections);
-    if (hadFocus) {
-      this.search.focus();
+    const icons = drawableIcons();
+    for (const { id, title } of ICON_SECTIONS) {
+      for (const i of icons.filter(i => i.section === id)) {
+        entries.push(entry(r => this.resultRow({ kind: 'icon', icon: i.id }, i.name, iconSvg(i.id, 20) ?? pendingIcon(), r), i.name, i.id, i.terms, title));
+      }
     }
+    for (const t of CHART_TYPES) {
+      const title = CHART_CONTRACTS[t].title;
+      entries.push(entry(r => this.resultRow({ kind: 'chart', type: t }, title, chartIcon(t), r), title, t, ['chart'], 'Charts'));
+    }
+    for (const i of this.items) {
+      entries.push(entry(r => this.savedTile(i, r), i.name, '', [], 'My library'));
+    }
+    const q = query.toLowerCase();
+    const ranked = rankEntries(query, entries);
+    if (ranked.length === 0) {
+      return [emptyLine(`Nothing matches "${query}"`)];
+    }
+    const hint = document.createElement('p');
+    hint.className = 'lib-hint';
+    hint.textContent = HINT;
+    return [
+      this.section('Search results', 1, ranked.map(r => r.value({ group: r.group, highlight: r.highlight, term: r.term, q })), false),
+      hint,
+    ];
   }
 
   /** Swap each logo placeholder for its artwork, in place. */
@@ -552,14 +593,16 @@ export class LibraryPopover {
     }
   }
 
-  private section(title: string, cols: number, tiles: HTMLElement[]): HTMLElement {
+  private section(title: string, cols: number, tiles: HTMLElement[], eyebrow = true): HTMLElement {
     const section = document.createElement('section');
     section.className = 'lib-section';
     section.setAttribute('aria-label', title);
-    const eyebrow = document.createElement('div');
-    eyebrow.className = 'eyebrow';
-    eyebrow.textContent = title;
-    section.append(eyebrow);
+    if (eyebrow) {
+      const head = document.createElement('div');
+      head.className = 'eyebrow';
+      head.textContent = title;
+      section.append(head);
+    }
     if (tiles.length > 0) {
       const grid = document.createElement('div');
       grid.className = 'lib-grid';
@@ -570,7 +613,7 @@ export class LibraryPopover {
     return section;
   }
 
-  private tile(pick: LibraryPick, name: string, icon: Element | null): HTMLButtonElement {
+  private tile(pick: LibraryPick, name: string, icon: Element | null, highlight: readonly number[] = []): HTMLButtonElement {
     const button = document.createElement('button');
     button.type = 'button';
     button.className = 'lib-tile';
@@ -580,13 +623,31 @@ export class LibraryPopover {
     }
     const label = document.createElement('span');
     label.className = 'lib-name';
-    label.textContent = name;
+    appendMarked(label, name, highlight);
     button.append(label);
     this.picks.set(button, pick);
     return button;
   }
 
-  private savedTile(item: LibraryItem): HTMLElement {
+  /** A tile as a search row: the matched letters marked, then why it matched, then its group. */
+  private resultRow(pick: LibraryPick, name: string, icon: Element | null, r: RowInfo): HTMLButtonElement {
+    const button = this.tile(pick, name, icon, r.highlight);
+    button.classList.add('lib-row');
+    if (r.term !== undefined) {
+      const term = document.createElement('span');
+      term.className = 'lib-term';
+      const at = r.term.toLowerCase().indexOf(r.q);
+      appendMarked(term, r.term, at < 0 ? [] : Array.from({ length: r.q.length }, (_, i) => at + i));
+      button.append(term);
+    }
+    const group = document.createElement('span');
+    group.className = 'lib-group';
+    group.textContent = r.group;
+    button.append(group);
+    return button;
+  }
+
+  private savedTile(item: LibraryItem, row?: RowInfo): HTMLElement {
     const wrap = document.createElement('div');
     wrap.className = 'lib-saved';
     const more = document.createElement('button');
@@ -596,7 +657,8 @@ export class LibraryPopover {
     more.setAttribute('aria-haspopup', 'menu');
     more.setAttribute('aria-expanded', 'false');
     more.append(dotsIcon());
-    wrap.append(this.tile({ kind: 'saved', item }, item.name, this.thumb(item)), more);
+    const pick: LibraryPick = { kind: 'saved', item };
+    wrap.append(row ? this.resultRow(pick, item.name, this.thumb(item), row) : this.tile(pick, item.name, this.thumb(item)), more);
     return wrap;
   }
 

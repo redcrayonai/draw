@@ -39,6 +39,11 @@ function setup(items: LibraryItem[] = []) {
 
 const names = (host: HTMLElement, section: string) =>
   [...host.querySelectorAll(`.lib-section[aria-label="${section}"] .lib-name`)].map(e => e.textContent);
+/** The flat search list: row names in rank order. */
+const results = (host: HTMLElement) => [...host.querySelectorAll('.lib-row .lib-name')].map(e => e.textContent);
+/** Names of the rows whose group label is `group`, in rank order. */
+const inGroup = (host: HTMLElement, group: string) =>
+  [...host.querySelectorAll<HTMLElement>('.lib-row')].filter(r => r.querySelector('.lib-group')!.textContent === group).map(r => r.querySelector('.lib-name')!.textContent);
 const tileNamed = (host: HTMLElement, name: string) =>
   [...host.querySelectorAll<HTMLElement>('.lib-tile')].find(t => t.title === name)!;
 const key = (target: EventTarget, init: KeyboardEventInit) => {
@@ -104,21 +109,22 @@ describe('LibraryPopover', () => {
     expect(EMPTY_LIBRARY).toBe('No saved items yet — select nodes and press ⇧L');
   });
 
-  it('search filters all three sections by name, ignoring case, and says when nothing matches', () => {
+  it('search lists matches by name, ignoring case, with the group beside each row, and says when nothing matches', () => {
     const { pop, host, search } = setup([item(1, 'API gateway'), item(2, 'SLO panel')]);
     pop.open();
     type(search, 'slo');
-    expect(names(host, 'Objects')).toEqual([]);
-    expect(names(host, 'Charts')).toEqual(chartTitles.filter(t => t.toLowerCase().includes('slo')));
-    expect(names(host, 'My library')).toEqual(['SLO panel']);
+    expect(inGroup(host, 'Objects')).toEqual([]);
+    expect(inGroup(host, 'Charts')).toEqual(chartTitles.filter(t => t.toLowerCase().includes('slo')));
+    expect(inGroup(host, 'My library')).toEqual(['SLO panel']);
     type(search, 'SERV');
-    expect(names(host, 'Objects')).toEqual(['Service']);
-    expect(names(host, 'Charts')).toEqual(chartTitles.filter(t => t.toLowerCase().includes('serv')));
-    expect(host.querySelector('.lib-section[aria-label="My library"]')).toBeNull();
+    expect(inGroup(host, 'Objects')).toEqual(['Service']);
+    expect(inGroup(host, 'Charts')).toEqual(chartTitles.filter(t => t.toLowerCase().includes('serv')));
+    expect(inGroup(host, 'My library')).toEqual([]);
     type(search, CHART_CONTRACTS.table.title.toUpperCase());
-    expect(names(host, 'Charts')).toContain(CHART_CONTRACTS.table.title);
+    expect(inGroup(host, 'Charts')).toContain(CHART_CONTRACTS.table.title);
     type(search, 'zzz');
     expect(host.querySelectorAll('.lib-section')).toHaveLength(0);
+    expect(host.querySelector('.lib-hint')).toBeNull();
     expect(host.querySelector('.lib-empty')?.textContent).toBe('Nothing matches "zzz"');
   });
 
@@ -126,37 +132,111 @@ describe('LibraryPopover', () => {
     const { pop, host, search } = setup();
     pop.open();
     type(search, 'timeseries');
-    expect(names(host, 'Charts')).toEqual([CHART_CONTRACTS.timeseries.title]);
+    expect(inGroup(host, 'Charts')).toEqual([CHART_CONTRACTS.timeseries.title]);
     type(search, 'TOPLIST');
-    expect(names(host, 'Charts')).toEqual([CHART_CONTRACTS.toplist.title]);
+    expect(inGroup(host, 'Charts')).toEqual([CHART_CONTRACTS.toplist.title]);
     type(search, 'chart');
-    expect(names(host, 'Charts')).toEqual(chartTitles);
-    expect(names(host, 'Objects')).toEqual([]);
+    expect(inGroup(host, 'Charts')).toEqual(chartTitles);
+    expect(inGroup(host, 'Objects')).toEqual([]);
     type(search, 'datastore');
-    expect(names(host, 'Objects')).toEqual(['Datastore']);
+    expect(inGroup(host, 'Objects')).toEqual(['Datastore']);
   });
 
   it('icons and logos match their name, id, search terms and section title', () => {
     const { pop, host, search } = setup();
     pop.open();
     type(search, 'rag');
-    expect(names(host, 'Agents')).toEqual(['Knowledge base']);
+    // a term-only match lists after the names that contain the letters ("Storage")
+    expect(results(host).indexOf('Knowledge base')).toBeGreaterThan(results(host).indexOf('Azure Storage Accounts'));
+    expect(host.querySelector('.lib-term')).not.toBeNull();
     type(search, 'COGNITION');
-    expect(names(host, 'AI logos')).toEqual(['Windsurf', 'Devin']);
+    expect(inGroup(host, 'AI logos')).toEqual(['Windsurf', 'Devin']);
     type(search, 'anthropic');
-    expect(names(host, 'AI logos')).toEqual(['Claude', 'Claude Code']);
+    expect(inGroup(host, 'AI logos')).toEqual(['Claude', 'Claude Code']);
     type(search, 'k8s');
-    expect(names(host, 'Kubernetes')[0]).toBe('Kubernetes');
-    expect(names(host, 'Cloud logos')).toEqual([]);
-    expect(names(host, 'Objects')).toEqual([]);
+    expect(inGroup(host, 'Kubernetes')[0]).toBe('Kubernetes');
+    expect(inGroup(host, 'Objects')).toEqual([]);
     type(search, 'mcp-server');
-    expect(names(host, 'Agents')).toEqual(['MCP server']);
+    expect(inGroup(host, 'Agents')).toEqual(['MCP server']);
     type(search, 'logo');
-    expect(names(host, 'AI logos')).toEqual(iconNames('ai'));
-    expect(names(host, 'Cloud logos')).toEqual(iconNames('cloud'));
-    expect(names(host, 'Agents')).toEqual([]);
+    expect(inGroup(host, 'AI logos')).toEqual(iconNames('ai'));
+    expect(inGroup(host, 'Cloud logos')).toEqual(iconNames('cloud'));
+    expect(inGroup(host, 'Agents')).toEqual([]);
     type(search, 'systems');
-    expect(names(host, 'Systems')).toEqual(iconNames('systems'));
+    expect(inGroup(host, 'Systems')).toEqual(iconNames('systems'));
+  });
+
+  it('a query shows one ranked list with the group beside each row, and the hint', () => {
+    const { pop, host, search } = setup([item(1, 'My lambda notes')]);
+    pop.open();
+    type(search, 'lambda');
+    expect([...host.querySelectorAll('.lib-section')].map(s => s.getAttribute('aria-label'))).toEqual(['Search results']);
+    expect(host.querySelector('.lib-section .eyebrow')).toBeNull();
+    expect(host.querySelectorAll('.lib-grid[data-cols="1"] .lib-tile.lib-row').length).toBe(results(host).length);
+    expect(results(host)[0]).toBe('AWS Lambda');
+    expect(host.querySelector('.lib-row .lib-group')!.textContent).toBe('AWS');
+    expect(host.querySelector('.lib-hint')!.textContent).toBe('↵ place top result · ↑↓ move · drag to canvas');
+  });
+
+  it('highlights matched letters and shows the term when only a term matched', () => {
+    const { pop, host, search } = setup();
+    pop.open();
+    type(search, 'clstor');
+    expect([...tileNamed(host, 'Cloud Storage').querySelectorAll('mark')].map(m => m.textContent)).toEqual(['Cl', 'Stor']);
+    expect(tileNamed(host, 'Cloud Storage').querySelector('.lib-term')).toBeNull();
+    type(search, 'blob');
+    const s3 = tileNamed(host, 'Amazon S3');
+    expect(s3.querySelector('.lib-term')!.textContent).toContain('blob');
+    expect([...s3.querySelectorAll('.lib-term mark')].map(m => m.textContent)).toEqual(['blob']);
+    expect(s3.querySelectorAll('.lib-name mark')).toHaveLength(0);
+  });
+
+  it('shows neither highlight nor term when only the id or the group matched', () => {
+    const { pop, host, search } = setup();
+    pop.open();
+    type(search, 'gcp-cloud-storage');
+    const row = tileNamed(host, 'Cloud Storage');
+    expect(row.querySelector('mark')).toBeNull();
+    expect(row.querySelector('.lib-term')).toBeNull();
+    expect(row.querySelector('.lib-group')!.textContent).toBe('Google Cloud');
+    type(search, 'chart');
+    expect(inGroup(host, 'Charts')).toEqual(chartTitles);
+    for (const t of chartTitles) expect(tileNamed(host, t).querySelectorAll('mark, .lib-term')).toHaveLength(0);
+  });
+
+  it('renders a saved name as text, never markup', () => {
+    const evil = '<img src=x onerror=alert(1)>';
+    const { pop, host, search } = setup([item(1, evil)]);
+    pop.open();
+    type(search, 'img');
+    expect(host.querySelector('.lib-row img, .lib-saved img')).toBeNull();
+    expect(results(host)).toContain(evil);
+  });
+
+  it('a saved row keeps its ⋯ menu and arms a saved pick', () => {
+    const { pop, host, deps, search } = setup([item(1, 'My lambda notes')]);
+    pop.open();
+    type(search, 'lambda notes');
+    const saved = host.querySelector<HTMLElement>('.lib-saved')!;
+    expect(saved.querySelector('.lib-tile.lib-row .lib-group')!.textContent).toBe('My library');
+    saved.querySelector<HTMLButtonElement>('.lib-more')!.click();
+    host.querySelector<HTMLButtonElement>('.lib-menu [data-act="rename"]')!.click();
+    expect(deps.onRename).toHaveBeenCalledWith(expect.objectContaining({ name: 'My lambda notes' }));
+    saved.querySelector<HTMLElement>('.lib-tile')!.click();
+    expect(deps.onPick).toHaveBeenLastCalledWith({ kind: 'saved', item: expect.objectContaining({ name: 'My lambda notes' }) });
+  });
+
+  it('Enter and ArrowDown work on the list', () => {
+    const { pop, host, deps, search } = setup();
+    pop.open();
+    type(search, 'clstor');
+    key(search, { key: 'ArrowDown' });
+    expect(document.activeElement).toBe(host.querySelector('.lib-row'));
+    key(document.activeElement!, { key: 'ArrowDown' });
+    expect((document.activeElement as HTMLElement).title).toBe(host.querySelectorAll<HTMLElement>('.lib-row')[1].title);
+    type(search, 'clstor');
+    key(search, { key: 'Enter' });
+    expect(deps.onPick).toHaveBeenCalledWith({ kind: 'icon', icon: 'gcp-cloud-storage' });
   });
 
   it('an icon tile arms an icon pick by click, by Enter from the search, and names itself by its text', () => {
@@ -180,17 +260,17 @@ describe('LibraryPopover', () => {
       ['Claude Code', { kind: 'icon', icon: 'claude-code' }],
       ['kube', { kind: 'icon', icon: 'kubernetes' }],
       ['openai', { kind: 'icon', icon: 'openai' }],
-      ['rag', { kind: 'icon', icon: 'knowledge-base' }],
     ] as const) {
       pop.open();
       type(search, query);
       key(search, { key: 'Enter' });
       expect(deps.onPick, query).toHaveBeenLastCalledWith(pick);
     }
-    // the generic Model icon still lists for "claude"
+    // the generic Model icon still lists for "claude", after the logo named so
     pop.open();
     type(search, 'claude');
-    expect(names(host, 'Agents')).toContain('Model');
+    expect(inGroup(host, 'Agents')).toContain('Model');
+    expect(results(host)[0]).toBe('Claude');
   });
 
   it('a click arms the tile and closes the popover', () => {
