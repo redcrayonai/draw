@@ -1,6 +1,8 @@
 import { describe, expect, it, vi } from 'vitest';
 import { DbError, type DbHttp, type DbType } from '../../shared/db-http';
 import { createSnapshot } from './snapshot';
+import { startSessionFlow } from '../../agent/src/session';
+import { localDeps } from '../../agent/src/local-deps';
 
 // Column types as /sql's schema states them.
 const U64 = { U64: [] };
@@ -70,6 +72,52 @@ const TABLES = {
 };
 
 describe('createSnapshot', () => {
+  it.each([false, true])('starts a session with four reads even across file chunks (existing=%s)', async existing => {
+    const tables = {
+      ...TABLES,
+      my_boards: existing ? TABLES.my_boards : table([], []),
+      visible_board: table([['id', U64], ['name', S], ['slug', S]], [[7, 'main', 'session-link']]),
+      visible_repo_file: { ...TABLES.visible_repo_file, rows: existing ? [...TABLES.visible_repo_file.rows] : [] },
+    };
+    const { http, queries, calls } = fakeHttp(tables);
+    const post = http.callAs;
+    http.callAs = async (...args) => {
+      await post(...args);
+      if (args[1] === 'start_session') tables.my_boards = TABLES.my_boards;
+      if (args[1] === 'add_repo_files') for (const path of args[2][1] as string[]) tables.visible_repo_file.rows.push([tables.visible_repo_file.rows.length + 1, 7, path]);
+    };
+    const snap = createSnapshot(http, 'tok', mine => mine.find(b => b.name === 'main' && b.isSession)?.boardId);
+    const paths = ['a.ts', ...Array.from({ length: 1001 }, (_, i) => `file-${i}.ts`)];
+    const start = () => startSessionFlow(
+      { name: 'main', repoRoot: '/r', clientUrl: 'https://draw.example.com', dbName: 'test', force: false, activeBoardId: undefined },
+      { ...localDeps, call: snap.call, realpath: p => p, git: { ...localDeps.git, topLevel: () => '/r', head: () => 'b'.repeat(40), listTracked: () => paths } }
+    );
+    expect(await start()).toMatchObject({ boardId: 7n, checkpoint: 0, seeded: existing ? 1001 : 1002 });
+    expect(calls[0][0]).toBe('start_session');
+    expect(calls.slice(1).flatMap(([, args]) => args[1])).toEqual(existing ? paths.slice(1) : paths);
+    expect(queries).toHaveLength(4);
+    const beforeRetry = calls.length;
+    expect(await start()).toMatchObject({ boardId: 7n, seeded: 0 });
+    expect(calls.slice(beforeRetry).map(([name]) => name)).toEqual(['start_session']);
+    expect(queries).toHaveLength(8);
+  });
+
+  it('loads the full snapshot after a session-only read and invalidates it after writes', async () => {
+    const tables = { ...TABLES };
+    const { http } = fakeHttp(tables);
+    const snap = createSnapshot(http, 'tok', 7n);
+    await snap.call('find session board', async conn => expect([...conn.db.visibleSession.iter()]).toHaveLength(1));
+    await snap.call('set_code_ref_hashes', async conn => {
+      expect([...conn.db.visibleCodeRef.iter()]).toHaveLength(1);
+      await conn.reducers.setCodeRefHashes({ refId: MAX, lineHashes: 'a'.repeat(32) });
+    });
+    expect(await snap.call('read code refs', async conn => [...conn.db.visibleCodeRef.iter()])).toHaveLength(1);
+    await snap.call('start_session', conn => conn.reducers.startSession({ name: 'main', repoRoot: '/r', baseSha: 'b' }));
+    tables.visible_code_ref = table([], []);
+    await snap.call('find session board', async () => undefined);
+    expect(await snap.call('read code refs', async conn => [...conn.db.visibleCodeRef.iter()])).toEqual([]);
+  });
+
   // An empty list would pass for "no notes": a checkpoint would then miss stale readers.
   it.each(['visible_change_note', 'visible_threat'])('fails the read when %s cannot be read', async view => {
     const base = fakeHttp(TABLES);
