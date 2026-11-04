@@ -104,11 +104,19 @@ function vendor(file, prefix) {
   const used = new Set();
   for (const m of text.matchAll(/url\(\s*['"]?#([^'")\s]+)['"]?\s*\)|href="#([^"]+)"/g)) used.add(m[1] ?? m[2]);
   const ids = new Map([...used].map((id, i) => [id, `${prefix}-${i}`]));
-  const rename = value => value.replace(/url\(\s*['"]?#([^'")\s]+)['"]?\s*\)/g, (_m, id) => (ids.has(id) ? `url(#${ids.get(id)})` : fail(`${file}: dangling reference #${id}`)));
+  // A value may refer only to this file: no other url(), image function or CSS escape (which could spell either).
+  const rename = value => {
+    if (/\\|(?:image|image-set|cross-fade|element|src)\(/i.test(value)) fail(`${file}: external reference in '${value}'`);
+    return value.replace(/url\(([^)]*)\)?/gi, (m, inner) => {
+      const target = inner.trim().replace(/^['"]|['"]$/g, '');
+      if (!target.startsWith('#')) fail(`${file}: external reference in '${m}'`);
+      return ids.has(target.slice(1)) ? `url(#${ids.get(target.slice(1))})` : fail(`${file}: dangling reference ${target}`);
+    });
+  };
 
   // Root presentation attributes (Lobe's fill="currentColor" fill-rule="evenodd") move onto the tree's top group.
   const rootPaint = {};
-  for (const name of PAINT) if (root.hasAttribute(name)) rootPaint[name] = root.getAttribute(name);
+  for (const name of PAINT) if (root.hasAttribute(name)) rootPaint[name] = rename(root.getAttribute(name));
   // A shape with no fill is black in its own file; written out, so a parent's fill cannot change it.
   rootPaint.fill ??= '#000';
 

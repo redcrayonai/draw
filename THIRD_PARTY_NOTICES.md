@@ -95,9 +95,8 @@ The MIT License for the OpenClaw, Hermes Agent and OpenCode files:
 Each mark is the provider's own artwork, downloaded on the date given below from
 the source named there. Each entry states what that source says about use. A
 source's terms may speak to diagrams or documentation and say nothing about a
-tool that carries the files; the entry then says only what the source says. A
-product whose owner has not cleared its mark draws a neutral icon and carries
-only its name.
+tool that carries the files; the entry then says only what the source says. Some
+products draw a neutral icon and carry only their name.
 
 - **AWS Cloud and AWS service icons.** Source: the AWS Architecture Icons package
   `Icon-package_07312026` (Release 24, Q3 2026), group icon `AWS-Cloud-logo_32`
@@ -112,10 +111,9 @@ only its name.
   permits the use of these icons in architectural diagrams, training materials,
   or documentation. You can copy, distribute, and display the icons only for
   the permitted use unless granted explicit permission by Microsoft. Microsoft
-  reserves all other rights." Each icon represents the Microsoft product it was
-  designed for; Azure Blob Storage draws the kit's Blob Block icon, because the
-  kit has no icon named for the service. Microsoft and Azure are trademarks of
-  the Microsoft group of companies.
+  reserves all other rights." The kit has no icon named for Azure Blob Storage or
+  Azure Container Apps; they draw its Blob Block and Container Apps Environments
+  icons. Microsoft and Azure are trademarks of the Microsoft group of companies.
 - **Google Cloud product icons.** Source: Google's icon library,
   https://cloud.google.com/icons, the files `core-products-icons.zip` and
   `google-cloud-legacy-icons.zip` (downloaded 2026-11-03). The page and the files
@@ -148,10 +146,12 @@ only its name.
   Credit: the Kubernetes project.
 - **Valkey.** Source: the project's assets repository,
   https://github.com/valkey-io/assets, commit `45d2f1d` (downloaded 2026-11-03),
-  the mark in full colour and in all white, as its brand guidelines allow: "The
-  Valkey logo should be used in its full color option or all-black or all-white
-  when required." Valkey and the Valkey logo are trademarks of LF Projects, LLC,
-  https://lfprojects.org/policies/trademark-policy/.
+  the stacked logo in full colour and in all white. Its brand guidelines say: "In
+  the instance where the primary logo can not be used, the stacked variation is
+  acceptable." and "Changing the logo color is strictly not permitted. The Valkey
+  logo should be used in its full color option or all-black or all-white when
+  required." They do not mention use inside a tool. Valkey and the Valkey logo are
+  trademarks of LF Projects, LLC, https://lfprojects.org/policies/trademark-policy/.
 
 ### CNCF project logos
 

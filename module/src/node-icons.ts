@@ -28,7 +28,7 @@ export const ICON_SECTIONS: ReadonlyArray<{ id: IconSection; title: string; pack
   { id: 'cloud', title: 'Cloud logos' },
   { id: 'aws', title: 'AWS', pack: true, logo: 'aws' },
   { id: 'azure', title: 'Microsoft Azure', pack: true, logo: 'azure' },
-  { id: 'gcp', title: 'Google Cloud', pack: true },
+  { id: 'gcp', title: 'Google Cloud', pack: true, logo: 'google-cloud' },
   { id: 'cloudflare', title: 'Cloudflare', pack: true, logo: 'cloudflare' },
   { id: 'databases', title: 'Databases', pack: true },
   { id: 'kubernetes', title: 'Kubernetes', pack: true, logo: 'kubernetes' },
@@ -97,8 +97,9 @@ export const ICONS: readonly IconSpec[] = [
   // Packs: one section per product family, each product named as its owner names it. AWS and
   // Azure take the names their rules ask for; Google Cloud, CNCF and Valkey art accepted by
   // Alan, 2026-11-03. Cloudflare and the databases draw neutral icons until their owners give
-  // permission (the ids stay when art arrives). Google's icon kit has no company logo, so its
-  // pack has a neutral glyph. A pack's logo is its first entry.
+  // permission (the ids stay when art arrives). Google's kits hold no company mark, so
+  // google-cloud draws a neutral icon until an official one is available. The first entry of a
+  // pack stands for it.
   brand('aws')('aws', 'AWS Cloud', ['aws', 'amazon web services', 'amazon', 'ec2', 's3', 'lambda', 'cloud']),
   svc('aws')('aws-ec2', 'Amazon EC2', ['ec2', 'virtual machine', 'vm', 'server', 'compute', 'instance']),
   svc('aws')('aws-lambda', 'AWS Lambda', ['lambda', 'serverless', 'function', 'faas']),
@@ -182,6 +183,7 @@ export const ICONS: readonly IconSpec[] = [
   svc('azure')('azure-machine-learning', 'Azure Machine Learning', ['machine learning', 'azure ml', 'ml', 'training', 'model']),
   svc('azure')('azure-static-web-apps', 'Azure Static Web Apps', ['static web apps', 'static site', 'hosting', 'jamstack', 'frontend']),
 
+  brand('gcp')('google-cloud', 'Google Cloud', ['google cloud', 'gcp', 'google', 'cloud']),
   svc('gcp')('gcp-compute-engine', 'Compute Engine', ['gce', 'virtual machine', 'vm', 'server', 'compute', 'instance']),
   svc('gcp')('gcp-cloud-run', 'Cloud Run', ['run', 'serverless', 'container', 'knative']),
   svc('gcp')('gcp-cloud-functions', 'Cloud Functions', ['functions', 'serverless', 'function', 'faas']),
@@ -191,7 +193,7 @@ export const ICONS: readonly IconSpec[] = [
   store('gcp')('gcp-filestore', 'Filestore', ['file system', 'nfs', 'shared storage', 'storage']),
   store('gcp')('gcp-persistent-disk', 'Persistent Disk', ['pd', 'block storage', 'volume', 'disk', 'storage']),
   store('gcp')('gcp-cloud-sql', 'Cloud SQL', ['sql', 'relational', 'postgres', 'mysql', 'sql server', 'database']),
-  store('gcp')('gcp-spanner', 'Cloud Spanner', ['relational', 'sql', 'global', 'database']),
+  store('gcp')('gcp-spanner', 'Spanner', ['cloud spanner', 'relational', 'sql', 'global', 'database']),
   store('gcp')('gcp-alloydb', 'AlloyDB', ['alloy', 'postgres', 'relational', 'sql', 'database']),
   store('gcp')('gcp-firestore', 'Firestore', ['nosql', 'document', 'datastore', 'database']),
   store('gcp')('gcp-bigtable', 'Bigtable', ['nosql', 'wide column', 'hbase', 'database']),
@@ -204,14 +206,14 @@ export const ICONS: readonly IconSpec[] = [
   svc('gcp')('gcp-cloud-scheduler', 'Cloud Scheduler', ['scheduler', 'cron', 'timer', 'schedule']),
   svc('gcp')('gcp-workflows', 'Workflows', ['workflow', 'orchestration', 'automation']),
   svc('gcp')('gcp-apigee', 'Apigee', ['api management', 'api', 'api gateway', 'gateway']),
-  svc('gcp')('gcp-api-gateway', 'Cloud API Gateway', ['api', 'rest', 'gateway', 'api gateway']),
+  svc('gcp')('gcp-api-gateway', 'API Gateway', ['api', 'rest', 'gateway', 'api gateway']),
   svc('gcp')('gcp-load-balancing', 'Cloud Load Balancing', ['load balancer', 'load balancing', 'lb', 'glb']),
   svc('gcp')('gcp-cloud-cdn', 'Cloud CDN', ['cdn', 'edge', 'content delivery']),
   svc('gcp')('gcp-cloud-dns', 'Cloud DNS', ['dns', 'domain', 'name resolution']),
   svc('gcp')('gcp-vpc', 'Virtual Private Cloud', ['vpc', 'network', 'subnet']),
   svc('gcp')('gcp-cloud-armor', 'Cloud Armor', ['armor', 'waf', 'ddos', 'firewall', 'security']),
   svc('gcp')('gcp-iam', 'Identity and Access Management', ['iam', 'identity', 'access', 'permissions', 'roles', 'policy']),
-  svc('gcp')('gcp-kms', 'Key Management Service', ['kms', 'key management', 'encryption', 'keys']),
+  svc('gcp')('gcp-kms', 'Cloud KMS', ['kms', 'key management', 'encryption', 'keys']),
   svc('gcp')('gcp-secret-manager', 'Secret Manager', ['secrets', 'credentials', 'vault']),
   store('gcp')('gcp-logging', 'Cloud Logging', ['logging', 'logs', 'stackdriver', 'audit log']),
   svc('gcp')('gcp-monitoring', 'Cloud Monitoring', ['monitoring', 'metrics', 'alerts', 'stackdriver', 'observability']),

@@ -101,6 +101,7 @@ const GLYPHS: Readonly<Record<string, Stroke>> = {
 
 /** Registry ids drawn with a neutral stroke icon: an authored one, or a glyph. */
 const GENERIC: Readonly<Record<string, string>> = {
+  'google-cloud': 'cloud',
   cloudflare: 'cloud',
   'cloudflare-cdn': 'gateway',
   'cloudflare-load-balancing': 'gateway',
@@ -224,7 +225,7 @@ export function iconGroup(id: string, size: number): SVGGElement | null {
 
 /** The neutral glyph that stands for a pack with no logo of its own, as a chrome <svg>; null for the others. */
 export function packGlyph(section: IconSection, size: number): SVGSVGElement | null {
-  const glyph = section === 'databases' ? GLYPHS.database : section === 'cncf' ? GLYPHS.hexagon : section === 'gcp' ? GLYPHS.cloud : undefined;
+  const glyph = section === 'databases' ? GLYPHS.database : section === 'cncf' ? GLYPHS.hexagon : undefined;
   if (glyph === undefined) return null;
   const svg = svgEl('svg', { class: 'lib-node-icon', width: String(size), height: String(size), viewBox: '0 0 16 16', 'aria-hidden': 'true' });
   const g = svgEl('g', { class: 'node-icon node-icon-stroke' });

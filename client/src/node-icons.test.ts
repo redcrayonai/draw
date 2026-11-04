@@ -43,6 +43,7 @@ describe('the icon registry (module/src/node-icons.ts)', () => {
     expect(ids('cloud')).toEqual(['vercel', 'supabase', 'firebase', 'neon']);
     expect(ids('aws')[0]).toBe('aws');
     expect(ids('azure')[0]).toBe('azure');
+    expect(ids('gcp')[0]).toBe('google-cloud');
     expect(ids('cloudflare')[0]).toBe('cloudflare');
     expect(ids('kubernetes')[0]).toBe('kubernetes');
     expect(ids('databases')).toEqual(['postgres', 'mysql', 'mongodb', 'redis', 'valkey', 'keydb', 'dragonfly']);
@@ -56,25 +57,24 @@ describe('the icon registry (module/src/node-icons.ts)', () => {
     }
     for (const i of ICONS) expect(`${i.id} ${i.name}`, i.id).not.toMatch(/wasm|energy/i);
     expect(ICON_SECTIONS.filter(s => s.pack).map(s => [s.id, s.logo])).toEqual([
-      ['aws', 'aws'], ['azure', 'azure'], ['gcp', undefined], ['cloudflare', 'cloudflare'], ['databases', undefined], ['kubernetes', 'kubernetes'], ['cncf', undefined],
+      ['aws', 'aws'], ['azure', 'azure'], ['gcp', 'google-cloud'], ['cloudflare', 'cloudflare'], ['databases', undefined], ['kubernetes', 'kubernetes'], ['cncf', undefined],
     ]);
     // every Kubernetes term list carries k8s, so a search for it still places the logo first
     for (const i of ICONS.filter(i => i.section === 'kubernetes')) expect(i.terms, i.id).toContain('k8s');
   });
 
   it('draws brands with no cleared mark as neutral strokes', () => {
-    for (const id of ['cloudflare', 'cloudflare-r2', 'cloudflare-workers', 'postgres', 'mysql', 'mongodb', 'redis', 'keydb', 'dragonfly']) {
+    for (const id of ['google-cloud', 'cloudflare', 'cloudflare-r2', 'cloudflare-workers', 'postgres', 'mysql', 'mongodb', 'redis', 'keydb', 'dragonfly']) {
       expect(iconPaint(id), id).toBe('stroke');
       expect(LOGO_LOADERS[id], id).toBeUndefined();
       expect(iconGroup(id, 28)!.getAttribute('class'), id).toBe('node-icon node-icon-stroke');
     }
   });
 
-  it('draws a pack glyph for the packs with no logo: Databases, Google Cloud and CNCF', () => {
+  it('draws a pack glyph for Databases and CNCF only', () => {
     expect(packGlyph('databases', 20)?.getAttribute('class')).toBe('lib-node-icon');
     expect(packGlyph('cncf', 20)?.querySelector('path')).not.toBeNull();
-    expect(packGlyph('gcp', 20)?.querySelector('path')).not.toBeNull();
-    for (const s of ['aws', 'azure', 'cloudflare', 'kubernetes', 'agents'] as const) expect(packGlyph(s, 20), s).toBeNull();
+    for (const s of ['aws', 'azure', 'gcp', 'cloudflare', 'kubernetes', 'agents'] as const) expect(packGlyph(s, 20), s).toBeNull();
   });
 });
 
@@ -194,6 +194,7 @@ describe('vendored logo artwork (scripts/vendor-logos.mjs)', () => {
           for (const [k, v] of Object.entries(attrs)) {
             expect(k.startsWith('on'), `${id} ${k}`).toBe(false);
             expect(v, `${id} ${k}`).not.toMatch(/javascript:|https?:/i);
+            expect(v, `${id} ${k}`).not.toMatch(/url\((?!#)/i);
           }
         });
       }
@@ -214,6 +215,30 @@ describe('vendored logo artwork (scripts/vendor-logos.mjs)', () => {
         for (const r of refs) expect(ids.has(r), `${id} #${r}`).toBe(true);
       }
     }
+  });
+
+  // Refused before anything is written; a regression here would overwrite the id named below.
+  it.each([
+    ['root paint', '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1 1" fill="url(https://evil.example/x.svg#a)"><path d="M0 0"/></svg>'],
+    ['attribute', '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1 1"><path d="M0 0" mask="url(//evil.example/x.svg#a)"/></svg>'],
+    ['class style', '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1 1"><style>.a{fill:url(//evil.example/x.svg#a)}</style><path class="a" d="M0 0"/></svg>'],
+    ['inline style', '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1 1"><path style="clip-path:url(//evil.example/x.svg#a)" d="M0 0"/></svg>'],
+    ['filter flood', '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1 1"><filter id="f" x="0" y="0" width="1" height="1"><feFlood flood-color="url(//evil.example/x.svg#a)" result="b"/><feBlend in="SourceGraphic" in2="b"/></filter><path filter="url(#f)" d="M0 0"/></svg>'],
+    ['unclosed url', '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1 1"><path fill="url(//evil.example/x.svg#a" d="M0 0"/></svg>'],
+    ['escaped url', '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1 1"><path fill="\\75rl(//evil.example/x.svg#a)" d="M0 0"/></svg>'],
+    ['image function', '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1 1"><path mask="image-set(\'//evil.example/x.png\' 1x)" d="M0 0"/></svg>'],
+  ])('the vendor script refuses a reference outside the file: %s', async (_name, svg) => {
+    const [fsModule, cpModule, osModule] = ['node:fs', 'node:child_process', 'node:os'];
+    const fs = (await import(/* @vite-ignore */ fsModule)) as { mkdtempSync(p: string): string; writeFileSync(p: string, d: string): void };
+    const cp = (await import(/* @vite-ignore */ cpModule)) as { spawnSync(c: string, a: string[], o: { encoding: 'utf8' }): { status: number; stderr: string } };
+    const os = (await import(/* @vite-ignore */ osModule)) as { tmpdir(): string };
+    const proc = (globalThis as unknown as { process: { cwd(): string; execPath: string } }).process;
+    const dir = fs.mkdtempSync(`${os.tmpdir()}/vendor-probe-`);
+    fs.writeFileSync(`${dir}/a.svg`, svg);
+    fs.writeFileSync(`${dir}/sources.json`, JSON.stringify({ vercel: { light: 'a.svg', dark: null, source: 'probe', url: 'probe' } }));
+    const run = cp.spawnSync(proc.execPath, ['--experimental-strip-types', `${proc.cwd()}/../scripts/vendor-logos.mjs`, `${dir}/sources.json`], { encoding: 'utf8' });
+    expect(run.status).not.toBe(0);
+    expect(run.stderr).toContain('external reference');
   });
 
   it('nothing a shape refers to is empty: every gradient has its stops, every clip and mask its content', () => {
