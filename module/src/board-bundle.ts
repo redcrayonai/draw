@@ -62,7 +62,7 @@ export const LEFT_OUT: Record<string, string> = {
   orgMember: NOT_BOARD, agentLinkOffer: NOT_BOARD, agentLink: NOT_BOARD, legacyWorkspace: NOT_BOARD,
   workspace: NOT_BOARD, workspaceAccount: NOT_BOARD, workspaceMember: NOT_BOARD, workspaceTeam: NOT_BOARD, workspaceTeamMember: NOT_BOARD,
   workspaceServiceAccount: NOT_BOARD, workspaceApiKey: NOT_BOARD, workspaceMachineIdentity: NOT_BOARD, workspaceApiKeyExpiry: NOT_BOARD,
-  workspacePlugin: NOT_BOARD, boardVersion: 'the Versions index', boardVersionChunk: 'restore staging', versionCooldown: 'rate limit',
+  workspacePlugin: NOT_BOARD, boardVersion: 'the Versions index', boardVersionChunk: 'restore staging', versionCooldown: 'rate limit', boardItemReceipt: 'short-lived create retry receipts',
 };
 
 // Where the board came from. Provenance only: a restore never links back to these boards.

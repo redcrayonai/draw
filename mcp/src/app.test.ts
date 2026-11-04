@@ -240,7 +240,7 @@ describe('tool calls', () => {
     const posted: string[] = [];
     vi.stubGlobal('fetch', async (url: string) => {
       posted.push(new URL(url).pathname.split('/').pop()!);
-      return new Response(url.endsWith('/sql') ? '[{"schema":{"elements":[]},"rows":[]}]' : '');
+      return new Response(url.endsWith('/read_board_snapshot') ? JSON.stringify('{}') : url.endsWith('/sql') ? '[{"schema":{"elements":[]},"rows":[]}]' : '');
     });
     const body = await rpcBody(await rpc({ jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name: 'get_board', arguments: { board: '42' } } }));
     expect(posted.slice(0, 2)).toEqual(['link_hosted_agent', 'join_board']);
@@ -272,7 +272,7 @@ describe('tool calls', () => {
     const bodies: string[] = [];
     vi.stubGlobal('fetch', async (url: string, init?: RequestInit) => {
       bodies.push(String(init?.body ?? ''));
-      return new Response(url.endsWith('/sql') ? '[{"schema":{"elements":[]},"rows":[]}]' : '');
+      return new Response(url.endsWith('/read_board_snapshot') ? JSON.stringify('{}') : url.endsWith('/sql') ? '[{"schema":{"elements":[]},"rows":[]}]' : '');
     });
     // A user no earlier test joined: the join is once per user per isolate.
     const open = createApp({ verifyBearer: async () => ({ userId: 'user_sh', clientId: 'c', via: 'oauth', scopes: ['board:read'] }), ledger: () => ({ charge: async () => ({ ok: true, used: 1 }), claim: async () => ({ first: true }), settle: async () => {} }), captures: memoryCaptures() });
@@ -293,7 +293,7 @@ describe('tool calls', () => {
     const bodies: Record<string, string> = {};
     vi.stubGlobal('fetch', async (url: string, init?: RequestInit) => {
       bodies[new URL(url).pathname.split('/').pop()!] = String(init?.body ?? '');
-      return new Response(url.endsWith('/sql') ? '[{"schema":{"elements":[]},"rows":[]}]' : '');
+      return new Response(url.endsWith('/read_board_snapshot') ? JSON.stringify('{}') : url.endsWith('/sql') ? '[{"schema":{"elements":[]},"rows":[]}]' : '');
     });
     const slashed = await testEnv({ OIDC_ISSUER: 'https://tenant.auth0.test/' });
     // a user no earlier test linked: the link is once per user per isolate
@@ -309,7 +309,7 @@ describe('tool calls', () => {
   });
 
   it('wraps each call in a tool.<name> span carrying the outcome and the log line reqId', async () => {
-    vi.stubGlobal('fetch', async (url: string) => new Response(url.endsWith('/sql') ? '[{"schema":{"elements":[]},"rows":[]}]' : ''));
+    vi.stubGlobal('fetch', async (url: string) => new Response(url.endsWith('/read_board_snapshot') ? JSON.stringify('{}') : url.endsWith('/sql') ? '[{"schema":{"elements":[]},"rows":[]}]' : ''));
     const spans: { name: string; attrs: Record<string, unknown>; status?: string }[] = [];
     const tracing = {
       enterSpan: (name: string, run: (span: Span) => unknown) => {
@@ -338,7 +338,7 @@ describe('tool calls', () => {
   it('error logs carry the error name and a database status, never the message', async () => {
     const errors = vi.spyOn(console, 'error').mockImplementation(() => {});
     vi.stubGlobal('fetch', async (url: string) =>
-      url.endsWith('/link_hosted_agent') ? new Response('const secret = 1;', { status: 530 }) : new Response(url.endsWith('/sql') ? '[{"schema":{"elements":[]},"rows":[]}]' : ''));
+      url.endsWith('/link_hosted_agent') ? new Response('const secret = 1;', { status: 530 }) : new Response(url.endsWith('/read_board_snapshot') ? JSON.stringify('{}') : url.endsWith('/sql') ? '[{"schema":{"elements":[]},"rows":[]}]' : ''));
     // a user no earlier test linked: the link is once per user per isolate
     const a = createApp({ verifyBearer: async () => ({ userId: 'user_logs', clientId: 'c', via: 'oauth', scopes: ['board:read'] }), ledger: () => ({ charge: async () => ({ ok: true, used: 1 }), claim: async () => ({ first: true }), settle: async () => {} }), captures: memoryCaptures() });
     await (await a.fetch(

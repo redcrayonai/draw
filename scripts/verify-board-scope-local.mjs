@@ -296,23 +296,37 @@ test('an open link board sends code and threats only while the owner includes th
   });
   // The dashboard feed follows the same includes: no code-ref paths or threat events while left out.
   const feedTypes = async () => (await sql(visitor, `SELECT * FROM my_activity WHERE board_id = ${B}`)).map(r => r.type).sort();
+  const snapshot = async who => {
+    const result = await call(who, 'read_board_snapshot', [B]);
+    assert.equal(result.status, 200, result.text);
+    return JSON.parse(JSON.parse(result.text), (_key, v) => v && typeof v.$bigint === 'string' ? BigInt(v.$bigint) : v);
+  };
   try {
     assert.equal([...tab.db.visibleNode.iter()].length, 2);
     assert.deepEqual(seen(), { refs: 0, threats: 0, snippet: '' });
+    const hidden = await snapshot(visitor);
+    assert.equal(hidden.nodes.length, 2);
+    assert.deepEqual([hidden.refs.length, hidden.threats.length], [0, 0]);
+    assert.ok(hidden.edges.every(e => e.evidenceSnippet === ''));
+    assert.equal((await snapshot(reader)).board, undefined, 'a stranger gets no snapshot');
     assert.deepEqual((await feedTypes()).filter(t => /^(coderef|threat)\./.test(t)), [], 'the feed leaves out code and threat events');
     assert.ok((await feedTypes()).includes('node.created'), 'the rest of the feed still reaches the visitor');
     await ok(owner, 'set_link_share_includes', [B, false, true]);
+    assert.deepEqual(await snapshot(visitor).then(s => [s.refs.length, s.threats.length]), [1, 0]);
     assert.deepEqual((await feedTypes()).filter(t => /^(coderef|threat)\./.test(t)), ['coderef.added'], 'code visibility does not lend access to threats');
     await ok(owner, 'set_link_share_includes', [B, true, false]);
+    assert.deepEqual(await snapshot(visitor).then(s => [s.refs.length, s.threats.length]), [0, 1]);
     assert.deepEqual((await feedTypes()).filter(t => /^(coderef|threat)\./.test(t)), ['threat.added'], 'threat visibility does not lend access to code');
     await ok(owner, 'set_link_share_includes', [B, true, true]);
     await waitFor(() => seen().refs === 1 && seen().threats === 1, 'includes reach the open tab');
     assert.equal(seen().snippet, 'export function verify() {}');
     assert.deepEqual((await feedTypes()).filter(t => /^(coderef|threat)\./.test(t)), ['coderef.added', 'threat.added'], 'included layers reach the feed');
     await ok(owner, 'set_link_share_includes', [B, false, false]);
+    assert.deepEqual(await snapshot(visitor).then(s => [s.refs.length, s.threats.length]), [0, 0]);
     await waitFor(() => seen().refs === 0 && seen().threats === 0, 'leaving them out takes them back');
   } finally { tab.disconnect(); }
   await sql(operator, `INSERT INTO public_board (board_id) VALUES (${B})`);
+  assert.deepEqual(await snapshot(reader).then(s => [s.refs.length, s.threats.length]), [1, 0]);
   const pub = await canvas(reader, [B], BOARD);
   try {
     assert.equal([...pub.db.visibleCodeRef.iter()].length, 1, 'a public board keeps its code');

@@ -47,16 +47,16 @@ type Args = {
   edges: ({ fromNode: string; toNode: string } & Record<string, unknown>)[];
   layout: boolean;
 };
-type Call = (name: 'create_node' | 'create_edge' | 'layout_board', args: Record<string, unknown>) => Promise<ToolResult>;
+type Call = (name: 'create_node' | 'create_edge' | 'layout_board', args: Record<string, unknown>, slot: number) => Promise<ToolResult>;
 
 /** Each wave settles before the next starts, including after a failure. */
-export async function applyBoard(args: Args, call: Call, deadline: number): Promise<ToolResult> {
+export async function applyBoard(args: Args, call: Call, deadline: number, wave?: (size: number) => void): Promise<ToolResult> {
   const nodes: Record<string, string> = {};
   const edges: (string | null)[] = args.edges.map(() => null);
   const results: { tool: string; key?: string; text: string }[] = [];
   let error: string | undefined;
   const resolve = (id: string) => id.startsWith('$') ? nodes[id.slice(1)] : id;
-  const run = async (tool: Parameters<Call>[0], input: Record<string, unknown>, key?: string, index?: number) => {
+  const run = async (tool: Parameters<Call>[0], input: Record<string, unknown>, slot: number, key?: string, index?: number) => {
     // Layout needs its 5 s write budget and 1 s response margin to finish a container as one unit.
     if (tool === 'layout_board' && Date.now() >= deadline - 6_000) {
       error = 'UNAVAILABLE: the batch has too little time left for layout. Call layout_board to finish.';
@@ -64,7 +64,7 @@ export async function applyBoard(args: Args, call: Call, deadline: number): Prom
     }
     const entry = { tool, ...(key === undefined ? {} : { key }), text: '' };
     results.push(entry);
-    const result = await call(tool, { board: args.board, ...input });
+    const result = await call(tool, { board: args.board, ...input }, slot);
     const text = result.content.map(c => c.text).join('\n');
     entry.text = text;
     if (result.isError) { error ??= text; return; }
@@ -79,10 +79,10 @@ export async function applyBoard(args: Args, call: Call, deadline: number): Prom
     else if (index !== undefined) edges[index] = id;
   };
   const stages = [
-    { tasks: args.nodes.map(({ key, ...input }) => () => run('create_node', input, key)), concurrency: 3 },
-    // Source edges each load a full snapshot; avoid queuing several against the request limit.
-    { tasks: args.edges.map((input, i) => () => run('create_edge', { ...input, fromNode: resolve(input.fromNode), toNode: resolve(input.toNode) }, undefined, i)), concurrency: args.edges.some(e => typeof e.evidence === 'string' && e.evidence.startsWith('source:')) ? 1 : 3 },
-    { tasks: args.layout ? [() => run('layout_board', {})] : [], concurrency: 1 },
+    { tasks: args.nodes.map(({ key, ...input }) => (slot: number) => run('create_node', input, slot, key)), concurrency: 3 },
+    // Source captures also read and write evidence; keep those waves within the request limit.
+    { tasks: args.edges.map((input, i) => (slot: number) => run('create_edge', { ...input, fromNode: resolve(input.fromNode), toNode: resolve(input.toNode) }, slot, undefined, i)), concurrency: args.edges.some(e => typeof e.evidence === 'string' && e.evidence.startsWith('source:')) ? 1 : 3 },
+    { tasks: args.layout ? [(slot: number) => run('layout_board', {}, slot)] : [], concurrency: 1 },
   ];
   for (const { tasks, concurrency } of stages) {
     for (let i = 0; i < tasks.length && !error; i += concurrency) {
@@ -90,7 +90,9 @@ export async function applyBoard(args: Args, call: Call, deadline: number): Prom
         error = 'UNCONFIRMED: the batch time budget ended. Call get_board before any retry.';
         break;
       }
-      await Promise.all(tasks.slice(i, i + concurrency).map(run => run()));
+      const next = tasks.slice(i, i + concurrency);
+      wave?.(next.length);
+      await Promise.all(next.map((run, slot) => run(slot)));
     }
     if (error) break;
   }

@@ -18,9 +18,8 @@ function plan(rows: BoardRows, eventCount = 1) {
 }
 
 describe('readBoard', () => {
-  // An empty list would read as "no notes": the agent would then drop a column a migration note flagged.
-  it.each(['visible_change_note', 'visible_threat', 'visible_node_icon'])('fails when %s cannot be read', async view => {
-    const db = { read: async (q: { text: string }) => { if (q.text.includes(view)) throw new DbError(503, 'the database answered 503'); return []; } } as unknown as Database;
+  it('does not turn an unavailable snapshot into an empty board', async () => {
+    const db = { procedure: async () => { throw new DbError(503, 'the database answered 503'); } } as unknown as Database;
     await expect(readBoard(db, 1n as SafeU64)).rejects.toThrow(/503/);
   });
 });

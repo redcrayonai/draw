@@ -87,6 +87,7 @@ import { applyBoard, applyBoardInput } from './apply-board';
 import type { Env, Origins } from './env';
 import { version } from './env';
 import { createSnapshot } from './snapshot';
+import { CreateBatch } from './create-batch';
 import { DENYLIST } from './copy';
 import { Refusal, errorKind, errorResult, isTransport, okResult, scrub, type Outcome, type ToolResult } from './scrub';
 import { PLANS, monthOf } from './user';
@@ -138,7 +139,7 @@ export type CallContext = {
 };
 
 /** `deadline`: when the tool's 15 s budget ends (Date.now() ms). */
-type T = { ctx: CallContext; signal: AbortSignal; named: (board: string) => void; deadline: number };
+type T = { ctx: CallContext; signal: AbortSignal; named: (board: string) => void; deadline: number; batch?: { wave: CreateBatch; slot: number } };
 
 type ToolDef = {
   title: string;
@@ -179,10 +180,14 @@ async function assertWriter(t: T, b: { id: bigint; name: string }, what: string)
 
 async function boardOf(t: T, board: string): Promise<{ id: SafeU64; name: string }> {
   const boardId = u64(board);
-  const [row] = await t.ctx.db.read<Row>(sql`SELECT * FROM visible_board WHERE id = ${boardId}`, t.signal);
-  if (!row) throw new Refusal(boardNotFound(board));
+  const read = async () => {
+    const [row] = await t.ctx.db.read<Row>(sql`SELECT * FROM visible_board WHERE id = ${boardId}`, t.signal);
+    if (!row) throw new Refusal(boardNotFound(board));
+    return { id: boardId, name: row.name as string };
+  };
+  const row = await (t.batch ? t.batch.wave.board(board, read) : read());
   t.named(row.name);
-  return { id: boardId, name: row.name };
+  return row;
 }
 
 /** The board and a target row on it, read together; a target elsewhere is "not found on board". */
@@ -264,10 +269,12 @@ async function create(
   key: Record<string, unknown>,
   before: () => Promise<Set<bigint>>,
   write: () => Promise<void>,
-  after: (before: Set<bigint>) => Promise<bigint[]>
+  after: (before: Set<bigint>) => Promise<bigint[]>,
+  batch?: (key: string) => Promise<bigint>
 ): Promise<{ text: string; repeat?: string }> {
   const call = t.ctx.principal?.machine ? [principalSubject(t.ctx.principal), tool, key] : [tool, key];
   const dedupe = await sha256(JSON.stringify(call, (_k, v) => (typeof v === 'bigint' ? v.toString() : v)));
+  t.batch?.wave.claim(t.batch.slot, dedupe);
   const claim = await t.ctx.ledger.claim(dedupe);
   if (!claim.first) {
     await assertMachineBoardCall(t, key);
@@ -275,6 +282,10 @@ async function create(
   }
   let text: string | null = null;
   try {
+    if (batch) {
+      text = describeCommit([await batch(dedupe)]);
+      return { text };
+    }
     const ids = await before();
     try {
       await write();
@@ -426,7 +437,11 @@ export const TOOLS: Record<string, ToolDef> = {
         { board, ...input, icon },
         async () => new Set((await Promise.all([found, nodes()]))[1].map(n => n.id as bigint)),
         () => (icon === undefined ? t.ctx.db.call('create_node', { boardId, ...input }, t.signal) : t.ctx.db.call('create_icon_node', { boardId, ...input, icon }, t.signal)),
-        async before => ownNewIds(before, (await nodes()) as never[], boardId, matches)
+        async before => ownNewIds(before, (await nodes()) as never[], boardId, matches),
+        t.batch ? async key => {
+          await found;
+          return t.batch!.wave.submit(t.batch!.slot, key, icon === undefined ? 'create_node' : 'create_icon_node', { boardId, ...input, ...(icon === undefined ? {} : { icon }) }, t.ctx.db, t.signal);
+        } : undefined
       );
       const b = await found;
       return okResult(`${text}${labelFitHint({ ...input, size: '', kind: input.kind ?? 'service', icon: icon !== undefined })} board=${b.name}${repeat}`);
@@ -592,7 +607,15 @@ export const TOOLS: Record<string, ToolDef> = {
             )
           );
         },
-        async before => (landed = ownNewIds(before, (await edges()) as never[], b.id, matches))
+        async before => (landed = ownNewIds(before, (await edges()) as never[], b.id, matches)),
+        t.batch ? async key => {
+          kept = await writeCode(storeCode, async withText => {
+            landed = [await t.batch!.wave.submit(t.batch!.slot, key, 'create_edge',
+              { boardId: b.id, fromNode: from, toNode: to, label, evidence, ...(evidenceHash === undefined || withText ? { evidenceSnippet } : { evidenceSnippet: '', evidenceStatus: 'ok' }) },
+              t.ctx.db, t.signal)];
+          });
+          return landed[0];
+        } : undefined
       );
       if (evidenceHash !== undefined) {
         for (const edgeId of landed) {
@@ -1353,19 +1376,21 @@ export const TOOLS: Record<string, ToolDef> = {
       'This is not a transaction: a failure stops later operations after in-flight calls settle and returns completed ids. Call get_board before retrying; do not repeat the whole batch blindly.',
     get input() { return applyBoardInput(TOOLS.create_node.input, TOOLS.create_edge.input); },
     async run(args, t) {
-      return applyBoard(args, async (name, input) => {
+      let wave: CreateBatch;
+      return applyBoard(args, async (name, input, slot) => {
         // Each operation owns its counters: parallel writes must not alter another call's failure text.
         const stats = { dbCalls: 0, dbMs: 0, writes: 0 };
         const ctx = { ...t.ctx, reqId: newRef() + newRef(), db: database(t.ctx.env, t.ctx.db.token, stats), service: database(t.ctx.env, t.ctx.service.token, stats) };
         try {
-          const run = (span?: Span) => invoke(name, TOOLS[name], TOOLS[name].input.parse(input), ctx, span, t);
+          const run = (span?: Span) => invoke(name, TOOLS[name], TOOLS[name].input.parse(input), ctx, span, { ...t, batch: { wave, slot } });
           return await (ctx.tracing ? ctx.tracing.enterSpan(`tool.${name}`, run) : run());
         } finally {
+          wave.finish(slot);
           t.ctx.db.stats.dbCalls += stats.dbCalls;
           t.ctx.db.stats.dbMs += stats.dbMs;
           t.ctx.db.stats.writes += stats.writes;
         }
-      }, t.deadline);
+      }, t.deadline, size => { wave = new CreateBatch(size); });
     },
   },
 };
@@ -1674,7 +1699,7 @@ function flowSentence(err: unknown, board: string | undefined): unknown {
   return err;
 }
 
-async function invoke(name: string, def: ToolDef, args: Record<string, unknown>, ctx: CallContext, span?: Span, parent?: Pick<T, 'signal' | 'deadline'>): Promise<ToolResult> {
+async function invoke(name: string, def: ToolDef, args: Record<string, unknown>, ctx: CallContext, span?: Span, parent?: Pick<T, 'signal' | 'deadline' | 'batch'>): Promise<ToolResult> {
   const started = Date.now();
   // The log and Analytics Engine carry the board's id only; texts name the board.
   const board = typeof args.board === 'string' ? args.board : '';
@@ -1684,7 +1709,7 @@ async function invoke(name: string, def: ToolDef, args: Record<string, unknown>,
   let ref: string | undefined;
   let original: string | undefined;
   let writesBefore = ctx.db.stats.writes;
-  const t: T = { ctx, signal: parent?.signal ?? AbortSignal.timeout(TOOL_BUDGET_MS), named: n => (boardName = n), deadline: parent?.deadline ?? started + TOOL_BUDGET_MS };
+  const t: T = { ctx, signal: parent?.signal ?? AbortSignal.timeout(TOOL_BUDGET_MS), named: n => (boardName = n), deadline: parent?.deadline ?? started + TOOL_BUDGET_MS, batch: parent?.batch };
   try {
     if (!ctx.principal.scopes.includes(def.scope)) throw new Refusal('REJECTED: this credential does not allow this operation. Nothing was written.');
     // A batch is metered by its individual operations, through this same gate.
