@@ -767,20 +767,23 @@ export const TOOLS: Record<string, ToolDef> = {
       })
       .strict(),
     async run({ board, title, subtitle, x, y, w, h, type, csv, source, options: rawOptions }, t) {
-      const b = await boardOf(t, board);
+      const boardId = u64(board);
+      const found = boardOf(t, board);
+      found.catch(() => {});
       const options = optionsText(rawOptions);
       const check = checkChartInput({ type, csv, options, source });
-      if (!check.ok) throw new Refusal(`REJECTED: ${check.error} board=${b.name}`);
-      const nodes = () => t.ctx.db.read<Row>(sql`SELECT id, board_id, label, sublabel, x, y, kind FROM visible_node WHERE board_id = ${b.id}`, t.signal);
+      if (!check.ok) throw new Refusal(`REJECTED: ${check.error} board=${(await found).name}`);
+      const nodes = () => t.ctx.db.read<Row>(sql`SELECT id, board_id, label, sublabel, x, y, kind FROM visible_node WHERE board_id = ${boardId}`, t.signal);
       const matches = (n: Row) => n.kind === 'chart' && n.label === title && n.sublabel === subtitle && n.x === x && n.y === y;
       const { text, repeat = '' } = await create(
         t,
         'create_chart',
         { board, title, subtitle, x, y, w, h, type, csv, options, source },
-        async () => new Set((await nodes()).map(n => n.id as bigint)),
-        () => t.ctx.db.call('create_chart', { boardId: b.id, label: title, sublabel: subtitle, x, y, w, h, type, csv, options, source }, t.signal),
-        async before => ownNewIds(before, (await nodes()) as never[], b.id, matches)
+        async () => new Set((await Promise.all([found, nodes()]))[1].map(n => n.id as bigint)),
+        () => t.ctx.db.call('create_chart', { boardId, label: title, sublabel: subtitle, x, y, w, h, type, csv, options, source }, t.signal),
+        async before => ownNewIds(before, (await nodes()) as never[], boardId, matches)
       );
+      const b = await found;
       return okResult(`${text}${chartSummaryText(check.summary)} board=${b.name}${repeat}`);
     },
   },

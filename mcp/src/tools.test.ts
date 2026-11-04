@@ -794,6 +794,81 @@ describe('create_edge on the hosted server: the cited line stays out unless the 
   });
 });
 
+describe('create_chart round trips', () => {
+  const input = { board: '1', title: 'Latency', subtitle: 'ms', x: 0, y: 0, w: 320, h: 200, type: 'bars', csv: 'route,p50\n/a,12', source: 'agent: bench @ abc123' };
+  const setup = (opts: { missing?: boolean; first?: boolean; lost?: boolean; readFails?: boolean; holdBoard?: boolean } = {}) => {
+    const nodes: Record<string, unknown>[] = [];
+    let boardRead = false;
+    let idsRead = false;
+    let releaseBoard!: () => void;
+    const boardReady = new Promise<void>(resolve => { releaseBoard = resolve; });
+    const trip = async <R>(answer: () => R): Promise<R> => {
+      await new Promise(resolve => setTimeout(resolve, 1));
+      return answer();
+    };
+    const call = vi.fn((reducer: string, args: Record<string, any>) => trip(() => {
+      expect(boardRead && idsRead).toBe(true);
+      expect(reducer).toBe('create_chart');
+      nodes.push({ id: 77n, boardId: args.boardId, kind: 'chart', label: args.label, sublabel: args.sublabel, x: args.x, y: args.y });
+      if (opts.lost) throw new TypeError('lost response');
+    }));
+    const db = {
+      read: (q: { text: string }) => trip(async () => {
+        if (q.text.includes('visible_board')) {
+          if (opts.holdBoard) await boardReady;
+          boardRead = true;
+          return opts.missing ? [] : [{ id: 1n, name: 'main' }];
+        }
+        if (q.text.includes('visible_node')) {
+          if (opts.readFails) throw new DbError(503, 'unavailable');
+          idsRead = true;
+          return [...nodes];
+        }
+        throw new Error(`unexpected read ${q.text}`);
+      }),
+      call,
+    };
+    const ledger = { claim: async () => opts.first === false ? { first: false, text: 'committed id=77', ageS: 1 } : { first: true }, settle: vi.fn(async () => {}) };
+    const t = { ctx: { db, ledger }, signal: new AbortController().signal, named: () => {}, deadline: Date.now() + 15_000 } as never;
+    const chart = (patch = {}) => TOOLS.create_chart.run(TOOLS.create_chart.input.parse({ ...input, ...patch }) as never, t);
+    return { chart, call, releaseBoard, idsRead: () => idsRead };
+  };
+
+  it('overlaps the board and existing-id reads, then writes and reads the new id', async () => {
+    const { chart, call, releaseBoard, idsRead } = setup({ holdBoard: true });
+    const pending = chart();
+    try {
+      await vi.waitFor(() => expect(idsRead()).toBe(true));
+      expect(call).not.toHaveBeenCalled();
+    } finally {
+      releaseBoard();
+      await pending;
+    }
+    expect(text(await pending)).toMatch(/^committed id=77 .*board=main$/);
+    expect(call).toHaveBeenCalledTimes(1);
+  });
+
+  it.each([
+    [{ missing: true }, {}, /board 1 not found/],
+    [{ readFails: true }, {}, /unavailable/],
+    [{}, { source: '' }, /REJECTED/],
+    [{}, { type: 'unknown' }, /REJECTED/],
+    [{ missing: true, first: false }, {}, /board 1 not found/],
+  ])('does not write when validation or either read fails (%j, %j)', async (opts, patch, message) => {
+    const { chart, call } = setup(opts);
+    await expect(chart(patch)).rejects.toThrow(message);
+    expect(call).not.toHaveBeenCalled();
+  });
+
+  it('keeps dedupe and lost-response recovery from creating another chart', async () => {
+    for (const opts of [{ first: false }, { lost: true }]) {
+      const { chart, call } = setup(opts);
+      expect(text(await chart())).toMatch(/^committed id=77 /);
+      expect(call).toHaveBeenCalledTimes(opts.first === false ? 0 : 1);
+    }
+  });
+});
+
 describe('create_edge round trips', () => {
   const CAP = 'cap_' + 'A'.repeat(22);
   const setup = (opts: { board?: boolean; nodes?: bigint[]; first?: boolean; batch?: boolean } = {}) => {
