@@ -4,7 +4,7 @@
  *  - stroke: the authored Agents and Systems icons, in the strokeIcon family
  *    (16-unit grid, stroke 1.3, round caps and joins, currentColor). They take
  *    the node's ink, colour or focal accent.
- *  - brand: AI and Cloud logos, each brand's own artwork in its own colours,
+ *  - brand: AI, Cloud and pack logos, each brand's own artwork in its own colours,
  *    with its dark-background file on dark themes when it has one (D17, D18).
  *    Never tinted by the theme or the node.
  * Logo artwork is generated into logos/<id>.ts by scripts/vendor-logos.mjs, one
@@ -92,7 +92,8 @@ const STROKES: Readonly<Record<string, Stroke>> = {
 };
 
 /** Neutral glyphs on the same grid: they stand for a pack, and for the products whose owners
- *  have not cleared a mark (GENERIC). Never a brand's colour or a brand's shape. */
+ *  have not cleared a mark (GENERIC). Never a brand's colour or a brand's shape.
+ *  Delete a GENERIC entry when a mark is cleared: stroke wins over brand in iconPaint. */
 const GLYPHS: Readonly<Record<string, Stroke>> = {
   database: { d: 'M2.5 3.5a5.5 2 0 1 0 11 0 5.5 2 0 1 0-11 0ZM2.5 3.5v9c0 1.1 2.5 2 5.5 2s5.5-.9 5.5-2v-9M2.5 8c0 1.1 2.5 2 5.5 2s5.5-.9 5.5-2' },
   cloud: { d: 'M4.5 12.5a3 3 0 0 1-.3-5.98A4 4 0 0 1 12 7.2a2.65 2.65 0 0 1-.5 5.3Z' },

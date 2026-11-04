@@ -10,7 +10,8 @@ import {
   parseChart,
 } from '../../module/src/chart-contracts';
 import { CHART_NOT_LOADED, buildLibraryPayload, iconNodePlacement, insertRefusal, parseLibraryPayload, samplePlacement, saveRefusal, type LibraryPayloadV1 } from './library';
-import { ARCHITECTURE_ICON_RULE, ICON_NODE_H, ICON_NODE_W, ICONS } from '../../module/src/node-icons';
+import { ARCHITECTURE_ICON_RULE, ICON_NODE_H, ICON_NODE_W, ICONS, iconTextTop } from '../../module/src/node-icons';
+import { layoutNodeText } from './node-layout';
 
 function mkNode(id: number, over: Partial<Node> = {}): Node {
   return {
@@ -315,6 +316,12 @@ describe('library icons (spec 2026-10-18)', () => {
   it('an icon tile places a 160 x 96 node of the icon\'s kind, named after it, with the icon', () => {
     expect(iconNodePlacement('model')).toEqual({ label: 'Model', sublabel: '', w: ICON_NODE_W, h: ICON_NODE_H, token: 'ink', focal: false, kind: 'external', icon: 'model' });
     expect([ICON_NODE_W % 4, ICON_NODE_H % 4]).toEqual([0, 0]);
+    // a long name widens the tile, on the grid, until the label is shown in full
+    const long = iconNodePlacement('azure-aks');
+    expect(long.label).toBe('Azure Kubernetes Service');
+    expect(long.w).toBeGreaterThan(ICON_NODE_W);
+    expect(long.w % 4).toBe(0);
+    expect(layoutNodeText({ label: long.label, sublabel: '', size: 'm', shape: 'rect' }, long.w, long.h, null, false, iconTextTop('m')).title).toBe('');
     for (const i of ICONS) expect(iconNodePlacement(i.id).kind).toBe(i.kind);
     expect(() => iconNodePlacement('clippy')).toThrow("icon 'clippy' is not a library icon");
   });

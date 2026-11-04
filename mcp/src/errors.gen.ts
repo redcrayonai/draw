@@ -130,7 +130,7 @@ export const SENDER_ERRORS: readonly RegExp[] = [
   /^guest claim requires a different account identity$/,
   /^guest claim requires an ordinary manual board$/,
   /^guest claim requires the board owner$/,
-  /^icon '[^]*?' is not allowed; see the library's icon list$/,
+  /^icon '[^]*?' is not allowed; must be one of: the ids listed on create_node$/,
   /^icons are not supported on architecture boards yet$/,
   /^icons go on service, datastore, external and boundary nodes$/,
   /^ids and counts must have the same length \(got [^]*? and [^]*?\)$/,

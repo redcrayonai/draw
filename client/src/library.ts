@@ -10,8 +10,9 @@ import {
   parseChart,
   type ChartType,
 } from '../../module/src/chart-contracts';
-import { ARCHITECTURE_ICON_RULE, ICON_NODE_H, ICON_NODE_KINDS, ICON_NODE_W, iconSpec, isIconId } from '../../module/src/node-icons';
+import { ARCHITECTURE_ICON_RULE, ICON_NODE_H, ICON_NODE_KINDS, ICON_NODE_W, iconSpec, iconTextTop, isIconId } from '../../module/src/node-icons';
 import type { NodeFields } from './ops';
+import { layoutNodeText } from './node-layout';
 
 /**
  * A saved library item (spec "Library popover"). Coordinates are relative to
@@ -267,12 +268,22 @@ export function samplePlacement(type: ChartType): Omit<ChartFields, 'boardId' | 
   };
 }
 
-/** An icon tile's placement (spec 2026-10-18 D5): a 160 × 96 node of the
- *  icon's kind, labelled with its name, with the icon attached. */
+/** The narrowest width from ICON_NODE_W, on the 4 px grid, that shows `label` in full below the
+ *  icon. A boundary's heading sits beside its icon, so it keeps the default. */
+function iconNodeWidth(label: string, kind: string): number {
+  if (kind === 'boundary') return ICON_NODE_W;
+  const n = { label, sublabel: '', size: 'm', shape: 'rect' };
+  let w = ICON_NODE_W;
+  while (w < 4 * ICON_NODE_W && layoutNodeText(n, w, ICON_NODE_H, null, false, iconTextTop('m')).title !== '') w += 4;
+  return w;
+}
+
+/** An icon tile's placement (spec 2026-10-18 D5): a 96 px tall node of the icon's kind, 160
+ *  wide or as wide as its name needs, labelled with the name, with the icon attached. */
 export function iconNodePlacement(icon: string): Omit<NodeFields, 'boardId' | 'x' | 'y'> {
   const spec = iconSpec(icon);
   if (spec === undefined) throw new Error(`icon '${icon}' is not a library icon`);
-  return { label: spec.name, sublabel: '', w: ICON_NODE_W, h: ICON_NODE_H, token: 'ink', focal: false, kind: spec.kind, icon: spec.id };
+  return { label: spec.name, sublabel: '', w: iconNodeWidth(spec.name, spec.kind), h: ICON_NODE_H, token: 'ink', focal: false, kind: spec.kind, icon: spec.id };
 }
 
 /**

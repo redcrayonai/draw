@@ -631,7 +631,7 @@ export class LibraryPopover {
     const onBoard = found.filter(i => this.board.has(i.id)).length;
     row.append(
       textSpan('lib-pack-name', s.title),
-      textSpan('lib-pack-meta', open && onBoard > 0 ? `· ${onBoard} on this board` : ''),
+      textSpan('lib-pack-meta', onBoard > 0 ? `· ${onBoard} on this board` : ''),
       textSpan('lib-pack-count', String(found.length)),
       chevronIcon(),
     );
@@ -707,10 +707,13 @@ export class LibraryPopover {
       p.textContent = text;
       return p;
     };
+    // Sticky at the popover's bottom, so the count and the keys show without scrolling the rows.
+    const foot = document.createElement('div');
+    foot.className = 'lib-foot';
+    foot.append(...(ranked.length > MAX_RESULTS ? [hintLine(`Showing ${MAX_RESULTS} of ${ranked.length} · keep typing to narrow`)] : []), hintLine(HINT));
     return [
       this.section('Search results', 1, ranked.slice(0, MAX_RESULTS).map(r => r.value({ group: r.group, highlight: r.highlight, term: r.term, q })), false),
-      ...(ranked.length > MAX_RESULTS ? [hintLine(`Showing ${MAX_RESULTS} of ${ranked.length} · keep typing to narrow`)] : []),
-      hintLine(HINT),
+      foot,
     ];
   }
 

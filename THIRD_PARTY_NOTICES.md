@@ -92,8 +92,8 @@ The MIT License for the OpenClaw, Hermes Agent and OpenCode files:
 
 ### Cloud logos
 
-Each mark is the provider's own artwork, downloaded on the date given below from
-the source named there. Each entry states what that source says about use. A
+Each mark is the provider's own artwork, downloaded on the date given in its entry
+from the source named there. Each entry states what that source says about use. A
 source's terms may speak to diagrams or documentation and say nothing about a
 tool that carries the files; the entry then says only what the source says. Some
 products draw a neutral icon and carry only their name.
@@ -122,20 +122,22 @@ products draw a neutral icon and carry only their name.
   reference Google's technology and tools, for instance in books or architecture
   diagrams." That is the deck's wording; it does not mention redistribution inside
   a tool. Google Cloud and its product names are trademarks of Google LLC.
-- **Vercel.** Source: Vercel brand assets, https://vercel.com/geist/brands.
+- **Vercel.** Source: Vercel brand assets, https://vercel.com/geist/brands
+  (downloaded 2026-10-18).
   Vercel, the Vercel design, Next.js and related marks, designs and logos are
   trademarks or registered trademarks of Vercel, Inc. or its affiliates in the
   US and other countries.
-- **Supabase.** Source: the Supabase logo kit, https://supabase.com/brand-assets.
+- **Supabase.** Source: the Supabase logo kit, https://supabase.com/brand-assets
+  (downloaded 2026-10-18).
   Supabase and the Supabase logo are trademarks of Supabase Inc.
 - **Firebase.** Source: the Firebase brand assets (the 2024 logomark),
-  https://firebase.google.com/brand-guidelines. Firebase and the Firebase logo
+  https://firebase.google.com/brand-guidelines (downloaded 2026-10-18). Firebase and the Firebase logo
   are trademarks of Google LLC.
-- **Neon.** Source: the Neon brand assets, https://neon.com/brand. Neon and the
-  Neon logo are trademarks of their owner (Neon, part of Databricks).
+- **Neon.** Source: the Neon brand assets, https://neon.com/brand (downloaded
+  2026-10-18). Neon and the Neon logo are trademarks of their owner (Neon, part of Databricks).
 - **Kubernetes.** Source: the CNCF artwork repository,
-  https://github.com/cncf/artwork/tree/main/projects/kubernetes, used under the
-  Apache License 2.0 (one of the two licences the logo files are offered
+  https://github.com/cncf/artwork/tree/main/projects/kubernetes (downloaded
+  2026-10-18), used under the Apache License 2.0 (one of the two licences the logo files are offered
   under). It is used without changes. Kubernetes® and the Kubernetes logo are
   registered trademarks of The Linux Foundation in the United States and/or
   other countries.

@@ -65,6 +65,10 @@ test('packs follow the board, search finds across providers, and a neutral icon 
   await expect(open.first().locator('.lib-pack-row')).toContainText('1 on this board');
   await owner.getByRole('searchbox', { name: 'Search the library' }).fill('clstor');
   await expect(owner.locator('.lib-row').first()).toHaveAttribute('title', 'Cloud Storage');
+  for (const [query, title] of [['aws s3', 'Amazon S3'], ['google cloud storage', 'Cloud Storage']]) {
+    await owner.getByRole('searchbox', { name: 'Search the library' }).fill(query);
+    await expect(owner.locator('.lib-row').first()).toHaveAttribute('title', title);
+  }
   await owner.keyboard.press('Escape');
   await owner.reload();
   await expect(owner.getByRole('img', { name: 'Amazon S3' })).toHaveCount(1);

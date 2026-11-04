@@ -461,10 +461,15 @@ describe('icons on the hosted create_node and update_node', () => {
     expect(h.calls.map(c => c.reducer)).toEqual(['update_node']);
   });
 
-  it('create_node lists every library icon id; update_node points to it', () => {
-    for (const id of ICON_IDS) expect(TOOLS.create_node.description, id).toContain(id);
-    expect(TOOLS.update_node.description).toContain('icon ids are listed on create_node');
-    expect(TOOLS.update_node.description).not.toContain('aws-s3');
+  it('create_node lists every library icon id in its icon parameter; update_node points to it; both descriptions stay short', () => {
+    const iconText = (tool: 'create_node' | 'update_node') => (TOOLS[tool].input as unknown as { shape: Record<string, { description?: string }> }).shape.icon.description ?? '';
+    for (const id of ICON_IDS) expect(iconText('create_node'), id).toContain(id);
+    expect(iconText('update_node')).toContain("create_node's icon parameter");
+    expect(iconText('update_node')).not.toContain('aws-s3');
+    for (const tool of ['create_node', 'update_node'] as const) {
+      expect(TOOLS[tool].description).not.toContain('aws-s3');
+      expect(TOOLS[tool].description.length, tool).toBeLessThan(4096);
+    }
   });
 });
 

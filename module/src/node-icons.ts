@@ -88,7 +88,7 @@ export const ICONS: readonly IconSpec[] = [
 
   // Cloud logos follow each provider's brand guidelines (spec D18): only the ones whose
   // published rules allow a diagram tool to show their mark. The others need written
-  // permission first (spec, "Cloud logos"). AWS and Azure take the names their rules ask for.
+  // permission first (spec, "Cloud logos").
   cloud('vercel', 'Vercel', ['next.js', 'edge', 'hosting', 'cloud']),
   cloud('supabase', 'Supabase', ['postgres', 'database', 'auth', 'backend']),
   cloud('firebase', 'Firebase', ['google', 'firestore', 'backend']),
@@ -262,13 +262,13 @@ export const ICONS: readonly IconSpec[] = [
   svc('kubernetes')('k8s-namespace', 'Namespace', ['k8s', 'kubernetes', 'ns', 'tenant', 'isolation']),
   svc('kubernetes')('k8s-hpa', 'Horizontal Pod Autoscaler', ['k8s', 'kubernetes', 'hpa', 'autoscaling', 'autoscaler', 'scale']),
   svc('kubernetes')('k8s-node', 'Node', ['k8s', 'kubernetes', 'worker', 'machine', 'kubelet']),
-  svc('kubernetes')('k8s-control-plane', 'Control Plane', ['k8s', 'kubernetes', 'master', 'scheduler', 'controller manager']),
+  svc('kubernetes')('k8s-control-plane', 'Control Plane', ['k8s', 'kubernetes', 'master', 'api server', 'apiserver', 'scheduler', 'controller manager']),
   svc('kubernetes')('k8s-network-policy', 'Network Policy', ['k8s', 'kubernetes', 'netpol', 'firewall', 'network', 'security']),
   svc('kubernetes')('k8s-service-account', 'Service Account', ['k8s', 'kubernetes', 'sa', 'identity', 'rbac', 'permissions']),
 
   svc('cncf')('prometheus', 'Prometheus', ['metrics', 'monitoring', 'alerting', 'promql', 'observability']),
   svc('cncf')('envoy', 'Envoy', ['proxy', 'service mesh', 'sidecar', 'load balancer']),
-  svc('cncf')('helm', 'Helm', ['chart', 'package manager', 'kubernetes', 'k8s', 'release']),
+  svc('cncf')('helm', 'Helm', ['helm chart', 'package manager', 'kubernetes', 'k8s', 'release']),
   svc('cncf')('argo', 'Argo', ['argocd', 'argo cd', 'gitops', 'workflows', 'ci/cd', 'deploy']),
   svc('cncf')('flux', 'Flux', ['fluxcd', 'gitops', 'continuous delivery', 'deploy', 'kubernetes', 'k8s']),
   svc('cncf')('istio', 'Istio', ['service mesh', 'mesh', 'sidecar', 'mtls', 'kubernetes', 'k8s']),

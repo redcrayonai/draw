@@ -197,7 +197,7 @@ describe('LibraryPopover', () => {
     const closed = pack(host, 'cloudflare');
     expect(closed.classList.contains('lib-pack-open')).toBe(false);
     expect(closed.querySelector('.lib-pack-row')!.getAttribute('aria-expanded')).toBe('false');
-    expect(closed.querySelector('.lib-pack-row')!.textContent).not.toContain('on this board');
+    expect(closed.querySelector('.lib-pack-row')!.textContent).toContain('1 on this board');
     (closed.querySelector('.lib-pack-row') as HTMLButtonElement).click();
     expect(pack(host, 'cloudflare').classList.contains('lib-pack-open')).toBe(true);
     (pack(host, 'cloudflare').querySelector('.lib-pack-row') as HTMLButtonElement).click();
@@ -377,6 +377,7 @@ describe('LibraryPopover', () => {
     expect(all.length).toBeGreaterThan(40);
     expect(host.querySelectorAll('.lib-row')).toHaveLength(40);
     expect(results(host)).toEqual(all.slice(0, 40).map(r => r.name));
+    expect(host.querySelectorAll('.lib-foot > .lib-hint')).toHaveLength(2);
     expect([...host.querySelectorAll('.lib-hint')].map(h => h.textContent)).toEqual([
       `Showing 40 of ${all.length} · keep typing to narrow`,
       '↵ place top result · ↑↓ move · drag to canvas',
@@ -482,12 +483,22 @@ describe('LibraryPopover', () => {
       ['xai', { kind: 'icon', icon: 'grok' }],
       ['k8s', { kind: 'icon', icon: 'kubernetes' }],
       ['lb', { kind: 'icon', icon: 'aws-elb' }],
+      ['aws s3', { kind: 'icon', icon: 'aws-s3' }],
+      ['google cloud storage', { kind: 'icon', icon: 'gcp-cloud-storage' }],
     ] as const) {
       pop.open();
       type(search, query);
       key(search, { key: 'Enter' });
       expect(deps.onPick, query).toHaveBeenLastCalledWith(pick);
     }
+    pop.open();
+    type(search, 'chart');
+    key(search, { key: 'Enter' });
+    expect((deps.onPick.mock.lastCall![0] as { kind: string }).kind).toBe('chart');
+    pop.open();
+    type(search, 'apiserver');
+    key(search, { key: 'Enter' });
+    expect(deps.onPick).toHaveBeenLastCalledWith({ kind: 'icon', icon: 'k8s-control-plane' });
     pop.open();
     type(search, 'auth');
     key(search, { key: 'Enter' });

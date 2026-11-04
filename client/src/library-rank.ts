@@ -7,11 +7,12 @@
  * Sort key, left to right: [exact name, strong match on this board, tier, on this
  * board, span, input index]. Tier 0 name prefix, 1 name word prefix, 2 a term equal
  * to the query, 3 name substring, 4 name fuzzy (queries of 2+ characters), 5 id,
- * partial term or section title. A strong match is tier 2 or better.
+ * partial term or section title, or every word of a multi-word query found in those.
+ * A strong match is tier 2 or better.
  */
 
 export interface SearchEntry<T> { value: T; name: string; id: string; terms: readonly string[]; group: string; onBoard: boolean }
-/** `highlight` holds indexes into `name`; `term` is the matched term when name, id and group did not match. */
+/** `highlight` holds indexes into `name`; `term` is the matched term when the name did not match. */
 export interface RankedEntry<T> { value: T; name: string; group: string; highlight: readonly number[]; term?: string }
 
 const range = (start: number, len: number): number[] => Array.from({ length: len }, (_, i) => start + i);
@@ -33,7 +34,7 @@ function fuzzy(text: string, q: string): number[] | null {
 
 interface Hit { exact: boolean; tier: number; span: number; highlight: number[]; term?: string }
 
-function match<T>(q: string, en: SearchEntry<T>): Hit | null {
+function matchWhole<T>(q: string, en: SearchEntry<T>): Hit | null {
   const name = en.name.toLowerCase();
   const exact = name === q;
   if (name.startsWith(q)) return { exact, tier: 0, span: q.length, highlight: range(0, q.length) };
@@ -52,6 +53,18 @@ function match<T>(q: string, en: SearchEntry<T>): Hit | null {
   }
   const term = en.terms.find(t => t.toLowerCase().includes(q));
   return term === undefined ? null : { exact, tier: 5, span: 0, highlight: [], term };
+}
+
+/** The whole query first; failing that, a query with spaces matches when every word is in the name, id, group or a term. */
+function match<T>(q: string, en: SearchEntry<T>): Hit | null {
+  const whole = matchWhole(q, en);
+  if (whole || !/\s/.test(q)) return whole;
+  const own = `${en.name} ${en.id}`.toLowerCase();
+  const hay = [en.group, ...en.terms].map(h => h.toLowerCase());
+  const words = q.split(/\s+/);
+  if (!words.every(w => own.includes(w) || hay.some(h => h.includes(w)))) return null;
+  // The span is the words the name and id lack, so `aws s3` lists Amazon S3 before the AWS lead.
+  return { exact: false, tier: 5, span: words.filter(w => !own.includes(w)).length, highlight: [] };
 }
 
 /** The entries that match `query`, best first; an empty or blank query matches nothing. */
