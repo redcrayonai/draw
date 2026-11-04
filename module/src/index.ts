@@ -3740,9 +3740,8 @@ function updateRef(ctx: any, { id, startLine, endLine, blobSha, snippet, status 
     const checkpoint = changed ? nextCheckpoint(ctx, ref.boardId) : ref.checkpoint;
     ctx.db.codeRef.id.update({ ...ref, startLine, endLine, blobSha, snippet, status, checkpoint });
   }
-  // Ref text and positions do not affect counters, but every edit advances board recency.
-  const stats = status === ref.status ? ctx.db.boardStats.boardId.find(ref.boardId) : undefined;
-  if (stats) ctx.db.boardStats.boardId.update({ ...stats, updatedAt: ctx.timestamp });
+  // Ref text and positions do not affect counters: a checkpoint moving many refs is cosmetic to the dashboards.
+  if (status === ref.status && ctx.db.boardStats.boardId.find(ref.boardId)) touch(ctx, ref.boardId);
   else refreshStats(ctx, ref.boardId);
   if (status !== ref.status) {
     emit(ctx, ref.boardId, 'coderef.status', { symbol: ref.symbol, status });

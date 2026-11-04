@@ -369,7 +369,7 @@ test('M2 health: a source citation that is not ok counts as stale, never as prov
   assert.deepEqual(pick(row, keys), { shownEdges: 2, evImport: 0, evSource: 0, evStale: 2 });
 });
 
-test('M2 health: ref edits retain counters and advance recency; status changes and missing stats recount', async () => {
+test('M2 health: ref edits retain counters and touch recency at most once a minute; status changes and missing stats recount', async () => {
   const a = await mint();
   const B = await createBoardAs(a, named('ref-stats'));
   const n = await nodeAs(a, B, 'n');
@@ -377,6 +377,7 @@ test('M2 health: ref edits retain counters and advance recency; status changes a
   await ok(a.token, 'add_code_ref', [B, 'node', n, 'a.ts', 'f', 1, 1, SHA, '', '']);
   const [ref] = await sql(OWNER, `SELECT * FROM code_ref WHERE board_id = ${B}`);
   let before = await statsOf(B);
+  let prior = 'ok';
   const edit = status => ok(a.token, 'update_code_ref', [ref.id, 2, 2, SHA, '', status]);
   for (const status of ['ok', 'stale', 'stale', 'ambiguous', 'ok']) {
     await edit(status);
@@ -384,9 +385,10 @@ test('M2 health: ref edits retain counters and advance recency; status changes a
     assert.deepEqual(pick(after, ['refsOk', 'refsStale', 'refsAmbiguous']), {
       refsOk: Number(status === 'ok'), refsStale: Number(status === 'stale'), refsAmbiguous: Number(status === 'ambiguous'),
     });
-    assert.ok(micros(after.updatedAt) > micros(before.updatedAt));
+    assert.equal(micros(after.updatedAt) > micros(before.updatedAt), status !== prior, `${prior} to ${status}`);
     assert.deepEqual(pick(after, ['createdBy', 'createdAt', 'snapshotAt', 'nodes', 'repoFiles']), pick(before, ['createdBy', 'createdAt', 'snapshotAt', 'nodes', 'repoFiles']));
     before = after;
+    prior = status;
   }
   await sql(OWNER, `DELETE FROM board_stats WHERE board_id = ${B}`);
   await edit('ok');
