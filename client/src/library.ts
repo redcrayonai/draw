@@ -268,10 +268,8 @@ export function samplePlacement(type: ChartType): Omit<ChartFields, 'boardId' | 
   };
 }
 
-/** The narrowest width from ICON_NODE_W, on the 4 px grid, that shows `label` in full below the
- *  icon. A boundary's heading sits beside its icon, so it keeps the default. */
-function iconNodeWidth(label: string, kind: string): number {
-  if (kind === 'boundary') return ICON_NODE_W;
+/** The narrowest width from ICON_NODE_W, on the 4 px grid, that shows `label` in full below the icon. */
+function iconNodeWidth(label: string): number {
   const n = { label, sublabel: '', size: 'm', shape: 'rect' };
   let w = ICON_NODE_W;
   while (w < 4 * ICON_NODE_W && layoutNodeText(n, w, ICON_NODE_H, null, false, iconTextTop('m')).title !== '') w += 4;
@@ -283,7 +281,7 @@ function iconNodeWidth(label: string, kind: string): number {
 export function iconNodePlacement(icon: string): Omit<NodeFields, 'boardId' | 'x' | 'y'> {
   const spec = iconSpec(icon);
   if (spec === undefined) throw new Error(`icon '${icon}' is not a library icon`);
-  return { label: spec.name, sublabel: '', w: iconNodeWidth(spec.name, spec.kind), h: ICON_NODE_H, token: 'ink', focal: false, kind: spec.kind, icon: spec.id };
+  return { label: spec.name, sublabel: '', w: iconNodeWidth(spec.name), h: ICON_NODE_H, token: 'ink', focal: false, kind: spec.kind, icon: spec.id };
 }
 
 /**
