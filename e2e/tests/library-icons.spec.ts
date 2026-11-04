@@ -52,3 +52,24 @@ test('library icons are placed from search, saved, shown to a collaborator and e
   for (const name of ['Orchestrator', 'Grok', 'Kubernetes']) expect(svg).toMatch(new RegExp(`<title[^>]*>${name}</title>`));
   expect((svg.match(/class="node-icon-slot"/g) ?? []).length).toBe(3);
 });
+
+test('packs follow the board, search finds across providers, and a neutral icon survives export', async ({ guest, stack }) => {
+  const owner = await guest();
+  await openBoard(owner, stack.url);
+  await placeIcon(owner, 's3', 400, 200); // art
+  await placeIcon(owner, 'r2', 640, 200); // neutral stroke
+  await expect(owner.getByRole('img', { name: /^(Amazon S3|Cloudflare R2)$/ })).toHaveCount(2);
+  await owner.keyboard.press('l');
+  const open = owner.locator('.lib-pack-open');
+  await expect(open).toHaveCount(2);
+  await expect(open.first().locator('.lib-pack-row')).toContainText('1 on this board');
+  await owner.getByRole('searchbox', { name: 'Search the library' }).fill('clstor');
+  await expect(owner.locator('.lib-row').first()).toHaveAttribute('title', 'Cloud Storage');
+  await owner.keyboard.press('Escape');
+  await owner.reload();
+  await expect(owner.getByRole('img', { name: 'Amazon S3' })).toHaveCount(1);
+  const stream = await (await exportSvg(owner)).createReadStream();
+  let svg = '';
+  for await (const chunk of stream!) svg += chunk;
+  for (const name of ['Amazon S3', 'Cloudflare R2']) expect(svg).toMatch(new RegExp(`<title[^>]*>${name}</title>`));
+});
