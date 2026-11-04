@@ -397,6 +397,38 @@ test('M2 health: ref edits retain counters and touch recency at most once a minu
   assert.equal(micros(restored.createdAt), 0);
 });
 
+test('chart creation preserves unrelated health counters and metadata, and repairs missing stats', async () => {
+  const a = await mint();
+  const B = await createBoardAs(a, named('chart-stats'));
+  const n1 = await nodeAs(a, B, 'shown');
+  const n2 = await nodeAs(a, B, 'hidden');
+  await ok(a.token, 'create_edge', [B, n1, n2, 'uses', 'human:test', NONE, NONE, NONE]);
+  await ok(a.token, 'set_node_hidden', [n2, true, NONE]);
+  await ok(a.token, 'add_repo_files', [B, ['a.ts']]);
+  await ok(a.token, 'add_code_ref', [B, 'node', n1, 'a.ts', 'f', 1, 1, SHA, '', '']);
+  const create = (label, csv = 'label,value\nx,1') => ok(a.token, 'create_chart', [B, label, '', 0, 0, 320, 200, 'bars', csv, NONE, { some: 'agent: chart stats test' }]);
+  const before = await statsOf(B);
+  await create('first');
+  const after = await statsOf(B);
+  assert.deepEqual(after, { ...before, nodes: before.nodes + 1, shownNodes: before.shownNodes + 1, updatedAt: after.updatedAt, lastEventId: after.lastEventId });
+  assert.ok(micros(after.updatedAt) > micros(before.updatedAt));
+  assert.equal((await sql(OWNER, `SELECT * FROM chart WHERE board_id = ${B}`)).length, 1);
+  const event = (await outboxOf(B)).find(row => row.id === after.lastEventId);
+  assert.equal(event.type, 'node.created');
+  assert.deepEqual(JSON.parse(event.payload), { label: 'first', kind: 'chart' });
+
+  const invalid = await call(a.token, 'create_chart', [B, 'invalid', '', 0, 0, 320, 200, 'bars', 'label,value\nx,no-number', NONE, NONE]);
+  assert.equal(invalid.status, 530);
+  assert.deepEqual(await statsOf(B), after, 'a refused chart leaves the counters unchanged');
+
+  await sql(OWNER, `DELETE FROM board_stats WHERE board_id = ${B}`);
+  await create('second');
+  const restored = await statsOf(B);
+  const counters = Object.keys(after).filter(key => !['createdBy', 'createdAt', 'updatedAt', 'snapshotAt', 'lastEventId'].includes(key));
+  assert.deepEqual(pick(restored, counters), { ...pick(after, counters), nodes: after.nodes + 1, shownNodes: after.shownNodes + 1 });
+  assert.equal(micros(restored.createdAt), 0);
+});
+
 test('batch creates commit per item, return ids, retry safely and preserve counters', async () => {
   const a = await mint();
   const B = await createBoardAs(a, named('batch'));
