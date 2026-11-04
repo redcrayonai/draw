@@ -1581,7 +1581,8 @@ function ownsBoardAs(ctx: any, boardId: bigint, identity: any): boolean {
 }
 
 function findAgentGrant(ctx: any, boardId: bigint, agent: any): any {
-  for (const grant of ctx.db.agentGrant.agent.filter(agent)) if (grant.boardId === boardId) return grant;
+  // Board listings check each grant: scanning the agent's grants here makes them quadratic.
+  for (const grant of ctx.db.agentGrant.boardId.filter(boardId)) if (grant.agent.isEqual(agent)) return grant;
   return undefined;
 }
 
