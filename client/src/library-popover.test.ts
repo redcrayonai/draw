@@ -686,6 +686,19 @@ describe('LibraryPopover', () => {
     expect(rule).toMatch(/touch-action:\s*pan-y/);
   });
 
+  it('style.css: a long pack name shrinks with an ellipsis instead of pushing the chevron out', async () => {
+    const fsModule = 'node:fs';
+    const { readFileSync } = (await import(/* @vite-ignore */ fsModule)) as { readFileSync(path: string, encoding: 'utf8'): string };
+    const cwd = (globalThis as unknown as { process: { cwd(): string } }).process.cwd();
+    const css = readFileSync(`${cwd}/src/style.css`, 'utf8');
+    const start = css.indexOf('\n.lib-pack-name {');
+    expect(start).toBeGreaterThan(0);
+    const rule = css.slice(start, css.indexOf('}', start));
+    expect(rule).not.toMatch(/flex:\s*none/);
+    expect(rule).toMatch(/min-width:\s*0/);
+    expect(rule).toMatch(/text-overflow:\s*ellipsis/);
+  });
+
   it('lists saved items newest first, each with a thumbnail rect per node', () => {
     const { pop, host } = setup([item(1, 'Old')]);
     pop.open();

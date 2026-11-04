@@ -1836,9 +1836,16 @@ svg[viewBox='0 0 16 16'] * {
 }
 
 .lib-pack-row .lib-node-icon,
-.lib-pack-name,
 .lib-pack-chev {
   flex: none;
+}
+
+/* A long pack name gives way before the count and chevron do (375 px: Google Cloud). */
+.lib-pack-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .lib-pack-meta {
