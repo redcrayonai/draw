@@ -1,13 +1,9 @@
 /**
  * The session flows' SessionConn over the database's HTTP API (spec §3). The
  * flows read rows synchronously, as from a live cache; here, before each
- * `call`, if a write happened since the last read, the rows are read again:
- * the caller's my_boards, then the scoped board, session, repo_file, code_ref,
- * node, edge, session_route, route_event, change note, threat, code consent
- * and line hash views filtered by board id (a
- * Worker keeps at most 6 requests open and queues the rest). reducers.* post
- * /call and mark the snapshot stale. Session startup reads only the board,
- * session and repo files; its writes need no pre-read.
+ * `call`, the views that callback needs are loaded and cached until a write.
+ * Reads are scoped to the caller and board. reducers.* post /call and mark
+ * the snapshot stale; write-only callbacks need no fresh snapshot.
  */
 import type { Call, SessionConn, SessionDb } from '../../agent/src/session';
 import type { DbHttp } from '../../shared/db-http';
@@ -37,9 +33,26 @@ const TABLES = [
   ['visibleCodeRefHash', 'visible_code_ref_hash', 'board_id'],
   ['visibleEdgeEvidenceHash', 'visible_edge_evidence_hash', 'board_id'],
 ] as const;
-const SESSION_TABLES = TABLES.filter(([key]) => ['visibleBoard', 'visibleSession', 'visibleRepoFile'].includes(key));
-
-const WRITE_ONLY = new Set(['update_code_ref', 'update_edge_evidence', 'set_change_note_readers', 'set_code_ref_hashes', 'set_edge_evidence_code']);
+type TableKey = (typeof TABLES)[number][0];
+const SESSION_TABLES: TableKey[] = ['visibleBoard', 'visibleSession', 'visibleRepoFile'];
+const CHECKPOINT_TABLES: TableKey[] = ['visibleSession', 'visibleCodeRef', 'visibleNode', 'visibleEdge', 'visibleCodeRefHash', 'visibleEdgeEvidenceHash'];
+const ROUTE_TABLES: TableKey[] = ['visibleSession', 'visibleNode', 'visibleSessionRoute', 'visibleRouteEvent'];
+// Keep these in sync with the callbacks in session.ts/routes.ts. Unknown labels load all views.
+const READS: Record<string, readonly TableKey[]> = {
+  'find session board': SESSION_TABLES,
+  'read active session': SESSION_TABLES,
+  'read code consent': ['visibleBoardCodeConsent'],
+  'read repo files': ['visibleRepoFile'],
+  'read code refs': ['visibleCodeRef'],
+  'find new code ref': ['visibleCodeRef'],
+  'read code ref hashes': ['visibleCodeRefHash'],
+  'read session': CHECKPOINT_TABLES,
+  'read checkpoint coverage': [...CHECKPOINT_TABLES, 'visibleChangeNote'],
+  'read checkpoint': ['visibleSession', 'visibleRouteEvent'],
+  'read route': ROUTE_TABLES,
+  'read committed arrival': ROUTE_TABLES,
+};
+const WRITE_ONLY = new Set(['start_session', 'add_repo_files', 'add_code_ref', 'update_edge_evidence', 'set_change_note_readers', 'set_code_ref_hashes', 'set_edge_evidence_code', 'mark_checkpoint', 'arrive', 'set_session_remote']);
 
 export function createSnapshot(http: Pick<DbHttp, 'sqlTypedAs' | 'callAs'>, token: string, board: BoardPick) {
   let stale = true;
@@ -49,7 +62,7 @@ export function createSnapshot(http: Pick<DbHttp, 'sqlTypedAs' | 'callAs'>, toke
   const sql = async (query: string) => decodeRows(await http.sqlTypedAs(token, query, signal));
 
   async function read(tables: readonly (typeof TABLES)[number][]): Promise<void> {
-    const mine = await sql('SELECT * FROM my_boards');
+    const mine = stale ? await sql('SELECT * FROM my_boards') : rows.get('myBoards')!;
     const id = typeof board === 'bigint' ? board : board(mine as MyBoardRow[]);
     // id is a bigint from our own code, never text from a model or a user.
     const data = await Promise.all(
@@ -58,7 +71,7 @@ export function createSnapshot(http: Pick<DbHttp, 'sqlTypedAs' | 'callAs'>, toke
         return sql(`SELECT * FROM ${name} WHERE ${column} = ${id}`);
       })
     );
-    rows.clear();
+    if (stale) rows.clear();
     rows.set('myBoards', mine);
     tables.forEach(([key], i) => rows.set(key, data[i]));
     stale = false;
@@ -110,11 +123,15 @@ export function createSnapshot(http: Pick<DbHttp, 'sqlTypedAs' | 'callAs'>, toke
 
   const call: Call = async (label, fn, timeoutMs = CALL_TIMEOUT_MS) => {
     signal = AbortSignal.timeout(timeoutMs);
-    // These callbacks only write; the reducer enforces access and deduplicates repo files.
-    if (label === 'start_session' || label === 'add_repo_files') return fn(conn);
-    const tables = label === 'find session board' || label === 'read active session' ? SESSION_TABLES : TABLES;
-    // Checkpoint's per-ref writes read nothing new (guardSecrets reads only a ref's unchanged path), so they skip the re-read; keyed on session.ts's labels.
-    if (tables.some(([key]) => !rows.has(key)) || (stale && !WRITE_ONLY.has(label))) await read(tables);
+    if (WRITE_ONLY.has(label)) return fn(conn);
+    // guardSecrets needs the ref's unchanged path even on a write-only call.
+    if (label === 'update_code_ref') {
+      if (!rows.has('visibleCodeRef')) await read(TABLES.filter(([key]) => key === 'visibleCodeRef'));
+      return fn(conn);
+    }
+    const keys = READS[label];
+    const tables = TABLES.filter(([key]) => (!keys || keys.includes(key)) && (stale || !rows.has(key)));
+    if (tables.length) await read(tables);
     return fn(conn);
   };
 

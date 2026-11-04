@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import { DbError, type DbHttp, type DbType } from '../../shared/db-http';
 import { createSnapshot } from './snapshot';
-import { startSessionFlow } from '../../agent/src/session';
+import { addCodeRefFlow, guardSecrets, markCheckpointFlow, startSessionFlow } from '../../agent/src/session';
 import { localDeps } from '../../agent/src/local-deps';
 
 // Column types as /sql's schema states them.
@@ -72,6 +72,50 @@ const TABLES = {
 };
 
 describe('createSnapshot', () => {
+  it('checkpoints with only the required views and reads the committed checkpoint', async () => {
+    const tables = { ...TABLES, visible_code_ref: table([], []), visible_edge: table([], []) };
+    const { http, queries, calls } = fakeHttp(tables);
+    const post = http.callAs;
+    http.callAs = async (...args) => {
+      await post(...args);
+      if (args[1] === 'mark_checkpoint') tables.visible_session = {
+        ...TABLES.visible_session, rows: [[3, 7, '/r', 'b', 'h', 1, args[2][2], [1], [2]]],
+      };
+    };
+    const snap = createSnapshot(http, 'tok', 7n);
+    const result = await markCheckpointFlow({ boardId: 7n }, {
+      ...localDeps, call: guardSecrets(snap.call), progress: new Map(),
+      git: { ...localDeps.git, listed: () => [], changeCandidates: () => [], deleted: () => [], untracked: () => [], head: () => 'h' },
+    });
+    expect(result.checkpoint).toBe(1);
+    expect(calls.map(([name]) => name)).toEqual(['mark_checkpoint']);
+    expect(queries).toHaveLength(12);
+    expect(queries.some(q => /visible_(threat|repo_file|board WHERE)/.test(q))).toBe(false);
+  });
+
+  it('adds a reference with six SQL reads and retries with three', async () => {
+    const tables = { ...TABLES, visible_code_ref: { ...TABLES.visible_code_ref, rows: [] as unknown[][] } };
+    const { http, queries, calls } = fakeHttp(tables);
+    const post = http.callAs;
+    http.callAs = async (...args) => {
+      await post(...args);
+      if (args[1] === 'add_code_ref') tables.visible_code_ref.rows = TABLES.visible_code_ref.rows;
+    };
+    const snap = createSnapshot(http, 'tok', 7n);
+    const source = 'function f() {}';
+    const add = () => addCodeRefFlow({ boardId: 7n, repoRoot: '/r', targetKind: 'node', targetId: 5n, path: 'a.ts', symbol: 'f' }, {
+      ...localDeps, call: guardSecrets(snap.call),
+      readSource: () => ({ abs: '/r/a.ts', rel: 'a.ts', text: source, lines: [source], bytes: Buffer.from(source) }),
+      git: { ...localDeps.git, spelling: (_root, path) => path, isCitable: () => true, hashObject: () => 's' },
+    });
+    expect(await add()).toMatchObject({ id: MAX, existing: false });
+    expect(calls.map(([name]) => name)).toEqual(['add_code_ref', 'set_code_ref_hashes']);
+    expect(queries).toHaveLength(6);
+    expect(await add()).toMatchObject({ id: MAX, existing: true });
+    expect(queries).toHaveLength(9);
+    expect(calls).toHaveLength(2);
+  });
+
   it.each([false, true])('starts a session with four reads even across file chunks (existing=%s)', async existing => {
     const tables = {
       ...TABLES,
@@ -102,14 +146,14 @@ describe('createSnapshot', () => {
     expect(queries).toHaveLength(8);
   });
 
-  it('loads the full snapshot after a session-only read and invalidates it after writes', async () => {
+  it('loads ref paths for guarded writes after a session-only read and invalidates them after writes', async () => {
     const tables = { ...TABLES };
     const { http } = fakeHttp(tables);
     const snap = createSnapshot(http, 'tok', 7n);
     await snap.call('find session board', async conn => expect([...conn.db.visibleSession.iter()]).toHaveLength(1));
-    await snap.call('set_code_ref_hashes', async conn => {
+    await guardSecrets(snap.call)('update_code_ref', async conn => {
       expect([...conn.db.visibleCodeRef.iter()]).toHaveLength(1);
-      await conn.reducers.setCodeRefHashes({ refId: MAX, lineHashes: 'a'.repeat(32) });
+      await conn.reducers.updateCodeRef({ id: MAX, startLine: 1, endLine: 2, blobSha: 's', snippet: 'x', status: 'ok' });
     });
     expect(await snap.call('read code refs', async conn => [...conn.db.visibleCodeRef.iter()])).toHaveLength(1);
     await snap.call('start_session', conn => conn.reducers.startSession({ name: 'main', repoRoot: '/r', baseSha: 'b' }));
@@ -223,9 +267,9 @@ describe('createSnapshot', () => {
     for (let i = 0; i < 5; i++) await snap.call('update_code_ref', conn => conn.reducers.updateCodeRef(ref));
     await snap.call('update_edge_evidence', conn => conn.reducers.updateEdgeEvidence({ edgeId: 6n, evidence: 'source:a.ts:2', status: 'ok' }));
     expect(calls).toHaveLength(6);
-    expect(queries).toHaveLength(14);
-    await snap.call('read code refs', async () => undefined);
-    expect(queries).toHaveLength(28);
+    expect(queries).toHaveLength(7);
+    await snap.call('read checkpoint coverage', async () => undefined);
+    expect(queries).toHaveLength(15);
   });
 
   it('a failed write still marks the rows stale: it may have landed', async () => {
