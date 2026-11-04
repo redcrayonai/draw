@@ -431,13 +431,18 @@ test('access is checked now, per action: roles, revocation and other workspaces'
 
 test('a refused capture or restore still spends a write', { skip: (process.env.MODULE_ENV ?? 'local') === 'local' && 'the local variant has no write budget' }, async () => {
   const P = person();
-  const tokens = async () => (await sql(OWNER, `SELECT tokens FROM write_budget WHERE identity = 0x${P.identity}`))[0].tokens;
+  const budget = async () => (await sql(OWNER, `SELECT tokens, refilled_at FROM write_budget WHERE identity = 0x${P.identity}`))[0];
+  const micros = v => Number(Array.isArray(v) ? v[0] : v.__timestamp_micros_since_unix_epoch__);
   const first = await capture(P, B); // not a member: refused, and makes P's budget row
   assert.equal(first.refused, true);
-  const before = await tokens();
+  const before = await budget();
   assert.equal((await capture(P, B)).refused, true);
   refused(await restoreCall(P, [1, key(), '']), 'unavailable');
-  assert.ok(await tokens() <= before - 1.5, `two refused calls spent ${before - await tokens()} writes`);
+  const after = await budget();
+  // A person's bucket refills 300 writes a minute, so the time between the calls hides part of the spend.
+  const refill = ((micros(after.refilledAt) - micros(before.refilledAt)) * 300) / 60e6;
+  const spent = before.tokens + refill - after.tokens;
+  assert.ok(spent >= 1.99, `two refused calls spent ${spent} writes`);
 });
 
 test('turning the plugin off stops every action and keeps the data; on again brings it back', async () => {
