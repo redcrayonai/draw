@@ -1629,9 +1629,9 @@ function memberBoardIds(ctx: any): Set<bigint> {
 }
 
 // Members' boards plus the opened links that include `layer`: the sensitive layers a link leaves out by default.
-function linkLayerBoardIds(ctx: any, layer: 'threats' | 'code'): Set<bigint> {
+function linkLayerBoardIds(ctx: any, layer: 'threats' | 'code', members?: ReadonlySet<bigint>): Set<bigint> {
   if (ctx.db.workspaceAccount.identity.find(ctx.sender)?.disabled) return new Set();
-  const boards = memberBoardIds(ctx);
+  const boards = members ? new Set(members) : memberBoardIds(ctx);
   if (isService(ctx) || isWorkspaceMachine(ctx)) return boards;
   for (const visit of ctx.db.linkVisit.viewer.filter(ctx.sender)) {
     const share = ctx.db.linkShare.boardId.find(visit.boardId);
@@ -3648,7 +3648,10 @@ function updateRef(ctx: any, { id, startLine, endLine, blobSha, snippet, status 
     const checkpoint = changed ? nextCheckpoint(ctx, ref.boardId) : ref.checkpoint;
     ctx.db.codeRef.id.update({ ...ref, startLine, endLine, blobSha, snippet, status, checkpoint });
   }
-  refreshStats(ctx, ref.boardId);
+  // Ref text and positions do not affect counters, but every edit advances board recency.
+  const stats = status === ref.status ? ctx.db.boardStats.boardId.find(ref.boardId) : undefined;
+  if (stats) ctx.db.boardStats.boardId.update({ ...stats, updatedAt: ctx.timestamp });
+  else refreshStats(ctx, ref.boardId);
   if (status !== ref.status) {
     emit(ctx, ref.boardId, 'coderef.status', { symbol: ref.symbol, status });
   }
@@ -5835,7 +5838,8 @@ export const myActivity = spacetimedb.view(
     eachMyBoard(ctx, (boardId, access) => {
       if (access !== 'public') boards.add(boardId);
     });
-    const layers = { code: linkLayerBoardIds(ctx, 'code'), threats: linkLayerBoardIds(ctx, 'threats') };
+    const members = memberBoardIds(ctx);
+    const layers = { code: linkLayerBoardIds(ctx, 'code', members), threats: linkLayerBoardIds(ctx, 'threats', members) };
     const rows: any[] = [];
     for (const boardId of boards) {
       for (const row of ctx.db.activityOutbox.boardId.filter(boardId)) {

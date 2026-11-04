@@ -301,6 +301,10 @@ test('an open link board sends code and threats only while the owner includes th
     assert.deepEqual(seen(), { refs: 0, threats: 0, snippet: '' });
     assert.deepEqual((await feedTypes()).filter(t => /^(coderef|threat)\./.test(t)), [], 'the feed leaves out code and threat events');
     assert.ok((await feedTypes()).includes('node.created'), 'the rest of the feed still reaches the visitor');
+    await ok(owner, 'set_link_share_includes', [B, false, true]);
+    assert.deepEqual((await feedTypes()).filter(t => /^(coderef|threat)\./.test(t)), ['coderef.added'], 'code visibility does not lend access to threats');
+    await ok(owner, 'set_link_share_includes', [B, true, false]);
+    assert.deepEqual((await feedTypes()).filter(t => /^(coderef|threat)\./.test(t)), ['threat.added'], 'threat visibility does not lend access to code');
     await ok(owner, 'set_link_share_includes', [B, true, true]);
     await waitFor(() => seen().refs === 1 && seen().threats === 1, 'includes reach the open tab');
     assert.equal(seen().snippet, 'export function verify() {}');
