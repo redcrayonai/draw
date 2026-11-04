@@ -1796,6 +1796,93 @@ svg[viewBox='0 0 16 16'] * {
   flex: none;
 }
 
+/* Icon packs: closed rows in two columns; an open pack takes the full width. */
+.lib-packs {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-1);
+}
+
+.lib-pack-open {
+  grid-column: 1 / -1;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  padding-bottom: var(--space-1);
+}
+
+.lib-pack-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  height: 32px;
+  padding: 0 8px;
+  font: 500 12px/1 var(--sans);
+  color: var(--ink);
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: var(--r-md);
+  cursor: pointer;
+  transition: background var(--dur) var(--ease), border-color var(--dur) var(--ease);
+}
+
+.lib-pack-row:hover {
+  background: var(--panel-hi);
+}
+
+.lib-pack-row:focus-visible {
+  border-color: var(--sel);
+}
+
+.lib-pack-row .lib-node-icon,
+.lib-pack-name,
+.lib-pack-chev {
+  flex: none;
+}
+
+.lib-pack-meta {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  font-size: 11px;
+  font-weight: 400;
+  color: var(--muted);
+  text-align: left;
+  white-space: nowrap;
+}
+
+.lib-pack-count {
+  font-size: 11px;
+  font-weight: 400;
+  color: var(--faint);
+}
+
+.lib-pack-chev {
+  color: var(--faint);
+}
+
+.lib-pack-open > .lib-pack-row .lib-pack-chev {
+  transform: rotate(90deg);
+}
+
+.lib-pack-more {
+  align-self: flex-end;
+  padding: 2px;
+  font: 400 11px/1.2 var(--sans);
+  color: var(--muted);
+  background: none;
+  border: 0;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  cursor: pointer;
+}
+
+.lib-pack-more:hover,
+.lib-pack-more:focus-visible {
+  color: var(--ink);
+}
+
 /* Search results: one 36 px row per match, the group on the right. */
 .lib-row {
   width: 100%;

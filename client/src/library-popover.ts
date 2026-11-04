@@ -1,10 +1,10 @@
 import type { LibraryItem } from './module_bindings/types';
 import type { NodeKind } from './interactions';
 import { CHART_CONTRACTS, CHART_TYPES, type ChartType } from '../../module/src/chart-contracts';
-import { ICON_SECTIONS } from '../../module/src/node-icons';
+import { ICON_SECTIONS, type IconSection, type IconSpec } from '../../module/src/node-icons';
 import { svgEl } from './charts/svg';
 import { rankEntries, type SearchEntry } from './library-rank';
-import { drawableIcons, iconSvg, loadLogos, logosReady } from './node-icons';
+import { drawableIcons, iconSvg, loadLogo, packGlyph } from './node-icons';
 
 /** What a library tile places. */
 export type LibraryPick =
@@ -27,6 +27,8 @@ export interface LibraryPopoverDeps {
   onDrop: (pick: LibraryPick, clientX: number, clientY: number) => void;
   onRename: (item: LibraryItem) => void;
   onDelete: (item: LibraryItem) => void;
+  /** The icon id of each node on this board, duplicates and unknown ids included. */
+  boardIcons: () => Iterable<string>;
 }
 
 export const EMPTY_LIBRARY = 'No saved items yet — select nodes and press ⇧L';
@@ -41,6 +43,10 @@ const OBJECTS: ReadonlyArray<{ kind: NodeKind; name: string }> = [
 
 /** Pointer travel (px) before a press on a tile becomes a drag. */
 const DRAG_SLOP = 4;
+
+const PACKS = ICON_SECTIONS.filter(s => s.pack);
+/** An open pack shows two rows of four until Show all. */
+const PACK_TILES = 8;
 
 type Mark = [keyof SVGElementTagNameMap, Record<string, string>, string?];
 const ROUND = { 'stroke-linecap': 'round', 'stroke-linejoin': 'round' };
@@ -121,9 +127,18 @@ function objectIcon(kind: NodeKind): Element | null {
   return icon === null ? null : (icon.cloneNode(true) as Element);
 }
 
-/** An empty 20 px icon box: a logo tile's placeholder while its artwork loads. */
-function pendingIcon(): SVGSVGElement {
-  return svgEl('svg', { class: 'lib-node-icon lib-node-icon-pending', width: '20', height: '20', viewBox: '0 0 20 20', 'aria-hidden': 'true' });
+/** An empty icon box: a logo's placeholder, in a tile or a pack row, while its artwork loads. */
+function pendingIcon(id: string, size = 20): SVGSVGElement {
+  const px = String(size);
+  return svgEl('svg', { class: 'lib-node-icon lib-node-icon-pending', 'data-icon': id, width: px, height: px, viewBox: `0 0 ${px} ${px}`, 'aria-hidden': 'true' });
+}
+
+const PENDING = '.lib-node-icon-pending[data-icon]';
+
+function chevronIcon(): SVGSVGElement {
+  const svg = svgEl('svg', { class: 'lib-pack-chev', width: '12', height: '12', viewBox: '0 0 12 12', fill: 'none', stroke: 'currentColor', 'stroke-width': '1.5', ...ROUND, 'aria-hidden': 'true' });
+  svg.append(svgEl('path', { d: 'M4.5 2.5 8 6l-3.5 3.5' }));
+  return svg;
 }
 
 function dotsIcon(): SVGSVGElement {
@@ -176,6 +191,13 @@ function appendMarked(into: HTMLElement, text: string, at: readonly number[]): v
   }
 }
 
+function textSpan(className: string, text: string): HTMLSpanElement {
+  const span = document.createElement('span');
+  span.className = className;
+  span.textContent = text;
+  return span;
+}
+
 function emptyLine(text: string): HTMLParagraphElement {
   const p = document.createElement('p');
   p.className = 'lib-empty';
@@ -185,10 +207,10 @@ function emptyLine(text: string): HTMLParagraphElement {
 
 /**
  * The library popover above the dock (spec "Library popover", mock option A):
- * a search field, then Objects, Agents, Systems, AI logos, Cloud logos,
- * Charts and My library. Click or Enter arms a tile, a drag drops it on the
- * canvas, Esc closes. It owns no board state: main.ts turns picks into
- * placements.
+ * a search field, then Objects, Icon packs, Agents, Systems, AI logos, Cloud
+ * logos, Charts and My library. Click or Enter arms a tile, a drag drops it on
+ * the canvas, Esc closes. It owns no board state: main.ts turns picks into
+ * placements and says which icons the board has.
  */
 export class LibraryPopover {
   private readonly search: HTMLInputElement;
@@ -201,6 +223,13 @@ export class LibraryPopover {
   private thumbs = new Map<bigint, SVGSVGElement>();
   private menuFor: { item: LibraryItem; button: HTMLButtonElement } | null = null;
   private drag: { tile: HTMLElement; x: number; y: number; moved: boolean } | null = null;
+  /** Icon ids on this board and the packs they belong to, read on every render. */
+  private board = new Set<string>();
+  private boardPacks = new Set<IconSection>();
+  /** Packs opened or closed by hand and packs shown in full, until the popover closes. */
+  private openPacks = new Set<IconSection>();
+  private closedPacks = new Set<IconSection>();
+  private allShown = new Set<IconSection>();
 
   constructor(
     private readonly host: HTMLElement,
@@ -242,6 +271,9 @@ export class LibraryPopover {
     this.host.hidden = false;
     this.deps.anchor.setAttribute('aria-expanded', 'true');
     this.search.value = '';
+    this.openPacks.clear();
+    this.closedPacks.clear();
+    this.allShown.clear();
     this.render();
     this.search.focus();
   }
@@ -295,6 +327,16 @@ export class LibraryPopover {
       if (more !== null) {
         if (this.menuFor?.button === more) this.closeMenu(true);
         else this.openMenu(more);
+        return;
+      }
+      const pack = target.closest<HTMLElement>('[data-pack]')?.dataset.pack as IconSection | undefined;
+      if (pack !== undefined && target.closest('.lib-pack-row') !== null) {
+        this.togglePack(pack);
+        return;
+      }
+      if (pack !== undefined && target.closest('.lib-pack-more') !== null) {
+        this.allShown.add(pack);
+        this.render(`[data-pack="${pack}"] .lib-tile:nth-child(${PACK_TILES + 1})`);
         return;
       }
       const tile = target.closest<HTMLElement>('.lib-tile');
@@ -511,31 +553,41 @@ export class LibraryPopover {
     next?.focus();
   }
 
-  private render(): void {
+  /** Rebuild the body; `focusOn` selects the control that keeps focus, else a focused one yields to the search. */
+  private render(focusOn?: string): void {
     // A focused tile or ⋯ is about to be replaced: focus would drop to <body>.
     const hadFocus = this.body.contains(document.activeElement);
     this.closeMenu(false);
     this.picks.clear();
     const query = this.search.value.trim();
-    // Icons and logos (spec 2026-10-18): a logo whose artwork is still loading holds a same-size
-    // placeholder, filled in place when it lands (fillLogos): no rebuild, so a drag in
-    // progress, keyboard focus and the tile layout all survive it.
-    if (!logosReady()) void loadLogos().then(() => this.fillLogos());
-    this.body.replaceChildren(...(query === '' ? this.renderSections() : this.renderResults(query)));
-    if (hadFocus) {
+    const icons = drawableIcons();
+    this.board = new Set(this.deps.boardIcons());
+    // drawableIcons, so an id this client cannot draw opens no pack.
+    this.boardPacks = new Set(icons.filter(i => this.board.has(i.id) && PACKS.some(s => s.id === i.section)).map(i => i.section));
+    this.body.replaceChildren(...(query === '' ? this.renderSections(icons) : this.renderResults(query, icons)));
+    const next = focusOn === undefined ? null : this.body.querySelector<HTMLElement>(focusOn);
+    if (next !== null) {
+      next.focus();
+    } else if (hadFocus) {
       this.search.focus();
     }
+    // Icons and logos (spec 2026-10-18): a logo whose artwork is still loading holds a same-size
+    // placeholder, filled in place when it lands (fillLogos): no rebuild, so a drag in
+    // progress, keyboard focus and the tile layout all survive it. Only what this render
+    // shows is fetched, and a chunk that fails leaves its placeholder and the others filled.
+    const ids = [...this.body.querySelectorAll<SVGSVGElement>(PENDING)].map(p => p.dataset.icon!);
+    void Promise.allSettled(ids.map(id => loadLogo(id))).then(() => this.fillLogos());
   }
 
-  private renderSections(): HTMLElement[] {
+  private renderSections(icons: readonly IconSpec[]): HTMLElement[] {
     const sections: HTMLElement[] = [
       this.section('Objects', 5, OBJECTS.map(o => this.tile({ kind: 'node', nodeKind: o.kind }, o.name, objectIcon(o.kind)))),
+      this.renderPacks(icons),
     ];
-    const icons = drawableIcons();
-    for (const { id, title } of ICON_SECTIONS) {
+    for (const { id, title, pack } of ICON_SECTIONS) {
       const found = icons.filter(i => i.section === id);
-      if (found.length > 0) {
-        sections.push(this.section(title, 4, found.map(i => this.tile({ kind: 'icon', icon: i.id }, i.name, iconSvg(i.id, 20) ?? pendingIcon()))));
+      if (!pack && found.length > 0) {
+        sections.push(this.section(title, 4, found.map(i => this.tile({ kind: 'icon', icon: i.id }, i.name, iconSvg(i.id, 20) ?? pendingIcon(i.id)))));
       }
     }
     sections.push(this.section('Charts', 4, CHART_TYPES.map(t => this.tile({ kind: 'chart', type: t }, CHART_CONTRACTS[t].title, chartIcon(t)))));
@@ -547,20 +599,91 @@ export class LibraryPopover {
     return sections;
   }
 
+  /** Packs on this board first, each group in registry order; a pack opened or closed by hand stays where it was. */
+  private renderPacks(icons: readonly IconSpec[]): HTMLElement {
+    const list = document.createElement('div');
+    list.className = 'lib-packs';
+    for (const here of [true, false]) {
+      for (const s of PACKS.filter(p => this.boardPacks.has(p.id) === here)) {
+        const found = icons.filter(i => i.section === s.id);
+        if (found.length > 0) list.append(this.pack(s, found));
+      }
+    }
+    const section = this.section('Icon packs', 4, []);
+    section.append(list);
+    return section;
+  }
+
+  private pack(s: (typeof PACKS)[number], found: readonly IconSpec[]): HTMLElement {
+    const open = this.isPackOpen(s.id);
+    const box = document.createElement('div');
+    box.className = open ? 'lib-pack lib-pack-open' : 'lib-pack';
+    box.dataset.pack = s.id;
+    const row = document.createElement('button');
+    row.type = 'button';
+    row.className = 'lib-pack-row';
+    row.setAttribute('aria-expanded', String(open));
+    const icon = s.logo === undefined ? packGlyph(s.id, 16) : iconSvg(s.logo, 16) ?? pendingIcon(s.logo, 16);
+    if (icon !== null) row.append(icon);
+    const onBoard = found.filter(i => this.board.has(i.id)).length;
+    row.append(
+      textSpan('lib-pack-name', s.title),
+      textSpan('lib-pack-meta', open && onBoard > 0 ? `· ${onBoard} on this board` : ''),
+      textSpan('lib-pack-count', String(found.length)),
+      chevronIcon(),
+    );
+    box.append(row);
+    if (!open) {
+      return box;
+    }
+    // sort is stable: registry order within board icons, the company logo, the rest.
+    const rank = (i: IconSpec) => (this.board.has(i.id) ? 0 : i.id === s.logo ? 1 : 2);
+    const ordered = [...found].sort((a, b) => rank(a) - rank(b));
+    const shown = this.allShown.has(s.id) ? ordered : ordered.slice(0, PACK_TILES);
+    box.append(this.grid(4, shown.map(i => {
+      // Inside its own pack a product drops the provider word; the title and a placed node keep the full name.
+      const label = i.id === s.logo ? i.name : i.name.replace(/^(Amazon|AWS|Azure|Cloudflare) /, '');
+      const tile = this.tile({ kind: 'icon', icon: i.id }, label, iconSvg(i.id, 20) ?? pendingIcon(i.id));
+      tile.title = i.name;
+      return tile;
+    })));
+    if (shown.length < found.length) {
+      const more = document.createElement('button');
+      more.type = 'button';
+      more.className = 'lib-pack-more';
+      more.textContent = `Show all ${found.length}`;
+      box.append(more);
+    }
+    return box;
+  }
+
+  private isPackOpen(id: IconSection): boolean {
+    return (this.boardPacks.has(id) && !this.closedPacks.has(id)) || this.openPacks.has(id);
+  }
+
+  private togglePack(id: IconSection): void {
+    if (!this.isPackOpen(id)) {
+      this.openPacks.add(id);
+    } else {
+      this.openPacks.delete(id);
+      if (this.boardPacks.has(id)) this.closedPacks.add(id);
+    }
+    this.render(`[data-pack="${id}"] .lib-pack-row`);
+  }
+
   /** One ranked list over every object, icon, chart and saved item (spec "Library search"). */
-  private renderResults(query: string): HTMLElement[] {
+  private renderResults(query: string, icons: readonly IconSpec[]): HTMLElement[] {
     type Build = (r: RowInfo) => HTMLElement;
-    // The one place an entry is made: Task 6 sets onBoard here.
-    const entry = (build: Build, name: string, id: string, terms: readonly string[], group: string): SearchEntry<Build> =>
-      ({ value: build, name, id, terms, group, onBoard: false });
+    // The one place an entry is made.
+    const entry = (build: Build, name: string, id: string, terms: readonly string[], group: string, onBoard = false): SearchEntry<Build> =>
+      ({ value: build, name, id, terms, group, onBoard });
     const entries: SearchEntry<Build>[] = [];
     for (const o of OBJECTS) {
       entries.push(entry(r => this.resultRow({ kind: 'node', nodeKind: o.kind }, o.name, objectIcon(o.kind), r), o.name, o.kind, [], 'Objects'));
     }
-    const icons = drawableIcons();
     for (const { id, title } of ICON_SECTIONS) {
       for (const i of icons.filter(i => i.section === id)) {
-        entries.push(entry(r => this.resultRow({ kind: 'icon', icon: i.id }, i.name, iconSvg(i.id, 20) ?? pendingIcon(), r), i.name, i.id, i.terms, title));
+        entries.push(entry(r => this.resultRow({ kind: 'icon', icon: i.id }, i.name, iconSvg(i.id, 20) ?? pendingIcon(i.id), r), i.name, i.id, i.terms, title, this.boardPacks.has(id)));
       }
     }
     for (const t of CHART_TYPES) {
@@ -584,12 +707,11 @@ export class LibraryPopover {
     ];
   }
 
-  /** Swap each logo placeholder for its artwork, in place. */
+  /** Swap each logo placeholder, in a tile or a pack row, for its artwork, in place and at its size. */
   private fillLogos(): void {
-    for (const [tile, pick] of this.picks) {
-      const pending = pick.kind === 'icon' ? tile.querySelector('.lib-node-icon-pending') : null;
-      const art = pending && pick.kind === 'icon' ? iconSvg(pick.icon, 20) : null;
-      if (pending && art) pending.replaceWith(art);
+    for (const pending of this.body.querySelectorAll<SVGSVGElement>(PENDING)) {
+      const art = iconSvg(pending.dataset.icon!, Number(pending.getAttribute('width')));
+      if (art) pending.replaceWith(art);
     }
   }
 
@@ -604,13 +726,17 @@ export class LibraryPopover {
       section.append(head);
     }
     if (tiles.length > 0) {
-      const grid = document.createElement('div');
-      grid.className = 'lib-grid';
-      grid.dataset.cols = String(cols);
-      grid.append(...tiles);
-      section.append(grid);
+      section.append(this.grid(cols, tiles));
     }
     return section;
+  }
+
+  private grid(cols: number, tiles: HTMLElement[]): HTMLElement {
+    const grid = document.createElement('div');
+    grid.className = 'lib-grid';
+    grid.dataset.cols = String(cols);
+    grid.append(...tiles);
+    return grid;
   }
 
   private tile(pick: LibraryPick, name: string, icon: Element | null, highlight: readonly number[] = []): HTMLButtonElement {

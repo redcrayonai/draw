@@ -40,7 +40,7 @@ export function loadLogo(id: string): Promise<void> {
   return p;
 }
 
-/** Fetch every logo (the library popover shows them all). */
+/** Fetch every logo. */
 export function loadLogos(): Promise<void> {
   return Promise.all(Object.keys(LOGO_LOADERS).map(loadLogo)).then(() => {});
 }
