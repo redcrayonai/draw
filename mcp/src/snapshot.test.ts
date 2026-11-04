@@ -175,6 +175,22 @@ describe('createSnapshot', () => {
     await expect(createSnapshot(http, 'tok', 7n).call('read', async conn => [...conn.db.visibleChangeNote.iter()])).rejects.toThrow(/503/);
   });
 
+  it('writes routes without loading views and refreshes the next route read', async () => {
+    const tables = { ...TABLES };
+    const { http, queries, calls } = fakeHttp(tables);
+    const snap = createSnapshot(http, 'tok', 7n);
+    await snap.call('plan_route', conn => conn.reducers.planRoute({ boardId: 7n, nodeIds: [5n] }));
+    expect(queries).toEqual([]);
+    await snap.call('read route', async conn => expect([...conn.db.visibleSessionRoute.iter()]).toHaveLength(1));
+    const reads = queries.length;
+    await snap.call('reroute', conn => conn.reducers.reroute({ boardId: 7n, addNodeIds: [], addIndices: [], removeNodeIds: [5n], reason: 'skip' }));
+    expect(queries).toHaveLength(reads);
+    tables.visible_session_route = table([], []);
+    await snap.call('read route', async conn => expect([...conn.db.visibleSessionRoute.iter()]).toEqual([]));
+    expect(queries).toHaveLength(reads * 2);
+    expect(calls.map(([name]) => name)).toEqual(['plan_route', 'reroute']);
+  });
+
   it('posts set_change_note_readers positionally', async () => {
     const { http, calls } = fakeHttp(TABLES);
     const snap = createSnapshot(http, 'tok', 7n);

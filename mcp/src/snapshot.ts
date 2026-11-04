@@ -52,7 +52,7 @@ const READS: Record<string, readonly TableKey[]> = {
   'read route': ROUTE_TABLES,
   'read committed arrival': ROUTE_TABLES,
 };
-const WRITE_ONLY = new Set(['start_session', 'add_repo_files', 'add_code_ref', 'update_edge_evidence', 'set_change_note_readers', 'set_code_ref_hashes', 'set_edge_evidence_code', 'mark_checkpoint', 'arrive', 'set_session_remote']);
+const WRITE_ONLY = new Set(['start_session', 'add_repo_files', 'add_code_ref', 'update_edge_evidence', 'set_change_note_readers', 'set_code_ref_hashes', 'set_edge_evidence_code', 'mark_checkpoint', 'arrive', 'plan_route', 'reroute', 'set_session_remote']);
 
 export function createSnapshot(http: Pick<DbHttp, 'sqlTypedAs' | 'callAs'>, token: string, board: BoardPick) {
   let stale = true;

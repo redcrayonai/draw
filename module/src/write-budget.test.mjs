@@ -70,6 +70,22 @@ test('every exported reducer has a budgeted or explicitly exempt handler', () =>
   for (const name of procedures) assert.match(versionSrc.slice(versionSrc.indexOf(`    ${name}: `)).split(/\n    \w+: /)[0], /charged\(ctx, '\w+', /, `${name} spends a write`);
 });
 
+test('every exported procedure spends a write or is explicitly read-only', () => {
+  const direct = [...src.matchAll(/^export const (\w+) = spacetimedb\.procedure\(/gm)];
+  const version = [...versionSrc.matchAll(/^ {4}(\w+): db\.procedure\(/gm)].map(([, name]) => name);
+  const exported = readdirSync(new URL('../../client/src/module_bindings/', import.meta.url))
+    .filter(f => f.endsWith('_procedure.ts'))
+    .map(f => camel(f.slice(0, -'_procedure.ts'.length)));
+  assert.deepEqual([...direct.map(([, name]) => name), ...version].sort(), exported.sort(), 'every procedure is covered by the budget contract');
+  const readOnly = ['readBoardSnapshot'];
+  assert.deepEqual(readOnly.filter(name => !direct.some(([, declared]) => declared === name)), [], 'read-only exemptions still name a procedure');
+  for (const match of direct) {
+    if (readOnly.includes(match[1])) continue;
+    const body = src.slice(match.index).split('\nexport ')[0];
+    assert.match(body, /\bspendWrite\(tx\);/, `${match[1]} spends a write in its transaction`);
+  }
+});
+
 test('a reducer skips the write budget only when EXEMPT names it, and every exemption is still a reducer', () => {
   const unbudgeted = [...declared].filter(([, how]) => how === 'spacetimedb.reducer').map(([name]) => name);
   assert.deepEqual(unbudgeted.filter(name => !(name in EXEMPT)), [], 'budget these with `reducer(`, or list them in EXEMPT with a reason');
