@@ -1,10 +1,22 @@
-// The plugins this dashboard offers (PLUGINS.md). The deployment-wide switch is the operator's
-// configuration: a plugin is available only when its settings are complete. Each workspace
-// then turns an available plugin on or off (set_workspace_plugin; module/src/plugins.ts has the ids).
-import { versionsConfigured } from './versions';
+// Deployment availability is separate from each workspace's plugin switch.
+import { PLUGIN_LIST } from './plugins.generated';
+import { fail, log, type PluginRequest } from './plugin-api';
 
-export const PLUGINS = [
-  { id: 'versions', name: 'Versions', description: 'Save versions of a board. Restore any one as a new private board; the original stays as it is.', configured: versionsConfigured },
-] as const;
+export const PLUGINS = PLUGIN_LIST;
+export function available(id: string): boolean {
+  const plugin = PLUGINS.find((p) => p.id === id);
+  if (!plugin) return false;
+  try { return plugin.server?.configured?.() ?? true; }
+  catch (error) {
+    log('error', 'plugin.config_failed', { plugin: id }, error);
+    return false;
+  }
+}
 
-export const available = (id: string) => PLUGINS.some((p) => p.id === id && p.configured());
+export async function dispatchPlugin(id: string, event: PluginRequest): Promise<Response> {
+  const plugin = PLUGINS.find((p) => p.id === id);
+  if (!plugin) return fail(404, 'REJECTED: no such plugin.');
+  if (!available(id)) return fail(503, `UNAVAILABLE: this deployment does not offer ${plugin.name}.`);
+  if (!plugin.server?.handle) return fail(404, 'REJECTED: no such plugin action.');
+  return plugin.server.handle(event);
+}

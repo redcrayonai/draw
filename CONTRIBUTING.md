@@ -47,6 +47,19 @@ done
 The generator does not delete obsolete files. Delete a generated file only
 when its reducer or table no longer exists.
 
+After a plugin manifest change, regenerate its registries and setting bindings:
+
+```sh
+node scripts/plugin-build.mjs
+node scripts/plugin-build.mjs --check
+node scripts/plugin-build.mjs --check --api
+```
+
+The combined check also runs in CI. It compares public export names with
+`origin/main`, not their types. Type compatibility checks must precede the first
+outside plugin. See the [plugin author guide](plugins/README.md) for the contract,
+generated files, and test discovery.
+
 ## Publication checks
 
 ```sh

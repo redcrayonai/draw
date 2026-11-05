@@ -4,9 +4,11 @@ import { createHash } from 'node:crypto';
 import { env } from '$env/dynamic/private';
 import { restoreVersion, saveVersion, STORAGE_VARS } from './versions';
 import { getObject, machineCredentials } from './object-store';
-import { POST as SAVE } from '../../routes/api/versions/+server';
-import { POST as RESTORE } from '../../routes/api/versions/[versionId]/restore/+server';
-import { GET as PLUGINS } from '../../routes/api/plugins/+server';
+import { POST as LEGACY_SAVE } from '../../../web/src/routes/api/versions/+server';
+import { POST as LEGACY_RESTORE } from '../../../web/src/routes/api/versions/[versionId]/restore/+server';
+import { fallback as GENERIC } from '../../../web/src/routes/api/plugins/[plugin]/[...path]/+server';
+import { handle } from './index';
+import { GET as PLUGINS } from '../../../web/src/routes/api/plugins/+server';
 
 // A fake database (the calls this plugin makes) and a fake object store that honors If-None-Match.
 const sha = (s: string | Uint8Array) => createHash('sha256').update(s).digest('hex');
@@ -258,7 +260,9 @@ describe('a machine role instead of keys', () => {
   });
 });
 
-describe('routes', () => {
+describe.each(['legacy', 'plugin'])('%s routes', (route) => {
+  const SAVE = (event: Parameters<typeof LEGACY_SAVE>[0]) => route === 'legacy' ? LEGACY_SAVE(event) : GENERIC({ ...event, params: { plugin: 'versions', path: '' } } as never);
+  const RESTORE = (event: Parameters<typeof LEGACY_RESTORE>[0]) => route === 'legacy' ? LEGACY_RESTORE(event) : GENERIC({ ...event, params: { plugin: 'versions', path: `${event.params.versionId}/restore` } } as never);
   const url = new URL('http://dash.test/api/versions');
   const post = (body: unknown, token = 'user-token') => new Request('http://dash.test/api/versions', { method: 'POST', headers: { authorization: `Bearer ${token}` }, body: JSON.stringify(body) });
 
@@ -324,4 +328,19 @@ describe('getObject', () => {
     vi.mocked(fetch).mockResolvedValueOnce(new Response(chunks));
     expect([...(await getObject(STORE, 'k', 3))!]).toEqual([1, 2, 3]);
   });
+});
+
+
+it('the Versions server part rejects other methods and paths before reading a body', async () => {
+  for (const [method, path] of [['GET', []], ['PUT', []], ['POST', ['5']], ['POST', ['5', 'restore', 'extra']]] as [string, string[]][]) {
+    const request = new Request('http://dash.test/api/plugins/versions', { method });
+    const response = await handle({ request, url: new URL(request.url), path });
+    expect(response.status).toBe(404);
+    expect(await response.json()).toEqual({ error: expect.stringMatching(/^REJECTED:/) });
+  }
+});
+
+it('the Versions server part validates requests directly through its public handler', async () => {
+  const request = new Request('http://dash.test/api/plugins/versions', { method: 'POST', headers: { authorization: 'Bearer user-token' }, body: '{"boardId":2}' });
+  expect((await handle({ request, url: new URL(request.url), path: [] })).status).toBe(400);
 });

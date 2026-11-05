@@ -36,6 +36,7 @@ COPY client/package.json client/pnpm-lock.yaml client/
 COPY web/package.json web/pnpm-lock.yaml web/
 RUN for p in module shared agent mcp client web; do pnpm --dir "$p" install --frozen-lockfile || exit 1; done
 COPY module module
+COPY plugins plugins
 COPY shared shared
 COPY agent agent
 COPY mcp mcp
@@ -96,7 +97,8 @@ RUN case "$TARGETARCH" in amd64) arch=x64 ;; arm64) arch=arm64 ;; *) echo "no db
  && version="$(node -p 'require("/src/web/node_modules/dbmate/package.json").version')" \
  && cd /tmp && npm pack --silent "@dbmate/linux-$arch@$version" >/dev/null \
  && tar -xzf ./*.tgz && install package/bin/dbmate /dbmate \
- && find /src/module/src /src/shared -maxdepth 1 -name '*.test.*' -delete
+ && find /src/module/src /src/shared -maxdepth 1 -name '*.test.*' -delete \
+ && find /src/plugins -name '*.test.*' -delete
 
 # ---- canvas: static files behind Caddy ----
 FROM caddy:2.11.7-alpine AS canvas
@@ -137,6 +139,7 @@ COPY --from=spacetime /opt/spacetime/spacetimedb-cli /usr/local/bin/spacetime
 COPY --from=setup-deps /dbmate /usr/local/bin/dbmate
 WORKDIR /app
 COPY --from=setup-deps /src/module module
+COPY --from=setup-deps /src/plugins plugins
 COPY --from=setup-deps /src/shared shared
 COPY web/db/migrations web/db/migrations
 COPY scripts/module-env.mjs scripts/publish-module.sh scripts/

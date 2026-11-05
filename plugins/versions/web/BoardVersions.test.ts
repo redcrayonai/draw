@@ -1,7 +1,8 @@
 import { beforeEach, expect, it, vi } from 'vitest';
 import { render, screen, fireEvent, waitFor } from '@testing-library/svelte';
 import { Identity, Timestamp } from 'spacetimedb';
-import { boardVersions, pluginCatalog, resetPlugins, workspacePlugins } from '$lib/plugins';
+import { pluginCatalog, resetPlugins, workspacePlugins } from '$lib/plugins';
+import { boardVersions, reset } from './store';
 import { myWorkspaces } from '$lib/workspaces';
 const h = vi.hoisted(() => ({ fetch: vi.fn() }));
 vi.mock('$lib/stdb', () => ({ apiToken: async () => 'user-token' }));
@@ -15,6 +16,7 @@ const enabled = (on = true) => workspacePlugins.set([{ key: '4:versions', worksp
 
 beforeEach(() => {
   resetPlugins();
+  reset();
   pluginCatalog.set([VERSIONS_PLUGIN]);
   h.fetch.mockReset();
 });
@@ -57,7 +59,7 @@ it('saves, and restores into a new board it links to', async () => {
   });
   render(BoardVersions, { props: { boardId: 2n, workspaceId: 4n, canEdit: true } });
   await fireEvent.click(screen.getByText('save version'));
-  expect(h.fetch).toHaveBeenCalledWith('/api/versions', expect.objectContaining({ body: JSON.stringify({ boardId: '2' }) }));
+  expect(h.fetch).toHaveBeenCalledWith('/api/plugins/versions', expect.objectContaining({ body: JSON.stringify({ boardId: '2' }) }));
   await screen.findByText('save version'); // no longer saving…
   await fireEvent.click(screen.getByRole('button', { name: /Restore the version/ }));
   expect((await screen.findByRole('link', { name: 'Open it' })).getAttribute('href')).toContain('#b=fresh');
