@@ -2,6 +2,7 @@
 import { existsSync, lstatSync, mkdirSync, readFileSync, readdirSync, realpathSync, statSync, writeFileSync } from 'node:fs';
 import { dirname, join, relative, resolve, sep } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
+import { execFileSync } from 'node:child_process';
 
 const PARTS = { module: '@draw/module', server: '@draw/server', web: '@draw/client' };
 const object = value => value !== null && typeof value === 'object' && !Array.isArray(value);
@@ -52,7 +53,7 @@ export function readPlugins(root) {
 }
 
 // Keep literal tokens for imports, skipping comments and text while inspecting template expressions.
-function tokens(source) {
+function tokens(source, inspectTemplateExpressions = true) {
   const result = [];
   let i = 0;
   const scan = (expression = false) => {
@@ -75,7 +76,12 @@ function tokens(source) {
         i++;
         while (i < source.length && source[i] !== '`') {
           if (source[i] === '\\') i += 2;
-          else if (source.startsWith('${', i)) { i += 2; scan(true); }
+          else if (source.startsWith('${', i)) {
+            i += 2;
+            const length = result.length;
+            scan(true);
+            if (!inspectTemplateExpressions) result.length = length;
+          }
           else i++;
         }
         i++;
@@ -105,6 +111,81 @@ function tokens(source) {
   };
   scan();
   return result;
+}
+
+export function exportedNames(source) {
+  const list = tokens(source, false), names = new Set();
+  let depth = 0;
+  for (let i = 0; i < list.length; i++) {
+    const token = list[i];
+    if (token.kind === 'punctuation' && token.value === '{') depth++;
+    if (token.kind === 'punctuation' && token.value === '}') depth--;
+    if (depth !== 0 || token.kind !== 'word' || token.value !== 'export' || list[i - 1]?.value === '.') continue;
+    let j = i + 1;
+    if (list[j]?.value === 'type' && ['{', '*'].includes(list[j + 1]?.value)) j++;
+    if (list[j]?.value === '*') throw new Error(rule('wildcard exports are not allowed in the plugin interface'));
+    if (list[j]?.value === '{') {
+      j++;
+      while (j < list.length && list[j].value !== '}') {
+        if (list[j].value === 'type' && list[j + 1]?.kind === 'word' && list[j + 1].value !== 'as') j++;
+        let name = list[j++].value;
+        if (list[j]?.value === 'as') { name = list[j + 1].value; j += 2; }
+        names.add(name);
+        if (list[j]?.value === ',') j++;
+      }
+      i = j;
+    } else {
+      if (list[j]?.value === 'async') j++;
+      if (['const', 'let'].includes(list[j]?.value)) {
+        let nesting = 0, angles = 0, binding = true, typePosition = false;
+        for (j++; j < list.length; j++) {
+          const token = list[j], previous = list[j - 1];
+          if (!nesting && !angles && token.kind === 'word' && ['export', 'const', 'let', 'var'].includes(token.value)
+            && previous?.value !== '.' && !(token.value === 'const' && previous?.kind === 'word' && previous.value === 'as')) break;
+          if (binding) {
+            if (['{', '['].includes(token.value)) throw new Error(rule('destructured exports are not supported in the plugin interface; export named bindings'));
+            const next = list[j + 1];
+            const boundary = !next || (next.kind === 'punctuation' && ['=', ':', ',', ';', '!'].includes(next.value))
+              || (next.kind === 'word' && ['export', 'const', 'let', 'var'].includes(next.value));
+            if (token.kind !== 'word' || !boundary) throw new Error(rule('unsupported exported variable declaration in the plugin interface'));
+            names.add(token.value);
+            binding = false;
+            typePosition = [':', '!'].includes(next?.value);
+          } else if (token.kind === 'punctuation') {
+            if (typePosition && token.value === '<') angles++;
+            if (typePosition && angles && token.value === '>' && previous?.value !== '=') angles--;
+            if (!nesting && !angles && token.value === ';') break;
+            if (!nesting && !angles && token.value === ',') binding = true;
+            if (!nesting && !angles && token.value === '=' && list[j + 1]?.value !== '>') typePosition = false;
+            if (['(', '[', '{'].includes(token.value)) nesting++;
+            if ([')', ']', '}'].includes(token.value)) nesting--;
+          }
+        }
+        i = j - 1;
+      } else {
+        const declaration = list[j++]?.value;
+        if (declaration === 'function' && list[j]?.value === '*') j++;
+        if (!['function', 'class', 'interface', 'type', 'enum'].includes(declaration) || list[j]?.kind !== 'word') throw new Error(rule('unsupported export declaration in the plugin interface; use named exports'));
+        names.add(list[j].value);
+      }
+    }
+  }
+  return [...names].sort();
+}
+
+// shortcut: names only, compare types when a plugin outside this repo exists
+export function apiProblems(root, ref = 'origin/main') {
+  const git = (...args) => execFileSync('git', args, { cwd: root, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
+  const commit = git('rev-parse', '--verify', `${ref}^{commit}`).trim();
+  const errors = [];
+  for (const file of ['module/src/plugin-api.ts', 'web/src/lib/server/plugin-api.ts', 'web/src/lib/plugin-api.ts']) {
+    const current = new Set(exportedNames(existsSync(join(root, file)) ? readFileSync(join(root, file), 'utf8') : ''));
+    if (!git('ls-tree', '--name-only', commit, '--', file).trim()) continue;
+    for (const name of exportedNames(git('show', `${commit}:${file}`))) {
+      if (!current.has(name)) errors.push(`${file}: removes '${name}' from the plugin interface; that needs a major release`);
+    }
+  }
+  return errors;
 }
 
 export function importProblems(root, plugins) {
@@ -201,20 +282,35 @@ export function generate(root, plugins) {
     + webs.map(plugin => `import * as plugin_${plugin.id} from '../../../plugins/${plugin.id}/web/index';\n`).join('')
     + 'export const WEB_PARTS: { id: string; web: WebPart }[] = [\n'
     + webs.map(plugin => `  { id: '${plugin.id}', web: plugin_${plugin.id} },\n`).join('') + '];\n';
-  return new Map([['module/src/plugin-meta.generated.ts', content], ['module/src/plugin-parts.generated.ts', parts], ['web/src/lib/server/plugins.generated.ts', server], ['web/src/lib/plugins.generated.ts', web]]);
+  const configFile = 'docker/prod/dashboard.capnp', config = readFileSync(join(root, configFile), 'utf8');
+  const starts = [...config.matchAll(/^    # plugin settings: scripts\/plugin-build\.mjs writes these from plugins\/\*\/plugin\.json$/gm)];
+  const ends = [...config.matchAll(/^    # end of plugin settings$/gm)];
+  if (starts.length !== 1 || ends.length !== 1 || starts[0].index >= ends[0].index) throw new Error(rule(`${configFile}: require exactly one ordered plugin settings marker pair`));
+  const before = config.slice(0, starts[0].index + starts[0][0].length + 1), after = config.slice(ends[0].index);
+  const outsideNames = new Set([...`${before}${after}`.replace(/#[^\n]*/g, '').matchAll(/\bname\s*=\s*"([^"]+)"/g)].map(match => match[1]));
+  const settings = sorted.flatMap(plugin => plugin.settings);
+  for (const name of settings) if (outsideNames.has(name)) throw new Error(rule(`${configFile}: setting '${name}' is already bound outside plugin settings`));
+  const dashboard = before + settings.map(name => `    (name = "${name}", fromEnvironment = "${name}"),\n`).join('') + after;
+  return new Map([['module/src/plugin-meta.generated.ts', content], ['module/src/plugin-parts.generated.ts', parts], ['web/src/lib/server/plugins.generated.ts', server], ['web/src/lib/plugins.generated.ts', web], [configFile, dashboard]]);
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1])).href) {
   try {
     const root = fileURLToPath(new URL('..', import.meta.url));
-    if (process.argv.slice(2).some(arg => arg !== '--check')) throw new Error(rule('usage: node scripts/plugin-build.mjs [--check]'));
+    if (process.argv.slice(2).some(arg => !['--check', '--api'].includes(arg))) throw new Error(rule('usage: node scripts/plugin-build.mjs [--check] [--api]'));
     const plugins = readPlugins(root), errors = importProblems(root, plugins);
-    if (errors.length) throw new Error(errors.join('\n'));
     const outputs = generate(root, plugins);
     if (process.argv.includes('--check')) {
       const stale = [...outputs].filter(([file, content]) => !existsSync(join(root, file)) || readFileSync(join(root, file), 'utf8') !== content);
-      if (stale.length) throw new Error(stale.map(([file]) => rule(`${file} is stale; run node scripts/plugin-build.mjs`)).join('\n'));
-    } else for (const [file, content] of outputs) {
+      errors.push(...stale.map(([file]) => rule(`${file} is stale; run node scripts/plugin-build.mjs`)));
+    }
+    if (process.argv.includes('--api')) {
+      const problems = apiProblems(root).map(rule);
+      if (process.env.PLUGIN_API_MAJOR === 'true') { if (problems.length) console.error(problems.join('\n')); }
+      else errors.push(...problems);
+    }
+    if (errors.length) throw new Error(errors.join('\n'));
+    if (!process.argv.includes('--check')) for (const [file, content] of outputs) {
       mkdirSync(dirname(join(root, file)), { recursive: true });
       writeFileSync(join(root, file), content);
     }

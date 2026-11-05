@@ -52,6 +52,12 @@ jobs:
         if: matrix.variant == 'local'
         run: scripts/check-module-upgrade.sh
 
+      - name: Preserve the plugin interface from main
+        if: matrix.variant == 'local'
+        env:
+          PLUGIN_API_MAJOR: ${{ contains(github.event.pull_request.labels.*.name, 'major') }}
+        run: node scripts/plugin-build.mjs --check --api
+
       - name: The committed issuers are the none variant
         if: matrix.variant == 'none'
         run: |
