@@ -1,7 +1,8 @@
 import { beforeEach, expect, it, vi } from 'vitest';
 import { render, screen, fireEvent, waitFor } from '@testing-library/svelte';
 import { Identity, Timestamp } from 'spacetimedb';
-import { boardVersions, pluginCatalog, resetPlugins, workspacePlugins } from '$lib/plugins';
+import { pluginCatalog, resetPlugins, workspacePlugins } from '$lib/plugins';
+import { boardVersions, reset } from './store';
 import { myWorkspaces } from '$lib/workspaces';
 const h = vi.hoisted(() => ({ fetch: vi.fn() }));
 vi.mock('$lib/stdb', () => ({ apiToken: async () => 'user-token' }));
@@ -15,6 +16,7 @@ const enabled = (on = true) => workspacePlugins.set([{ key: '4:versions', worksp
 
 beforeEach(() => {
   resetPlugins();
+  reset();
   pluginCatalog.set([VERSIONS_PLUGIN]);
   h.fetch.mockReset();
 });

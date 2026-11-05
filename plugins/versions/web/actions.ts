@@ -1,6 +1,5 @@
 // Version actions from the dashboard: the server stores and fetches; the module decides who may.
-import { apiToken } from './stdb';
-import { appHref } from './boards';
+import { apiToken, appHref } from '@draw/client';
 
 async function post(path: string, body: unknown): Promise<Record<string, string>> {
   const token = await apiToken();

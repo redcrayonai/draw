@@ -1,6 +1,6 @@
 import { fileURLToPath } from 'node:url';
 import { sveltekit } from '@sveltejs/kit/vite';
-import { loadEnv } from 'vite';
+import { loadEnv, searchForWorkspaceRoot } from 'vite';
 import { defineConfig } from 'vitest/config';
 
 // VITE_AUTH_PROVIDER picks the sign-in this bundle ships: anonymous (the
@@ -12,11 +12,11 @@ export default defineConfig(({ mode }) => {
   return {
     plugins: [sveltekit()],
     // The canvas client owns 5173; VITE_CANVAS_URL and agent dashboard links assume 5174.
-    server: { port: 5174, strictPort: true },
+    server: { port: 5174, strictPort: true, fs: { allow: [searchForWorkspaceRoot(process.cwd()), fileURLToPath(new URL('../plugins', import.meta.url))] } },
     resolve: {
       alias: { $auth: fileURLToPath(new URL(BUILT_IN[provider] ?? provider, import.meta.url)) },
       // $shared (../shared) imports these; resolve them here, where deploy builds install them.
-      dedupe: ['@noble/hashes', 'jose'],
+      dedupe: ['@noble/hashes', 'jose', 'spacetimedb', '@testing-library/svelte'],
       ...(process.env.VITEST ? { conditions: ['browser'] } : {})
     },
     test: {

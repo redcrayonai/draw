@@ -1,10 +1,7 @@
 <script lang="ts">
-  import { authenticatedHref } from '$lib/session';
-  import { ago, canvasHref, idTail } from '$lib/boards';
-  import { boardVersions, offered, pluginCatalog, pluginOn, workspacePlugins } from '$lib/plugins';
-  import { restoreVersion, saveVersion } from '$lib/versions';
-  import { myWorkspaces } from '$lib/workspaces';
-  import Button from './Button.svelte';
+  import { authenticatedHref, ago, canvasHref, idTail, offered, pluginCatalog, pluginOn, workspacePlugins, myWorkspaces, Button } from '@draw/client';
+  import { boardVersions } from './store';
+  import { restoreVersion, saveVersion } from './actions';
   let { boardId, workspaceId, canEdit, disabled = false }: { boardId: bigint; workspaceId: bigint; canEdit: boolean; disabled?: boolean } = $props();
   const on = $derived(offered($pluginCatalog, 'versions') && pluginOn($workspacePlugins, workspaceId, 'versions'));
   const rows = $derived($boardVersions.filter((s) => s.boardId === boardId));

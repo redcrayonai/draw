@@ -14,6 +14,7 @@ import type { AgentGrantRow, AgentLinkRow, BoardSlugRow, MyBoard, MyCodeConsentR
 import { config } from './config';
 import { attachWorkspaces, resetWorkspaces } from './workspaces';
 import { attachPlugins, resetPlugins } from './plugins';
+import { attachPluginParts, resetPluginParts } from './plugin-mounts';
 import { toEvent, type ActivityResult } from './activity';
 import type { ArchitectureHistory, ArchitectureVersion } from './history';
 import { clearAnonymousToken, readAnonymousToken, saveAnonymousToken } from './anonymous-identity';
@@ -164,6 +165,7 @@ export function disconnect(): void {
   c?.disconnect(); // its callbacks are now stale
   resetWorkspaces();
   resetPlugins();
+  resetPluginParts();
   boards.set([]);
   links.set([]);
   grants.set([]);
@@ -257,6 +259,7 @@ async function open(g: number, tokens: TokenSource): Promise<void> {
       }
       attachWorkspaces(c, stale);
       attachPlugins(c, stale);
+      attachPluginParts(c, stale);
       // The feed has a subscription of its own: a server without my_activity
       // blanks the Activity panel, not the boards.
       const feed = () => {

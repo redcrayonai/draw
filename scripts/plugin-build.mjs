@@ -195,7 +195,13 @@ export function generate(root, plugins) {
       const metadata = JSON.stringify({ id, name, description, settings }, null, 2);
       return metadata.slice(0, -2) + (servers.some(plugin => plugin.id === id) ? `,\n  server: plugin_${id}` : '') + '\n},\n';
     }).join('') + '];\n';
-  return new Map([['module/src/plugin-meta.generated.ts', content], ['module/src/plugin-parts.generated.ts', parts], ['web/src/lib/server/plugins.generated.ts', server]]);
+  const webs = sorted.filter(plugin => plugin.parts.web);
+  const web = header
+    + "import type { WebPart } from './plugin-api';\n"
+    + webs.map(plugin => `import * as plugin_${plugin.id} from '../../../plugins/${plugin.id}/web/index';\n`).join('')
+    + 'export const WEB_PARTS: { id: string; web: WebPart }[] = [\n'
+    + webs.map(plugin => `  { id: '${plugin.id}', web: plugin_${plugin.id} },\n`).join('') + '];\n';
+  return new Map([['module/src/plugin-meta.generated.ts', content], ['module/src/plugin-parts.generated.ts', parts], ['web/src/lib/server/plugins.generated.ts', server], ['web/src/lib/plugins.generated.ts', web]]);
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1])).href) {
