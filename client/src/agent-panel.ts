@@ -19,6 +19,14 @@ export interface AgentPanelDeps {
 
 const LABEL_MAX = 200;
 
+// The panel's width: dragged or set with the arrow keys on its left edge, and remembered.
+const WIDTH_KEY = 'agent-panel-width';
+const WIDTH_DEFAULT = 320;
+const WIDTH_MIN = 280;
+const WIDTH_STEP = 24;
+const widthMax = () => Math.floor(window.innerWidth * 0.7);
+const clampWidth = (w: number) => Math.max(WIDTH_MIN, Math.min(widthMax(), Math.round(w)));
+
 /** One conversation per board: keyed on its #b=<slug>. A Share-link visit has no slug, and
  *  its #s= token must not sit in storage, so it is keyed on a short one-way hash of the link. */
 async function conversationKey(boardLink: string): Promise<string> {
@@ -76,6 +84,7 @@ export function mountAgentPanel(deps: AgentPanelDeps): { selectionChanged(): voi
   const form = $<HTMLFormElement>('agent-form');
   const input = $<HTMLTextAreaElement>('agent-input');
   const send = $<HTMLButtonElement>('agent-send');
+  const resize = $<HTMLElement>('agent-resize');
 
   // An earlier version keyed Share-link conversations on the link itself, token and all.
   try {
@@ -86,6 +95,25 @@ export function mountAgentPanel(deps: AgentPanelDeps): { selectionChanged(): voi
     }
     for (const key of old) storage?.removeItem(key);
   } catch { /* storage is blocked: nothing was kept there either */ }
+
+  // The width the person chose; shown clamped to the window.
+  let wanted = WIDTH_DEFAULT;
+  const stored = Number(load(WIDTH_KEY) ?? NaN);
+  if (Number.isFinite(stored) && stored >= WIDTH_MIN && stored <= widthMax()) wanted = Math.round(stored);
+  const showWidth = () => {
+    const w = clampWidth(wanted);
+    document.body.style.setProperty('--agent-panel-w', `${w}px`);
+    resize.setAttribute('aria-valuenow', String(w));
+    resize.setAttribute('aria-valuemin', String(WIDTH_MIN));
+    resize.setAttribute('aria-valuemax', String(Math.max(WIDTH_MIN, widthMax())));
+  };
+  const setWidth = (w: number, remember: boolean) => {
+    wanted = clampWidth(w);
+    showWidth();
+    if (remember) {
+      try { storage?.setItem(WIDTH_KEY, String(wanted)); } catch { /* kept for this page only */ }
+    }
+  };
 
   let state: ChatState = initialChat();
   // The reply streaming now; New chat aborts it and drops whatever it says after.
@@ -227,6 +255,39 @@ export function mountAgentPanel(deps: AgentPanelDeps): { selectionChanged(): voi
     void submit();
   });
 
+  let drag: { x: number; w: number } | null = null;
+  const endDrag = () => {
+    if (!drag) return;
+    drag = null;
+    resize.classList.remove('drag');
+    document.body.classList.remove('agent-resizing');
+    setWidth(wanted, true);
+  };
+  resize.addEventListener('pointerdown', evt => {
+    if (evt.button !== 0) return;
+    evt.preventDefault(); // no text selection while dragging
+    resize.setPointerCapture?.(evt.pointerId);
+    drag = { x: evt.clientX, w: clampWidth(wanted) };
+    resize.classList.add('drag');
+    document.body.classList.add('agent-resizing');
+  });
+  resize.addEventListener('pointermove', evt => {
+    // the panel is docked right: moving the edge left widens it
+    if (drag) setWidth(drag.w + drag.x - evt.clientX, false);
+  });
+  resize.addEventListener('pointerup', endDrag);
+  resize.addEventListener('pointercancel', endDrag);
+  resize.addEventListener('lostpointercapture', endDrag);
+  resize.addEventListener('keydown', evt => {
+    if (evt.key !== 'ArrowLeft' && evt.key !== 'ArrowRight') return;
+    evt.preventDefault();
+    evt.stopPropagation(); // these arrows belong to the handle alone
+    setWidth(clampWidth(wanted) + (evt.key === 'ArrowLeft' ? WIDTH_STEP : -WIDTH_STEP), true);
+  });
+  resize.addEventListener('dblclick', () => setWidth(WIDTH_DEFAULT, true));
+  window.addEventListener('resize', showWidth);
+
+  showWidth();
   orb.hidden = false;
   renderAbout();
   render();

@@ -356,3 +356,88 @@ describe('agent panel failures', () => {
     expect(Object.keys(localStorage).sort()).toEqual([KEY, 'other'].sort());
   });
 });
+
+describe('agent panel width', () => {
+  const W = 'agent-panel-width';
+  const width = () => document.body.style.getPropertyValue('--agent-panel-w');
+  const handle = () => document.getElementById('agent-resize') as HTMLElement;
+  const pointer = (type: string, clientX: number) =>
+    handle().dispatchEvent(new PointerEvent(type, { clientX, button: 0, pointerId: 1, bubbles: true, cancelable: true }));
+  const key = (k: string) => handle().dispatchEvent(new KeyboardEvent('keydown', { key: k, bubbles: true, cancelable: true }));
+
+  // jsdom's window is 1024 px wide: the panel may grow to 716 px (70%)
+  it('dragging the edge widens the panel within limits', () => {
+    mount();
+    const h = handle();
+    expect(h.getAttribute('role')).toBe('separator');
+    expect(h.getAttribute('aria-orientation')).toBe('vertical');
+    expect(h.getAttribute('aria-label')).toBe('Resize the agent panel');
+    expect(h.tabIndex).toBe(0);
+    expect(width()).toBe('320px');
+    pointer('pointerdown', 700);
+    expect(document.body.classList.contains('agent-resizing')).toBe(true);
+    pointer('pointermove', 600);
+    expect(width()).toBe('420px');
+    pointer('pointermove', 0);
+    expect(width()).toBe('716px');
+    pointer('pointermove', 1000);
+    expect(width()).toBe('280px');
+    pointer('pointerup', 1000);
+    expect(document.body.classList.contains('agent-resizing')).toBe(false);
+    pointer('pointermove', 600); // not dragging any more
+    expect(width()).toBe('280px');
+  });
+
+  it('arrow keys resize the panel', () => {
+    mount();
+    key('ArrowLeft');
+    expect(width()).toBe('344px');
+    key('ArrowRight');
+    key('ArrowRight');
+    expect(width()).toBe('296px');
+    key('ArrowRight');
+    expect(width()).toBe('280px');
+  });
+
+  it('double-click resets the width', () => {
+    mount();
+    key('ArrowLeft');
+    key('ArrowLeft');
+    handle().dispatchEvent(new MouseEvent('dblclick', { bubbles: true }));
+    expect(width()).toBe('320px');
+    expect(localStorage.getItem(W)).toBe('320');
+  });
+
+  it('the width is remembered', () => {
+    mount();
+    pointer('pointerdown', 700);
+    pointer('pointermove', 600);
+    pointer('pointerup', 600);
+    expect(localStorage.getItem(W)).toBe('420');
+    mount();
+    expect(width()).toBe('420px');
+  });
+
+  it('a stored width out of range is ignored', () => {
+    for (const stored of ['5000', '100', 'wide', '']) {
+      localStorage.setItem(W, stored);
+      mount();
+      expect(width()).toBe('320px');
+    }
+  });
+
+  it('keeps the width inside a narrower window', () => {
+    localStorage.setItem(W, '700');
+    mount();
+    expect(width()).toBe('700px');
+    const inner = window.innerWidth;
+    Object.defineProperty(window, 'innerWidth', { value: 800, configurable: true });
+    try {
+      window.dispatchEvent(new Event('resize'));
+      expect(width()).toBe('560px');
+    } finally {
+      Object.defineProperty(window, 'innerWidth', { value: inner, configurable: true });
+      window.dispatchEvent(new Event('resize'));
+    }
+  });
+});

@@ -2497,6 +2497,44 @@ body.lib-dragging #board {
   display: none;
 }
 
+/* The left edge drags to resize the panel (agent-panel.ts); its line shows on hover and while dragging. */
+#agent-resize {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: -3px;
+  width: 6px;
+  cursor: col-resize;
+  touch-action: none;
+  z-index: 1;
+}
+
+#agent-resize::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 2px;
+  width: 2px;
+  background: transparent;
+  transition: background var(--dur) var(--ease);
+}
+
+#agent-resize:hover::after,
+#agent-resize.drag::after {
+  background: var(--hairline);
+}
+
+#agent-resize:focus-visible {
+  outline: 2px solid var(--sel);
+  outline-offset: -2px;
+}
+
+body.agent-resizing {
+  cursor: col-resize;
+  user-select: none;
+}
+
 /* The inspector steps aside so the two never overlap. */
 @media (min-width: 721px) {
   body.agent-open #inspector {
@@ -2688,13 +2726,6 @@ body.lib-dragging #board {
 #agent-send:disabled {
   opacity: 0.4;
   cursor: default;
-}
-
-@media (max-width: 640px) {
-  #agent-panel {
-    width: 100%;
-    border-left: 0;
-  }
 }
 
 /* An open CODE body widens the panel so snippets wrap less (P3): 384 px at
@@ -3808,6 +3839,16 @@ textarea#inline-edit {
 
   .agent-orb {
     bottom: calc(max(var(--space-4), env(safe-area-inset-bottom)) + var(--dock-h) + var(--zoom-h) + 2 * var(--space-3));
+  }
+
+  /* the panel takes the whole width, so there is no edge to drag */
+  #agent-panel {
+    width: 100%;
+    border-left: 0;
+  }
+
+  #agent-resize {
+    display: none;
   }
 
   #shortcuts-toggle {
