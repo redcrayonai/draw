@@ -36,7 +36,7 @@ own_networks() {
 
 # role_networks: the link-local endpoints a Versions setup without keys gets its machine role from
 # (EC2 instance metadata, the ECS task role), one CIDR per line; nothing unless Versions is offered and
-# signs with the role (versionsConfigured in web/src/lib/server/versions.ts: blank is unset).
+# signs with the role (versionsConfigured in plugins/versions/server/versions.ts: blank is unset).
 filled() { case "${1:-}" in *[![:space:]]*) ;; *) return 1 ;; esac; }
 role_networks() {
   filled "${VERSIONS_S3_ENDPOINT:-}" && filled "${VERSIONS_S3_BUCKET:-}" && filled "${VERSIONS_S3_REGION:-}" || return 0

@@ -5,7 +5,7 @@
   let { boardId, workspaceId, canEdit, disabled = false }: { boardId: bigint; workspaceId: bigint; canEdit: boolean; disabled?: boolean } = $props();
   const on = $derived(offered($pluginCatalog, 'versions') && pluginOn($workspacePlugins, workspaceId, 'versions'));
   const rows = $derived($boardVersions.filter((s) => s.boardId === boardId));
-  // Guests save but never restore: a restore makes a workspace board (module/src/versions.ts restorable).
+  // Guests save but never restore: a restore makes a workspace board (plugins/versions/module/index.ts restorable).
   const canRestore = $derived(canEdit && $myWorkspaces.find((w) => w.id === workspaceId)?.role !== 'guest');
   let busy = $state('');
   let error = $state('');

@@ -16,6 +16,7 @@ server-side rules in the database module.
 | `shared/` | Code used by several packages (board links, identity, OIDC, capture) |
 | `helper/` | The `redcrayon` CLI: capture, tap, marks |
 | `importer/` | Codebase import and `fork-board` |
+| `plugins/` | Optional draw features: manifest plus database, server, and UI parts ([author guide](plugins/README.md)) |
 | `plugin/` | Claude Code plugin (`@redcrayonai/draw`): skill, hooks, MCP config |
 | `e2e/` | Playwright browser journeys |
 | `scripts/` | Repo checks, module test harness, release helpers |
@@ -55,8 +56,12 @@ node scripts/vendor-scan.mjs --public --enforce
   reference it from here.
 - **Plugins** are optional features in this repo, off per workspace until an
   owner or admin turns them on, offered only when their server settings are
-  set ([PLUGINS.md](PLUGINS.md)). A new board table goes into `SECTIONS` or
-  `LEFT_OUT` in `module/src/board-bundle.ts` (verify-versions-local.mjs checks).
+  set ([PLUGINS.md](PLUGINS.md)). Each part imports only its own `@draw/*`
+  interface or relative files within that part ([author guide](plugins/README.md)).
+  After a manifest change, run `node scripts/plugin-build.mjs`. Declare plugin
+  tables there, including `board: "outlives"` for tables with `board_id`.
+  Core board tables go into `SECTIONS` or `LEFT_OUT` in
+  `module/src/board-bundle.ts` (verify-versions-local.mjs checks).
 - **Log events** are `area.event`, at most two levels, no service prefix
   (`tool.call`, `activity.drained`).
 - Wrangler configs here are dev-only: local names, no routes, no account

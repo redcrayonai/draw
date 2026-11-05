@@ -20,14 +20,31 @@ The dashboard lists offered plugins under **Settings › Plugins**.
 
 To add a plugin:
 
-1. Add its id to `PLUGINS` in `module/src/plugins.ts`. Check `pluginEnabled(ctx, workspaceId, id)` in every reducer, procedure and view it adds.
-2. Put its tables and reducers in their own module file, exported as a group from `index.ts` (as `versions.ts`). Its tables go into `LEFT_OUT` in `module/src/board-bundle.ts` unless they are board content.
-3. Add an entry to `PLUGINS` in `web/src/lib/server/plugins.ts` with a `configured()` check for its settings. Bind each variable in `docker/prod/dashboard.capnp`, `compose.prod.yml`, `docker-compose.yml` and `.env.example`.
+1. Create `plugins/<id>/plugin.json` and the optional `module/`, `server/`, and `web/` parts.
+2. Use each part's public `@draw/*` interface and keep helpers inside that part.
+3. Run `node scripts/plugin-build.mjs` to generate the registries and setting bindings.
+4. Add manual environment forwarding, run the relevant checks, and enable the workspace switch.
+
+The [plugin author guide](plugins/README.md) defines the manifest, interfaces,
+mount points, generated files, and test commands.
 
 ### Design: plugins outside this repo
 
-Status: direction agreed 2026-10-31; not built, except the rollback skip in
-decision 7. Supersedes the "To add a plugin" steps above once built.
+Status: direction agreed 2026-10-31. Steps 1–2 are built: the manifest,
+generator, public interfaces, mounts, and Versions migration. Steps 3–4 remain
+unbuilt: the outside-plugin builder, fetch, lock file, version ranges,
+`skip`/retire support, and template. The rollback publish skip in decision 7
+also exists. The decisions below include that future work.
+
+Approved limits and departures for steps 1–2:
+
+- Board-owned plugin tables (`board: "part"`) wait until a plugin needs them.
+  Current board-keyed tables must declare `board: "outlives"`.
+- The compatible draw version range waits for the outside-plugin builder in step 3.
+- CI compares public export names only. Type compatibility checks must precede the first outside plugin.
+- The generator writes Cap'n Proto setting bindings. Compose environment forwarding, `.env.example`, and `role_networks` remain manual.
+- New routes use `/api/plugins/<id>[/path]`. The old Versions POST routes remain
+  forwarders for open clients. Open clients keep working across upgrades.
 
 **Intent.** Plugins keep being built in this repo, in the open. Anyone may also
 keep a plugin in a repo of their own, private or public: an operator with
@@ -140,9 +157,10 @@ repo.
    about a board must be) or *outlives the board* (kept, as Versions keeps a
    deleted board's saved versions). The build refuses a board-keyed table that
    says neither; the core never guesses. `scripts/verify-deletion-local.mjs`
-   covers "part of the board" plugin tables too. In the first version, plugin
-   data is not copied into versions or branches, and a restore or branch says
-   which plugins' data it left out, never silently (copying it comes with a
+   will cover "part of the board" plugin tables when that support exists.
+   In the first version, plugin data is not copied into versions or branches,
+   and a restore or branch says which plugins' data it left out, never silently
+   (copying it comes with a
    version 2 bundle format).
 12. *Back up before changing plugins.* The docs tell operators to take a backup
    of the database and their settings (the plugins file, `.env`) before adding,
@@ -150,8 +168,8 @@ repo.
 13. *The build generates the core's plugin lists.* Each plugin's manifest
    declares its id, its tables (and each board-keyed table's relationship to
    the board) and its server settings. From the manifests the build generates
-   what is edited by hand today: the module's plugin ids and export groups, the
-   dashboard's plugin registry, the table classification in
+   the module's plugin ids and export groups, the dashboard's plugin registry,
+   the table classification in
    `module/src/board-bundle.ts`, and the setting bindings in
    `docker/prod/dashboard.capnp`. An outside plugin never edits this repo.
 14. *No plugin author can block draw or a deployment.*
@@ -216,11 +234,10 @@ repo.
 - Private repositories are read with credentials given to the build only (build
   secrets), never written into an image.
 
-**Left to the builder.** The plugins file's name and format; the plugin manifest
-(id, name, compatible draw versions); the exact contents of the plugin interface,
-as long as Versions is built only through it; how dashboard routes and screens mount
-(fixed mount points, not edits to this repo); the template's exact files; the
-builder image's internals and name; how plugin ids avoid collisions.
+**Left to the builder.** The plugins file's name and format, fetch and lock
+behavior, compatible draw version ranges, skip and retirement, the template's
+files, and the builder image's internals and name remain future work. The
+manifest, public interfaces, and dashboard mount points already exist.
 
 ## Versions
 
@@ -240,13 +257,13 @@ cannot save or restore.
 
 ### Ownership
 
-| Core (any plugin may use it) | Versions plugin |
+| Core (through the public interface) | Versions plugin |
 |---|---|
-| Bundle format, capture and restore: `module/src/board-bundle.ts` | Version index `board_version`, restore staging `board_version_chunk`: `module/src/versions.ts` |
+| Bundle format, capture and restore: `module/src/board-bundle.ts` | Version index `board_version`, restore staging `board_version_chunk`: `plugins/versions/module/index.ts` |
 | SHA-256 in the module: `module/src/sha256.ts` | Save, list and restore rules and actions |
-| Workspace plugin switch: `module/src/plugins.ts` | Object storage and its settings: `web/src/lib/server/versions.ts` |
-| Board access (`humanBoardRole`, workspace roles) | Dashboard UI: `BoardVersions.svelte`, `/workspaces/plugins` |
-| S3-compatible client: `web/src/lib/server/object-store.ts` | |
+| Workspace plugin switch: `module/src/plugins.ts` | Object storage and its settings: `plugins/versions/server/versions.ts` |
+| Board access (`humanBoardRole`, workspace roles) | Dashboard UI and stores: `plugins/versions/web/`; the core mounts panels and owns `/workspaces/plugins` |
+| | S3-compatible client: `plugins/versions/server/object-store.ts` |
 
 ### Save
 
@@ -437,7 +454,7 @@ settings (the server log does). Object keys contain workspace and board ids only
 - The bucket is used only by this deployment. Its access keys, or the machine's
   role, can read and write objects there.
 - Without keys the dashboard server signs with the machine's role
-  (`machineCredentials` in `web/src/lib/server/object-store.ts`): the container
+  (`machineCredentials` in `plugins/versions/server/object-store.ts`): the container
   credentials endpoint when `AWS_CONTAINER_CREDENTIALS_*` is set (an ECS task
   role), else the instance metadata service with IMDSv2 (an EC2 instance
   profile), with the role's session token, kept until five minutes before it

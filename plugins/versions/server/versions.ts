@@ -55,7 +55,7 @@ function dbFailure(e: unknown): VersionError {
 }
 
 type Charged<T> = (T & { error?: undefined }) | { error: string; refused: boolean };
-/** A charged procedure's JSON (module/src/versions.ts): its result, or a refusal (REJECTED) or failure (UNAVAILABLE). */
+/** A charged procedure's JSON (plugins/versions/module/index.ts): its result, or a refusal (REJECTED) or failure (UNAVAILABLE). */
 async function procedure<T>(token: string, name: string, args: unknown[]): Promise<T> {
   const out = JSON.parse(JSON.parse(await procedureAs(token, name, args))) as Charged<T>;
   if (out.error === undefined) return out as T;
