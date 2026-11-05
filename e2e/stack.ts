@@ -208,6 +208,7 @@ export async function withStack(use: (stack: {
         }
         await symlink(join(repo, 'web/node_modules'), join(dashboardWeb, 'node_modules'), 'dir');
         await symlink(join(repo, 'shared'), join(dashboardRoot, 'shared'), 'dir');
+        await symlink(join(repo, 'plugins'), join(dashboardRoot, 'plugins'), 'dir');
         await symlink(join(repo, 'e2e'), join(dashboardRoot, 'e2e'), 'dir');
         const child = start('pnpm', ['exec', 'vite', 'dev', '--host', '127.0.0.1', '--port', String(dashboardPort), '--strictPort'], dashboardWeb, {
           VITE_AUTH_PROVIDER: provider === 'oidc' ? 'oidc' : '../e2e/auth-provider.mjs',

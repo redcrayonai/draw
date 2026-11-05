@@ -1,6 +1,6 @@
 // Versions plugin against a real database (PLUGINS.md): the workspace switch, save, list and
 // restore with their access rules, consistent capture under concurrent writes, and refused
-// bundles. Storage is the dashboard server's (web/src/lib/server/versions.ts); here the test
+// bundles. Storage is the dashboard server's (plugins/versions/server/versions.ts); here the test
 // plays that server with the service token. Run alone after verify-workspaces-local.mjs: both
 // serve the saved ES256 issuer on STDB_TEST_ISSUER_PORT.
 //

@@ -1,11 +1,8 @@
 // Versions plugin, server side (PLUGINS.md): moves bundles between the database and the
 // operator's object store. The module decides who may do what and checks every bundle; this
 // file stores, fetches and verifies bytes, and keeps the storage keys to itself.
-import { env } from '$env/dynamic/private';
-import { callAs, procedureAs, sqlAs, DbError } from './board-db';
+import { env, callAs, procedureAs, sqlAs, DbError, log, notConfigured } from '@draw/server';
 import { getObject, machineCredentials, putNew, sha256Hex, StoreError, type StoreConfig } from './object-store';
-import { log } from './log';
-import { notConfigured } from './http';
 
 /** The storage Versions needs: the plugin is offered only with all three. Keys are optional, both or neither: without them the server signs with its machine's role. */
 export const STORAGE_VARS = ['VERSIONS_S3_ENDPOINT', 'VERSIONS_S3_BUCKET', 'VERSIONS_S3_REGION'];

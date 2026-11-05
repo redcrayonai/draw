@@ -20,6 +20,7 @@ export default defineConfig(({ mode }) => {
       ...(process.env.VITEST ? { conditions: ['browser'] } : {})
     },
     test: {
+      include: ['src/**/*.{test,spec}.{js,ts}', '../plugins/*/{server,web}/**/*.test.ts'],
       environment: 'jsdom',
       setupFiles: ['./vitest-setup.ts'],
       globals: true,

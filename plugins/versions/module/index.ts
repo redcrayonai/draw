@@ -43,7 +43,7 @@ const admin = (ctx: any, workspaceId: bigint) => ['owner', 'admin'].includes(mem
 const boardScope = (ctx: any, boardId: bigint) => ctx.db.boardWorkspace.boardId.find(boardId)?.workspaceId;
 const OFF = 'the Versions plugin is off in this workspace; a workspace owner or admin can turn it on';
 const MIB = 1048576;
-// A restore's staged pieces. The dashboard server sends at most 28: MAX_BUNDLE_BYTES in pieces of 600,000 (web/src/lib/server/versions.ts).
+// A restore's staged pieces. The dashboard server sends at most 28: MAX_BUNDLE_BYTES in pieces of 600,000 (plugins/versions/server/versions.ts).
 const MAX_PIECES = 32;
 
 // The version's own board, still in the version's workspace, at `rank` or better; or a workspace

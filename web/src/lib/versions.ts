@@ -11,14 +11,14 @@ async function post(path: string, body: unknown): Promise<Record<string, string>
   return out;
 }
 
-export const saveVersion = (boardId: bigint) => post('/api/versions', { boardId: boardId.toString() });
+export const saveVersion = (boardId: bigint) => post('/api/plugins/versions', { boardId: boardId.toString() });
 
 // A retry after a failure reuses its key, also with the panel closed in between: if the first try made the board, the server returns that one.
 const keys = new Map<bigint, string>();
 
 export async function restoreVersion(versionId: bigint) {
   if (!keys.has(versionId)) keys.set(versionId, crypto.randomUUID().replaceAll('-', '') + crypto.randomUUID().replaceAll('-', ''));
-  const board = await post(`/api/versions/${versionId}/restore`, { requestKey: keys.get(versionId) }) as { boardId: string; slug: string };
+  const board = await post(`/api/plugins/versions/${versionId}/restore`, { requestKey: keys.get(versionId) }) as { boardId: string; slug: string };
   keys.delete(versionId);
   return board;
 }
