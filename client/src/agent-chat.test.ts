@@ -11,6 +11,17 @@ describe('chatReducer', () => {
     expect(s).toEqual({ items: [{ kind: 'me', text: 'hi' }], sending: true });
   });
 
+  it('an empty delta changes nothing', () => {
+    const start = run(initialChat(), { type: 'send', text: 'hi' });
+    expect(chatReducer(start, delta(''))).toBe(start);
+  });
+
+  it('an unknown event type changes nothing', () => {
+    const start = run(initialChat(), { type: 'send', text: 'hi' });
+    const unknown = { type: 'event', event: { type: 'mystery' } } as unknown as Parameters<typeof chatReducer>[1];
+    expect(chatReducer(start, unknown)).toBe(start);
+  });
+
   it('deltas build one agent message', () => {
     const s = run(initialChat(), delta('Hel'), delta('lo'));
     expect(s.items).toEqual([{ kind: 'agent', text: 'Hello' }]);

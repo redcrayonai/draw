@@ -13,10 +13,24 @@ export type ChatBody = {
   focus?: { nodeId: string; label?: string };
 };
 
-const EVENT_TYPES = new Set(['delta', 'status', 'done', 'error']);
+const str = (v: unknown): v is string => typeof v === 'string';
+
+/** The event for `type` and its JSON payload, or undefined if a field is missing or of the wrong type. */
+function toEvent(type: string, p: Record<string, unknown>): AgentEvent | undefined {
+  switch (type) {
+    case 'delta': return str(p.text) ? { type, text: p.text } : undefined;
+    case 'status': return str(p.message) ? { type, message: p.message } : undefined;
+    case 'done':
+      if (p.text === undefined) return { type };
+      return str(p.text) ? { type, text: p.text } : undefined;
+    case 'error': return str(p.code) && str(p.message) ? { type, code: p.code, message: p.message } : undefined;
+    default: return undefined;
+  }
+}
 
 /** Reads server-sent events: `event: <type>` and `data: <JSON>` lines, ended by a blank line.
- *  The JSON is the event without its `type`. Unknown types and bad JSON are skipped. */
+ *  The JSON is the event without its `type`. Unknown types, bad JSON and events with
+ *  missing or mistyped fields are skipped. */
 export function createSseParser(onEvent: (e: AgentEvent) => void): { push(chunk: string): void } {
   let buffer = '';
 
@@ -27,11 +41,13 @@ export function createSseParser(onEvent: (e: AgentEvent) => void): { push(chunk:
       if (line.startsWith('event:')) type = line.slice(6).trim();
       else if (line.startsWith('data:')) data.push(line.slice(5).replace(/^ /, ''));
     }
-    if (!EVENT_TYPES.has(type)) return;
+    let payload: unknown;
     try {
-      const payload = JSON.parse(data.join('\n'));
-      if (payload && typeof payload === 'object') onEvent({ ...payload, type } as AgentEvent);
-    } catch { /* a malformed event is not worth ending the reply for */ }
+      payload = JSON.parse(data.join('\n'));
+    } catch { return; /* a malformed event is not worth ending the reply for */ }
+    if (!payload || typeof payload !== 'object' || Array.isArray(payload)) return;
+    const event = toEvent(type, payload as Record<string, unknown>);
+    if (event) onEvent(event);
   };
 
   return {

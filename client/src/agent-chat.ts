@@ -41,7 +41,7 @@ export function chatReducer(state: ChatState, action: ChatAction): ChatState {
       const e = action.event;
       switch (e.type) {
         case 'delta':
-          return { ...state, items: appendAgent(state.items, e.text) };
+          return e.text ? { ...state, items: appendAgent(state.items, e.text) } : state;
         case 'status':
           return { ...state, items: [...state.items, { kind: 'status', text: e.message }] };
         case 'error':
@@ -52,6 +52,8 @@ export function chatReducer(state: ChatState, action: ChatAction): ChatState {
             ? { ...state, items: [...state.items, { kind: 'agent', text: e.text }] }
             : state;
       }
+      // a type this panel does not know changes nothing (and must not fall through to 'ended')
+      return state;
     }
     case 'ended':
       return {

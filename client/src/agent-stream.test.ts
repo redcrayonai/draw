@@ -33,6 +33,16 @@ describe('createSseParser', () => {
     ]);
   });
 
+  it('drops events with missing or mistyped fields', () => {
+    const { events, parser } = collect();
+    parser.push(frame('delta', {}) + frame('delta', { text: 5 })
+      + frame('status', { message: null })
+      + frame('done', { text: 7 })
+      + frame('error', { code: 'busy' }) + frame('error', { code: 1, message: 'x' })
+      + frame('delta', { text: 'ok' }));
+    expect(events).toEqual([{ type: 'delta', text: 'ok' }]);
+  });
+
   it('parses events split across chunks', () => {
     const { events, parser } = collect();
     const wire = frame('delta', { text: 'Hi' }) + frame('delta', { text: 'yo' });
