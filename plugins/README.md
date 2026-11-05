@@ -70,6 +70,7 @@ This rule also covers re-exports, `require()`, and dynamic imports. Import paths
 must be literal strings. Imports cannot reach another part, core files, another
 plugin, or bare dependencies. Symlinks cannot bypass this boundary. Files named
 `*.test.*` are exempt so tests can use their runner and fixtures.
+JSX and TSX source files are not supported; use JavaScript, TypeScript, or Svelte.
 
 ## Database part
 

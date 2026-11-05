@@ -115,6 +115,59 @@ test('checks JavaScript and TypeScript module helper extensions', t => {
   assert.equal(importProblems(dir, readPlugins(dir)).length, 4);
 });
 
+test('refuses JSX and TSX source instead of missing imports in JSX text', t => {
+  const dir = fixture(t);
+  plugin(dir);
+  for (const extension of ['jsx', 'tsx']) {
+    put(dir, `plugins/sample/web/helper.${extension}`, `<p>Don't skip this<button onClick={() => import('$lib/private')}>Run</button></p>`);
+    assert.ok(importProblems(dir, readPlugins(dir)).some(problem => problem.includes(`helper.${extension}`) && problem.includes('JSX and TSX')));
+  }
+});
+
+test('checks imports and require calls in Svelte markup expressions', t => {
+  const dir = fixture(t);
+  plugin(dir);
+  const bad = [
+    `<button onclick={() => import('$lib/private')}>Run</button>`,
+    `<button onclick="{() => import('$lib/private')}">Run</button>`,
+    `<Widget options={{ run: () => import('$lib/private') }} />`,
+    `{import('$lib/private')}`,
+    `{#await import('$lib/private')}{/await}`,
+    `{#if visible}<p>Shown</p>{/if}{import('$lib/private')}`,
+    `{#if visible}{:else if /}/.test('}') && import('$lib/private')}{/if}`,
+    `<button onclick={() => require('$lib/private')}>Run</button>`,
+    `{import(path)}`,
+    `<button onclick={() => import('./' + name)}>Run</button>`,
+    '{`value ${import("$lib/private")}`}',
+    `<textarea><style></textarea>{import('$lib/private')}`,
+    `<textarea><!-- {import('$lib/private')} --></textarea>`,
+    `<style-guide><button onclick={() => import('$lib/private')}>Run</button></style-guide>`,
+    `<script-widget>Don't skip<button onclick={() => import('$lib/private')}>Run</button></script-widget>`,
+    `<textarea-panel><button onclick={() => import('$lib/private')}>Run</button></textarea-panel>`,
+    `<Style><button onclick={() => import('$lib/private')}>Run</button></Style>`,
+    `<textarea></textarea-other><style></textarea>{import('$lib/private')}`,
+    `<textarea>Text</TEXTAREA><script>import '$lib/private';</script>`,
+  ];
+  for (const source of bad) {
+    put(dir, 'plugins/sample/web/View.svelte', source);
+    assert.ok(importProblems(dir, readPlugins(dir)).length > 0, source);
+  }
+  put(dir, 'plugins/sample/web/View.svelte', `
+    <!-- {import('$lib/private')} <script>import '$lib/private'</script> -->
+    <style>p { content: "import('$lib/private')"; }</style>
+    <p>import('$lib/private')</p>
+    <p title="import('$lib/private')">Text</p>
+    <textarea><script>import('$lib/private')</script>{import('@draw/client')}</textarea>
+    <p title="<style>">{import('@draw/client')}</p>
+    <button onclick={() => { /* import('$lib/private') */ return import('@draw/client'); }}>Run</button>
+    <Widget options={{ run: () => require('./helper') }} />
+    {import('./helper')}
+    {#if /}/.test('}')}<p>Shown</p>{/if}
+    {"import('$lib/private')"}
+  `);
+  assert.deepEqual(importProblems(dir, readPlugins(dir)), []);
+});
+
 test('imports refuse other interfaces, packages and escapes; tests are exempt', t => {
   const dir = fixture(t);
   plugin(dir);

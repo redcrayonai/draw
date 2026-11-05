@@ -53,7 +53,7 @@ export function readPlugins(root) {
 }
 
 // Keep literal tokens for imports, skipping comments and text while inspecting template expressions.
-function tokens(source, inspectTemplateExpressions = true) {
+function tokens(source, inspectTemplateExpressions = true, markup = false) {
   const result = [];
   let i = 0;
   const scan = (expression = false) => {
@@ -109,7 +109,46 @@ function tokens(source, inspectTemplateExpressions = true) {
       i += word?.length ?? 1;
     }
   };
-  scan();
+  if (markup) {
+    let tag = false, quote = '', raw, textarea = false;
+    while (i < source.length) {
+      const char = source[i];
+      if (!tag && !textarea && source.startsWith('<!--', i)) {
+        const end = source.indexOf('-->', i + 4);
+        i = end < 0 ? source.length : end + 3;
+        continue;
+      }
+      if (char === '{') {
+        i++;
+        // Svelte block/directive prefixes are not part of the JavaScript expression.
+        i += source.slice(i).match(/^[#:/@](?:else\s+if|[A-Za-z]+)\b/)?.[0].length ?? 0;
+        result.push({ kind: 'punctuation', value: '(' });
+        scan(true);
+        result.push({ kind: 'punctuation', value: ')' });
+        continue;
+      }
+      if (!tag && char === '<' && (!textarea || /^<\/textarea(?=[\s>])/i.test(source.slice(i)))) {
+        tag = true;
+        textarea = false;
+        raw = source.slice(i).match(/^<(script|style|textarea)(?=[\s/>])/)?.[1];
+      } else if (tag && (char === '"' || char === "'")) {
+        if (!quote) quote = char;
+        else if (quote === char) quote = '';
+      } else if (tag && char === '>' && !quote) {
+        tag = false;
+        if (raw === 'textarea') textarea = source[i - 1] !== '/';
+        else if (raw) {
+          const end = new RegExp(`</${raw}\\s*>`, 'g');
+          end.lastIndex = i + 1;
+          const closing = end.exec(source);
+          if (raw === 'script') result.push(...tokens(source.slice(i + 1, closing?.index)));
+          i = closing ? end.lastIndex : source.length;
+          continue;
+        }
+      }
+      i++;
+    }
+  } else scan();
   return result;
 }
 
@@ -205,7 +244,7 @@ export function importProblems(root, plugins) {
       catch { fail(file, `invalid import '${specifier}'`); return; }
       if (!inside(base, target)) { fail(file, `import '${specifier}' leaves this part`); return; }
       // Extensionless imports can resolve through a linked directory or linked source file.
-      for (const candidate of [target, ...['ts', 'js', 'mts', 'cts', 'mjs', 'cjs', 'svelte'].map(extension => `${target}.${extension}`)]) {
+      for (const candidate of [target, ...['ts', 'js', 'tsx', 'jsx', 'mts', 'cts', 'mjs', 'cjs', 'svelte'].map(extension => `${target}.${extension}`)]) {
         let ancestor = candidate;
         while (!existsSync(ancestor)) ancestor = dirname(ancestor);
         if (!inside(canonical, realpathSync(ancestor))) { fail(file, `import '${specifier}' follows a symlink outside this part`); return; }
@@ -219,12 +258,12 @@ export function importProblems(root, plugins) {
       for (const entry of readdirSync(folder, { withFileTypes: true }).sort((a, b) => a.name.localeCompare(b.name, 'en'))) {
         const file = join(folder, entry.name);
         if (statSync(file).isDirectory()) { walk(file); continue; }
-        if (!/\.(?:[cm]?[jt]s|svelte)$/.test(file) || /\.test\./.test(entry.name)) continue;
+        if (!/\.(?:[cm]?[jt]s|[jt]sx|svelte)$/.test(file) || /\.test\./.test(entry.name)) continue;
         if (!inside(canonical, realpathSync(file))) { fail(file, 'source follows a symlink outside this part'); continue; }
+        if (/\.[jt]sx$/.test(file)) { fail(file, 'JSX and TSX sources are not supported; use JavaScript, TypeScript or Svelte'); continue; }
         const text = readFileSync(file, 'utf8');
-        const sources = file.endsWith('.svelte') ? [...text.matchAll(/<script\b[^>]*>([\s\S]*?)<\/script>/g)].map(m => m[1]) : [text];
-        for (const source of sources) {
-          const list = tokens(source);
+        {
+          const list = tokens(text, true, file.endsWith('.svelte'));
           for (let i = 0; i < list.length; i++) {
             const token = list[i];
             if (token.kind !== 'word' || !['import', 'export', 'require'].includes(token.value)) continue;
