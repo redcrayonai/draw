@@ -4,9 +4,10 @@
 // operator's configuration (web/src/lib/server/plugins.ts), not a row here.
 import { table, t, SenderError } from 'spacetimedb/server';
 import { membership } from './workspaces';
+import { PLUGIN_IDS, type PluginId } from './plugin-meta.generated';
 
-export const PLUGINS = ['versions'] as const;
-export type PluginId = (typeof PLUGINS)[number];
+export const PLUGINS = PLUGIN_IDS;
+export type { PluginId } from './plugin-meta.generated';
 
 export const workspacePlugin = table({}, {
   key: t.string().primaryKey(), // `<workspaceId>:<plugin>`

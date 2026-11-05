@@ -3,6 +3,7 @@
 // Zero spacetimedb imports: web/ and `node --experimental-strip-types` load this file as is;
 // the module passes the Timestamp and Identity constructors to parseBundle.
 import { sha256Hex } from './sha256';
+import { PLUGIN_TABLES } from './plugin-meta.generated';
 
 export const BUNDLE_FORMAT = 'draw.board-bundle';
 export const BUNDLE_VERSION = 1;
@@ -62,7 +63,8 @@ export const LEFT_OUT: Record<string, string> = {
   orgMember: NOT_BOARD, agentLinkOffer: NOT_BOARD, agentLink: NOT_BOARD, legacyWorkspace: NOT_BOARD,
   workspace: NOT_BOARD, workspaceAccount: NOT_BOARD, workspaceMember: NOT_BOARD, workspaceTeam: NOT_BOARD, workspaceTeamMember: NOT_BOARD,
   workspaceServiceAccount: NOT_BOARD, workspaceApiKey: NOT_BOARD, workspaceMachineIdentity: NOT_BOARD, workspaceApiKeyExpiry: NOT_BOARD,
-  workspacePlugin: NOT_BOARD, boardVersion: 'the Versions index', boardVersionChunk: 'restore staging', versionCooldown: 'rate limit', boardItemReceipt: 'short-lived create retry receipts',
+  workspacePlugin: NOT_BOARD, boardItemReceipt: 'short-lived create retry receipts',
+  ...Object.fromEntries(Object.entries(PLUGIN_TABLES).map(([table, metadata]) => [table, metadata.why])),
 };
 
 // Where the board came from. Provenance only: a restore never links back to these boards.

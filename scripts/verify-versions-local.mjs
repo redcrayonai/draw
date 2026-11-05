@@ -23,6 +23,7 @@ registerHooks({ resolve(specifier, context, nextResolve) {
   }
 } });
 const { SECTIONS, LEFT_OUT, parseBundle } = await import('../module/src/board-bundle.ts');
+const { PLUGIN_TABLES } = await import('../module/src/plugin-meta.generated.ts');
 
 const { STDB_URL: BASE, STDB_DB: DB, STDB_OWNER_TOKEN: OWNER, MCP_ORIGIN, BROWSER_ISSUER, APP_ORIGINS, STDB_TEST_ISSUER_KEY: KEY_FILE } = process.env;
 if (!BASE || !DB || !OWNER || DB === 'redcrayon' || !MCP_ORIGIN || !BROWSER_ISSUER || !APP_ORIGINS || !KEY_FILE) {
@@ -229,6 +230,10 @@ test('every published table is in a bundle section or left out with a reason', (
   const covered = new Set([...Object.values(SECTIONS).map(s => s.table), ...Object.keys(LEFT_OUT)]);
   assert.deepEqual(tables.filter(t => !covered.has(t)), [], 'add each table to SECTIONS or LEFT_OUT (module/src/board-bundle.ts)');
   assert.deepEqual([...covered].filter(t => !tables.includes(t)), [], 'SECTIONS and LEFT_OUT name only published tables');
+  const pluginBoardTables = sections.Tables.filter(table => Object.hasOwn(PLUGIN_TABLES, table.source_name)
+    && sections.Typespace.types[table.product_type_ref].Product.elements.some(column => column.name.some === 'board_id'));
+  assert.deepEqual(pluginBoardTables.filter(table => PLUGIN_TABLES[table.source_name].board !== 'outlives').map(table => table.source_name), [],
+    "plugin tables with board_id must declare board: 'outlives' (board: 'part' is deferred)");
 });
 
 test('the plugin is off by default and only a workspace owner or admin turns it on', async () => {
