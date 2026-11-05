@@ -2561,11 +2561,14 @@ body.lib-dragging #board {
   max-width: 92%;
 }
 
+/* the mark sits on the first line when the text wraps */
 .agent-status {
+  --status-line: 17px;
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   gap: 6px;
   font-size: 12px;
+  line-height: var(--status-line);
   color: var(--muted);
 }
 
@@ -2573,6 +2576,7 @@ body.lib-dragging #board {
   content: '✓';
   flex: none;
   font-size: 10px;
+  line-height: var(--status-line);
   color: var(--ok);
 }
 
@@ -2583,6 +2587,7 @@ body.lib-dragging #board {
   border-radius: 50%;
   border: 1.5px solid var(--muted);
   border-top-color: transparent;
+  margin-top: calc((var(--status-line) - 8px) / 2);
   animation: agent-spin 0.8s linear infinite;
 }
 
