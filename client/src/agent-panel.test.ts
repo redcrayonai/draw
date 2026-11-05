@@ -4,7 +4,7 @@ import { DROPPED } from './agent-chat';
 import html from '../index.html?raw';
 
 const BOARD = 'https://draw.example/?db=demo#b=checkout';
-const KEY = 'agent-conversation:https://draw.example/#b=checkout';
+const KEY = 'agent-conversation:checkout';
 
 const frame = (type: string, data: object) => `event: ${type}\ndata: ${JSON.stringify(data)}\n\n`;
 
@@ -30,14 +30,16 @@ function sseFetch() {
 
 let selected: { id: bigint; label: string } | undefined;
 
-function mount(fake = sseFetch()) {
+let link = BOARD;
+
+function mount(fake = sseFetch(), storage: Storage = localStorage) {
   document.body.innerHTML = html;
   const panel = mountAgentPanel({
     url: 'https://agent.example/',
     token: async () => 'tok-1',
-    boardLink: () => BOARD,
+    boardLink: () => link,
     selectedNode: () => selected,
-    storage: localStorage,
+    storage,
     fetchImpl: fake.fetchImpl,
   });
   const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
@@ -64,6 +66,7 @@ const sentBody = (fake: ReturnType<typeof sseFetch>, i = 0) => JSON.parse(String
 beforeEach(() => {
   localStorage.clear();
   selected = undefined;
+  link = BOARD;
 });
 
 describe('agent panel', () => {
@@ -104,6 +107,78 @@ describe('agent panel', () => {
     expect(body.conversationId).toBe(localStorage.getItem(KEY));
     expect(body.focus).toBeUndefined();
     expect(input.value).toBe('');
+  });
+
+  it('a share link\'s token is not in the storage key', async () => {
+    link = 'https://draw.example/#s=secret-share-token-123';
+    const { fake, input } = mount();
+    ask(input, 'hi');
+    await fake.started();
+    const keys = Object.keys(localStorage);
+    expect(keys).toHaveLength(1);
+    expect(keys[0]).toMatch(/^agent-conversation:[0-9a-f]{16}$/);
+    expect(keys.some(k => k.includes('secret-share-token-123'))).toBe(false);
+    expect(sentBody(fake).conversationId).toBe(localStorage.getItem(keys[0]));
+    expect(sentBody(fake).boardLink).toBe(link); // the agent still gets the link itself
+  });
+
+  it('keys a share link without crypto.subtle (plain-http origins)', async () => {
+    const digest = vi.spyOn(crypto.subtle, 'digest').mockRejectedValue(new Error('no subtle'));
+    link = 'https://draw.example/#s=secret-share-token-123';
+    const { fake, input } = mount();
+    ask(input, 'hi');
+    await fake.started();
+    const keys = Object.keys(localStorage);
+    expect(keys).toEqual([expect.stringMatching(/^agent-conversation:[0-9a-f]{16}$/)]);
+    expect(sentBody(fake).conversationId).toBe(localStorage.getItem(keys[0]));
+    digest.mockRestore();
+  });
+
+  it('the same board keeps its conversation across visits', async () => {
+    const first = mount();
+    ask(first.input, 'one');
+    await first.fake.started();
+    const id = sentBody(first.fake).conversationId;
+    // another visit to the same board: other query, other page
+    link = 'https://draw.example/?db=other#b=checkout';
+    const second = mount();
+    ask(second.input, 'two');
+    await second.fake.started();
+    expect(sentBody(second.fake).conversationId).toBe(id);
+    // and the same share link hashes to the same key each visit
+    link = 'https://draw.example/#s=tok-abc';
+    const third = mount();
+    ask(third.input, 'three');
+    await third.fake.started();
+    const shared = sentBody(third.fake).conversationId;
+    const fourth = mount();
+    ask(fourth.input, 'four');
+    await fourth.fake.started();
+    expect(sentBody(fourth.fake).conversationId).toBe(shared);
+    expect(shared).not.toBe(id);
+  });
+
+  it('sending still works when storage throws', async () => {
+    const blocked = {
+      getItem: () => { throw new DOMException('blocked', 'SecurityError'); },
+      setItem: () => { throw new DOMException('blocked', 'SecurityError'); },
+    } as unknown as Storage;
+    const { fake, input, msgs } = mount(sseFetch(), blocked);
+    ask(input, 'one');
+    await fake.started();
+    const id = sentBody(fake).conversationId;
+    expect(id).toMatch(/^c-[0-9a-f-]{36}$/);
+    fake.push('done', { text: 'ok' });
+    fake.close();
+    await vi.waitFor(() => expect(msgs.children).toHaveLength(2));
+    ask(input, 'two'); // the in-memory id holds for this page
+    await vi.waitFor(() => expect(fake.calls).toHaveLength(2));
+    expect(sentBody(fake, 1).conversationId).toBe(id);
+    (document.getElementById('agent-new') as HTMLButtonElement).click();
+    await vi.waitFor(() => expect((document.getElementById('agent-send') as HTMLButtonElement).disabled).toBe(false));
+    ask(input, 'three');
+    await vi.waitFor(() => expect(fake.calls).toHaveLength(3));
+    expect(sentBody(fake, 2).conversationId).not.toBe(id);
   });
 
   it('keeps the stored conversation id for the board', async () => {
@@ -172,7 +247,7 @@ describe('agent panel', () => {
     const first = sentBody(fake).conversationId;
     (document.getElementById('agent-new') as HTMLButtonElement).click();
     expect(msgs.children).toHaveLength(0);
-    expect(localStorage.getItem(KEY)).not.toBe(first);
+    await vi.waitFor(() => expect(localStorage.getItem(KEY)).not.toBe(first));
     ask(input, 'two');
     await vi.waitFor(() => expect(fake.calls).toHaveLength(2));
     const second = sentBody(fake, 1).conversationId;

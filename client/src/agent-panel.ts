@@ -19,19 +19,48 @@ export interface AgentPanelDeps {
 
 const LABEL_MAX = 200;
 
-/** One conversation per board, so the key drops the query (?db= and the like) but keeps the #b= link. */
-function conversationKey(boardLink: string): string {
-  const q = boardLink.indexOf('?');
-  if (q === -1) return `agent-conversation:${boardLink}`;
-  const hash = boardLink.indexOf('#', q);
-  return `agent-conversation:${boardLink.slice(0, q)}${hash === -1 ? '' : boardLink.slice(hash)}`;
+/** One conversation per board: keyed on its #b=<slug>. A Share-link visit has no slug, and
+ *  its #s= token must not sit in storage, so it is keyed on a short one-way hash of the link. */
+async function conversationKey(boardLink: string): Promise<string> {
+  const hash = boardLink.indexOf('#');
+  const slug = hash === -1 ? null : new URLSearchParams(boardLink.slice(hash + 1)).get('b');
+  if (slug) return `agent-conversation:${slug}`;
+  return `agent-conversation:${await shortHash(boardLink)}`;
+}
+
+/** First 16 hex chars of the text's SHA-256. Pages on a plain-http origin have no
+ *  crypto.subtle, so they fall back to two FNV-1a passes: still one-way enough to keep a token out. */
+async function shortHash(text: string): Promise<string> {
+  const bytes = new TextEncoder().encode(text);
+  try {
+    const digest = await crypto.subtle.digest('SHA-256', bytes);
+    return [...new Uint8Array(digest)].map(b => b.toString(16).padStart(2, '0')).join('').slice(0, 16);
+  } catch {
+    const fnv = (seed: number) => {
+      let h = seed;
+      for (const b of bytes) h = Math.imul(h ^ b, 0x01000193) >>> 0;
+      return h.toString(16).padStart(8, '0');
+    };
+    return fnv(0x811c9dc5) + fnv(0x050c5d1f);
+  }
 }
 
 const newConversationId = () => `c-${crypto.randomUUID()}`;
 const validId = (id: string | null): id is string => id !== null && id.length <= 128 && /^[A-Za-z0-9:_-]+$/.test(id);
 
 export function mountAgentPanel(deps: AgentPanelDeps): { selectionChanged(): void } {
-  const storage = deps.storage ?? localStorage;
+  // Reading localStorage itself can throw when the browser blocks storage.
+  let storage: Storage | undefined;
+  try { storage = deps.storage ?? localStorage; } catch { storage = undefined; }
+  // Ids for this page, so a blocked storage still keeps one conversation going.
+  const memory = new Map<string, string>();
+  const load = (key: string): string | null => {
+    try { return storage?.getItem(key) ?? null; } catch { return null; }
+  };
+  const save = (key: string, id: string) => {
+    memory.set(key, id);
+    try { storage?.setItem(key, id); } catch { /* the in-memory id serves this page */ }
+  };
   const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
   const orb = $<HTMLButtonElement>('agent-orb');
   const panel = $<HTMLElement>('agent-panel');
@@ -47,12 +76,17 @@ export function mountAgentPanel(deps: AgentPanelDeps): { selectionChanged(): voi
   // The node whose chip the person cleared; it stays hidden until the selection changes.
   let cleared: bigint | undefined;
 
-  const conversationId = (): string => {
-    const key = conversationKey(deps.boardLink());
-    const stored = storage.getItem(key);
+  // New chat's id write; a send right after it waits for it, so it never reads the old id.
+  let starting: Promise<void> = Promise.resolve();
+  const conversationId = async (): Promise<string> => {
+    await starting;
+    const key = await conversationKey(deps.boardLink());
+    const stored = load(key);
     if (validId(stored)) return stored;
+    const known = memory.get(key);
+    if (known) return known;
     const id = newConversationId();
-    storage.setItem(key, id);
+    save(key, id);
     return id;
   };
 
@@ -104,19 +138,20 @@ export function mountAgentPanel(deps: AgentPanelDeps): { selectionChanged(): voi
     const message = input.value.trim();
     if (!message || state.sending) return;
     const node = focusNode();
-    const body: ChatBody = {
-      message,
-      conversationId: conversationId(),
-      messageId: crypto.randomUUID(),
-      boardLink: deps.boardLink(),
-      ...(node ? { focus: { nodeId: String(node.id), label: node.label.slice(0, LABEL_MAX) } } : {}),
-    };
+    const boardLink = deps.boardLink();
     input.value = '';
     dispatch({ type: 'send', text: message });
     const ctrl = new AbortController();
     running = ctrl;
-    const token = await deps.token().catch(() => null);
+    const [conversation, token] = await Promise.all([conversationId(), deps.token().catch(() => null)]);
     if (ctrl.signal.aborted) return;
+    const body: ChatBody = {
+      message,
+      conversationId: conversation,
+      messageId: crypto.randomUUID(),
+      boardLink,
+      ...(node ? { focus: { nodeId: String(node.id), label: node.label.slice(0, LABEL_MAX) } } : {}),
+    };
     const how = await streamChat({
       url: deps.url,
       token,
@@ -141,7 +176,8 @@ export function mountAgentPanel(deps: AgentPanelDeps): { selectionChanged(): voi
   $<HTMLButtonElement>('agent-new').addEventListener('click', () => {
     running?.abort();
     running = null;
-    storage.setItem(conversationKey(deps.boardLink()), newConversationId());
+    const link = deps.boardLink();
+    starting = starting.then(async () => save(await conversationKey(link), newConversationId()));
     state = initialChat();
     render();
     input.focus();
