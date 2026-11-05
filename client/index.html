@@ -460,6 +460,34 @@
       </div>
 
       <aside id="inspector" hidden tabindex="0" aria-label="Inspector"></aside>
+
+      <!-- Chat with a hosted agent (agent-panel.ts); shown only when the build sets VITE_AGENT_URL. -->
+      <button id="agent-orb" class="agent-orb" hidden aria-label="Ask the agent" aria-expanded="false" aria-controls="agent-panel">
+        <!-- Logo swap point: replace this span's contents with the agent logo. -->
+        <span class="agent-orb-logo" aria-hidden="true">
+          <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round" aria-hidden="true"><path d="M8 1.75c.5 3.25 1.5 4.75 6.25 6.25C9.5 9.5 8.5 11 8 14.25 7.5 11 6.5 9.5 1.75 8 6.5 6.5 7.5 5 8 1.75Z" /></svg>
+        </span>
+      </button>
+      <aside id="agent-panel" hidden aria-label="Agent">
+        <div class="agent-head">
+          <h2 class="agent-title">Agent</h2>
+          <button id="agent-new" class="agent-text-btn" type="button">New chat</button>
+          <button id="agent-close" class="icon-btn" type="button" aria-label="Close">
+            <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M4 4l8 8M12 4l-8 8" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" /></svg>
+          </button>
+        </div>
+        <ol id="agent-msgs" aria-live="polite"></ol>
+        <div id="agent-about" hidden>
+          <span>About: <b></b></span>
+          <button id="agent-about-clear" type="button" aria-label="Don't send this node">×</button>
+        </div>
+        <form id="agent-form">
+          <textarea id="agent-input" rows="2" placeholder="Ask the agent…" aria-label="Message"></textarea>
+          <button id="agent-send" type="submit" aria-label="Send">
+            <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 13V3M4 7l4-4 4 4" /></svg>
+          </button>
+        </form>
+      </aside>
       <div id="copy-status" class="sr-only" role="status" aria-live="polite"></div>
     </main>
 

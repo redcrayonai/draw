@@ -7,6 +7,7 @@ const uri: unknown = import.meta.env.VITE_SPACETIME_URI;
 const db: unknown = import.meta.env.VITE_SPACETIME_DB;
 const requireAuth: unknown = import.meta.env.VITE_REQUIRE_AUTH;
 const dashboardUrl: unknown = import.meta.env.VITE_DASHBOARD_URL;
+const agentUrl: unknown = import.meta.env.VITE_AGENT_URL;
 const authRequired = typeof requireAuth === 'string' && ['1', 'true'].includes(requireAuth.toLowerCase());
 
 if (typeof uri !== 'string' || uri.length === 0) {
@@ -47,6 +48,8 @@ export const config = {
   mcpUrl: readMcpUrl(import.meta.env.VITE_MCP_URL, import.meta.env.PROD),
   // The hosted privacy policy, linked from the code panel and the Connect dialog. Unset = no link.
   privacyUrl: readPrivacyUrl(import.meta.env.VITE_PRIVACY_URL),
+  // A hosted agent to chat with from the board (its endpoint is <url>/chat). Unset = no chat button.
+  agentUrl: typeof agentUrl === 'string' && agentUrl.trim().length > 0 ? agentUrl.trim() : undefined,
   // A hosted build sets VITE_PREVIEW=1 to tag the header Preview.
   preview: import.meta.env.VITE_PREVIEW === '1',
 };

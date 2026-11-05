@@ -50,6 +50,7 @@ import { CommandPalette, offeredOn, type Command } from './palette';
 import { tidyGrid, distributeHorizontally, connectInOrder, GRID, type Box } from './layout';
 import { initAuth, SignedOutError, type Auth } from './auth';
 import { runBootWithRecovery } from './connection-recovery';
+import { mountAgentPanel } from './agent-panel';
 import { openBoards, subscribeBoard, subscribeLists } from './subscribe';
 import { selectBoard, hasBoardLink, shouldOpenDashboard, viewOnly, opensNewShareLink } from './board-select';
 import { shareTokenOf } from '../../shared/share-link';
@@ -339,6 +340,20 @@ async function boot(conn: DbConnection, identityHex: string, signedIn: boolean):
   let activeBoardId: bigint | undefined;
   const boardsHref = dashboardLink();
   trackBoardWrites(conn, setSaveStatus);
+  // The bearer token for the agent server: the account's when signed in, else this browser's guest token.
+  const liveToken = async (): Promise<string | null> => {
+    if (auth?.hasSession()) return auth.freshToken().catch(() => null);
+    return readAnonymousToken(ANON_TOKEN_KEY, SHARE_LOCAL_GUEST) ?? null;
+  };
+  // The node the agent chat is about; the board view below points it at its editor's selection.
+  let chatAbout: () => { id: bigint; label: string } | undefined = () => undefined;
+  const agentPanel = config.agentUrl === undefined ? undefined : mountAgentPanel({
+    url: config.agentUrl,
+    token: liveToken,
+    // showBoardLink keeps the board's own (or Share) link in the address bar.
+    boardLink: () => location.href,
+    selectedNode: () => chatAbout(),
+  });
   if (auth && signedIn) {
     const doSignOut = async () => {
       await auth!.signOut();
@@ -1104,10 +1119,6 @@ async function boot(conn: DbConnection, identityHex: string, signedIn: boolean):
       let liveState: LiveState | null = null;
       const liveRow = document.getElementById('live-row') as HTMLButtonElement;
       const liveStatus = document.getElementById('live-status') as HTMLDivElement;
-      const liveToken = async (): Promise<string | null> => {
-        if (auth?.hasSession()) return auth.freshToken().catch(() => null);
-        return readAnonymousToken(ANON_TOKEN_KEY, SHARE_LOCAL_GUEST) ?? null;
-      };
       // A rail action under Live and under the time window; a declaration, so renderWindow above can use it.
       function liveButton(label: string, run: () => void): HTMLButtonElement {
         const b = document.createElement('button');
@@ -1644,6 +1655,7 @@ async function boot(conn: DbConnection, identityHex: string, signedIn: boolean):
           // Selecting anything but the anchor closes the open threat: its panel lives in the anchor's inspector.
           if (openThreat !== null && !(editor.selection.size === 1 && editor.selection.has(openThreat.anchorId) && editor.selectedEdges.size === 0)) closeThreat();
           publishSelection();
+          agentPanel?.selectionChanged();
         },
         placeTemplate,
         toggleLibrary: () => library.toggle(),
@@ -1658,6 +1670,11 @@ async function boot(conn: DbConnection, identityHex: string, signedIn: boolean):
       const asBoxes = (nodes: Node[]): Box[] =>
         nodes.map(n => ({ id: n.id, ...nodeRect(n, editor.overrides) }));
       const selectedNodes = (): Node[] => getNodes().filter(n => editor.selection.has(n.id));
+      chatAbout = () => {
+        const nodes = selectedNodes();
+        return nodes.length === 1 ? { id: nodes[0].id, label: nodes[0].label } : undefined;
+      };
+      agentPanel?.selectionChanged();
       const report = (err: unknown): void => showError((err as Error).message);
       // Managers can rename and delete; versioned boards are named by their history.
       const canRename = () => !getVersion() && canManage();
