@@ -33,6 +33,7 @@ import {
 } from './chrome';
 import { paintAccessLine } from './access-line';
 import { renderBoard, focusOf, ghostEdges, contentBounds, evidenceClass, hasMachineEvidence, nodeRect, type RefBadge, type EdgeRefBadge, type LiveEdge, type EdgeMotion } from './render';
+import { chatUrl, mountAgentChat } from './agent-chat';
 import { LIVE_CHART_SOURCE, LiveSession, liveCsv, liveUrl, recordLive, resolveLive, tapPrompt, type LivePoint, type LiveState } from './live';
 import { formatWindow, mountWindowBrush, zoomOut, type TimeWindow } from './time-window';
 import { Glide, type XY } from './glide';
@@ -143,6 +144,22 @@ function dashboardLink(): string | undefined {
   const href = dashboardHref(config.dashboardUrl, config.db, config.defaultDb);
   return href ? auth?.authenticatedHref(href) ?? href : undefined;
 }
+
+/** A pairing code from the link's fragment, which never reaches a server: taken off the URL at once, so it stays out of history. */
+function takePairCode(): string | null {
+  const params = new URLSearchParams(location.hash.slice(1));
+  const code = params.get('pair');
+  if (code === null) return null;
+  params.delete('pair');
+  history.replaceState(null, '', `${location.pathname}${location.search}#${params.toString()}`);
+  return code;
+}
+let pendingPair = takePairCode();
+let offerPair: ((code: string) => void) | undefined;
+window.addEventListener('hashchange', () => {
+  pendingPair = takePairCode() ?? pendingPair;
+  if (pendingPair) offerPair?.(pendingPair);
+});
 
 function newBoardHref(): string {
   const url = new URL(location.href);
@@ -481,7 +498,7 @@ async function boot(conn: DbConnection, identityHex: string, signedIn: boolean):
   };
   // The board list comes first: the board tables return only the boards this connection opens (RC-605).
   const listed = await new Promise<boolean>(resolve =>
-    subscribeLists(conn, () => resolve(true), ctx => { boardFailed(ctx); resolve(false); }, signedIn && config.mcpUrl !== undefined, signedIn && CANVAS_PARTS.length > 0));
+    subscribeLists(conn, () => resolve(true), ctx => { boardFailed(ctx); resolve(false); }, (signedIn || !config.accounts) && config.mcpUrl !== undefined, signedIn && CANVAS_PARTS.length > 0));
   if (!listed) return;
   const picked = guestBoardId === undefined
     ? selectBoard(conn.db.visibleBoard.iter(), location.search, location.hash, conn.db.myBoards.iter())
@@ -1194,6 +1211,9 @@ async function boot(conn: DbConnection, identityHex: string, signedIn: boolean):
         void session.start();
       };
       liveRow.hidden = config.mcpUrl === undefined;
+
+      // The person's own agent, from the board: offered only to someone with a linked agent (mcp/src/chat.ts enforces it).
+      let agentChat: ReturnType<typeof mountAgentChat> | undefined;
       liveRow.addEventListener('click', () => (liveSession ? stopLive() : startLive()));
 
       const traceRow = () => conn.db.visibleTracePlayback.boardId.find(boardId) ?? null;
@@ -2377,6 +2397,7 @@ async function boot(conn: DbConnection, identityHex: string, signedIn: boolean):
       const showBoard = (id: bigint, next: typeof board) => {
         board = next;
         stopLive();
+        agentChat?.switchBoard();
         palette.close();
         library.close();
         boardId = id;
@@ -2553,6 +2574,82 @@ async function boot(conn: DbConnection, identityHex: string, signedIn: boolean):
       rerenderParticipants();
       requestAnimationFrame(finishBoardLoading);
       requestAnimationFrame(tellExtra);
+      // After everything the selection and the board read exists: a board with no agent can open the panel at once.
+      if (config.mcpUrl !== undefined) {
+        const mcpUrl = config.mcpUrl;
+        const chatButton = document.getElementById('act-chat') as HTMLButtonElement;
+        let framed = { tx: viewport.tx, ty: viewport.ty, scale: viewport.scale };
+        const hrefOf = (slug: string) => boardHref({ app: location.href, slug, db: config.db, home: config.defaultDb });
+        const chat = mountAgentChat(chatButton, {
+          // A board nobody has moved stays framed in the new width; one they have moved keeps what is in its middle.
+          boardWidthChanged: delta => {
+            if (viewport.tx === framed.tx && viewport.ty === framed.ty && viewport.scale === framed.scale) {
+              editor.fitView();
+              framed = { tx: viewport.tx, ty: viewport.ty, scale: viewport.scale };
+            } else viewport.panBy(delta / 2, 0);
+          },
+          url: () => chatUrl(mcpUrl, boardId),
+          token: liveToken,
+          selection: () => {
+            const nodes = getNodes().filter(n => editor.selection.has(n.id)).map(n => n.label || n.sublabel).filter(Boolean);
+            const byId = new Map(getNodes().map(n => [n.id, n.label || n.sublabel]));
+            const edges = getEdges().filter(e => editor.selectedEdges.has(e.id)).map(e => `${byId.get(e.fromNode) ?? '?'} → ${byId.get(e.toNode) ?? '?'}`);
+            return [...edges, ...nodes].join(', ').slice(0, 300);
+          },
+          // Where to go from a board with no agent: where it is drawing now, else the person's newest session board.
+          agentElsewhere: () => {
+            const live = findAgentBoard({
+              me: identityHex,
+              links: conn.db.myAgentLinks.iter(),
+              participants: conn.db.visibleParticipant.iter(),
+              selections: conn.db.visibleSelection.iter(),
+              boards: conn.db.visibleBoard.iter(),
+              onScreen: boardId,
+              now: Date.now(),
+            });
+            if (live?.here) return null;
+            if (live) return { board: live.board, href: hrefOf(live.slug), live: true };
+            const sessions = [...conn.db.myBoards.iter()].filter(b => b.isSession && b.boardId !== boardId).sort((x, y) => (x.boardId < y.boardId ? 1 : -1));
+            const latest = sessions[0] && conn.db.visibleBoard.id.find(sessions[0].boardId);
+            return latest ? { board: latest.name, href: hrefOf(latest.slug), live: false } : null;
+          },
+        });
+        agentChat = chat;
+        const refreshChat = () => {
+          chat.setAvailable([...conn.db.myAgentLinks.iter()].some(l => l.owner.toHexString() === identityHex));
+          chat.refresh();
+        };
+        for (const table of [conn.db.myAgentLinks, conn.db.visibleParticipant, conn.db.myBoards]) {
+          table.onInsert(refreshChat);
+          table.onDelete(refreshChat);
+        }
+        refreshChat();
+        // A build with accounts links signed-in people on its own; this is for one without.
+        if (signedIn || !config.accounts) {
+          offerPair = code => {
+            pendingPair = null;
+            chat.offerPair(async () => {
+              const mine = () =>
+                [...conn.db.myAgentLinks.iter()].filter(l => l.owner.toHexString() === identityHex).sort((x, y) => y.linkedAt.toDate().getTime() - x.linkedAt.toDate().getTime())[0];
+              // A spent code, from someone already linked: say so, and change nothing, since the code no longer says which agent it named.
+              try {
+                await conn.reducers.redeemAgentLink({ code });
+              } catch (err) {
+                if (mine()) return 'already';
+                throw err;
+              }
+              for (let i = 0; i < 30 && !mine(); i++) await new Promise(resolve => setTimeout(resolve, 100));
+              // Their own board goes to the agent they just linked; on someone else's board the link alone stands.
+              await conn.reducers.grantAgentBoard({ boardId, agent: mine().agent }).catch(() => {});
+              refreshChat();
+              return 'linked';
+            });
+          };
+          if (pendingPair) offerPair(pendingPair);
+        }
+        document.addEventListener('pointerup', () => setTimeout(() => chat.refresh(), 0));
+        document.addEventListener('keyup', () => chat.refresh());
+      }
       if (demoFlow) {
         const feedDemo = () => {
           setActivity(demoActivity(getEdges().map(e => e.id), Date.now()));

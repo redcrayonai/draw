@@ -42,7 +42,7 @@ const HOSTED = [
   'mark_checkpoint', 'plan_route', 'arrive', 'reroute', 'remove_code_ref', 'set_node_doc', 'set_selection', 'layout_board',
   'add_change_note', 'update_change_note', 'remove_change_note',
   'add_threat', 'update_threat', 'remove_threat',
-  'wait_for_marks', 'watch_marks', 'reply_to_mark', 'list_marks',
+  'wait_for_marks', 'watch_marks', 'start_chat', 'reply_to_mark', 'list_marks',
   'pin_chart', 'set_time_window', 'open_incident',
 ];
 const keysOf = (schema: z.ZodType): string[] => {

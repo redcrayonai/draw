@@ -26,3 +26,5 @@ if (foreign.length > 0) {
   process.exit(1);
 }
 chmodSync(outfile, 0o755);
+// The plugin's chat hook runs on every batch of terminal text, so it stays small and starts fast.
+await build({ absWorkingDir: here, entryPoints: ['src/chat-hook.ts'], bundle: true, platform: 'node', format: 'esm', target: 'node20', outfile: resolve(dirname(outfile), 'chat-hook.mjs'), logLevel: 'warning' });

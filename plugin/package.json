@@ -14,6 +14,7 @@
     "skills",
     "references",
     "bin/redcrayon.mjs",
+    "bin/chat-hook.mjs",
     "README.md",
     "LICENSE"
   ],
