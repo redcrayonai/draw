@@ -27,13 +27,16 @@
       { "name": "USER", "class_name": "User" },
       { "name": "CAPTURE", "class_name": "Capture" },
       // one per board: the live tap channel
-      { "name": "LIVE", "class_name": "Live" }
+      { "name": "LIVE", "class_name": "Live" },
+      // one per board: the agent chat relay
+      { "name": "CHAT", "class_name": "Chat" }
     ]
   },
   "migrations": [
     { "tag": "v1", "new_sqlite_classes": ["User"] },
     { "tag": "v2", "new_sqlite_classes": ["Capture"] },
-    { "tag": "v3", "new_sqlite_classes": ["Live"] }
+    { "tag": "v3", "new_sqlite_classes": ["Live"] },
+    { "tag": "v4", "new_sqlite_classes": ["Chat"] }
   ],
   "ratelimits": [
     { "name": "CALLS_RL", "namespace_id": "1", "simple": { "limit": 120, "period": 60 } },

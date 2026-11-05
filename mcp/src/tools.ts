@@ -63,7 +63,7 @@ import { guardSecrets } from '../../agent/src/session';
 import { DbError, identityArg } from '../../shared/db-http';
 import { identityFromClaims } from '../../shared/identity';
 import { sha256, type Principal, type UserInfo } from './auth';
-import { principalSubject, mintMarks, mintTap } from './issuer';
+import { principalSubject, mintChat, mintMarks, mintTap } from './issuer';
 import { boardText, readBoard } from './board';
 import { groupByFiles, newSeat } from './marks';
 import {
@@ -1281,6 +1281,24 @@ export const TOOLS: Record<string, ToolDef> = {
       await assertWriter(t, b, 'watch for marks on it');
       const token = await mintMarks(t.ctx.env, principalSubject(t.ctx.principal), b.id, seat);
       return okResult(JSON.stringify({ board: String(b.id), token, command: `npx -y @redcrayonai/draw@1 marks --token ${token}`, expires_in_hours: 12 }, null, 1));
+    },
+  },
+
+  start_chat: {
+    title: 'Start board chat',
+    scope: 'board:write',
+    description:
+      'Let the person running you talk to you from the board, without going back to the terminal. Needs the redcrayon plugin, whose hooks carry your replies (its handoff skill runs this). Returns JSON { board, token, command, expires_in_hours }. ' +
+      'Right after start_session, run the command so each line it prints wakes you: with a tool that streams a long-running command\'s output if you have one, armed for as long as it allows and armed again when it expires. ' +
+      'A line starting "Board chat:" is a message from the person running you, as if they typed it here: act on it. What you write back reaches them by itself; do not call a tool to reply.' +
+      BOARD_SUFFIX,
+    input: z.object({ board: boardArg }).strict(),
+    async run({ board }, t) {
+      if (t.ctx.principal.machine) throw new Refusal('REJECTED: service accounts cannot start a board chat: they have no person to talk to. Nothing was written.');
+      const b = await boardOf(t, board);
+      await assertWriter(t, b, 'start a chat on it');
+      const token = await mintChat(t.ctx.env, principalSubject(t.ctx.principal), b.id);
+      return okResult(JSON.stringify({ board: String(b.id), token, command: `npx -y @redcrayonai/draw@1 chat --token ${token}`, expires_in_hours: 12 }, null, 1));
     },
   },
 

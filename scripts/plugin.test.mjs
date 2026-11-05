@@ -4,7 +4,7 @@
 // carries the exact disclosures.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { cpSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
+import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { spawnSync } from 'node:child_process';
 import { tmpdir } from 'node:os';
 import { basename, join, dirname } from 'node:path';
@@ -29,7 +29,7 @@ const TOOL_NAMES = blocks.map(b => b.match(/^(\w+):/)[1]);
 const takesCapture = blocks.filter(b => /^\s+capture,$|, capture \}/m.test(b)).map(b => b.match(/^(\w+):/)[1]);
 
 test('tools.ts parses into the hosted tool list', () => {
-  assert.equal(TOOL_NAMES.length, 43);
+  assert.equal(TOOL_NAMES.length, 44);
   assert.ok(TOOL_NAMES.includes('apply_board'));
   for (const t of ['start_session', 'get_board', 'add_code_ref', 'mark_checkpoint', 'arrive', 'describe_charts', 'add_threat', 'update_threat', 'remove_threat', 'create_branch', 'submit_branch', 'wait_for_marks', 'watch_marks', 'reply_to_mark', 'list_marks']) assert.ok(TOOL_NAMES.includes(t), t);
   assert.ok(!TOOL_NAMES.includes('link_dashboard'));
@@ -75,12 +75,20 @@ test('.mcp.json: one http server named draw with an overridable local or configu
 
 test('hooks.json: PreToolUse and PostToolUse run the bundled helper on the capture tools', () => {
   const { hooks } = json('plugin/hooks/hooks.json');
-  assert.deepEqual(Object.keys(hooks).sort(), ['PostToolUse', 'PreToolUse']);
+  assert.deepEqual(Object.keys(hooks).sort(), ['MessageDisplay', 'Notification', 'PostToolUse', 'PostToolUseFailure', 'PreToolUse', 'Stop', 'UserPromptSubmit']);
   for (const event of ['PreToolUse', 'PostToolUse']) {
-    assert.equal(hooks[event].length, 1, event);
-    assert.equal(hooks[event][0].matcher, MATCHER, event);
-    assert.deepEqual(hooks[event][0].hooks, [{ type: 'command', command: COMMAND, timeout: 45 }], event);
+    const capture = hooks[event].filter(h => h.matcher === MATCHER);
+    assert.equal(capture.length, 1, event);
+    assert.deepEqual(capture[0].hooks, [{ type: 'command', command: COMMAND, timeout: 45 }], event);
   }
+});
+
+test('hooks.json: every chat hook is the small bundle, quick and never blocking when node or the helper is missing', () => {
+  const { hooks } = json('plugin/hooks/hooks.json');
+  const chat = Object.values(hooks).flat().filter(h => h.matcher !== MATCHER);
+  assert.equal(chat.length, 7);
+  // No live helper, no Node: a session without a chat pays one shell glob per hook.
+  for (const entry of chat) assert.deepEqual(entry.hooks, [{ type: 'command', command: `sh -c 'set -- "$HOME"/.redcrayon/chat/*.sock; [ -e "$1" ] || exit 0; command -v node >/dev/null || exit 0; exec node "\${CLAUDE_PLUGIN_ROOT}/bin/chat-hook.mjs"'`, timeout: 5 }]);
 });
 
 test('hook matcher: every tool that takes a capture, under all three prefixes, and nothing else', () => {
@@ -364,10 +372,12 @@ test('hosted plugin release configures and scans the packed plugin and marketpla
     assert.equal(hostedUrl(JSON.parse(readFileSync(join(dir, 'plugin/.mcp.json'), 'utf8'))), `${HOSTED_PLUGIN_ORIGIN}/mcp`);
     run(process.execPath, ['build.mjs'], join(dir, 'helper'));
     cpSync(join(dir, 'helper/dist/redcrayon.mjs'), join(dir, 'plugin/bin/redcrayon.mjs'));
+    cpSync(join(dir, 'helper/dist/chat-hook.mjs'), join(dir, 'plugin/bin/chat-hook.mjs'));
     const pack = join(dir, 'pack');
     mkdirSync(pack);
     const [{ filename }] = JSON.parse(run('npm', ['pack', '--ignore-scripts', '--json', '--pack-destination', pack], join(dir, 'plugin')));
     run('tar', ['-xzf', join(pack, filename), '-C', pack]);
+    assert.ok(existsSync(join(pack, 'package/bin/chat-hook.mjs')), 'every chat hook would fail without the hook in the package');
     const targets = join(dir, 'release.targets');
     writeFileSync(targets, `tree ${join(pack, 'package')}\ntree .claude-plugin\n`);
     const strict = scan(targets, dir);

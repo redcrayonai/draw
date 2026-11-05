@@ -42,6 +42,8 @@ export interface Env {
   CAPTURE: DurableObjectNamespace;
   /** One per board: the live tap channel. Optional so tests without it get 503 on /live. */
   LIVE?: DurableObjectNamespace;
+  /** One per board: the agent chat relay. Optional so tests without it get 503 on /chat. */
+  CHAT?: DurableObjectNamespace;
   CALLS?: AnalyticsEngineDataset;
 }
 

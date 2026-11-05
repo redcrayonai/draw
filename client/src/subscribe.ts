@@ -36,8 +36,8 @@ export const INCIDENT_TABLES = ['visible_chart_anchor', 'visible_board_window', 
 export const LIBRARY_VIEWS = ['my_library'];
 /**
  * The viewer's linked agents, for the Connect dialog's live line (hosted MCP
- * §6). Signed-in tabs only: a sender-aware view re-runs once per subscriber,
- * and a guest links no agent.
+ * §6). Signed-in tabs and builds with no accounts: a sender-aware view re-runs once per
+ * subscriber, and a guest on a build with accounts links no agent.
  */
 export const AGENT_LINK_VIEWS = ['my_agent_links'];
 /** The owner's link includes: the share menu's Threats and Code boxes. */
