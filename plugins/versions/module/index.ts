@@ -2,15 +2,14 @@
 // dashboard server, listed here once stored, and restored into a new private board. The bundle
 // format, its capture and its restore are core (board-bundle.ts); this file owns the index, the
 // four actions and their rules. Every action checks the caller's current access and the plugin.
-import { table, t, SenderError } from 'spacetimedb/server';
-import { Identity, Timestamp } from 'spacetimedb';
-import { BUNDLE_VERSION, MAX_BUNDLE_BYTES, BundleError, bundleText, captureBoard, parseBundle, restoreBoard } from './board-bundle';
-import { sha256Bytes } from './sha256';
-import { pluginEnabled } from './plugins';
-import { roleRank } from './workspace-policy';
-import { assignBoardWorkspace, humanBoardRole, membership } from './workspaces';
+import {
+  table, t, SenderError, Identity, Timestamp,
+  BUNDLE_VERSION, MAX_BUNDLE_BYTES, BundleError, bundleText, captureBoard, parseBundle, restoreBoard,
+  sha256Bytes, pluginEnabled, roleRank, assignBoardWorkspace, humanBoardRole, membership,
+  type ModuleApi,
+} from '@draw/module';
 
-export const versionTables = {
+export const tables = {
   // One row per version. objectKey is unique and never reused; status is 'pending' from capture
   // until the dashboard server stored the object and published it, then 'ready'.
   boardVersion: table({}, {
@@ -54,21 +53,9 @@ function mayUse(ctx: any, s: any, rank: number): boolean {
   return boardScope(ctx, s.boardId) === s.workspaceId && roleRank(humanBoardRole(ctx, s.boardId)) >= rank;
 }
 
-export interface VersionHooks {
-  reducer: any;
-  isHuman: (ctx: any) => boolean;
-  assertService: (ctx: any) => void;
-  spendWrite: (ctx: any) => void;
-  assertBoardName: (name: string) => void;
-  insertBoard: (ctx: any, name: string) => any;
-  initCallerBoard: (ctx: any, boardId: bigint, name: string, via: string) => void;
-  refreshStats: (ctx: any, boardId: bigint) => void;
-  emit: (ctx: any, boardId: bigint, type: string, payload: Record<string, unknown>) => void;
-}
-
-export function versionFeatures(db: any, hooks: VersionHooks): any {
-  const reducer = hooks.reducer;
-  const human = (ctx: any) => { if (!hooks.isHuman(ctx)) fail('sign in with a human account'); };
+export function features(db: any, api: ModuleApi): any {
+  const reducer = api.reducer;
+  const human = (ctx: any) => { if (!api.isHuman(ctx)) fail('sign in with a human account'); };
 
   function restorable(ctx: any, versionId: bigint): any {
     human(ctx);
@@ -94,7 +81,7 @@ export function versionFeatures(db: any, hooks: VersionHooks): any {
     const key = `${kind}:${ctx.sender.toHexString()}`;
     try {
       ctx.withTx((tx: any) => {
-        hooks.spendWrite(tx);
+        api.spendWrite(tx);
         const wait = (tx.db.versionCooldown.key.find(key)?.until.microsSinceUnixEpoch ?? 0n) - tx.timestamp.microsSinceUnixEpoch;
         if (wait > 0n) fail(`a large version was just ${kind === 'capture' ? 'saved' : 'restored'}; try again in ${Math.ceil(Number(wait) / 1e6)} s`);
       });
@@ -145,7 +132,7 @@ export function versionFeatures(db: any, hooks: VersionHooks): any {
 
     // Save, step 2: only the server that holds the storage credentials lists a version, after storing it.
     publishBoardVersion: db.reducer({ versionId: t.u64(), sha256: t.string() }, (ctx: any, { versionId, sha256 }: any) => {
-      hooks.assertService(ctx);
+      api.assertService(ctx);
       const s = ctx.db.boardVersion.id.find(versionId);
       if (!s || s.sha256 !== sha256) fail('this version is unavailable');
       if (s.status === 'ready') return;
@@ -179,7 +166,7 @@ export function versionFeatures(db: any, hooks: VersionHooks): any {
     // private board. Returns { boardId } (charged; a procedure so that a refusal still spends its write).
     restoreBoardVersion: db.procedure({ versionId: t.u64(), requestKey: t.string(), name: t.string() }, t.string(), (ctx: any, { versionId, requestKey, name }: any) => charged(ctx, 'restore', (tx: any, read: (bytes: number) => void) => {
       if (!/^[A-Za-z0-9_-]{32,128}$/.test(requestKey)) fail('the restore request key must contain 32–128 URL-safe characters');
-      if (name.trim()) hooks.assertBoardName(name.trim()); // before the hashing and parsing below
+      if (name.trim()) api.assertBoardName(name.trim()); // before the hashing and parsing below
       const receipt = tx.db.boardCreation.requestKey.find(requestKey);
       if (receipt) {
         if (!receipt.owner.isEqual(tx.sender)) fail('this restore request key belongs to someone else');
@@ -200,15 +187,15 @@ export function versionFeatures(db: any, hooks: VersionHooks): any {
         throw e;
       }
       const title = (name.trim() || `${bundle.name} (restored)`.slice(0, 100)).trim();
-      hooks.assertBoardName(title);
-      const board = hooks.insertBoard(tx, title);
-      hooks.initCallerBoard(tx, board.id, title, 'version');
+      api.assertBoardName(title);
+      const board = api.insertBoard(tx, title);
+      api.initCallerBoard(tx, board.id, title, 'version');
       restoreBoard(tx, bundle, board.id, Timestamp.UNIX_EPOCH);
       // Private: the restorer manages it, the workspace default is none, and no old grant, link or embed returns.
       assignBoardWorkspace(tx, board.id, s.workspaceId, tx.sender);
-      hooks.refreshStats(tx, board.id);
+      api.refreshStats(tx, board.id);
       tx.db.boardCreation.insert({ requestKey, owner: tx.sender, boardId: board.id });
-      hooks.emit(tx, board.id, 'board.restored', { versionId: versionId.toString(), from: s.boardId.toString() });
+      api.emit(tx, board.id, 'board.restored', { versionId: versionId.toString(), from: s.boardId.toString() });
       return { boardId: board.id.toString() };
     })),
 

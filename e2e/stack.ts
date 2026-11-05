@@ -169,6 +169,7 @@ export async function withStack(use: (stack: {
   try {
     // Copy the module so concurrent local tests never rewrite this checkout's issuers.
     await mkdir(join(root, 'scripts'));
+    await cp(join(repo, 'plugins'), join(root, 'plugins'), { recursive: true });
     await cp(join(repo, 'module/src'), join(root, 'module/src'), { recursive: true });
     await cp(join(repo, 'module/package.json'), join(root, 'module/package.json'));
     await cp(join(repo, 'module/tsconfig.json'), join(root, 'module/tsconfig.json'));
@@ -258,7 +259,7 @@ export async function withStack(use: (stack: {
             // already shipped), while the private storage gains a new field.
             // Expose the extended row under a new name for future clients.
             const source = await readFile(sourcePath, 'utf8');
-            const marker = 'const spacetimedb = schema(tables);';
+            const marker = 'const spacetimedb = schema({ ...tables, ...pluginTables });';
             const row = 't.array((tables as any)[key].rowType)';
             if (source.split(marker).length !== 2 || source.split(row).length !== 2) throw new Error('Upgrade drill could not preserve the public edge view');
             await writeFile(sourcePath, source

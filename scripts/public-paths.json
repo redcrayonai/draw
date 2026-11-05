@@ -1,5 +1,5 @@
 [
-  "module", "client", "mcp", "agent", "web", "shared", "scripts", "importer", "helper", "e2e", "plugin",
+  "module", "client", "mcp", "agent", "web", "shared", "scripts", "importer", "helper", "e2e", "plugin", "plugins",
   "docker", "docker-compose.yml", "compose.prod.yml",
   ".dockerignore", ".env.example", ".gitignore", ".gitleaks.toml", ".mcp.json",
   "flake.nix", "flake.lock", "LICENSE", "SELF_HOSTING.md", "CLAUDE.md", "PRODUCT.md", "DESIGN.md", "CONTRIBUTING.md", "SECURITY.md", "THIRD_PARTY_NOTICES.md",
