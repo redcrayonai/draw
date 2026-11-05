@@ -308,3 +308,51 @@ describe('agent panel', () => {
     expect(sendBtn.disabled).toBe(false);
   });
 });
+
+describe('agent panel failures', () => {
+  it('a failure before sending does not leave the panel stuck', async () => {
+    const { fake, input, msgs, sendBtn } = mount();
+    // no id can be made for the conversation
+    vi.spyOn(crypto, 'randomUUID').mockImplementation(() => { throw new Error('boom'); });
+    vi.spyOn(crypto, 'getRandomValues').mockImplementation(() => { throw new Error('boom'); });
+    try {
+      ask(input, 'hi');
+      await vi.waitFor(() => expect(sendBtn.disabled).toBe(false));
+      expect(items(msgs)[msgs.children.length - 1]).toEqual(['agent-msg agent-error', 'Something went wrong. Try again.']);
+      expect(fake.calls).toHaveLength(0);
+      // New chat's id write fails the same way; the next send still goes out once ids work again
+      (document.getElementById('agent-new') as HTMLButtonElement).click();
+      await new Promise(r => setTimeout(r, 20));
+    } finally {
+      vi.restoreAllMocks();
+    }
+    ask(input, 'again');
+    await fake.started();
+    expect(sentBody(fake).message).toBe('again');
+  });
+
+  it('new chat works without crypto.randomUUID', async () => {
+    const original = crypto.randomUUID;
+    Object.defineProperty(crypto, 'randomUUID', { value: undefined, configurable: true });
+    try {
+      const { fake, input } = mount();
+      (document.getElementById('agent-new') as HTMLButtonElement).click();
+      ask(input, 'hi');
+      await fake.started();
+      const body = sentBody(fake);
+      expect(body.conversationId).toMatch(/^c-[A-Za-z0-9:_-]+$/);
+      expect(body.conversationId).toBe(localStorage.getItem(KEY));
+      expect(body.messageId).toMatch(/^[A-Za-z0-9:_-]{1,128}$/);
+    } finally {
+      Object.defineProperty(crypto, 'randomUUID', { value: original, configurable: true });
+    }
+  });
+
+  it('removes conversation keys an earlier version wrote with a share token in them', () => {
+    localStorage.setItem('agent-conversation:https://draw.example/#s=old-token', 'c-1');
+    localStorage.setItem(KEY, 'c-2');
+    localStorage.setItem('other', '#s=keep');
+    mount();
+    expect(Object.keys(localStorage).sort()).toEqual([KEY, 'other'].sort());
+  });
+});

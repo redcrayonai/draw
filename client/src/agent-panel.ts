@@ -45,7 +45,14 @@ async function shortHash(text: string): Promise<string> {
   }
 }
 
-const newConversationId = () => `c-${crypto.randomUUID()}`;
+/** A random id; pages on a plain-http origin have no crypto.randomUUID. */
+function randomId(): string {
+  if (typeof crypto.randomUUID === 'function') return crypto.randomUUID();
+  const bytes = crypto.getRandomValues(new Uint8Array(16));
+  return `${Date.now().toString(16)}-${[...bytes].map(b => b.toString(16).padStart(2, '0')).join('')}`;
+}
+
+const newConversationId = () => `c-${randomId()}`;
 const validId = (id: string | null): id is string => id !== null && id.length <= 128 && /^[A-Za-z0-9:_-]+$/.test(id);
 
 export function mountAgentPanel(deps: AgentPanelDeps): { selectionChanged(): void } {
@@ -69,6 +76,16 @@ export function mountAgentPanel(deps: AgentPanelDeps): { selectionChanged(): voi
   const form = $<HTMLFormElement>('agent-form');
   const input = $<HTMLTextAreaElement>('agent-input');
   const send = $<HTMLButtonElement>('agent-send');
+
+  // An earlier version keyed Share-link conversations on the link itself, token and all.
+  try {
+    const old: string[] = [];
+    for (let i = 0; storage && i < storage.length; i++) {
+      const key = storage.key(i);
+      if (key?.startsWith('agent-conversation:') && key.includes('#s=')) old.push(key);
+    }
+    for (const key of old) storage?.removeItem(key);
+  } catch { /* storage is blocked: nothing was kept there either */ }
 
   let state: ChatState = initialChat();
   // The reply streaming now; New chat aborts it and drops whatever it says after.
@@ -143,12 +160,24 @@ export function mountAgentPanel(deps: AgentPanelDeps): { selectionChanged(): voi
     dispatch({ type: 'send', text: message });
     const ctrl = new AbortController();
     running = ctrl;
-    const [conversation, token] = await Promise.all([conversationId(), deps.token().catch(() => null)]);
+    let conversation: string;
+    let token: string | null;
+    let messageId: string;
+    try {
+      [conversation, token] = await Promise.all([conversationId(), deps.token().catch(() => null)]);
+      messageId = randomId();
+    } catch {
+      if (running !== ctrl) return;
+      running = null;
+      dispatch({ type: 'event', event: { type: 'error', code: 'internal', message: 'Something went wrong. Try again.' } });
+      dispatch({ type: 'ended', how: 'error' });
+      return;
+    }
     if (ctrl.signal.aborted) return;
     const body: ChatBody = {
       message,
       conversationId: conversation,
-      messageId: crypto.randomUUID(),
+      messageId,
       boardLink,
       ...(node ? { focus: { nodeId: String(node.id), label: node.label.slice(0, LABEL_MAX) } } : {}),
     };
@@ -177,7 +206,8 @@ export function mountAgentPanel(deps: AgentPanelDeps): { selectionChanged(): voi
     running?.abort();
     running = null;
     const link = deps.boardLink();
-    starting = starting.then(async () => save(await conversationKey(link), newConversationId()));
+    // a failed write leaves the old id; the next send makes one if none is kept
+    starting = starting.then(async () => save(await conversationKey(link), newConversationId())).catch(() => {});
     state = initialChat();
     render();
     input.focus();
