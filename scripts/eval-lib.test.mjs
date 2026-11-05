@@ -727,7 +727,7 @@ test('SKILL.md (G30): input-validation, budget and citability texts are explaine
   assert.ok(flat.includes('Nothing was written. Fix the argument'));
   // every hosted input is strict, so an unknown argument (a retired one such as force) is refused
   const tools = hosted.slice(hosted.indexOf('export const TOOLS'), hosted.indexOf('export const TOOL_NAMES')).split(/^ {2}(?=\w+: \{$)/m).slice(1);
-  assert.equal(tools.length, 43);
+  assert.equal(tools.length, 45);
   for (const t of tools) {
     if (t.startsWith('apply_board:')) {
       assert.match(t, /get input\(\) \{ return applyBoardInput\(TOOLS.create_node.input, TOOLS.create_edge.input\); \}/);

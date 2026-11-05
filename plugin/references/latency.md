@@ -32,9 +32,10 @@ Refresh numbers only when the user asks. Do not loop on a timer to stream them.
 When the user wants to watch traffic move while they run their app locally, use the live tap instead of refreshing numbers yourself:
 
 1. Draw each service the app runs as a node, with edges for the calls between them.
-2. Call `start_tap` with `{ "board": "<id>" }`. It returns a token and the command to run.
-3. Write `.redcrayon/tap.json` in the project root: `{ "board": "<id>", "services": { "<service.name>": "<node id>" } }`, one entry per OpenTelemetry service name.
-4. Run the command `start_tap` returned, in the background, from the project root. It needs Node 22.
-5. Tell the user to point their exporter at `http://127.0.0.1:4318` with `OTEL_EXPORTER_OTLP_PROTOCOL=http/protobuf`, and to switch on **live traffic** on the board.
+2. Call `start_tap` with `{ "board": "<id>", "services": { "<service.name>": "<node id>" } }`, one entry per OpenTelemetry service name. It returns a token and a command that carries the mapping.
+3. Run the command `start_tap` returned, in the background, from the project root. It needs Node 22.
+4. Tell the user to point their exporter at `http://127.0.0.1:4318` with `OTEL_EXPORTER_OTLP_PROTOCOL=http/protobuf`, and to switch on **live traffic** on the board.
+5. Call `tap_status` with `{ "board": "<id>" }` to confirm the tap connected.
+6. When the user is done watching, call `stop_tap` with `{ "board": "<id>" }`. The command exits, and the token no longer works.
 
-The tap drops span attributes on the user's machine and sends only per-edge rates, latencies and errors, and only while someone watches. It prints unmapped service names once a minute: add them to the file, which it rereads. The token lasts 12 hours.
+The tap drops span attributes on the user's machine and sends only per-edge rates, latencies and errors, and only while someone watches. It prints unmapped service names once a minute: add them to `.redcrayon/tap.json` (`{ "board": "<id>", "services": { … } }`) in the project root, which it rereads without a restart. The token lasts 12 hours.
