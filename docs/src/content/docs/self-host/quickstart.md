@@ -175,6 +175,36 @@ dashboard sidebar to create a workspace. Invite collaborators under that
 workspace’s **Settings → Members & access → Invitations**.
 Board and workspace grants control access independently of snippet consent. See [Workspaces and access](/capabilities/workspaces/).
 
+## Upgrade and roll back
+
+For the prebuilt production stack, stop the stack
+(`docker compose -f compose.prod.yml stop`) and back up `.env` and the `stdb`,
+`stdb-cli`, `pg`, `state` and `mcp-data` volumes before changing releases. Keep
+`stdb-cli`: it holds the identity that owns the database, which is needed to
+publish updates. `state` holds the agent signing key: without it, agents' tokens
+stop working.
+
+To upgrade, set `REDCRAYON_VERSION` in `.env` to the release you want, then run:
+
+```sh
+docker compose -f compose.prod.yml up -d
+```
+
+To roll back, set `REDCRAYON_VERSION` to the previous release and run the same
+command. When publishing refuses only because the older image lacks live
+columns or tables that contain data, setup logs `kept the live module` and starts
+the apps with the newer database program and its data intact. Empty tables
+can be dropped without a refusal, so not every rollback skips publication.
+
+Only releases after `v0.1.3` can skip the publish. On `v0.1.3` or earlier, the
+same refusal stops setup and the apps do not start. The data stays: set
+`REDCRAYON_VERSION` back to the newer release and run the command again.
+
+After a skipped publish, the module’s baked sign-in issuers and
+`REDCRAYON_LIMITS` keep their last published values until you roll forward to
+newer images. Other publish failures still stop setup.
+
 ## Next
 
-Production images, with TLS and real hostnames, are coming to these docs.
+A full guide to the production stack, with TLS and real hostnames, is coming to
+these docs. Until then, start from `compose.prod.yml` and `.env.example`.

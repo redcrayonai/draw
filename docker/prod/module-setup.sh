@@ -3,7 +3,8 @@
 #   1. Postgres migrations (web/db/migrations).
 #   2. module/ published to SPACETIME_DB as an update, through
 #      scripts/publish-module.sh: never --delete-data, and a publish that would
-#      need a data reset fails instead.
+#      need a data reset fails. An older image that only lacks live columns or
+#      used tables keeps the newer live module instead, preserving its data.
 #   3. The service identities: the mcp Worker's (service:mcp of its agent
 #      issuer) and the dashboard's (a minted token), both in service_account.
 #   4. The Demo board, public, and the board stats and slug backfills.
@@ -14,6 +15,7 @@
 set -euo pipefail
 . /app/docker/prod/guard.sh
 . /app/docker/prod/db-issuers.sh
+. /app/docker/prod/rollback.sh
 guard_dev_auth
 guard_auth
 guard_secret POSTGRES_PASSWORD
@@ -47,10 +49,21 @@ echo "== module -> $db on $url"
 browser=''
 [ "${VITE_AUTH_PROVIDER:-anonymous}" != oidc ] || browser="$VITE_OIDC_ISSUER"
 db_issuers="$(db_issuers "$url" /root/.config/spacetime/cli.toml)"
-DB_ISSUERS="$db_issuers" MCP_ORIGIN="$mcp_origin" BROWSER_ISSUER="$browser" BROWSER_CLIENT_IDS="${VITE_OIDC_CLIENT_ID:-}" \
+: > /tmp/publish.log
+if DB_ISSUERS="$db_issuers" MCP_ORIGIN="$mcp_origin" BROWSER_ISSUER="$browser" BROWSER_CLIENT_IDS="${VITE_OIDC_CLIENT_ID:-}" \
   APP_ORIGINS="https://$DOMAIN,https://dash.$DOMAIN" \
   SPACETIME_SERVER="$url" SPACETIME_DB="$db" PUBLISH_YES_FLAGS=remote,skip-login,break-clients,migrate \
-  node /app/scripts/module-env.mjs production -- /app/scripts/publish-module.sh
+  node /app/scripts/module-env.mjs production -- /app/scripts/publish-module.sh; then
+  :
+else
+  status=$?
+  if [ "$status" -ne 124 ] && older_program /tmp/publish.log; then
+    echo "== kept the live module: database has columns or used tables this image lacks; data remains."
+    echo "== baked sign-in issuers and REDCRAYON_LIMITS stay at their last published values until newer images run."
+  else
+    exit "$status"
+  fi
+fi
 
 echo "== service identities"
 mcp="$(cd /app/shared && node --input-type=module -e "import { identityFromClaims } from './identity.ts'; console.log(identityFromClaims(process.argv[1], 'service:mcp'))" "$mcp_origin/agent-id")"

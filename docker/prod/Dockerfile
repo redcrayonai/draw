@@ -140,5 +140,5 @@ COPY --from=setup-deps /src/module module
 COPY --from=setup-deps /src/shared shared
 COPY web/db/migrations web/db/migrations
 COPY scripts/module-env.mjs scripts/publish-module.sh scripts/
-COPY docker/prod/guard.sh docker/prod/db-issuers.sh docker/prod/module-setup.sh docker/prod/
+COPY docker/prod/guard.sh docker/prod/db-issuers.sh docker/prod/rollback.sh docker/prod/module-setup.sh docker/prod/
 ENTRYPOINT ["/app/docker/prod/module-setup.sh"]

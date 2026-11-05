@@ -1,5 +1,5 @@
 # Build the docs, publish checked main builds, and keep internals out of pages. The self-host
-# quickstart may name SpacetimeDB and its documented connection settings.
+# quickstart may name SpacetimeDB, its documented connection settings and database volumes.
 
 name: docs
 
@@ -51,7 +51,7 @@ jobs:
         run: |
           pattern='spacetime|maincloud|bsatn|clockwork|\bstdb\b|\breducer|wasm|energy budget|SenderError|panic|clerk'
           if grep -rniE "$pattern" docs/src docs/astro.config.mjs |
-            perl -pe 'if (m{^docs/src/content/docs/self-host/quickstart\.md:}) { s/\b(SpacetimeDB|VITE_SPACETIME_URI|VITE_SPACETIME_DB|SPACETIME_DB|SPACETIMEDB_URL|SPACETIMEDB_DB|SPACETIMEDB_SERVICE_TOKEN)\b/[documented database setting]/g; }' |
+            perl -pe 'if (m{^docs/src/content/docs/self-host/quickstart\.md:}) { s/\b(SpacetimeDB|VITE_SPACETIME_URI|VITE_SPACETIME_DB|SPACETIME_DB|SPACETIMEDB_URL|SPACETIMEDB_DB|SPACETIMEDB_SERVICE_TOKEN)\b/[documented database setting]/g; s/`(stdb|stdb-cli)`/[documented database volume]/g; }' |
             grep -iE "$pattern"; then
             echo "::error::a page names an undocumented vendor or a server internal"
             exit 1
