@@ -4348,7 +4348,8 @@ textarea#inline-edit {
   padding: 0 6px;
   font: 500 12px/1 var(--sans);
   white-space: nowrap;
-  transition: background var(--dur) var(--ease), color var(--dur) var(--ease);
+  /* Selection must change in the same frame as the provider's commands. */
+  transition: none;
 }
 
 .tb-seg.connect-tabs [role='tab']:hover {

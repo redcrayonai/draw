@@ -6,7 +6,7 @@ Subagents use the same redcrayon tools and this board. They **never** call
 only attach refs (and remove their own wrong ones). Put this paragraph, filled in (the prefix,
 the board id, the node), in every delegation:
 
-> **Board contribution.** A redcrayon board is already open for this session; do
+> **Board contribution.** A Draw board is already open for this session; do
 > not start, checkpoint, plan, arrive, reroute, or lay out one. When you finish a
 > symbol, call
 > `<prefix>add_code_ref` with `board: "<id>"`, `targetKind: "node"`,

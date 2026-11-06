@@ -26,7 +26,7 @@
 
 Ask your agent in plain words:
 
-- *"Add rate limiting to the public API. Draw what you change on a redcrayon board."*
+- *"Add rate limiting to the public API. Draw what you change on a Draw board."*
 - *"Draw how this repo fits together. Cite a line for every edge."*
 - *"Drop the unused customers.name column. Flag the migration and cite every reader."*
 - *"Pods in checkout keep restarting since 14:00. Lay out what you find on a scratch board."*
@@ -38,14 +38,16 @@ The agent opens a board named after your branch, posts the link, and keeps it cu
 
 ## Install
 
-**Claude Code** (board tools, `/draw:navigate`, and code refs filled in for you):
+**Claude Code** (drawing skills, automatic code refs, and private board chat):
 
 ```text
 /plugin marketplace add redcrayonai/draw
 /plugin install draw@redcrayonai
 ```
 
-Then `/mcp` → **draw** → **Authenticate**, and run `/draw:navigate`.
+Start a new Claude Code session, then `/mcp` → **draw** → **Authenticate**,
+and run `/draw:navigate`. Open the board link to continue in private chat.
+Board chat needs Node 22+ and Claude Code hooks for `MessageDisplay` and `asyncRewake`.
 
 <details>
 <summary><b>Cursor</b></summary>
@@ -64,9 +66,16 @@ Then `/mcp` → **draw** → **Authenticate**, and run `/draw:navigate`.
 <summary><b>Codex</b></summary>
 
 ```sh
-codex mcp add draw --url https://mcp.redcrayon.ai/mcp
-codex mcp login draw
+codex plugin marketplace add redcrayonai/draw && codex plugin add draw@redcrayonai
 ```
+
+Use a Codex version with plugin support. Start a new session, connect Draw when
+prompted, and ask it to open a board. You can also install Draw from `/plugins`
+after adding the marketplace.
+
+Board chat needs Node 22+ and access to the same conversation through a shared
+Codex app server. If chat cannot attach, continue in Codex; drawing still works.
+[Setup, existing connections, and MCP-only fallback](https://docs.redcrayon.ai/connect/#codex).
 
 </details>
 
@@ -82,7 +91,7 @@ codex mcp login draw
 
 Give it `https://mcp.redcrayon.ai/mcp`. Every client signs in once, in the browser.
 
-Code refs outside Claude Code: when a tool needs a capture of your checkout, it tells the agent the exact command, and the agent runs it. Nothing to install; Node 20+ and git on PATH.
+Code refs without the Claude Code or Codex plugin: when a tool needs a capture of your checkout, it tells the agent the exact command, and the agent runs it. Nothing to install; Node 20+ and git on PATH.
 
 ```sh
 npx -y @redcrayonai/draw@1 doctor   # check node, git, repo, network

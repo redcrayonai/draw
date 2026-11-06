@@ -1,11 +1,11 @@
 /**
  * "Connect an agent" setup copy (hosted MCP spec §12), one source for the
  * canvas dialog and the dashboard's agent page. Every string is exact;
- * client/src/connect.test.ts pins them. `url` is the hosted server's URL
- * (VITE_MCP_URL), the only thing an agent needs to draw.
+ * client/src/connect.test.ts pins them. `url` is this deployment's server URL
+ * (VITE_MCP_URL), also used by the custom-server launch commands.
  */
 
-export const CONNECT_PROMPT = 'Open a redcrayon board for this task and draw what you build on it as you go.';
+export const CONNECT_PROMPT = 'Open a Draw board for this task and draw what you build on it as you go.';
 
 export const CONNECT_FOOTER = [
   'Drawing needs only the URL. To check code refs, redcrayon uploads each file your agent cites and deletes it within 10 minutes. It keeps paths, line numbers, git hashes, hashes of the cited lines and the GitHub repo address. It keeps the cited lines themselves only if you turn on storing code.',
@@ -29,7 +29,7 @@ export interface GuideStep {
   link?: { text: string; href: string };
   boxes?: GuideBox[];
   note?: string;
-  /** Folded away under `summary`: Cursor's manual config. */
+  /** Optional setup details, folded away under `summary`. */
   more?: { summary: string; box: GuideBox };
 }
 
@@ -66,6 +66,10 @@ export function cursorInstallUrl(url: string): string {
 export function connectGuide(url: string): GuideTab[] {
   const json = JSON.stringify({ mcpServers: { draw: { url } } }, null, 2);
   const urlBox = { label: 'url', name: 'server URL', text: url };
+  const serverLaunch = (agent: string) => ({
+    summary: 'Using your own server? Start here instead',
+    box: { label: 'macOS / Linux terminal', name: 'custom server command', text: `REDCRAYON_MCP_URL='${url.replaceAll("'", "'\\''")}' ${agent}` },
+  });
   const draw = (note?: string): GuideStep => ({
     title: 'Start drawing',
     boxes: [{ label: 'prompt', name: 'prompt', text: CONNECT_PROMPT }],
@@ -77,14 +81,20 @@ export function connectGuide(url: string): GuideTab[] {
       label: 'Claude Code',
       steps: [
         {
-          title: 'Add the server',
-          boxes: [{ label: 'terminal', name: 'add command', text: `claude mcp add --transport http --scope user draw ${url}` }],
+          title: 'Install the plugin',
+          boxes: [{ label: 'terminal', name: 'install command', text: 'claude plugin marketplace add redcrayonai/draw && claude plugin install draw@redcrayonai' }],
+          note: 'Includes drawing skills, automatic code refs, and board chat support.',
         },
         {
           title: 'Sign in',
-          text: 'Start Claude Code in your project, run /mcp, choose draw, then Authenticate. Approve in the browser tab that opens.',
+          text: 'Start a new Claude Code session in your project, run /mcp, choose draw, then Authenticate. Approve in the browser tab that opens.',
+          more: serverLaunch('claude'),
         },
-        draw(),
+        {
+          title: 'Open your board',
+          boxes: [{ label: 'Claude Code', name: 'drawing command', text: '/draw:navigate' }],
+          note: 'Open the board link to continue in private chat. Board chat needs Node 22+ and a Claude Code version supporting MessageDisplay and asyncRewake hooks.',
+        },
       ],
     },
     {
@@ -112,15 +122,16 @@ export function connectGuide(url: string): GuideTab[] {
       label: 'Codex',
       steps: [
         {
-          title: 'Add the server',
-          boxes: [{ label: 'terminal', name: 'add command', text: `codex mcp add draw --url ${url}` }],
+          title: 'Install the plugin',
+          boxes: [{ label: 'terminal', name: 'install command', text: 'codex plugin marketplace add redcrayonai/draw && codex plugin add draw@redcrayonai' }],
+          note: 'Requires a Codex version with plugin support. After adding the marketplace, you can also install Draw from /plugins.',
         },
         {
           title: 'Sign in',
-          boxes: [{ label: 'terminal', name: 'login command', text: 'codex mcp login draw' }],
-          note: 'A browser tab opens. Approve, then start codex in your project.',
+          text: 'Start a new Codex session in your project. When Draw asks you to connect, approve in the browser with the account you use for your boards.',
+          more: serverLaunch('codex'),
         },
-        draw(),
+        draw('Open the board link. Private chat needs Node 22+ and access to the same Codex conversation through a shared app server. If chat cannot attach, keep chatting in Codex; drawing still works.'),
       ],
     },
     {

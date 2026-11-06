@@ -23,6 +23,9 @@ beforeAll(async () => {
 });
 
 const MCP = 'https://mcp.example.com/mcp';
+const CLAUDE_INSTALL = 'claude plugin marketplace add redcrayonai/draw && claude plugin install draw@redcrayonai';
+const CODEX_INSTALL = 'codex plugin marketplace add redcrayonai/draw && codex plugin add draw@redcrayonai';
+const launch = (agent: string) => `REDCRAYON_MCP_URL='${MCP}' ${agent}`;
 const SLUG = 'c4bb879c7355360696d9';
 const CURSOR = 'cursor://anysphere.cursor-deeplink/mcp/install?name=draw&config=';
 const JSON_CONFIG = `{
@@ -32,7 +35,7 @@ const JSON_CONFIG = `{
     }
   }
 }`;
-const PROMPT = 'Open a redcrayon board for this task and draw what you build on it as you go.';
+const PROMPT = 'Open a Draw board for this task and draw what you build on it as you go.';
 const LEAD_IN = 'Your agent opens a board for its task and draws what it builds. It signs in as you and shows as agent of Alan Lee.';
 const LEAD_OUT =
   'Your agent opens a board for its task and draws what it builds. It asks you to sign in to redcrayon the first time it connects.';
@@ -73,12 +76,13 @@ describe('connect guide (§12 copy, exact)', () => {
     ]);
   });
 
-  it('Claude Code adds the hosted server, signs in through /mcp, then draws', () => {
-    expect(outline(guide[0])).toEqual([
-      ['Add the server', `[terminal] claude mcp add --transport http --scope user draw ${MCP}`],
-      ['Sign in', 'Start Claude Code in your project, run /mcp, choose draw, then Authenticate. Approve in the browser tab that opens.'],
-      ['Start drawing', `[prompt] ${PROMPT}`],
-    ]);
+  it('Claude Code installs the plugin, keeps custom server setup, and opens board chat', () => {
+    expect(guide[0].steps.map(s => s.title)).toEqual(['Install the plugin', 'Sign in', 'Open your board']);
+    expect(guide[0].steps[0].boxes?.[0].text).toBe(CLAUDE_INSTALL);
+    expect(guide[0].steps[1].text).toContain('/mcp');
+    expect(guide[0].steps[1].more?.box.text).toBe(launch('claude'));
+    expect(guide[0].steps[2].boxes?.[0].text).toBe('/draw:navigate');
+    expect(guide[0].steps[2].note).toContain('Node 22+');
   });
 
   it('Cursor leads with the one-click install and folds the manual config away', () => {
@@ -89,12 +93,21 @@ describe('connect guide (§12 copy, exact)', () => {
     ]);
   });
 
-  it('Codex adds the URL and logs in', () => {
-    expect(outline(guide[2])).toEqual([
-      ['Add the server', '[terminal] codex mcp add draw --url https://mcp.example.com/mcp'],
-      ['Sign in', '[terminal] codex mcp login draw', 'A browser tab opens. Approve, then start codex in your project.'],
-      ['Start drawing', `[prompt] ${PROMPT}`],
-    ]);
+  it('Codex installs the plugin and explains when board chat can attach', () => {
+    expect(guide[2].steps.map(s => s.title)).toEqual(['Install the plugin', 'Sign in', 'Start drawing']);
+    expect(guide[2].steps[0].boxes?.[0].text).toBe(CODEX_INSTALL);
+    expect(guide[2].steps[1].text).toContain('new Codex session');
+    expect(guide[2].steps[1].more?.box.text).toBe(launch('codex'));
+    expect(guide[2].steps[2].boxes?.[0].text).toBe(PROMPT);
+    expect(guide[2].steps[2].note).toContain('shared app server');
+    expect(guide[2].steps[2].note).toContain('drawing still works');
+  });
+
+  it('quotes custom server URLs as shell data', () => {
+    const url = "https://example.com/mcp?name=o'brien&value=$(whoami)";
+    expect(connectGuide(url)[2].steps[1].more?.box.text).toBe(
+      "REDCRAYON_MCP_URL='https://example.com/mcp?name=o'\\''brien&value=$(whoami)' codex",
+    );
   });
 
   it('claude.ai adds a custom connector', () => {
@@ -259,9 +272,9 @@ describe('Connect an agent dialog', () => {
     expect(shownPanes()).toEqual(['claude']);
     expect(document.activeElement).toBe(tab('claude'));
     expect(TABS.map(t => tab(t).textContent)).toEqual(['Claude Code', 'Cursor', 'Codex', 'claude.ai', 'Other']);
-    expect(codes('claude')).toEqual([`claude mcp add --transport http --scope user draw ${MCP}`, PROMPT]);
+    expect(codes('claude')).toEqual([CLAUDE_INSTALL, launch('claude'), '/draw:navigate']);
     expect(codes('cursor')).toEqual([JSON_CONFIG, PROMPT]);
-    expect(codes('codex')).toEqual([`codex mcp add draw --url ${MCP}`, 'codex mcp login draw', PROMPT]);
+    expect(codes('codex')).toEqual([CODEX_INSTALL, launch('codex'), PROMPT]);
     expect(codes('claude-ai')).toEqual([MCP, PROMPT]);
     expect(codes('other')).toEqual([MCP, JSON_CONFIG, PROMPT]);
     const link = pane('cursor').querySelector<HTMLAnchorElement>('a.connect-cursor')!;
@@ -270,7 +283,7 @@ describe('Connect an agent dialog', () => {
     expect([...document.querySelectorAll('#connect-foot > p')].map(p => p.textContent)).toEqual(FOOTER);
     // each pane renders its guide steps, in order, numbered by the list
     expect([...pane('codex').querySelectorAll('.connect-steps > li > .connect-step-title')].map(t => t.textContent)).toEqual([
-      'Add the server',
+      'Install the plugin',
       'Sign in',
       'Start drawing',
     ]);
@@ -337,9 +350,9 @@ describe('Connect an agent dialog', () => {
       }
     });
     expect(TABS.map(t => copyBtns(t).map(b => b.getAttribute('aria-label')))).toEqual([
-      ['Copy the add command', 'Copy the prompt'],
+      ['Copy the install command', 'Copy the custom server command', 'Copy the drawing command'],
       ['Copy the Cursor config', 'Copy the prompt'],
-      ['Copy the add command', 'Copy the login command', 'Copy the prompt'],
+      ['Copy the install command', 'Copy the custom server command', 'Copy the prompt'],
       ['Copy the server URL', 'Copy the prompt'],
       ['Copy the server URL', 'Copy the mcp.json config', 'Copy the prompt'],
     ]);
@@ -371,7 +384,7 @@ describe('Connect an agent dialog', () => {
       copyBtns('claude')[0].click();
       await settle();
       expect(copyBtns('claude')[0].textContent).toBe('copy failed');
-      expect(window.getSelection()!.toString()).toBe(`claude mcp add --transport http --scope user draw ${MCP}`);
+      expect(window.getSelection()!.toString()).toBe(CLAUDE_INSTALL);
     });
     window.getSelection()!.removeAllRanges();
   });
@@ -473,12 +486,12 @@ describe('Connect an agent dialog', () => {
     }
     for (const s of strings) {
       expect(s).not.toMatch(/spacetime|maincloud|bsatn|clockwork|\bstdb\b/i);
-      expect(s).not.toMatch(/\b[A-Z][A-Z0-9]*_[A-Z0-9_]+\b/); // SPACETIME_URI, REDCRAYON_CLIENT_URL, …
+      expect(s.replaceAll('REDCRAYON_MCP_URL', '')).not.toMatch(/\b[A-Z][A-Z0-9]*_[A-Z0-9_]+\b/);
       expect(s).not.toMatch(/npx -y redcrayon-mcp|wss?:\/\/|localhost|127\.0\.0\.1/);
       expect(s).not.toMatch(/\breducer|wasm|energy budget|SenderError|panic/i);
       expect(s).not.toMatch(/please|oops|!/i);
       expect(s).not.toMatch(/\p{Extended_Pictographic}/u);
-      expect(s).not.toMatch(/Redcrayon|REDCRAYON|RedCrayon/);
+      expect(s.replaceAll('REDCRAYON_MCP_URL', '')).not.toMatch(/Redcrayon|REDCRAYON|RedCrayon/);
     }
     // controls inside the panel are lowercase; the live line's Sign in starts its sentence
     for (const b of panel().querySelectorAll('.ctl')) expect(b.textContent).toMatch(/^[a-z ]+$/);
