@@ -214,6 +214,21 @@ describe('agent panel', () => {
     ]));
   });
 
+  it('the cut-short notice has no check mark', async () => {
+    const { fake, input, msgs } = mount();
+    ask(input, 'hi');
+    await fake.started();
+    fake.push('status', { message: 'Reading the board…' });
+    fake.push('status', { message: 'Reply cut short. Ask me to continue.' });
+    fake.push('done', {});
+    fake.close();
+    await vi.waitFor(() => expect(items(msgs)).toEqual([
+      ['agent-msg agent-me', 'hi'],
+      ['agent-msg agent-status', 'Reading the board…'],
+      ['agent-msg agent-status notice', 'Reply cut short. Ask me to continue.'],
+    ]));
+  });
+
   it('send is disabled while a reply streams', async () => {
     const { fake, input, sendBtn } = mount();
     expect(sendBtn.disabled).toBe(false);

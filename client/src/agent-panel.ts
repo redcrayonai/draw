@@ -4,6 +4,8 @@
 import { streamChat, type ChatBody } from './agent-stream';
 import { chatReducer, initialChat, type ChatAction, type ChatState } from './agent-chat';
 
+const CUT_SHORT_TEXT = 'Reply cut short. Ask me to continue.';
+
 export interface AgentPanelDeps {
   /** The agent server; the chat endpoint is `<url>/chat`. */
   url: string;
@@ -154,6 +156,8 @@ export function mountAgentPanel(deps: AgentPanelDeps): { selectionChanged(): voi
       li.className = `agent-msg agent-${item.kind}`;
       // The newest status line is still under way while the reply streams.
       if (state.sending && i === lastStatus) li.classList.add('run');
+      // a notice, not a finished step: no check mark
+      if (item.kind === 'status' && item.text === CUT_SHORT_TEXT) li.classList.add('notice');
       li.textContent = item.text;
       return li;
     }));

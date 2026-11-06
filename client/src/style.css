@@ -2619,6 +2619,8 @@ body.agent-resizing {
   color: var(--ok);
 }
 
+.agent-status.notice::before { content: none; }
+
 .agent-status.run::before {
   content: '';
   width: 8px;
