@@ -2590,8 +2590,9 @@ body.agent-resizing {
   max-width: 85%;
   padding: 7px 10px;
   border-radius: 11px 11px 3px 11px;
-  background: var(--sel);
-  color: var(--on-sel);
+  border: 1px solid var(--border);
+  background: var(--panel-hi);
+  color: var(--ink);
 }
 
 .agent-agent {
