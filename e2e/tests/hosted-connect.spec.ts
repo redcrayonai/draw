@@ -14,8 +14,9 @@ test.use({
 const MCP = 'https://mcp.e2e.invalid/mcp';
 const DASHBOARD = 'https://dash.e2e.invalid/dashboard';
 const PRIVACY = 'https://example.test/privacy';
-const ADD = `claude mcp add --transport http --scope user draw ${MCP}`;
-const PROMPT = 'Open a redcrayon board for this task and draw what you build on it as you go.';
+const ADD = 'claude plugin marketplace add redcrayonai/draw && claude plugin install draw@redcrayonai';
+const CODEX_ADD = 'codex plugin marketplace add redcrayonai/draw && codex plugin add draw@redcrayonai';
+const PROMPT = 'Open a Draw board for this task and draw what you build on it as you go.';
 const LEAD = 'Your agent opens a board for its task and draws what it builds. It signs in as you and shows as agent of Test account.';
 const FOOTER = [
   'Drawing needs only the URL. To check code refs, redcrayon uploads each file your agent cites and deletes it within 10 minutes. It keeps paths, line numbers, git hashes, hashes of the cited lines and the GitHub repo address. It keeps the cited lines themselves only if you turn on storing code.',
@@ -124,6 +125,29 @@ test('a guest who signs in from Connect keeps the drawing, and Connect then name
   await expect(g.locator('#connect-lead')).toHaveText(LEAD);
 });
 
+test('the selected agent highlight switches in the same frame as its commands', async ({ account, stack }) => {
+  const page = await account();
+  await openBoard(page, `${stack.url}?new=1`);
+  await openConnect(page);
+  const selectedFill = await page.locator('#connect-tab-claude').evaluate(el => getComputedStyle(el).backgroundColor);
+  for (const name of ['codex', 'claude']) {
+    const state = await page.locator(`#connect-tab-${name}`).evaluate(el => {
+      (el as HTMLButtonElement).click();
+      return {
+        selected: el.getAttribute('aria-selected'),
+        fill: getComputedStyle(el).backgroundColor,
+        otherFills: [...el.parentElement!.querySelectorAll('[aria-selected=false]')].map(other => getComputedStyle(other).backgroundColor),
+        command: document.querySelector('[data-connect-pane]:not([hidden]) code')?.textContent,
+      };
+    });
+    expect(state).toEqual({
+      selected: 'true', fill: selectedFill,
+      otherFills: Array(4).fill('rgba(0, 0, 0, 0)'),
+      command: name === 'codex' ? CODEX_ADD : ADD,
+    });
+  }
+});
+
 test('the Connect dialog lists five clients with the exact commands, and remembers the tab', async ({ account, stack }) => {
   const page = await account(undefined, { permissions: ['clipboard-read', 'clipboard-write'] });
   await openBoard(page, `${stack.url}?new=1`);
@@ -135,12 +159,12 @@ test('the Connect dialog lists five clients with the exact commands, and remembe
 
   const claude = page.locator('#connect-pane-claude');
   await expect(claude).toBeVisible();
-  await expect(claude.locator('code')).toHaveText([ADD, PROMPT]);
-  await expect(claude.locator('.connect-step-title')).toHaveText(['Add the server', 'Sign in', 'Start drawing']);
-  // No plugin step, navigate skill box or capture note in any pane (hidden ones included).
+  await expect(claude.locator('code')).toHaveText([ADD, `REDCRAYON_MCP_URL='${MCP}' claude`, '/draw:navigate']);
+  await expect(claude.locator('.connect-step-title')).toHaveText(['Install the plugin', 'Sign in', 'Open your board']);
+  // Plugin install is primary; other clients keep the plain-language prompt.
   const panes = page.locator('#connect-panes');
   await expect(panes).toContainText(PROMPT);
-  for (const gone of ['npx', '/redcrayon:navigate', 'plugin']) await expect(panes).not.toContainText(gone);
+  for (const gone of ['npx', '/redcrayon:navigate']) await expect(panes).not.toContainText(gone);
 
   // AG-29: each copy button puts its exact text on the clipboard.
   const copies = async (pane: Locator, name: string, text: string) => {
@@ -149,8 +173,8 @@ test('the Connect dialog lists five clients with the exact commands, and remembe
     await expect(copy).toHaveText('copied');
     expect(await page.evaluate(() => navigator.clipboard.readText())).toBe(text);
   };
-  await copies(claude, 'add command', ADD);
-  await copies(claude, 'prompt', PROMPT);
+  await copies(claude, 'install command', ADD);
+  await copies(claude, 'drawing command', '/draw:navigate');
 
   await tab('Cursor').click();
   const config = encodeURIComponent(Buffer.from(JSON.stringify({ url: MCP })).toString('base64'));
@@ -161,8 +185,8 @@ test('the Connect dialog lists five clients with the exact commands, and remembe
   await expect(page.locator('#connect-pane-other code').first()).toHaveText(MCP);
   await tab('Codex').click();
   const codex = page.locator('#connect-pane-codex');
-  await expect(codex.locator('code')).toHaveText([`codex mcp add draw --url ${MCP}`, 'codex mcp login draw', PROMPT]);
-  await copies(codex, 'login command', 'codex mcp login draw');
+  await expect(codex.locator('code')).toHaveText([CODEX_ADD, `REDCRAYON_MCP_URL='${MCP}' codex`, PROMPT]);
+  await copies(codex, 'install command', CODEX_ADD);
   await expect(page.locator('#connect-foot p')).toHaveText([...FOOTER, 'Privacy policy']);
   await expect(page.locator('#connect-foot a')).toHaveAttribute('href', PRIVACY);
 

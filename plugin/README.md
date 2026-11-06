@@ -60,22 +60,45 @@ chat requires a version supporting `MessageDisplay` and `asyncRewake` hooks.
 
 ### Codex
 
-1. `codex mcp add draw --url <server URL>`
-2. `codex mcp login draw`. A browser tab opens. Approve, then start codex in
-   your project.
-3. Give your agent the prompt below. For code refs the agent runs
-   `npx -y @redcrayonai/draw@1 capture`. Allow network access when Codex asks.
+Install the plugin with a Codex version that supports plugins:
+
+```sh
+codex plugin marketplace add redcrayonai/draw && codex plugin add draw@redcrayonai
+```
+
+After adding the marketplace, you can also install Draw from `/plugins`.
+Start a new Codex session in your project. Connect Draw when prompted and
+approve in the browser with the account you use for your boards. Ask it to
+open a board using the prompt below.
+
+For your own server, set `REDCRAYON_MCP_URL` to the server URL when starting
+Codex, just as you would for Claude Code. No `start.command` launcher is needed
+for the released plugin; that launcher is for local development testing.
+
+If your client has no plugin support, use the MCP-only connection:
+
+```sh
+codex mcp add draw --url <server URL>
+codex mcp login draw
+```
+
+This provides drawing tools without bundled skills, automatic code-ref hooks,
+or board chat. When switching from MCP-only setup to the plugin, remove the
+manual entry with `codex mcp remove draw` to avoid duplicate tools.
 
 ### Connected conversation
 
-The package also contains a Codex plugin manifest and hooks. Load this package
-as a Codex plugin to connect chat automatically when `start_session` opens a
-board. MCP-only installation above provides drawing, without automatic chat.
+The Claude Code and Codex plugins connect board chat when `start_session` opens
+a board. Open its link to continue the conversation. Board chat needs Node 22+.
+MCP-only installation provides drawing, without automatic chat.
 Codex chat attaches to the exact thread already loaded on its shared local
 app server. Standalone sessions and host-managed sessions without that connection
 remain available in their original interface; chat never starts a second agent.
 
 - Select a node or edge, then ask about it or request a change.
+- The pencil Draw button reveals drawing tools while chat is open. Back to chat
+  restores your draft; sending marks returns to chat with a receipt. An active
+  review watcher handles marks without a second chat request.
 - Replies, work steps, and supported approvals appear in the board. Sensitive
   approvals stay in your agent; declining never grants permission.
 - Stop requests cancellation and confirms it when the agent stops. Claude Code
@@ -112,7 +135,7 @@ opens a browser to sign in the first time it connects.
 ### The prompt
 
 ```text
-Open a redcrayon board for this task and draw what you build on it as you go.
+Open a Draw board for this task and draw what you build on it as you go.
 ```
 
 ## Sign-in
@@ -125,7 +148,8 @@ Each client signs in once, in the browser, and stays signed in. Your agent shows
 on the board as `agent of <your name>`. To sign a client out:
 
 - Claude Code: `/mcp` → draw → clear authentication
-- Codex: `codex mcp logout draw`
+- Codex: manage the plugin connection from `/plugins`. For MCP-only setup,
+  use `codex mcp logout draw`.
 - Cursor: Settings → MCP → log out
 - claude.ai: Connectors → Disconnect
 
@@ -138,9 +162,9 @@ To check code refs, redcrayon uploads each file your agent cites and deletes it 
 
 Drawing needs only the server URL: nodes, edges and their labels go to the
 server as your agent writes them. Code refs, `source:` citations and checkpoints
-need a capture of your checkout. In Claude Code the plugin's hook makes it; in
-other clients the agent runs `npx -y @redcrayonai/draw@1 capture …`. Each capture is one
-upload:
+need a capture of your checkout. The Claude Code and Codex plugins capture it
+through hooks; in other clients the agent runs
+`npx -y @redcrayonai/draw@1 capture …`. Each capture is one upload:
 
 | kind | Uploads | Claimed by |
 |---|---|---|
@@ -197,6 +221,8 @@ Boards your agent opens are private to your account until you share them from yo
 
 1. Uninstall the plugin: `claude plugin uninstall draw@redcrayonai`, then
    `claude plugin marketplace remove redcrayonai` (or `/plugin` inside Claude Code).
+   For Codex, use `codex plugin remove draw@redcrayonai`, then
+   `codex plugin marketplace remove redcrayonai`.
    This removes the server entry, the command and the hooks.
 2. In each project you used, delete the helper's files:
    `rm -rf "$(git rev-parse --git-common-dir)/redcrayon"`.

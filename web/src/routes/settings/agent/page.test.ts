@@ -18,7 +18,7 @@ import { CONNECT_FOOTER } from '$shared/connect-guide';
 /** No vendor, env var, socket URL or DB host on the page (hosted MCP §12). */
 function expectNoLeak(text: string) {
   expect(text).not.toMatch(/spacetime|maincloud|bsatn|clockwork|\bstdb\b/i);
-  expect(text).not.toMatch(/\b[A-Z][A-Z0-9]*_[A-Z0-9_]+\b/);
+  expect(text.replaceAll('REDCRAYON_MCP_URL', '')).not.toMatch(/\b[A-Z][A-Z0-9]*_[A-Z0-9_]+\b/);
   expect(text).not.toMatch(/npx -y redcrayon-mcp|tsx|wss?:\/\/|localhost|127\.0\.0\.1|redcrayon-test/);
 }
 
@@ -51,17 +51,19 @@ describe('agent setup page', () => {
       'Other',
     ]);
     const codes = [...container.querySelectorAll('code')].map(c => c.textContent);
-    expect(codes).toContain('claude mcp add --transport http --scope user draw https://mcp.example.com/mcp');
-    expect(codes).toContain('codex mcp add draw --url https://mcp.example.com/mcp');
+    expect(codes).toContain('claude plugin marketplace add redcrayonai/draw && claude plugin install draw@redcrayonai');
+    expect(codes).toContain('codex plugin marketplace add redcrayonai/draw && codex plugin add draw@redcrayonai');
+    expect(codes).toContain("REDCRAYON_MCP_URL='https://mcp.example.com/mcp' codex");
+    expect(container.textContent).toContain('shared app server');
     expect(screen.getByRole('link', { name: 'add to Cursor' }).getAttribute('href')).toMatch(/^cursor:\/\/anysphere\.cursor-deeplink\/mcp\/install\?name=draw&config=/);
     for (const line of CONNECT_FOOTER) expect(screen.getByText(line)).toBeInTheDocument();
     expectNoLeak(container.textContent ?? '');
   });
 
-  it('says hosted agents are not available yet without a hosted URL', () => {
+  it('explains when this server has no agent connection URL', () => {
     h.config.mcpUrl = undefined;
     const { container } = render(Page);
-    expect(screen.getByText('Hosted agents are not available yet.')).toBeInTheDocument();
+    expect(screen.getByText('Agent connections are not configured for this server.')).toBeInTheDocument();
     expect(container.querySelector('pre, code, ol')).toBeNull();
     expectNoLeak(container.textContent ?? '');
   });
