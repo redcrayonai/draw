@@ -6,6 +6,7 @@ import { join } from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { ChatCore, MAX_SNAPSHOT_BYTES, SAVED_STATE_MS, WAKE_WAIT_MS, WHOLE_TEXT_WAIT_MS, pruneSavedState, runChat, scrubber, shellsRunning } from './chat';
 import { chatDir, chatSocketPath, removeDeadSockets } from './chat-path';
+import { chatRequest } from './chat-bootstrap';
 
 function setup() {
   const sent: Record<string, any>[] = [];
@@ -67,6 +68,18 @@ describe('the blocking queue', () => {
 });
 
 describe('Stop', () => {
+  it('denies a late permission request after Stop, including after the stop hook settles', () => {
+    const { core, sent } = setup();
+    hook(core, 'PreToolUse', { tool_name: 'Bash', tool_input: { command: 'touch result' } });
+    core.person({ type: 'stop' });
+    const answer = hook(core, 'PermissionRequest') as any;
+    expect(answer.hookSpecificOutput.decision.behavior).toBe('deny');
+    hook(core, 'Stop');
+    expect((hook(core, 'PermissionRequest') as any).hookSpecificOutput.decision.behavior).toBe('deny');
+    expect(sent.some(e => e.type === 'approval' && e.status === 'pending')).toBe(false);
+    send(core, 'new', 'New request');
+    expect(hook(core, 'PermissionRequest')).toEqual({});
+  });
   it('halts at the next hook, signals the running command and pauses the queue', () => {
     const { core, kills, states, sent } = setup();
     hook(core, 'PreToolUse', { tool_name: 'Bash', tool_input: { command: 'pnpm test', description: 'Run tests' } });
@@ -203,6 +216,52 @@ describe('runChat', () => {
     vi.unstubAllGlobals();
   });
 
+  it('returns permissions to the terminal immediately without viewers, including when the last viewer leaves', async () => {
+    process.env.HOME = mkdtempSync(join(tmpdir(), 'rc-home-'));
+    const cwd = mkdtempSync(join(tmpdir(), 'rc-repo-'));
+    class Socket {
+      static all: Socket[] = [];
+      readyState = 1;
+      sent: Record<string, any>[] = [];
+      handlers: Record<string, (ev: any) => void> = {};
+      constructor() { Socket.all.push(this); }
+      addEventListener(type: string, fn: (ev: any) => void) { this.handlers[type] = fn; }
+      send(raw: string) { this.sent.push(JSON.parse(raw)); }
+      close() {}
+      frame(value: object) { this.handlers.message({ data: JSON.stringify(value) }); }
+    }
+    vi.stubGlobal('WebSocket', Socket);
+    const exp = Math.floor(Date.now() / 1000) + 12 * 3600;
+    const token = `x.${Buffer.from(JSON.stringify({ board: '7', exp })).toString('base64url')}.y`;
+    const running = runChat(['--token', token, '--session', 'permissions'], 'http://relay.invalid', cwd, () => {}, () => {});
+    const path = chatSocketPath(cwd, 'claude-code:permissions');
+    await vi.waitFor(() => expect(Socket.all).toHaveLength(1));
+    const socket = Socket.all[0];
+    const request = { hook_event_name: 'PermissionRequest', tool_name: 'Bash', tool_input: { command: 'echo hello' } };
+    try {
+      socket.frame({ ok: true });
+      expect(await chatRequest(path, { hook_event_name: 'BoardChatPing' })).toMatchObject({ expiresAt: exp * 1000 });
+      expect(await chatRequest(path, { hook_event_name: 'BoardChatPing' })).not.toHaveProperty('token');
+      expect(await chatRequest(path, request, 500)).toEqual({});
+      expect(socket.sent.some(e => e.type === 'approval')).toBe(false);
+      socket.frame({ type: 'viewers', count: 1 });
+      const pending = chatRequest(path, request, 1000);
+      await vi.waitFor(() => expect(socket.sent.some(e => e.type === 'approval' && e.status === 'pending')).toBe(true));
+      socket.frame({ type: 'viewers', count: 0 });
+      expect(await pending).toEqual({});
+      socket.sent.length = 0;
+      socket.frame({ type: 'viewers', count: 1 });
+      const allowed = chatRequest(path, request, 1000);
+      await vi.waitFor(() => expect(socket.sent.some(e => e.type === 'approval' && e.status === 'pending')).toBe(true));
+      const approval = socket.sent.find(e => e.type === 'approval' && e.status === 'pending')!;
+      socket.frame({ type: 'approval', id: approval.id, decision: 'accept' });
+      expect(await allowed).toMatchObject({ hookSpecificOutput: { decision: { behavior: 'allow' } } });
+    } finally {
+      await chatRequest(path, { hook_event_name: 'SessionEnd' });
+      await running;
+    }
+  });
+
   it('a helper that was replaced leaves the new one its socket; the last one out removes it', async () => {
     process.env.HOME = mkdtempSync(join(tmpdir(), 'rc-home-'));
     const cwd = mkdtempSync(join(tmpdir(), 'rc-repo-'));
@@ -249,6 +308,28 @@ describe('runChat', () => {
 });
 
 describe('what reaches the browser', () => {
+  it('records review receipts once without queuing or waking the agent', () => {
+    const { core, sent, wakes } = setup();
+    const receipt = { type: 'receipt', id: 'marks-1', text: 'I sent 2 red-crayon marks.', context: 'Red-crayon marks' };
+    core.person(receipt);
+    core.person(receipt);
+    expect(sent.filter(e => e.type === 'delivered')).toEqual([{ ...receipt, type: 'delivered' }]);
+    expect(core.queue).toEqual([]);
+    expect(wakes).toEqual([]);
+    core.dispose();
+  });
+
+  it('expires viewer heartbeats and releases pending local approvals', async () => {
+    vi.useFakeTimers();
+    const { core } = setup();
+    try {
+      core.person({ type: 'viewers', count: 1 });
+      const answer = core.askApproval('permission', 'Allow?');
+      await vi.advanceTimersByTimeAsync(90_001);
+      expect(await answer).toBeUndefined();
+      expect(await core.askApproval('next', 'Allow?')).toBeUndefined();
+    } finally { core.dispose(); vi.useRealTimers(); }
+  });
   it('streams text as it displays, and sends a whole message only when none streamed', () => {
     vi.useFakeTimers();
     const { core, sent } = setup();
@@ -376,5 +457,126 @@ describe('removeDeadSockets', () => {
 describe('chatSocketPath', () => {
   it('is the same from anywhere in a checkout', () => {
     expect(chatSocketPath(process.cwd())).toBe(chatSocketPath(`${process.cwd()}/src`));
+  });
+});
+
+describe('execution adapters', () => {
+  const session = { id: 'codex:thread', agent: 'codex', name: 'Codex', capabilities: { stop: 'interrupt' as const, approvals: true } };
+  it.each(['idle', 'stopped'] as const)('keeps a partial reply when %s arrives before send acknowledgement', async state => {
+    const { core, sent } = setup();
+    let accept!: () => void;
+    core.attach(session, { send: () => new Promise<void>(resolve => { accept = resolve; }), stop: vi.fn(), approve: vi.fn() });
+    core.agent({ type: 'state', state: 'idle' });
+    send(core, 'a');
+    core.agent({ type: 'text', message: 'answer', delta: 'last partial line', final: false });
+    core.agent({ type: 'state', state });
+    accept();
+    await vi.waitFor(() => expect(sent).toContainEqual({ type: 'text', message: 'answer', delta: 'last partial line', final: true }));
+    expect(sent.findIndex(e => e.type === 'delivered')).toBeLessThan(sent.findIndex(e => e.type === 'text'));
+  });
+  it('waits for acceptance, serializes work and never replays duplicate browser sends', async () => {
+    const { core, sent } = setup();
+    let accept!: () => void;
+    const submit = vi.fn(() => new Promise<void>(resolve => { accept = resolve; }));
+    core.attach(session, { send: submit, stop: vi.fn(), approve: vi.fn() });
+    core.agent({ type: 'state', state: 'idle' });
+    send(core, 'a'); send(core, 'a'); send(core, 'b');
+    expect(submit).toHaveBeenCalledTimes(1);
+    expect(sent.filter(e => e.type === 'delivered')).toHaveLength(0);
+    accept(); await Promise.resolve(); await Promise.resolve();
+    expect(sent.filter(e => e.type === 'delivered')).toHaveLength(1);
+    expect(core.queue.map(m => m.id)).toEqual(['b']);
+    expect(core.snapshot().session).toEqual(session);
+  });
+  it('retains failed sends for explicit retry rather than losing or endlessly replaying them', async () => {
+    const { core, sent } = setup();
+    core.attach(session, { send: vi.fn().mockRejectedValue(new Error('offline')), stop: vi.fn(), approve: vi.fn() });
+    core.agent({ type: 'state', state: 'idle' });
+    send(core, 'a'); await Promise.resolve(); await Promise.resolve();
+    expect(core.queue.map(m => m.id)).toEqual(['a']);
+    expect(core.paused).toBe(true);
+    expect(sent.some(e => e.type === 'delivered')).toBe(false);
+  });
+  it('filters fragmented text and waits for interruption confirmation', async () => {
+    const { core, sent } = setup();
+    const stop = vi.fn().mockResolvedValue(undefined);
+    core.attach(session, { send: vi.fn(), stop, approve: vi.fn() });
+    core.agent({ type: 'text', message: 'm', delta: '-----BEGIN PRIVATE', final: false });
+    core.agent({ type: 'text', message: 'm', delta: ' KEY-----\nsecret-body\n-----END PRIVATE KEY-----', final: true });
+    expect(JSON.stringify(sent)).not.toContain('secret-body');
+    core.person({ type: 'stop' }); await Promise.resolve();
+    expect(stop).toHaveBeenCalledOnce();
+    expect(core.state).toBe('stopping');
+    core.agent({ type: 'state', state: 'stopped' });
+    expect(core.state).toBe('stopped');
+  });
+  it('only answers a pending approval once', async () => {
+    const { core } = setup();
+    const approve = vi.fn().mockResolvedValue(undefined);
+    core.attach(session, { send: vi.fn(), stop: vi.fn(), approve });
+    core.agent({ type: 'approval', id: 'p1', summary: 'Edit a file', status: 'pending' });
+    core.person({ type: 'approval', id: 'other', decision: 'accept' });
+    core.person({ type: 'approval', id: 'p1', decision: 'accept' });
+    core.person({ type: 'approval', id: 'p1', decision: 'accept' });
+    await Promise.resolve();
+    expect(approve).toHaveBeenCalledTimes(1);
+    expect(approve).toHaveBeenCalledWith('p1', 'accept');
+  });
+});
+
+describe('conversation recovery boundaries', () => {
+  it('keeps a restored Stop in effect until another user request', () => {
+    const { core } = setup();
+    core.restore({ state: 'stopped', paused: true });
+    expect(hook(core, 'PreToolUse', { tool_name: 'Bash' }).continue).toBe(false);
+    send(core, 'new', 'New request');
+    expect(hook(core, 'PreToolUse', { tool_name: 'Read' }).continue).toBeUndefined();
+  });
+  it('holds a new request after Stop until the wake listener is ready, denying old tool retries', () => {
+    let ready = false;
+    const wakes: string[] = [];
+    const core = new ChatCore({ send: () => {}, wake: line => wakes.push(line), canWake: () => ready, killCommand: () => {} });
+    hook(core, 'PreToolUse', { tool_name: 'Bash', tool_input: { command: 'old command' } });
+    core.person({ type: 'stop' });
+    hook(core, 'PostToolUseFailure', { tool_name: 'Bash' });
+    send(core, 'new', 'New request');
+    expect(core.queue.map(m => m.id)).toEqual(['new']);
+    expect(wakes).toEqual([]);
+    expect(hook(core, 'PreToolUse', { tool_name: 'Bash' }).continue).toBe(false);
+    hook(core, 'Stop');
+    expect(wakes).toEqual([]);
+    ready = true;
+    core.wakeReady();
+    expect(wakes).toEqual(['Board chat: [New message after Stop: act on it.] New request']);
+    expect(core.queue).toEqual([]);
+    expect(hook(core, 'PreToolUse', { tool_name: 'Read' }).continue).toBeUndefined();
+  });
+  it('isolates concurrent sessions in the same checkout', () => {
+    expect(chatSocketPath(process.cwd(), 'claude-code:a')).not.toBe(chatSocketPath(process.cwd(), 'claude-code:b'));
+    expect(chatSocketPath(process.cwd(), 'claude-code:a')).toBe(chatSocketPath(`${process.cwd()}/src`, 'claude-code:a'));
+  });
+  it('retains a paused ambiguous send when another message arrives', async () => {
+    const { core } = setup();
+    const submit = vi.fn().mockRejectedValue(new Error('ack lost'));
+    core.attach({ id: 'codex:one', agent: 'codex', name: 'Codex', capabilities: { stop: 'interrupt', approvals: true } }, { send: submit, stop: vi.fn(), approve: vi.fn() });
+    core.agent({ type: 'state', state: 'idle' });
+    send(core, 'a'); await Promise.resolve(); await Promise.resolve(); await Promise.resolve();
+    send(core, 'b'); await Promise.resolve();
+    expect(submit).toHaveBeenCalledTimes(1);
+    expect(core.paused).toBe(true);
+    expect(core.queue.map(m => m.id)).toEqual(['a', 'b']);
+  });
+  it('restores history without live approvals or duplicate generated message ids', () => {
+    const { core } = setup();
+    core.restore({ events: [{ type: 'user', id: 't9', text: 'before' }, { type: 'approval', id: 'p', status: 'pending', summary: 'old' }] });
+    core.hook({ hook_event_name: 'UserPromptSubmit', prompt: 'after' });
+    expect(core.events.filter(e => e.type === 'user').map(e => e.id)).toEqual(['t9', 't10']);
+    expect(core.events.find(e => e.type === 'approval')?.status).toBe('resolved');
+  });
+  it('does not offer a blind approval when its command contains secrets', () => {
+    const { core, sent } = setup();
+    core.agent({ type: 'approval', id: 'p', summary: 'run with AKIA' + 'ABCDEFGHIJKLMNOP', status: 'pending' });
+    expect(sent.some(e => e.type === 'approval')).toBe(false);
+    expect(sent.some(e => e.type === 'notice')).toBe(true);
   });
 });

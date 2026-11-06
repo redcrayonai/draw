@@ -81,7 +81,7 @@ describe('Send pill', () => {
     vi.mocked(showNotice).mockClear();
   });
 
-  const mount = (send: (ids: bigint[], notes: string[]) => Promise<void>, listening = true) => {
+  const mount = (send: (ids: bigint[], notes: string[]) => Promise<void | boolean>, listening = true) => {
     const ui = mountCrayon({
       wrap: document.getElementById('canvas-wrap')!,
       world: document.getElementById('world') as unknown as SVGGElement,
@@ -137,6 +137,15 @@ describe('Send pill', () => {
     heard.crayon.toggle(1n);
     heard.pill.click();
     await new Promise(r => setTimeout(r, 0));
+    expect(showNotice).not.toHaveBeenCalled();
+  });
+
+  it('does not ask for a listener when the saved marks went to chat', async () => {
+    const { crayon, pill } = mount(async () => true, false);
+    crayon.toggle(1n);
+    pill.click();
+    await new Promise(r => setTimeout(r, 0));
+    expect(crayon.drafts()).toEqual([]);
     expect(showNotice).not.toHaveBeenCalled();
   });
 

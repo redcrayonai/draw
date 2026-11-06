@@ -5,6 +5,8 @@ describe('applyFrame', () => {
   it('builds a conversation: message, streamed text, work steps', () => {
     const m = emptyChat();
     applyFrame(m, { agent: 'connected' });
+    expect(m.online).toBe(false);
+    applyFrame(m, { type: 'snapshot', events: [], queue: [], state: 'idle' });
     applyFrame(m, { type: 'delivered', id: 'a', text: 'why?', context: 'edge X' });
     applyFrame(m, { type: 'text', message: 'm1', delta: 'Because\n', final: false });
     applyFrame(m, { type: 'text', message: 'm1', delta: 'of this.', final: true });
@@ -34,6 +36,18 @@ describe('applyFrame', () => {
       { kind: 'text', message: 'm', text: 'hi', final: true },
     ]);
     expect(m).toMatchObject({ state: 'working', paused: true, online: true, queue: [{ id: 'q', text: 'next' }] });
+  });
+
+  it('restores completed adapter tool records without requiring a live start event', () => {
+    const m = emptyChat();
+    applyFrame(m, { type: 'snapshot', state: 'idle', events: [
+      { type: 'tool', id: 'tool-1', phase: 'done', summary: 'Changed a file' },
+      { type: 'tool', id: 'tool-2', phase: 'done', summary: 'Ran a command' },
+    ] });
+    expect(m.items).toEqual([{ kind: 'work', steps: [
+      { id: 'tool-1', summary: 'Changed a file', done: true },
+      { id: 'tool-2', summary: 'Ran a command', done: true },
+    ] }]);
   });
 
   it('follows the queue, the agent state, and the agent leaving', () => {
@@ -102,7 +116,7 @@ describe('mountAgentChat', () => {
     readyState = 1;
     sent: Record<string, unknown>[] = [];
     handlers: Record<string, (ev: any) => void> = {};
-    constructor() { FakeSocket.all.push(this); }
+    constructor(readonly url: string) { FakeSocket.all.push(this); }
     addEventListener(type: string, fn: (ev: any) => void) { this.handlers[type] = fn; }
     send(data: string) { this.sent.push(JSON.parse(data)); }
     close() {}
@@ -115,12 +129,15 @@ describe('mountAgentChat', () => {
     vi.useFakeTimers();
     FakeSocket.all = [];
     sessionStorage.clear();
+    localStorage.clear();
     vi.stubGlobal('WebSocket', FakeSocket);
     vi.stubGlobal('matchMedia', (q: string) => ({ matches: !q.includes('reduced-motion') }));
   });
   afterEach(() => {
     panel()?.remove();
+    document.querySelectorAll('#chat-draw').forEach(node => node.remove());
     document.documentElement.removeAttribute('data-agent-chat');
+    document.documentElement.removeAttribute('data-agent-drawing');
     vi.useRealTimers();
     vi.unstubAllGlobals();
   });
@@ -243,4 +260,258 @@ describe('mountAgentChat', () => {
     await vi.advanceTimersByTimeAsync(30_000);
     expect(socket.sent).toEqual([{ auth: 'tok' }]);
   });
+
+  const session = (id: string, stop: 'step' | 'interrupt' | 'none' = 'interrupt') => ({ id, agent: id, name: `Agent ${id}`, capabilities: { stop, approvals: true } });
+  const snapshot = (id = 'one', events: object[] = [], state = 'idle') => ({ type: 'snapshot', session: session(id), events, queue: [], state, paused: false });
+  const input = () => panel().querySelector<HTMLTextAreaElement>('textarea')!;
+  const sendButton = () => panel().querySelector<HTMLButtonElement>('.ac-send')!;
+  const type = (value: string) => {
+    input().value = value;
+    input().dispatchEvent(new Event('input'));
+  };
+  const choose = (id: string) => {
+    const select = panel().querySelector<HTMLSelectElement>('select')!;
+    select.value = id;
+    select.dispatchEvent(new Event('change'));
+  };
+
+  it('temporarily shows drawing tools, preserves drafts, and returns to chat after sending marks', async () => {
+    const { chat, socket, button } = await mount();
+    socket.frame(snapshot());
+    type('unfinished thought');
+    document.getElementById('chat-draw')!.click();
+    expect(panel().hidden).toBe(true);
+    expect(document.documentElement.hasAttribute('data-agent-drawing')).toBe(true);
+    expect(button.getAttribute('aria-label')).toBe('Back to chat');
+    socket.frame({ agent: 'gone' });
+    expect(chat.prepareMessage('Review this mark')).toBeUndefined();
+    expect(panel().hidden).toBe(true);
+    expect(button.getAttribute('aria-label')).toBe('Back to chat');
+    socket.frame(snapshot());
+    expect(panel().hidden).toBe(true);
+    expect(chat.prepareMessage('Review this mark')!()).toBe(true);
+    expect(panel().hidden).toBe(false);
+    expect(document.documentElement.hasAttribute('data-agent-drawing')).toBe(false);
+    expect(input().value).toBe('unfinished thought');
+    expect(document.activeElement).toBe(input());
+    document.getElementById('chat-draw')!.click();
+    button.click();
+    expect(panel().hidden).toBe(false);
+    expect(input().value).toBe('unfinished thought');
+  });
+
+  it('records watcher-handled marks in chat without sending another request', async () => {
+    const { chat, socket } = await mount();
+    socket.frame(snapshot());
+    type('keep my draft');
+    expect(chat.prepareMessage('I sent 2 red-crayon marks.', 'Red-crayon marks')!(false)).toBe(true);
+    expect(socket.sent.filter(m => m.type === 'send')).toEqual([]);
+    expect(socket.sent.find(m => m.type === 'receipt')).toMatchObject({ text: 'I sent 2 red-crayon marks.', session: 'one' });
+    expect(input().value).toBe('keep my draft');
+  });
+
+  it('reports chat visibility and re-announces it after reconnecting', async () => {
+    const { socket, button } = await mount();
+    socket.frame(snapshot());
+    expect(socket.sent[socket.sent.length - 1]).toMatchObject({ type: 'viewing', active: true });
+    button.click();
+    expect(socket.sent[socket.sent.length - 1]).toMatchObject({ type: 'viewing', active: false });
+    socket.frame({ agent: 'gone' });
+    socket.frame(snapshot());
+    expect(socket.sent[socket.sent.length - 1]).toMatchObject({ type: 'viewing', active: false });
+    button.click();
+    expect(socket.sent[socket.sent.length - 1]).toMatchObject({ type: 'viewing', active: true });
+  });
+
+  it('sends a saved board action once to its captured conversation without changing the composer', async () => {
+    const { chat, socket } = await mount();
+    expect(chat.prepareMessage('marks')).toBeUndefined();
+    socket.frame(snapshot());
+    type('my unfinished draft');
+    const forward = chat.prepareMessage('Review my marks', 'Red-crayon marks')!;
+    expect(socket.sent.some(m => m.type === 'send')).toBe(false);
+    expect(forward()).toBe(true);
+    expect(forward()).toBe(false);
+    expect(socket.sent.filter(m => m.type === 'send')).toEqual([
+      { type: 'send', session: 'one', id: expect.any(String), text: 'Review my marks', context: 'Red-crayon marks' },
+    ]);
+    expect(input().value).toBe('my unfinished draft');
+  });
+
+  it('does not forward saved actions into a different session, board, or disconnected chat', async () => {
+    const { chat, socket, button } = await mount();
+    socket.frame({ type: 'sessions', sessions: [session('one'), session('two')], selected: 'one' });
+    socket.frame(snapshot());
+    const changedSession = chat.prepareMessage('marks')!;
+    choose('two');
+    socket.frame(snapshot('two'));
+    expect(changedSession()).toBe(false);
+    const disconnected = chat.prepareMessage('marks')!;
+    socket.frame({ agent: 'gone' });
+    expect(disconnected()).toBe(false);
+    socket.frame(snapshot('two'));
+    button.click();
+    expect(chat.prepareMessage('marks')).toBeUndefined();
+    button.click();
+    const changedBoard = chat.prepareMessage('marks')!;
+    chat.switchBoard();
+    expect(changedBoard()).toBe(false);
+    expect(socket.sent.some(m => m.type === 'send')).toBe(false);
+  });
+
+  it('waits for a snapshot before sending and preserves a draft when the socket fails', async () => {
+    const { socket, button } = await mount();
+    button.click();
+    socket.frame({ agent: 'connected' });
+    type('keep this');
+    expect(panel().textContent).toContain('Syncing conversation');
+    expect(sendButton().disabled).toBe(true);
+    socket.frame(snapshot());
+    expect(sendButton().disabled).toBe(false);
+    socket.send = () => { throw new Error('network lost'); };
+    sendButton().click();
+    expect(input().value).toBe('keep this');
+    expect(panel().textContent).toContain('Reconnecting');
+    expect(sendButton().disabled).toBe(true);
+    await vi.advanceTimersByTimeAsync(2000);
+    expect(FakeSocket.all).toHaveLength(2);
+  });
+
+  it('isolates session histories and drafts, scopes sends, and switches stop capabilities', async () => {
+    const { socket } = await mount();
+    const sessions = [session('one'), session('two', 'none')];
+    socket.frame({ type: 'sessions', sessions, selected: 'one' });
+    socket.frame(snapshot('one', [{ type: 'user', id: 'first', text: 'First conversation' }]));
+    type('first draft');
+    choose('two');
+    expect(socket.sent[socket.sent.length - 1]).toEqual({ type: 'select', session: 'two' });
+    expect(panel().textContent).not.toContain('First conversation');
+    expect(input().value).toBe('');
+    expect(sendButton().disabled).toBe(true);
+    socket.frame(snapshot('one', [{ type: 'user', id: 'old', text: 'Stale history' }]));
+    expect(panel().textContent).not.toContain('Stale history');
+    socket.frame({ ...snapshot('two', [], 'working'), session: sessions[1] });
+    expect(panel().querySelector<HTMLButtonElement>('.ac-stop')!.hidden).toBe(true);
+    type('second draft');
+    choose('one');
+    expect(input().value).toBe('first draft');
+    socket.frame(snapshot('one', [], 'working'));
+    const stop = panel().querySelector<HTMLButtonElement>('.ac-stop')!;
+    stop.click();
+    expect(stop.disabled).toBe(true);
+    expect(stop.textContent).toBe('Stopping');
+    expect(panel().textContent).toContain('waiting for confirmation');
+    expect(socket.sent[socket.sent.length - 1]).toEqual({ type: 'stop', session: 'one' });
+    socket.frame({ type: 'state', state: 'stopped' });
+    sendButton().click();
+    expect(socket.sent[socket.sent.length - 1]).toMatchObject({ type: 'send', session: 'one', text: 'first draft' });
+    choose('two');
+    expect(input().value).toBe('second draft');
+  });
+
+  it('distinguishes concurrent conversations from the same agent', async () => {
+    const { socket } = await mount();
+    socket.frame({ type: 'sessions', sessions: [session('one'), session('two')].map(s => ({ ...s, name: 'Codex' })), selected: null });
+    const choices = [...panel().querySelectorAll('select option')].map(option => option.textContent);
+    expect(choices).toEqual(['Choose a session', 'Codex · one', 'Codex · two']);
+  });
+
+  it('keeps approvals pending until the adapter confirms them', async () => {
+    const { socket } = await mount();
+    socket.frame(snapshot());
+    socket.frame({ type: 'approval', id: 'approval-1', summary: 'Change this file?', status: 'pending' });
+    const allow = [...panel().querySelectorAll('button')].find(b => b.textContent === 'Allow')!;
+    allow.click();
+    expect(socket.sent[socket.sent.length - 1]).toEqual({ type: 'approval', session: 'one', id: 'approval-1', decision: 'accept' });
+    expect(panel().textContent).toContain('Waiting for confirmation');
+    expect(panel().querySelectorAll('.ac-approval button:disabled')).toHaveLength(2);
+    socket.frame({ type: 'approval', id: 'approval-1', summary: 'Change this file?', status: 'pending' });
+    expect(panel().querySelectorAll('.ac-approval button:disabled')).toHaveLength(0);
+    socket.frame({ type: 'approval', id: 'approval-1', summary: 'Change this file?', status: 'resolved' });
+    expect(panel().textContent).toContain('Approval resolved');
+    expect(panel().querySelectorAll('.ac-approval button')).toHaveLength(0);
+  });
+
+  it('preserves board drafts and attachments and ignores callbacks from the previous board', async () => {
+    let url = 'wss://x/chat/1';
+    let selection = 'node one';
+    const button = document.createElement('button');
+    const chat = mountAgentChat(button, { url: () => url, token: async () => 'tok', selection: () => selection });
+    chat.setAvailable(true);
+    await flush();
+    const first = FakeSocket.all[0];
+    first.frame(snapshot());
+    type('board one draft');
+    chat.switchBoard();
+    url = 'wss://x/chat/2';
+    selection = 'node two';
+    await flush();
+    const second = FakeSocket.all[1];
+    second.frame(snapshot('two'));
+    expect(input().value).toBe('');
+    first.frame(snapshot('one', [{ type: 'user', id: 'leak', text: 'old board history' }]));
+    expect(panel().textContent).not.toContain('old board history');
+    type('board two draft');
+    url = 'wss://x/chat/1';
+    selection = 'different node';
+    chat.switchBoard();
+    await flush();
+    FakeSocket.all[2].frame(snapshot());
+    expect(input().value).toBe('board one draft');
+    expect(panel().querySelector('.ac-chips')?.textContent).toBe('node one');
+    sendButton().click();
+    expect(FakeSocket.all[2].sent[FakeSocket.all[2].sent.length - 1]).toMatchObject({ type: 'send', text: 'board one draft', context: 'node one', session: 'one' });
+    type('new question');
+    selection = 'newly selected node';
+    chat.refresh();
+    sendButton().click();
+    expect(FakeSocket.all[2].sent[FakeSocket.all[2].sent.length - 1]).toMatchObject({ context: 'newly selected node' });
+  });
+
+  it('ignores an old board token result and catches token refresh rejections', async () => {
+    let resolve!: (token: string) => void;
+    let url = 'wss://x/chat/1';
+    const token = vi.fn().mockImplementationOnce(() => new Promise<string>(r => { resolve = r; }))
+      .mockRejectedValueOnce(new Error('offline')).mockResolvedValue('tok');
+    const chat = mountAgentChat(document.createElement('button'), { url: () => url, token, selection: () => '' });
+    chat.setAvailable(true);
+    url = 'wss://x/chat/2';
+    chat.switchBoard();
+    resolve('old token');
+    await flush();
+    expect(FakeSocket.all).toHaveLength(0);
+    await vi.advanceTimersByTimeAsync(2000);
+    expect(FakeSocket.all).toHaveLength(1);
+    expect(FakeSocket.all[0].url).toBe(url);
+    token.mockRejectedValueOnce(new Error('refresh rejected'));
+    FakeSocket.all[0].frame({ ok: true });
+    FakeSocket.all[0].frame({ agent: 'connected' });
+    await vi.advanceTimersByTimeAsync(30_000);
+    expect(panel().textContent).toContain('Reconnecting');
+    await vi.advanceTimersByTimeAsync(2000);
+    expect(FakeSocket.all).toHaveLength(2);
+  });
+
+
+  it('restores the selected session after reconnecting and does not show Ready for another session', async () => {
+    const { socket } = await mount();
+    socket.frame({ type: 'sessions', sessions: [session('one'), session('two')], selected: 'one' });
+    socket.frame(snapshot());
+    type('draft one');
+    socket.handlers.close({ code: 1006, reason: '' });
+    await vi.advanceTimersByTimeAsync(2000);
+    const next = FakeSocket.all[1];
+    next.frame({ type: 'sessions', sessions: [session('one'), session('two')], selected: null });
+    expect(next.sent[next.sent.length - 1]).toEqual({ type: 'select', session: 'one' });
+    expect(input().value).toBe('draft one');
+    next.frame({ type: 'text', session: 'two', message: 'stray', delta: 'Another conversation', final: true });
+    expect(panel().textContent).not.toContain('Another conversation');
+    expect(sendButton().disabled).toBe(true);
+    next.frame(snapshot());
+    next.frame({ agent: 'connected' });
+    expect(panel().textContent).toContain('Ready');
+    expect(sendButton().disabled).toBe(false);
+    expect(input().value).toBe('draft one');
+  });
+
 });

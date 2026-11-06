@@ -1,3 +1,6 @@
+import type { ChatSession } from '../../shared/chat';
+import { createChatConnection, type ChatConnection, type ChatConnectionOptions, type ConnectionStatus } from './chat-connection';
+export { IDLE_REAUTH_MS } from './chat-connection';
 import { armChime, chime, setSound, soundOn } from './chime';
 
 /**
@@ -14,6 +17,7 @@ export type Item =
   | { kind: 'user'; id: string; text: string; context?: string; terminal?: boolean }
   | { kind: 'text'; message: string; text: string; final: boolean }
   | { kind: 'work'; steps: { id: string; summary: string; done: boolean }[] }
+  | { kind: 'approval'; id: string; summary: string; status: 'pending' | 'resolved' }
   | { kind: 'notice'; text: string; attention?: boolean };
 
 export interface ChatModel {
@@ -22,11 +26,15 @@ export interface ChatModel {
   state: AgentState;
   paused: boolean;
   online: boolean;
+  connection: ConnectionStatus;
+  sessions: ChatSession[];
+  selected: string | null;
+  session: ChatSession | null;
   /** Set when the channel refused or closed, with the sentence to show. */
   closed: string | null;
 }
 
-export const emptyChat = (): ChatModel => ({ items: [], queue: [], state: 'idle', paused: false, online: false, closed: null });
+export const emptyChat = (): ChatModel => ({ items: [], queue: [], state: 'idle', paused: false, online: false, connection: 'offline', sessions: [], selected: null, session: null, closed: null });
 
 type Frame = Record<string, any>;
 
@@ -59,8 +67,20 @@ function applyEvent(m: ChatModel, e: Frame): void {
       for (const item of m.items) {
         if (item.kind !== 'work') continue;
         const step = item.steps.find(s => s.id === e.id);
-        if (step) step.done = true;
+        if (step) { step.done = true; return; }
       }
+      // Restored adapter history can contain only the completed tool record.
+      if (typeof e.summary === 'string') {
+        const step = { id: String(e.id), summary: e.summary, done: true };
+        if (last?.kind === 'work') last.steps.push(step);
+        else m.items.push({ kind: 'work', steps: [step] });
+      }
+      return;
+    }
+    case 'approval': {
+      const existing = m.items.find(i => i.kind === 'approval' && i.id === e.id);
+      if (existing?.kind === 'approval') existing.status = e.status;
+      else m.items.push({ kind: 'approval', id: String(e.id), summary: String(e.summary ?? ''), status: e.status });
       return;
     }
     case 'notice':
@@ -72,21 +92,46 @@ function applyEvent(m: ChatModel, e: Frame): void {
 /** One frame from the relay. Pure, so the whole conversation is tested without a socket. */
 export function applyFrame(m: ChatModel, f: Frame): void {
   if (f.agent === 'connected') {
-    m.online = true;
+    if (!m.online) m.connection = 'syncing';
     m.closed = null;
     return;
   }
   if (f.agent === 'gone') {
     m.online = false;
+    m.connection = 'waiting';
     return;
   }
+  if (f.type === 'sessions') {
+    m.sessions = Array.isArray(f.sessions) ? [...f.sessions] : [];
+    if (m.session && !m.sessions.some(s => s.id === m.session!.id)) m.sessions.push(m.session);
+    const selected = typeof f.selected === 'string' ? f.selected : null;
+    if (selected !== m.selected) {
+      m.items = [];
+      m.queue = [];
+      m.online = false;
+      m.state = 'idle';
+      m.paused = false;
+      m.selected = selected;
+      m.session = m.sessions.find(s => s.id === selected) ?? null;
+      m.connection = selected ? 'syncing' : 'waiting';
+    }
+    return;
+  }
+  const sessionId = typeof f.session === 'string' ? f.session : f.session?.id;
+  if (sessionId && m.selected && sessionId !== m.selected) return;
   if (f.type === 'snapshot') {
+    if (f.session && typeof f.session === 'object') {
+      m.session = f.session;
+      m.selected = f.session.id;
+    }
     m.items = [];
     for (const e of (f.events as Frame[]) ?? []) applyEvent(m, e);
     m.queue = (f.queue as Queued[]) ?? [];
     m.state = f.state ?? 'idle';
     m.paused = Boolean(f.paused);
     m.online = true;
+    m.connection = 'ready';
+    m.closed = null;
     return;
   }
   if (f.type === 'state') {
@@ -206,6 +251,7 @@ export interface AgentChatOpts {
   token(): Promise<string | null>;
   /** What the person has selected, in words, or empty. */
   selection(): string;
+  connection?(options: ChatConnectionOptions): ChatConnection;
   agentElsewhere?(): AgentElsewhere | null;
   /** The board gained (+) or lost (-) this much width beside it. */
   boardWidthChanged?(delta: number): void;
@@ -214,12 +260,6 @@ export interface AgentChatOpts {
 const LOOK_KEY = 'redcrayon.chatLook';
 const WIDTH_KEY = 'redcrayon.chatWidth';
 const CLOSED_KEY = 'redcrayon.chatClosed:';
-const HANDOFF = '/draw:handoff';
-const REAUTH_MS = 30_000;
-/** With no agent connected nothing is relayed, so an idle tab need not keep asking the database. */
-export const IDLE_REAUTH_MS = 5 * 60_000;
-/** Closes in a row before the panel says why: one can be a database blip. */
-const SHOW_CLOSE_AFTER = 3;
 const MIN_WIDTH = 320;
 const MAX_WIDTH = 640;
 const SVG_NS = 'http://www.w3.org/2000/svg';
@@ -261,6 +301,7 @@ const ICON = {
   chevron: 'M6 4l4 4-4 4',
   check: 'M3.5 8.5l3 3 6-7',
   down: 'M8 3v10M4 9l4 4 4-4',
+  pencil: 'M2.75 13.25V11l7.5-7.5 2.25 2.25-7.5 7.5ZM10.25 3.5l1.5-1.5 2.25 2.25-1.5 1.5',
 };
 
 export function mountAgentChat(chatButton: HTMLButtonElement, opts: AgentChatOpts) {
@@ -272,13 +313,18 @@ export function mountAgentChat(chatButton: HTMLButtonElement, opts: AgentChatOpt
   document.body.append(panel);
 
   let look: ChatLook = localStorage.getItem(LOOK_KEY) === 'terminal' ? 'terminal' : 'chat';
-  let ws: WebSocket | null = null;
-  let reauth: ReturnType<typeof setTimeout> | undefined;
-  let refusals = 0;
-  let retry: ReturnType<typeof setTimeout> | undefined;
-  let backoff = 2000;
+  let connection: ChatConnection | null = null;
+  let boardUrl = opts.url();
+  let boardVersion = 0;
+  let switchingBoard = false;
+  let lastSelection = opts.selection();
+  const drafts = new Map<string, { text: string; attached: string; detached: string }>();
+  const selections = new Map<string, string>();
+  let draftContext: string | null = null;
+  const pendingApprovals = new Set<string>();
   let available = false;
   let open = false;
+  let drawing = false;
   let unread = false;
   let nextId = 1;
   let detached = '';
@@ -287,9 +333,25 @@ export function mountAgentChat(chatButton: HTMLButtonElement, opts: AgentChatOpt
   /** A pairing link waiting for the person's answer. Never acted on without it: anyone can send someone a link. */
   let pairing: { run(): Promise<'linked' | 'already'>; busy: boolean; failed: boolean; already?: boolean } | null = null;
   const expanded = new Set<string>();
+  const back = el('span', 'ac-back', 'Back to chat');
+  back.hidden = true;
+  chatButton.append(back);
+  const draw = button('ac-draw', '', () => {
+    setOpen(false);
+    setDrawing(true);
+    document.getElementById('tool-select')?.focus();
+  });
+  draw.id = 'chat-draw';
+  draw.hidden = true;
+  draw.append(icon(ICON.pencil));
+  draw.setAttribute('aria-label', 'Draw');
+  draw.setAttribute('aria-controls', 'dock');
+  draw.title = 'Draw';
+  (document.getElementById('canvas-wrap') ?? document.body).append(draw);
 
   /** The selection this message would carry, unless the person took it off. */
   const context = () => {
+    if (draftContext !== null) return draftContext;
     const current = opts.selection();
     if (current !== detached) detached = '';
     return current === detached ? '' : current;
@@ -313,6 +375,7 @@ export function mountAgentChat(chatButton: HTMLButtonElement, opts: AgentChatOpt
   handle.setAttribute('aria-valuemax', String(MAX_WIDTH));
   handle.tabIndex = 0;
   let width = applyWidth(Number(localStorage.getItem(WIDTH_KEY)) || 400);
+  window.addEventListener('resize', () => { width = applyWidth(width); });
   const docked = () => matchMedia('(min-width: 721px)').matches;
   const setWidth = (w: number) => {
     const before = width;
@@ -357,7 +420,12 @@ export function mountAgentChat(chatButton: HTMLButtonElement, opts: AgentChatOpt
   const statusLine = el('div', 'ac-private');
   statusLine.append(statusText, el('span', 'ac-sep', ' · '), sound);
   const name = el('div', 'ac-name');
-  name.append(dot, el('span', undefined, 'Your agent'));
+  const agentName = el('span', undefined, 'Your agent');
+  name.append(dot, agentName);
+  const sessions = el('select', 'ac-sessions');
+  sessions.setAttribute('aria-label', 'Agent session');
+  sessions.hidden = true;
+  sessions.addEventListener('change', () => selectSession(sessions.value));
   const id = el('div', 'ac-id');
   id.append(name, statusLine);
   const seg = el('div', 'ac-seg');
@@ -405,7 +473,11 @@ export function mountAgentChat(chatButton: HTMLButtonElement, opts: AgentChatOpt
   prompt.setAttribute('aria-hidden', 'true');
   inputRow.append(prompt, input);
   const hint = el('span', 'ac-hint');
-  const stop = button('ac-stop', 'Stop', () => frame({ type: 'stop' }));
+  const stop = button('ac-stop', 'Stop', () => {
+    if (model.state !== 'working' || !frame({ type: 'stop' })) return;
+    model.state = 'stopping';
+    render();
+  });
   stop.prepend(icon(ICON.stop, true));
   stop.setAttribute('aria-label', 'Stop agent');
   const sendBtn = button('ac-send', 'Send', () => send());
@@ -418,17 +490,57 @@ export function mountAgentChat(chatButton: HTMLButtonElement, opts: AgentChatOpt
   const foot = el('div', 'ac-foot');
   const lost = el('div', 'ac-lost');
   foot.append(lost, box);
-  panel.append(handle, head, logWrap, foot);
+  panel.append(handle, head, sessions, logWrap, foot);
 
-  const frame = (f: Frame) => {
-    if (ws?.readyState === 1) ws.send(JSON.stringify(f));
-  };
+  const frame = (f: Frame): boolean => model.online && Boolean(connection?.send({
+    ...f, ...(model.selected ? { session: model.selected } : {}),
+  }));
+  const reportViewing = () => frame({ type: 'viewing', active: open && document.visibilityState !== 'hidden' });
+  document.addEventListener('visibilitychange', reportViewing);
+  const draftKey = () => JSON.stringify([boardUrl, model.selected]);
+  function saveDraft(): void {
+    drafts.set(draftKey(), { text: input.value, attached: context(), detached });
+  }
+  function restoreDraft(): void {
+    const draft = drafts.get(draftKey());
+    input.value = draft?.text ?? '';
+    draftContext = draft?.text ? draft.attached : null;
+    detached = draft?.detached ?? '';
+    lastSelection = opts.selection();
+    input.style.height = 'auto';
+  }
+  function clearHistory(): void {
+    model.items = [];
+    model.queue = [];
+    model.state = 'idle';
+    model.paused = false;
+    model.online = false;
+    model.connection = 'syncing';
+    shown.clear();
+    expanded.clear();
+    rendered.clear();
+    pendingApprovals.clear();
+    log.textContent = '';
+  }
+  function selectSession(session: string): void {
+    if (!session || session === model.selected) return;
+    if (!connection?.send({ type: 'select', session })) return;
+    saveDraft();
+    model.selected = session;
+    model.session = model.sessions.find(s => s.id === session) ?? null;
+    selections.set(boardUrl, session);
+    clearHistory();
+    restoreDraft();
+    render();
+  }
   function send(): void {
     const text = input.value.trim();
     if (!text || !model.online) return;
     const attached = context();
-    frame({ type: 'send', id: `b${Date.now()}-${nextId++}`, text, ...(attached ? { context: attached } : {}) });
+    if (!frame({ type: 'send', id: `b${Date.now()}-${nextId++}`, text, ...(attached ? { context: attached } : {}) })) return;
     input.value = '';
+    draftContext = null;
+    drafts.delete(draftKey());
     input.style.height = 'auto';
     stickToEnd = true;
     render();
@@ -442,6 +554,8 @@ export function mountAgentChat(chatButton: HTMLButtonElement, opts: AgentChatOpt
     if (ev.key === 'Escape') setOpen(false, true);
   });
   input.addEventListener('input', () => {
+    if (!input.value) draftContext = null;
+    else if (draftContext === null) draftContext = context();
     input.style.height = 'auto';
     input.style.height = `${Math.min(input.scrollHeight, 160)}px`;
     renderComposer();
@@ -577,7 +691,7 @@ export function mountAgentChat(chatButton: HTMLButtonElement, opts: AgentChatOpt
     const card = el('div', 'ac-empty');
     if (p.already) {
       card.append(el('h4', undefined, 'Your agent is already linked'));
-      card.append(el('p', undefined, `Nothing to do here. If it is not connected, run ${HANDOFF} in its session.`));
+      card.append(el('p', undefined, 'Your conversation will appear when the agent is available.'));
       card.append(button('ac-action', 'Close', () => {
         pairing = null;
         render();
@@ -630,14 +744,16 @@ export function mountAgentChat(chatButton: HTMLButtonElement, opts: AgentChatOpt
       const go = el('a', 'ac-action primary', `Open ${elsewhere.board}`);
       go.href = elsewhere.href;
       card.append(go);
-      card.append(el('p', 'ac-small', `Or connect one here: run ${HANDOFF} in its session.`));
       return card;
     }
-    card.append(el('h4', undefined, 'Talk to your agent from here'));
-    card.append(el('p', undefined, 'Ask about what the board shows, or ask for a change. Run this in the session you want to reach:'));
-    const cmd = el('div', 'ac-command');
-    cmd.append(el('code', undefined, HANDOFF), copyButton('Copy command', HANDOFF));
-    card.append(cmd);
+    if (!model.selected && model.sessions.length > 1) {
+      card.append(el('h4', undefined, 'Choose an agent session'));
+      card.append(el('p', undefined, 'Each session keeps its own conversation and draft.'));
+      return card;
+    }
+    const syncing = model.connection === 'syncing';
+    card.append(el('h4', undefined, syncing ? 'Restoring your conversation' : model.connection === 'reconnecting' ? 'Reconnecting to your agent' : 'Connecting to your agent'));
+    card.append(el('p', undefined, syncing ? 'Your messages will appear here in a moment.' : model.connection === 'waiting' ? 'Waiting for your agent to become available. You can keep a draft here.' : 'Your conversation and draft will stay here while we reconnect.'));
     return card;
   }
 
@@ -661,12 +777,29 @@ export function mountAgentChat(chatButton: HTMLButtonElement, opts: AgentChatOpt
   }
 
   function renderStatus(): void {
-    const state = !model.online ? 'Not connected' : model.state === 'working' ? 'Working' : model.state === 'stopping' ? 'Stopping' : model.state === 'stopped' ? 'Stopped' : 'Ready';
-    statusText.textContent = `${state} · private to you`;
+    const state = !model.online ? ({ connecting: 'Connecting', reconnecting: 'Reconnecting', syncing: 'Syncing conversation', waiting: 'Waiting for agent', offline: 'Not connected', ready: 'Syncing conversation' }[model.connection]) : model.state === 'working' ? 'Working' : model.state === 'stopping' ? 'Stopping' : model.state === 'stopped' ? 'Stopped' : 'Ready';
+    const awaitingApproval = model.online && model.items.some(i => i.kind === 'approval' && i.status === 'pending');
+    statusText.textContent = `${awaitingApproval ? 'Needs approval' : state} · private to you`;
+    agentName.textContent = model.session?.name || 'Your agent';
+    sessions.hidden = model.sessions.length < 2;
+    const options = JSON.stringify(model.sessions.map(s => [s.id, s.name]));
+    if (sessions.dataset.options !== options) {
+      const placeholder = el('option', undefined, 'Choose a session');
+      placeholder.value = '';
+      placeholder.disabled = true;
+      sessions.replaceChildren(placeholder, ...model.sessions.map(s => {
+        const duplicate = model.sessions.some(other => other.id !== s.id && other.name === s.name);
+        const option = el('option', undefined, duplicate ? `${s.name} · ${s.id.slice(-8)}` : s.name);
+        option.value = s.id;
+        return option;
+      }));
+      sessions.dataset.options = options;
+    }
+    sessions.value = model.selected ?? '';
     dot.className = `ac-dot ${!model.online ? 'off' : busy() ? 'busy' : ''}`;
     chatButton.dataset.state = !model.online ? 'off' : busy() ? 'busy' : 'on';
     chatButton.dataset.unread = String(unread);
-    chatButton.setAttribute('aria-label', `Chat with agent${unread ? ', new reply' : ''}`);
+    chatButton.setAttribute('aria-label', `${drawing ? 'Back to chat' : 'Chat with agent'}${unread ? ', new reply' : ''}`);
   }
 
   function renderComposer(): void {
@@ -677,6 +810,7 @@ export function mountAgentChat(chatButton: HTMLButtonElement, opts: AgentChatOpt
       const chip = el('span', 'ac-chip', attached);
       const off = button('ac-chipx', '', () => {
         detached = opts.selection();
+        draftContext = '';
         render();
       });
       off.append(icon(ICON.close));
@@ -685,23 +819,21 @@ export function mountAgentChat(chatButton: HTMLButtonElement, opts: AgentChatOpt
       chips.append(chip);
     }
     const hasText = input.value.trim().length > 0;
-    stop.hidden = !busy();
+    stop.hidden = !busy() || model.session?.capabilities.stop === 'none';
     stop.disabled = model.state === 'stopping';
     stop.lastChild!.textContent = model.state === 'stopping' ? 'Stopping' : 'Stop';
-    input.disabled = !model.online;
+    input.disabled = false;
     sendBtn.disabled = !model.online || !hasText;
     sendBtn.textContent = busy() ? 'Queue' : 'Send';
     hint.textContent = !model.online ? ''
-      : model.state === 'stopping' ? 'Stopping at its next step'
+      : model.state === 'stopping' ? model.session?.capabilities.stop === 'interrupt' ? 'Stop requested · waiting for confirmation' : 'Stopping at its next step'
       : busy() ? 'Messages wait until it finishes'
       : attached ? 'Attached to your message'
       : look === 'terminal' ? 'enter send · shift+enter new line'
       : 'Select a node to attach it';
-    foot.hidden = pairing !== null || (!model.online && model.items.length === 0);
+    foot.hidden = pairing !== null;
     lost.hidden = model.online || model.items.length === 0;
-    if (!lost.hidden && !lost.hasChildNodes()) {
-      lost.append(el('span', undefined, `Your agent disconnected. Run ${HANDOFF} in its session to reconnect.`), copyButton('Copy command', HANDOFF));
-    }
+    lost.textContent = model.connection === 'syncing' ? 'Restoring your conversation…' : 'Reconnecting automatically. Your draft is saved here.';
   }
 
   function render(): void {
@@ -718,7 +850,7 @@ export function mountAgentChat(chatButton: HTMLButtonElement, opts: AgentChatOpt
       rows.push({ key: 'closed', sig: model.closed, build: () => el('div', 'ac-empty', model.closed!) });
     } else if (!model.online && model.items.length === 0) {
       const elsewhere = opts.agentElsewhere?.() ?? null;
-      rows.push({ key: 'setup', sig: JSON.stringify(elsewhere), build: setupCard });
+      rows.push({ key: 'setup', sig: JSON.stringify([elsewhere, model.connection]), build: setupCard });
     } else if (model.items.length === 0 && model.queue.length === 0) {
       rows.push({ key: 'start', sig: attached ? 'selected' : 'none', build: () => startCard(attached) });
     }
@@ -728,6 +860,26 @@ export function mountAgentChat(chatButton: HTMLButtonElement, opts: AgentChatOpt
       if (item.kind === 'user') {
         const meta = item.terminal ? 'Typed in your terminal' : undefined;
         rows.push({ key: `u:${item.id}`, sig: '', build: () => userNode(item.text, item.context, meta) });
+      }
+      if (item.kind === 'approval') {
+        rows.push({ key: `a:${item.id}`, sig: JSON.stringify([item, model.online, model.session?.capabilities.approvals, pendingApprovals.has(item.id)]), build: () => {
+          const card = el('div', 'ac-approval');
+          card.append(el('strong', undefined, item.status === 'resolved' ? 'Approval resolved' : 'Your approval is needed'));
+          card.append(el('p', undefined, item.summary));
+          if (item.status === 'pending' && model.session?.capabilities.approvals) {
+            for (const [decision, label] of [['accept', 'Allow'], ['decline', 'Decline']] as const) {
+              const action = button('ac-action', label, () => {
+                if (!frame({ type: 'approval', id: item.id, decision })) return;
+                pendingApprovals.add(item.id);
+                render();
+              });
+              action.disabled = !model.online || pendingApprovals.has(item.id);
+              card.append(action);
+            }
+            if (pendingApprovals.has(item.id)) card.append(el('small', 'ac-meta', 'Waiting for confirmation…'));
+          }
+          return card;
+        } });
       }
       if (item.kind === 'notice') {
         rows.push({ key: `n:${n}`, sig: item.text, build: () => el('div', item.attention ? 'ac-notice attention' : 'ac-notice', item.text) });
@@ -792,118 +944,110 @@ export function mountAgentChat(chatButton: HTMLButtonElement, opts: AgentChatOpt
     if (open && busy()) tickElapsed();
   }, 1000);
 
-  // ---- channel: held while a person with an agent is on the board, so the button tells the truth ----
-  function noteRefusal(reason: string): void {
-    refusals++;
-    if (refusals >= SHOW_CLOSE_AFTER) model.closed = reason;
-  }
-
-  function retryLater(): void {
-    if (!available) return;
-    retry = setTimeout(connect, backoff);
-    backoff = Math.min(backoff * 2, 30_000);
-  }
-
+  // ---- channel: adapters speak one protocol; presentation never owns a socket ----
   function connect(): void {
-    clearTimeout(retry);
-    if (ws || !available) return;
-    void opts.token().then(token => {
-      if (ws || !available) return;
-      if (!token) {
-        // A refresh that failed once is no reason to give up on the chat.
-        noteRefusal('Chat needs the board to be connected first.');
-        retryLater();
-        return render();
-      }
-      const socket = new WebSocket(opts.url());
-      ws = socket;
-      const sendAuth = (sync: boolean) =>
-        void opts.token().then(t => {
-          if (t && ws === socket && socket.readyState === 1) socket.send(JSON.stringify({ auth: t, ...(sync ? { sync } : {}) }));
-        });
-      const scheduleAuth = () => {
-        clearTimeout(reauth);
-        reauth = setTimeout(() => {
-          sendAuth(false);
-          scheduleAuth();
-        }, model.online ? REAUTH_MS : IDLE_REAUTH_MS);
-      };
-      let firstStatus = true;
-      socket.addEventListener('open', () => socket.send(JSON.stringify({ auth: token, role: 'person' })));
-      socket.addEventListener('message', ev => {
-        let f: Frame;
-        try {
-          f = JSON.parse(String(ev.data));
-        } catch {
-          return;
-        }
-        if (f.ok) {
-          model.closed = null;
-          backoff = 2000;
-          refusals = 0;
-          scheduleAuth();
-          return;
-        }
+    if (connection || !available || switchingBoard) return;
+    const current = (opts.connection ?? createChatConnection)({
+      url: boardUrl,
+      token: opts.token,
+      status(status, reason) {
+        if (connection !== current) return;
+        if (status === 'syncing' && model.online) return;
+        model.connection = status;
+        model.online = false;
+        wasOnline = false;
+        model.closed = reason ?? null;
+        render();
+      },
+      receive(f) {
+        if (connection !== current) return;
+        const incoming = typeof f.session === 'string' ? f.session : f.session?.id;
+        if (incoming && model.selected && incoming !== model.selected) return;
+        if (!model.online && !f.agent && f.type !== 'snapshot' && f.type !== 'sessions') return;
         const before = model.state;
-        const watching = open && document.hasFocus() && document.visibilityState === 'visible';
+        const previous = model.selected;
+        if (f.type === 'sessions' || f.type === 'snapshot') saveDraft();
         applyFrame(model, f);
+        if (f.type === 'approval') pendingApprovals.delete(String(f.id));
+        if (previous !== model.selected) {
+          // A first descriptor identifies the draft typed while this session was connecting.
+          if (previous === null && input.value && model.selected && !drafts.has(draftKey())) {
+            drafts.set(draftKey(), { text: input.value, attached: context(), detached });
+          }
+          if (previous === null && model.selected) drafts.delete(JSON.stringify([boardUrl, null]));
+          shown.clear();
+          expanded.clear();
+          rendered.clear();
+          pendingApprovals.clear();
+          log.textContent = '';
+          restoreDraft();
+        }
+        if (f.type === 'sessions') {
+          const preferred = selections.get(boardUrl);
+          if (preferred && preferred !== model.selected && model.sessions.some(s => s.id === preferred)) {
+            selectSession(preferred);
+            return;
+          }
+        }
+        if (model.selected) selections.set(boardUrl, model.selected);
+        if (f.type === 'sessions' && model.sessions.length) arrive();
+        const watching = open && document.hasFocus() && document.visibilityState === 'visible';
         if (f.type === 'state' && before === 'working' && f.state === 'idle') chime('done', watching);
-        if (f.type === 'notice' && f.tone === 'attention') chime('attention', watching);
-        // History is already written: only text arriving now is revealed as it streams.
-        if (f.type === 'snapshot') for (const item of model.items) if (item.kind === 'text' && item.final) shown.set(item.message, item.text.length);
-        if (f.agent) {
-          // Joining asked the helper for the talk already; an agent arriving later is told to send it.
-          if (f.agent === 'connected' && !firstStatus) sendAuth(true);
-          firstStatus = false;
-          scheduleAuth();
+        if ((f.type === 'notice' && f.tone === 'attention') || (f.type === 'approval' && f.status === 'pending')) chime('attention', watching);
+        if (f.type === 'snapshot') {
+          shown.clear();
+          rendered.clear();
+          pendingApprovals.clear();
+          log.textContent = '';
+          for (const item of model.items) if (item.kind === 'text') shown.set(item.message, item.text.length);
         }
         if (model.state === 'working' && before !== 'working') workingSince = Date.now();
         if (model.online && !wasOnline) arrive();
         wasOnline = model.online;
+        if (f.type === 'snapshot') reportViewing();
         if (!open && f.type === 'text') unread = true;
-        // A message already on screen only reveals more; rebuilding it would drop a selection in it.
         if (f.type === 'text' && log.querySelector(`[data-message="${CSS.escape(String(f.message))}"]`)) {
           renderStatus();
           return animate();
         }
         render();
-      });
-      socket.addEventListener('close', ev => {
-        if (ws !== socket) return;
-        ws = null;
-        clearTimeout(reauth);
-        model.online = false;
-        wasOnline = false;
-        // A refusal can be a database blip, so it retries too, with a fresh token, and only says why once it keeps happening.
-        if (ev.code === 4001 || ev.code === 4008) noteRefusal(ev.reason || 'The chat closed.');
-        retryLater();
-        render();
-      });
+      },
     });
+    connection = current;
+    current.start();
   }
 
   function disconnect(): void {
-    clearTimeout(retry);
-    clearTimeout(reauth);
-    const socket = ws;
-    ws = null;
-    socket?.close();
+    const previous = connection;
+    connection = null;
+    previous?.close();
     model.online = false;
+    model.connection = 'offline';
     wasOnline = false;
   }
 
   /** The panel comes to the person once per board, unless they closed it there. A phone keeps the board. */
   function arrive(): void {
-    if (open || sessionStorage.getItem(closedKey()) || !docked()) return;
+    if (open || drawing || sessionStorage.getItem(closedKey()) || !docked()) return;
     setOpen(true);
   }
 
+  function setDrawing(next: boolean): void {
+    drawing = next;
+    document.documentElement.toggleAttribute('data-agent-drawing', next);
+    back.hidden = !next;
+    renderStatus();
+  }
+
   function setOpen(next: boolean, byPerson = false): void {
+    if (next || byPerson) setDrawing(false);
     if (next === open) return;
     open = next;
+    draw.hidden = !next;
     panel.hidden = !next;
     chatButton.setAttribute('aria-expanded', String(next));
     document.documentElement.toggleAttribute('data-agent-chat', next);
+    reportViewing();
     boardResized();
     if (docked()) opts.boardWidthChanged?.(next ? -width : width);
     if (next) {
@@ -928,6 +1072,22 @@ export function mountAgentChat(chatButton: HTMLButtonElement, opts: AgentChatOpt
   renderStatus();
 
   return {
+    get online(): boolean { return model.online; },
+    /** Capture the destination before a board action saves; never forward into a later conversation. */
+    prepareMessage(text: string, attached?: string): ((wake?: boolean) => boolean) | undefined {
+      if ((!open && !drawing) || !model.online || !text.trim()) return;
+      const target = { connection, boardUrl, selected: model.selected };
+      let sent = false;
+      return (wake = true) => {
+        if (sent || !model.online || connection !== target.connection || boardUrl !== target.boardUrl || opts.url() !== target.boardUrl || model.selected !== target.selected) return false;
+        if (!frame({ type: wake ? 'send' : 'receipt', id: `b${Date.now()}-${nextId++}`, text, ...(attached ? { context: attached } : {}) })) return false;
+        sent = true;
+        stickToEnd = true;
+        if (drawing) setOpen(true, true);
+        render();
+        return true;
+      };
+    },
     /** Shown only to someone with a linked agent: anyone else could not connect anyway. */
     setAvailable(next: boolean): void {
       chatButton.hidden = !next;
@@ -935,6 +1095,7 @@ export function mountAgentChat(chatButton: HTMLButtonElement, opts: AgentChatOpt
       available = next;
       if (next) connect();
       else {
+        setDrawing(false);
         setOpen(false);
         disconnect();
       }
@@ -947,18 +1108,35 @@ export function mountAgentChat(chatButton: HTMLButtonElement, opts: AgentChatOpt
     },
     /** The canvas selection or the agent's whereabouts changed. */
     refresh(): void {
+      const selected = opts.selection();
+      if (selected !== lastSelection) {
+        lastSelection = selected;
+        draftContext = null;
+      }
       if (open) render();
       // Only an agent drawing now calls the panel over; an old session waits until the person opens it.
       else if (!model.online && opts.agentElsewhere?.()?.live) arrive();
     },
     /** Another board is on screen: another chat channel, and a fresh snapshot from its helper. */
     switchBoard(): void {
+      saveDraft();
+      setDrawing(false);
+      if (model.selected) selections.set(boardUrl, model.selected);
       setOpen(false);
       disconnect();
       Object.assign(model, emptyChat());
       shown.clear();
       expanded.clear();
-      if (available) connect();
+      switchingBoard = true;
+      const version = ++boardVersion;
+      // The canvas calls this before updating its board id.
+      queueMicrotask(() => {
+        if (version !== boardVersion) return;
+        switchingBoard = false;
+        boardUrl = opts.url();
+        restoreDraft();
+        if (available) connect();
+      });
     },
   };
 }

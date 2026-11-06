@@ -130,6 +130,7 @@ const RECONNECT_ATTEMPT_KEY = 'stdb_reconnect_attempt';
 const ACCOUNT_SEEN_KEY = `account_seen:${config.accounts ?? ''}`;
 const GUEST_CLAIM_KEY = `guest_claim:${config.uri}/${config.db}`;
 const GUEST_RECOVERY_KEY = `guest_recovery:${config.uri}/${config.db}`;
+const PAIR_HANDOFF_KEY = `agent_pair:${config.uri}/${config.db}`;
 
 let auth: Auth | undefined;
 let currentConn: DbConnection | undefined;
@@ -146,15 +147,26 @@ function dashboardLink(): string | undefined {
 function takePairCode(): string | null {
   const params = new URLSearchParams(location.hash.slice(1));
   const code = params.get('pair');
-  if (code === null) return null;
-  params.delete('pair');
-  history.replaceState(null, '', `${location.pathname}${location.search}#${params.toString()}`);
-  return code;
+  const slug = params.get('b');
+  if (code !== null) {
+    params.delete('pair');
+    history.replaceState(null, '', `${location.pathname}${location.search}#${params.toString()}`);
+    // Like guest claims, keep this tab's explicit intent through sign-in redirects.
+    if (slug) sessionStorage.setItem(PAIR_HANDOFF_KEY, JSON.stringify({ code, slug }));
+    return code;
+  }
+  try {
+    const saved = JSON.parse(sessionStorage.getItem(PAIR_HANDOFF_KEY) ?? 'null');
+    return slug && saved?.slug === slug && typeof saved.code === 'string' ? saved.code : null;
+  } catch {
+    sessionStorage.removeItem(PAIR_HANDOFF_KEY);
+    return null;
+  }
 }
 let pendingPair = takePairCode();
 let offerPair: ((code: string) => void) | undefined;
 window.addEventListener('hashchange', () => {
-  pendingPair = takePairCode() ?? pendingPair;
+  pendingPair = takePairCode();
   if (pendingPair) offerPair?.(pendingPair);
 });
 
@@ -377,7 +389,7 @@ async function boot(conn: DbConnection, identityHex: string, signedIn: boolean):
       const guestBoard = [...conn.db.myBoards.iter()].find(row => row.boardId === activeBoardId && row.access === 'owner' && !row.isSession);
       const architecture = [...conn.db.visibleArchitectureVersion.iter()].some(row => row.boardId === activeBoardId);
       // Sign-in returns to this page's #b=<slug>; the stored claim carries the slug to match it (claimForBoard).
-      const slug = conn.db.visibleBoard.id.find(activeBoardId!)?.slug ?? '';
+      const slug = activeBoardId === undefined ? '' : conn.db.visibleBoard.id.find(activeBoardId)?.slug ?? '';
       const ok = await signInWithGuestBoard(loaded,
         guestBoard && !architecture ? { id: activeBoardId!, slug } : undefined,
         request => conn.reducers.offerGuestClaim(request), sessionStorage, GUEST_CLAIM_KEY);
@@ -484,6 +496,44 @@ async function boot(conn: DbConnection, identityHex: string, signedIn: boolean):
     : conn.db.visibleBoard.id.find(guestBoardId) ?? 'Your board has not arrived. Please reload.';
   if (typeof picked === 'string') {
     showBoardUnavailable(boardsHref, newBoardHref(), shareToken !== null ? LINK_GONE : undefined);
+    if (config.mcpUrl !== undefined && signIn) {
+      offerPair = () => {
+        title.textContent = 'Agent connection';
+        document.getElementById('unavailable-title')!.textContent = 'Sign in to connect your agent';
+        document.querySelector('#board-unavailable p')!.textContent = 'After signing in, you can confirm the agent you started and open its board.';
+        const button = document.createElement('button');
+        button.type = 'button';
+        button.className = 'btn-primary';
+        button.textContent = 'Sign in to continue';
+        button.addEventListener('click', async () => {
+          button.disabled = true;
+          await signIn();
+          button.disabled = false;
+        });
+        document.querySelector('#board-unavailable .unavailable-actions')!.replaceChildren(button);
+      };
+      if (pendingPair) offerPair(pendingPair);
+    } else if (config.mcpUrl !== undefined && (signedIn || !config.accounts)) {
+      // Linking adopts the agent's private board; the canvas cannot mount before that consent.
+      const chat = mountAgentChat(document.getElementById('act-chat') as HTMLButtonElement, {
+        url: () => location.href,
+        token: async () => null,
+        selection: () => '',
+      });
+      offerPair = code => {
+        pendingPair = null;
+        sessionStorage.removeItem(PAIR_HANDOFF_KEY);
+        title.textContent = 'Agent connection';
+        document.getElementById('unavailable-title')!.textContent = 'Link your agent to continue';
+        document.querySelector('#board-unavailable p')!.textContent = 'Confirm the agent you started in the chat panel to open its board.';
+        chat.offerPair(async () => {
+          await conn.reducers.redeemAgentLink({ code });
+          location.reload();
+          return 'linked';
+        });
+      };
+      if (pendingPair) offerPair(pendingPair);
+    }
     return;
   }
   // The board on screen and the board its diff compares against.
@@ -1323,6 +1373,10 @@ async function boot(conn: DbConnection, identityHex: string, signedIn: boolean):
       });
       let ops = new Ops(conn, identityHex, new History());
       // Red crayon drafts stay in this tab until Send (spec 2026-10-19 D3, D13).
+      const marksListening = () => listening(
+        [...conn.db.visibleMarkWaiter.iter()].filter(w => w.boardId === boardId).map(w => ({ lastWaitAt: w.lastWaitAt.microsSinceUnixEpoch })),
+        BigInt(Date.now()) * 1000n,
+      );
       const crayonUi = mountCrayon({
         wrap,
         world,
@@ -1337,11 +1391,13 @@ async function boot(conn: DbConnection, identityHex: string, signedIn: boolean):
         },
         exists: id => getAllNodes().some(n => n.id === id),
         // The module refuses agents, read-only visitors, off-board nodes and over-long batches.
-        send: (nodeIds, notes) => conn.reducers.sendMarks({ boardId, nodeIds, notes }),
-        listening: () => listening(
-          [...conn.db.visibleMarkWaiter.iter()].filter(w => w.boardId === boardId).map(w => ({ lastWaitAt: w.lastWaitAt.microsSinceUnixEpoch })),
-          BigInt(Date.now()) * 1000n,
-        ),
+        send: async (nodeIds, notes) => {
+          const message = `I sent ${nodeIds.length} red-crayon ${nodeIds.length === 1 ? 'mark' : 'marks'}. Call wait_for_marks with your session seat and review the saved marks.`;
+          const forward = agentChat?.prepareMessage(message, 'Red-crayon marks');
+          await conn.reducers.sendMarks({ boardId, nodeIds, notes });
+          return forward?.(!marksListening()) ?? false;
+        },
+        listening: marksListening,
       });
 
       const railEl = document.getElementById('rail') as HTMLElement;
@@ -2196,6 +2252,7 @@ async function boot(conn: DbConnection, identityHex: string, signedIn: boolean):
           panTo: id => editor.selectNodes([id]), // selecting reveals it (revealSelection)
         });
         return () => paint({
+          chatConnected: agentChat?.online ?? false,
           marks: [...conn.db.visibleMark.iter()].filter(m => m.boardId === boardId),
           lastReadAt: [...conn.db.visibleMarkRead.iter()].find(r => r.boardId === boardId)?.lastReadAt.microsSinceUnixEpoch ?? 0n,
           waiters: [...conn.db.visibleMarkWaiter.iter()]
@@ -2596,6 +2653,7 @@ async function boot(conn: DbConnection, identityHex: string, signedIn: boolean):
         if (signedIn || !config.accounts) {
           offerPair = code => {
             pendingPair = null;
+            sessionStorage.removeItem(PAIR_HANDOFF_KEY);
             chat.offerPair(async () => {
               const mine = () =>
                 [...conn.db.myAgentLinks.iter()].filter(l => l.owner.toHexString() === identityHex).sort((x, y) => y.linkedAt.toDate().getTime() - x.linkedAt.toDate().getTime())[0];

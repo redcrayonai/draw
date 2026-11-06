@@ -58,10 +58,9 @@ stop. Every other tool needs the `id`, so **never call `create_node`,
 `create_edge`, `add_code_ref` or any other board write before `start_session`
 has returned a `url`.**
 
-The result is `{ board, id, url, seat, session, checkpoint?, repoRoot?, baseSha?, note?, dashboard?, dashboardNote? }`.
-When `dashboard` and `dashboardNote` are present, relay both to the user verbatim
-in your next message. This link lets them pair the agent with the browser that
-opens the canvas; a newer `start_session` replaces it.
+The result is `{ board, id, url, seat, session, checkpoint?, repoRoot?, baseSha?, note?, chat? }`.
+The same board URL includes one-time pairing when needed. If the board asks to
+link the agent, the user confirms that once on the board. Keep the URL intact.
 Relay `url` **once, verbatim, in your very next message** — that link is how the
 user finds the board. Send it as text on its own, before any other tool call: no
 file reads, no `get_board`, no `create_node` until the user has the link. If

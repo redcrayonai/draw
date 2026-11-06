@@ -6210,18 +6210,84 @@ svg:not(.armed) #crayon .mark-chip { pointer-events: all; cursor: pointer; }
   border-left: 1px solid var(--hairline);
   font: 400 13px/1.55 var(--sans);
 }
+.ac-sessions {
+  margin: 0 16px 12px;
+  padding: 8px 10px;
+  flex: none;
+  min-width: 0;
+  color: var(--ink);
+  background: var(--panel-hi);
+  border: 1px solid var(--hairline);
+  border-radius: var(--r-md);
+  font: inherit;
+}
+.ac-sessions[hidden] { display: none; }
+.ac-approval { padding: 12px; border: 1px solid var(--hairline); border-radius: var(--r-md); background: var(--panel-hi); }
+.ac-approval p { margin: 6px 0 10px; white-space: pre-wrap; overflow-wrap: anywhere; }
+.ac-approval .ac-action { display: inline-flex; }
+.ac-approval .ac-action + .ac-action { margin-left: 6px; }
+.ac-approval .ac-meta { display: block; margin-top: 8px; }
 .ac-panel[hidden] { display: none; }
 .ac-panel :is(input, textarea)::selection, .ac-panel ::selection { background: color-mix(in srgb, var(--sel) 30%, transparent); }
+
+/* Chat and drawing take turns; neither has to squeeze the full tool dock. */
+:root[data-agent-chat] #dock { display: none; }
+:root[data-agent-drawing] #act-chat > span:not(.ac-dot):not(.ac-back) { display: none; }
+#chat-draw {
+  position: absolute;
+  left: min(50vw, calc(100% - 22px - var(--space-4)));
+  bottom: var(--space-5);
+  transform: translateX(-50%);
+  display: grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  padding: 0;
+  color: color-mix(in srgb, var(--ink) 85%, var(--crayon));
+  background: color-mix(in srgb, var(--panel-2) 92%, var(--crayon));
+  border: 1px solid var(--crayon);
+  border-radius: var(--r-xl);
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--crayon) 28%, transparent),
+    0 0 18px color-mix(in srgb, var(--crayon) 24%, transparent), var(--shadow-lg);
+  transition: box-shadow var(--dur) var(--ease);
+  z-index: 14;
+}
+#chat-draw svg { width: 20px; height: 20px; }
+#chat-draw::after {
+  content: '';
+  position: absolute;
+  inset: -1px;
+  border: 1px solid var(--crayon);
+  border-radius: inherit;
+  box-shadow: 0 0 5px color-mix(in srgb, var(--crayon) 55%, transparent),
+    0 0 24px color-mix(in srgb, var(--crayon) 35%, transparent);
+  pointer-events: none;
+  animation: draw-glow 3s ease-in-out infinite;
+}
+@keyframes draw-glow {
+  0%, 100% { opacity: 0; }
+  50% { opacity: 0.85; }
+}
+#chat-draw:is(:hover, :focus-visible) {
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--crayon) 45%, transparent),
+    0 0 26px color-mix(in srgb, var(--crayon) 38%, transparent), var(--shadow-lg);
+}
+#chat-draw:is(:hover, :focus-visible)::after { animation: none; opacity: 1; }
+@media (prefers-reduced-motion: reduce) {
+  #chat-draw::after { animation: none; opacity: 0; }
+}
+#chat-draw[hidden] { display: none; }
 
 /* The board keeps the rest of the window, so the panel never covers a node. */
 @media (min-width: 721px) {
   :root[data-agent-chat] #canvas-wrap { margin-right: var(--ac-w, 400px); }
   :root[data-agent-chat] #shortcuts-toggle { visibility: hidden; }
-  /* Beside the zoom cluster, so a narrower board does not push the tools over it. */
-  :root[data-agent-chat] #dock { left: 197px; transform: none; max-width: calc(100% - 209px); overflow-x: auto; scrollbar-width: none; }
 }
 @media (min-width: 721px) and (max-width: 1279px) {
   :root[data-agent-chat] #inspector { visibility: hidden; }
+}
+@media (min-width: 721px) and (max-width: 1100px) {
+  :root[data-agent-drawing] .zoom-cluster { bottom: calc(var(--space-5) + var(--dock-h) + var(--space-3)); }
 }
 
 .ac-resize {
@@ -6239,6 +6305,7 @@ svg:not(.armed) #crayon .mark-chip { pointer-events: all; cursor: pointer; }
 
 .ac-head { display: flex; align-items: center; gap: 8px; min-height: 52px; padding: 8px 12px 8px 16px; border-bottom: 1px solid var(--border); }
 .ac-id { min-width: 0; flex: 1; }
+.ac-name > span:last-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .ac-name { display: flex; align-items: center; gap: 7px; font: 600 13px/1.3 var(--sans); }
 .ac-sound { padding: 0; font: inherit; color: var(--muted); text-decoration: underline; text-decoration-color: var(--hairline); text-underline-offset: 2px; }
 .ac-sound:hover { color: var(--ink); text-decoration-color: currentColor; }
@@ -6370,6 +6437,14 @@ svg:not(.armed) #crayon .mark-chip { pointer-events: all; cursor: pointer; }
 
 /* A phone keeps the board on top and the talk in a sheet. */
 @media (max-width: 720px) {
+  #chat-draw { top: var(--space-4); right: var(--space-4); bottom: auto; left: auto; transform: none; }
+  :root[data-agent-drawing] #canvas-wrap { --dock-h: 104px; }
+  :root[data-agent-drawing] #dock {
+    display: grid;
+    grid-template-columns: repeat(5, 44px);
+    gap: 2px;
+    overflow: visible;
+  }
   .ac-panel { top: auto; left: 0; width: auto; height: 62%; border-left: 0; border-top: 1px solid var(--hairline); border-radius: var(--r-xl) var(--r-xl) 0 0; box-shadow: var(--shadow-lg); }
   .ac-resize { display: none; }
   :root[data-agent-chat] :is(#dock, .zoom-cluster, #shortcuts-toggle) { visibility: hidden; }

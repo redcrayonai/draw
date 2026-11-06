@@ -470,7 +470,7 @@ describe('start_session on the local dev stack', () => {
     JSON.stringify([{ schema: { elements: cols.map(([n, t]) => ({ name: { some: n }, algebraic_type: t })) }, rows }]);
 
   /** A fake database: records each reducer call; `links` is what my_agent_links answers; `failOffer` makes offer_agent_link fail. */
-  function fakeDb(links: { agent: string; owner: string }[], failOffer = false) {
+  function fakeDb(links: { agent: string; owner: string }[], failOffer = false, failLinks = false) {
     const calls: { reducer: string; body: string }[] = [];
     vi.stubGlobal('fetch', async (url: string, init?: RequestInit) => {
       const path = new URL(url).pathname;
@@ -482,6 +482,7 @@ describe('start_session on the local dev stack', () => {
       const q = String(init?.body ?? '');
       if (q.includes('my_board_creations')) return new Response(table([['board_id', U64]], [[7]]));
       if (q.includes('visible_board')) return new Response(table([['id', U64], ['slug', STR], ['name', STR]], [[7, 'abc', 'meeting']]));
+      if (q.includes('my_agent_links') && failLinks) return new Response('unavailable', { status: 500 });
       if (q.includes('my_agent_links')) return new Response(table([['agent', IDENTITY], ['owner', IDENTITY]], links.map(l => [[`0x${l.agent}`], [`0x${l.owner}`]])));
       return new Response(table([['id', U64]], []));
     });
@@ -528,7 +529,7 @@ describe('start_session on the local dev stack', () => {
     expect(JSON.parse(text)).not.toHaveProperty('dashboard');
   });
 
-  it('gate on, not linked: no link_hosted_agent, one offer, dashboard carries the same code', async () => {
+  it('gate on, not linked: one offer on the exact board URL, without a dashboard hop', async () => {
     const calls = fakeDb([]);
     const out = JSON.parse(await callStart(await devEnv()));
     expect(calls.map(c => c.reducer)).not.toContain('link_hosted_agent');
@@ -536,20 +537,39 @@ describe('start_session on the local dev stack', () => {
     expect(offers).toHaveLength(1);
     const [code] = JSON.parse(offers[0].body) as string[];
     expect(code).toMatch(/^[A-Za-z0-9_-]{43}$/);
-    expect(out.dashboard).toBe(`http://localhost:5174/link?code=${code}`);
-    expect(out.dashboardNote).toMatch(/open .*once/i);
-    expect(out.url).toBeTruthy();
+    const url = new URL(out.url);
+    expect(new URLSearchParams(url.hash.slice(1)).get('b')).toBe('abc');
+    expect(new URLSearchParams(url.hash.slice(1)).get('pair')).toBe(code);
+    expect(url.searchParams.has('pair')).toBe(false);
+    expect(out).not.toHaveProperty('dashboard');
+    expect(out).not.toHaveProperty('dashboardNote');
     expect(out.seat).toMatch(/^[A-Za-z0-9]{16}$/);
   });
 
   it.each([
     ['the empty-issuer phantom owner', PHANTOM],
     ['a real owner', OTHER],
-  ])('gate on, linked to %s: still offers a fresh code', async (_n, owner) => {
+  ])('gate on, linked to %s: preserves the existing link and returns the plain board URL', async (_n, owner) => {
     const calls = fakeDb([{ agent: AGENT, owner }]);
     const out = JSON.parse(await callStart(await devEnv()));
+    expect(offered(calls)).toHaveLength(0);
+    expect(new URL(out.url).hash).toBe('#b=abc');
+    expect(out).not.toHaveProperty('dashboard');
+  });
+
+  it('does not offer a pairing code when current link access cannot be checked', async () => {
+    const calls = fakeDb([], false, true);
+    const out = JSON.parse(await callStart(await devEnv()));
+    expect(offered(calls)).toEqual([]);
+    expect(new URL(out.url).hash).toBe('#b=abc');
+    expect(out.id).toBe(7);
+  });
+
+  it('checks the caller agent identity, not unrelated links returned by the view', async () => {
+    const calls = fakeDb([{ agent: OTHER, owner: AGENT }]);
+    const out = JSON.parse(await callStart(await devEnv()));
     expect(offered(calls)).toHaveLength(1);
-    expect(out.dashboard).toMatch(/^http:\/\/localhost:5174\/link\?code=[A-Za-z0-9_-]{43}$/);
+    expect(new URLSearchParams(new URL(out.url).hash.slice(1)).get('pair')).toBeTruthy();
   });
 
   it('the offer failing does not fail start_session', async () => {

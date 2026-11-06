@@ -175,7 +175,8 @@ Smaller layouts retain the compact dock, accessible names, shortcuts, and toolti
 Dock buttons remain 44px high, with a minimum width of 44px.
 
 At 720px and below, the header wraps, counts disappear, and panels adapt to the viewport.
-The dock scrolls on narrow screens. Preserve safe-area spacing and access to zoom and shortcuts.
+The dock scrolls on narrow screens in the standalone drawing view. When entering drawing from chat,
+phones use two rows of five tools so every tool remains visible. Preserve safe-area spacing and access to zoom and shortcuts.
 At 1200px and below, secondary header count details yield space before the board title and actions.
 
 ## Elevation & Depth
@@ -219,6 +220,12 @@ Hide the hidden-set section when it has no chips. Show it as soon as hidden cont
 Keep session controls and the ability to reveal hidden content intact.
 
 **Dock.** Icons match the shapes they create. Desktop creation tools show their names.
+Open chat replaces the dock with one pencil icon button, named Draw for assistive technology and its tooltip,
+anchored to the browser midpoint when space permits. Its hit area stays 44×44px.
+The pencil button uses a crayon-red illuminated border with a gentle three-second glow cycle.
+Hover and keyboard focus hold it bright; reduced motion keeps the glow static.
+Draw temporarily closes chat and restores the complete, centered toolbar; the header offers Back to chat.
+Returning preserves the conversation and composer draft, and sending red-crayon marks returns automatically.
 The active drawing tool keeps the existing ink-filled treatment; contextual selections use selection colors.
 Selected toolbar controls use a selection-colored tint and outline, with primary ink for readable text across themes.
 

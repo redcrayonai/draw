@@ -1,0 +1,6 @@
+{
+  "name": "draw",
+  "version": "1.0.2",
+  "description": "Live architecture boards and connected agent chat.",
+  "hooks": "./codex/hooks.json"
+}

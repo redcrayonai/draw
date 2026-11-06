@@ -62,3 +62,21 @@ Report security concerns through [SECURITY.md](SECURITY.md).
 ## License
 
 Contributions are licensed under the [Apache License 2.0](LICENSE).
+
+
+## Agent chat integration
+
+`shared/chat.ts` defines the conversation descriptor, capabilities, events and
+approval decisions. The canvas shell consumes that protocol through
+`client/src/chat-connection.ts`. It does not depend on a local process or provider.
+`mcp/src/chat.ts` authenticates both ends and routes commands to one selected,
+authorized conversation. Runtime identifiers never substitute for linked-user
+identity. The relay does not persist conversation contents.
+
+The local helper owns the queue, filtering and bounded history. Claude Code uses
+session-scoped hooks and an async wake hook; Codex attaches to an already loaded
+thread through app-server proxy. Both adapters report completion instead of
+letting the UI infer it. A lost send acknowledgement pauses the queue: automatically
+replaying it could run a code change twice.
+
+See the [Codex app-server protocol](https://learn.chatgpt.com/docs/app-server).
