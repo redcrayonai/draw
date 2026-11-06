@@ -10,7 +10,7 @@ web
 
 redcrayon is a general diagramming canvas, in the class of Excalidraw, with capabilities those tools lack. It serves two jobs, agent-first:
 
-- **Operators of coding agents.** A developer assigns a task to a coding agent (an MCP client) and watches a live board while the agent works. The board is the operator's navigation display: the agent drives, and the board shows where it is, what it has built, and how the parts connect, at architecture level. The operator reads the board to understand the work without reading the agent's prose. Steering stays in the agent's own chat harness.
+- **Operators of coding agents.** A developer assigns a task to a coding agent (an MCP client) and watches a live board while the agent works. The board is the operator's navigation display: the agent drives, and the board shows where it is, what it has built, and how the parts connect, at architecture level. The operator reads the board to understand the work without reading the agent's prose. A private conversation panel lets the operator continue with their own agent from the board; the original harness remains another view of that conversation.
 - **People who diagram and map systems.** Humans draw architecture by hand, alone or live with others, and can import a codebase to start from its real structure.
 
 Mapping codebases is one capability, not the product's primary identity.
@@ -27,13 +27,16 @@ redcrayon gives humans and agents one live board that tells the truth about a sy
 
 ## Operating Context
 
-- A coding session runs in Claude Code. The agent opens a session board with `start_session`, draws components and cited flows, attaches code refs, and calls `mark_checkpoint` before commits and before its final answer. The operator keeps the board open in a browser beside the session. Feedback goes through the normal chat, not the board (one-way, by decision).
+- A coding session runs in Claude Code or Codex. The agent opens a session board with `start_session`, draws components and cited flows, attaches code refs, and calls `mark_checkpoint` before commits and before its final answer. The operator keeps the board open in a browser beside the session. The operator can ask questions or request code changes from the private board chat, with selected nodes and edges attached as context. Shared board access does not grant control of another person's agent.
 - The canvas client runs in the browser. Boards sync live through SpacetimeDB: the local database in the Docker Compose stack.
 - A separate SvelteKit dashboard (`web/`) lists boards and holds profile and settings.
 - Sign-in uses a generic OIDC provider. The local Compose stack runs anonymously unless you configure sign-in.
 
 ## Capabilities and Constraints
 
+- The private chat is a provider-independent shell. Claude Code and Codex adapters connect it to the existing conversation; Codex currently requires an accessible shared app-server thread.
+- Sending red-crayon marks saves their review history and posts a label-free receipt to the open, connected chat. When no review watcher is listening, chat asks the agent to fetch the saved marks through the review tool. An unfinished composer draft stays intact. Closed or disconnected chat does not prevent marks from being saved.
+- While chat is open, a single Draw button replaces the tool dock. Drawing temporarily hides chat; Back to chat restores the conversation and its draft. Sending marks from this temporary drawing view returns to connected chat automatically.
 - Live multi-user editing; presence (cursors, selection, agent focus); per-user undo through inverse reducer calls.
 - The server enforces editorial rules, and invalid writes abort with a readable sentence: 4 px grid, at most two focal nodes per board, a fixed token set, fixed node kinds (`service`, `datastore`, `external`, `boundary`, `note`, `text`, `chart`). A chart is at least 224×144, its data must fit its type's contract, and it always states its `source`; an agent must supply one.
 - Hide, do not delete: hidden sets keep omissions visible as counts.
@@ -54,7 +57,7 @@ redcrayon gives humans and agents one live board that tells the truth about a sy
 ## Product Principles
 
 1. **The board never lies.** Every relationship and every code ref traces to evidence. An omission is a disclosed number, not a silent gap.
-2. **Awareness, not control.** On session boards the board is the operator's navigation display: it shows where the agent is and what it built. Steering happens in the agent's harness.
+2. **Understand and continue.** Session boards show where the agent is and what it built. Their private chat continues the same conversation without moving the user between applications. The chat shell belongs to draw; execution, permissions and interruption belong to the connected agent. Connection, recovery, and board feedback should feel continuous, preserving drafts and context without making people manage the integration.
 3. **Peers on the same rules.** Humans and agents write through identical reducers and identical constraints.
 4. **A general canvas first.** Code and agent features extend an Excalidraw-class tool. They never narrow it into a code-map-only product.
 5. **Legibility is enforced, not hoped for.** Editorial rules live on the server, so a board stays readable no matter who or what writes to it.

@@ -769,7 +769,7 @@ test('SKILL.md (G39): node sizing follows the server label-fit estimate', () => 
 });
 
 test('start_session (G40): the tool text names the result shape', () => {
-  assert.ok(hosted.includes('Returns JSON { board, id, url, seat, session, checkpoint?, repoRoot?, baseSha?, note?, dashboard?, dashboardNote? }'));
+  assert.ok(hosted.includes('Returns JSON { board, id, url, seat, session, checkpoint?, repoRoot?, baseSha?, note?, chat? }'));
 });
 
 // ---- e2b10ff: add_code_ref and create_edge answer within 15 s ------------------

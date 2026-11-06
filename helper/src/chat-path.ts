@@ -8,7 +8,7 @@ import { dirname, join } from 'node:path';
 export const chatDir = () => join(homedir(), '.redcrayon', 'chat');
 
 /** Where the hooks find this checkout's helper: the git root, found without running git, since a hook must be fast. */
-export function chatSocketPath(cwd: string): string {
+export function chatSocketPath(cwd: string, session?: string): string {
   // A symlinked path (macOS's /tmp) must find the same helper as its real one.
   let start = cwd;
   try {
@@ -24,8 +24,7 @@ export function chatSocketPath(cwd: string): string {
     }
     if (dirname(dir) === dir) break;
   }
-  // shortcut: one helper per checkout, so two sessions in one checkout share a chat; key by session when that matters.
-  return join(chatDir(), `${createHash('sha256').update(root).digest('hex').slice(0, 16)}.sock`);
+  return join(chatDir(), `${createHash('sha256').update(session ? `${root}\0${session}` : root).digest('hex').slice(0, 16)}.sock`);
 }
 
 /** Younger than this, a socket may belong to a helper that made the file and is about to listen on it. */

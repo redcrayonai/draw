@@ -34,6 +34,7 @@ import {
   type CaptureOpts,
 } from './capture';
 import { runChat } from './chat';
+import { hookResult as resultJson } from './hook-result';
 import { runMarks } from './marks';
 import { runTap } from './tap';
 
@@ -134,19 +135,6 @@ async function doctor(cwd: string): Promise<number> {
 
 type Json = Record<string, unknown>;
 const isObject = (v: unknown): v is Json => typeof v === 'object' && v !== null && !Array.isArray(v);
-
-// Claude Code hands an MCP result over as its content blocks, the result, or its text.
-function resultJson(response: unknown): Json | undefined {
-  const blocks = Array.isArray(response) ? response : isObject(response) && Array.isArray(response.content) ? response.content : undefined;
-  const text = typeof response === 'string' ? response : blocks?.find(b => isObject(b) && b.type === 'text')?.text;
-  if (typeof text !== 'string') return blocks === undefined && isObject(response) ? response : undefined;
-  try {
-    const value: unknown = JSON.parse(text);
-    return isObject(value) ? value : undefined;
-  } catch {
-    return undefined;
-  }
-}
 
 /** source:<path>:<line> → path (only the final colon separates the line), else undefined. */
 function sourcePath(evidence: unknown): string | undefined {

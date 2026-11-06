@@ -52,6 +52,7 @@ test('package.json: @redcrayonai/draw ships the plugin and runs the helper as bi
   assert.equal(p.private, undefined);
   assert.equal(p.version, json('plugin/.claude-plugin/plugin.json').version);
   assert.equal(p.version, json('helper/package.json').version);
+  assert.equal(p.version, json('plugin/.codex-plugin/plugin.json').version);
   assert.equal(json('helper/package.json').private, true, 'only plugin/ publishes');
 });
 
@@ -75,7 +76,7 @@ test('.mcp.json: one http server named draw with an overridable local or configu
 
 test('hooks.json: PreToolUse and PostToolUse run the bundled helper on the capture tools', () => {
   const { hooks } = json('plugin/hooks/hooks.json');
-  assert.deepEqual(Object.keys(hooks).sort(), ['MessageDisplay', 'Notification', 'PostToolUse', 'PostToolUseFailure', 'PreToolUse', 'Stop', 'UserPromptSubmit']);
+  assert.deepEqual(Object.keys(hooks).sort(), ['MessageDisplay', 'Notification', 'PermissionRequest', 'PostToolUse', 'PostToolUseFailure', 'PreToolUse', 'SessionEnd', 'SessionStart', 'Stop', 'UserPromptSubmit'].sort());
   for (const event of ['PreToolUse', 'PostToolUse']) {
     const capture = hooks[event].filter(h => h.matcher === MATCHER);
     assert.equal(capture.length, 1, event);
@@ -83,12 +84,29 @@ test('hooks.json: PreToolUse and PostToolUse run the bundled helper on the captu
   }
 });
 
-test('hooks.json: every chat hook is the small bundle, quick and never blocking when node or the helper is missing', () => {
+test('chat hooks connect boards automatically and wake only their own session', () => {
   const { hooks } = json('plugin/hooks/hooks.json');
-  const chat = Object.values(hooks).flat().filter(h => h.matcher !== MATCHER);
-  assert.equal(chat.length, 7);
-  // No live helper, no Node: a session without a chat pays one shell glob per hook.
-  for (const entry of chat) assert.deepEqual(entry.hooks, [{ type: 'command', command: `sh -c 'set -- "$HOME"/.redcrayon/chat/*.sock; [ -e "$1" ] || exit 0; command -v node >/dev/null || exit 0; exec node "\${CLAUDE_PLUGIN_ROOT}/bin/chat-hook.mjs"'`, timeout: 5 }]);
+  const start = hooks.PostToolUse.find(e => e.hooks.some(h => h.command.includes('--start')));
+  assert.ok(start.matcher.includes('start_session'));
+  assert.ok(start.hooks.some(h => h.asyncRewake && h.command.includes('--wait')));
+  assert.ok(hooks.Stop.flatMap(e => e.hooks).some(h => h.asyncRewake));
+  assert.ok(hooks.Stop.flatMap(e => e.hooks).find(h => h.asyncRewake).command.includes('chat/*.sock'), 'no background Node process when no chat exists');
+  assert.ok(hooks.PreToolUse.flatMap(e => e.hooks).some(h => h.asyncRewake), 'a tool halted by Stop may never reach the Stop hook');
+  for (const event of ['MessageDisplay', 'UserPromptSubmit', 'Notification']) {
+    const hook = hooks[event][0].hooks[0];
+    assert.ok(hook.command.includes('chat/*.sock'));
+    assert.equal(hook.timeout, 5);
+  }
+  assert.ok(hooks.PermissionRequest);
+  assert.ok(hooks.SessionEnd);
+  const manifest = json('plugin/.codex-plugin/plugin.json');
+  assert.equal(manifest.hooks, './codex/hooks.json');
+  const codex = json('plugin/codex/hooks.json');
+  const codexStart = codex.hooks.PostToolUse.find(e => e.hooks.some(h => h.command.includes('--codex')));
+  for (const tool of ['start_session', 'start_chat']) {
+    assert.ok(new RegExp(start.matcher).test(`mcp__draw__${tool}`));
+    assert.ok(new RegExp(codexStart.matcher).test(`mcp__draw__${tool}`));
+  }
 });
 
 test('hook matcher: every tool that takes a capture, under all three prefixes, and nothing else', () => {
@@ -167,11 +185,13 @@ test('skill: independent writes go out together, so the board fills in without a
 });
 
 test('skill: start_session result and board ids match the hosted server', () => {
-  const result = '{ board, id, url, seat, session, checkpoint?, repoRoot?, baseSha?, note?, dashboard?, dashboardNote? }';
+  const result = '{ board, id, url, seat, session, checkpoint?, repoRoot?, baseSha?, note?, chat? }';
   assert.ok(toolsTs.includes(`Returns JSON ${result}`));
   assert.ok(flat.includes(`The result is \`${result}\``));
-  assert.ok(toolsTs.includes('relay dashboard with dashboardNote whenever they are there'));
-  assert.ok(flat.includes('When `dashboard` and `dashboardNote` are present, relay both to the user verbatim'));
+  assert.ok(toolsTs.includes('If the board asks to link the agent, confirm that once on the board'));
+  assert.ok(flat.includes('The same board URL includes one-time pairing when needed'));
+  assert.ok(flat.includes('Keep the URL intact'));
+  assert.doesNotMatch(flat, /relay both.*dashboard|dashboardNote/);
   assert.ok(toolsTs.includes("const boardArg = z.string().regex(/^\\d+$/).describe('the board id start_session returned');"));
   assert.ok(flat.includes('Every tool except `start_session` and `describe_charts` takes `board`'));
   for (const name of TOOL_NAMES) {
@@ -377,6 +397,9 @@ test('hosted plugin release configures and scans the packed plugin and marketpla
     mkdirSync(pack);
     const [{ filename }] = JSON.parse(run('npm', ['pack', '--ignore-scripts', '--json', '--pack-destination', pack], join(dir, 'plugin')));
     run('tar', ['-xzf', join(pack, filename), '-C', pack]);
+    assert.ok(existsSync(join(pack, 'package/.codex-plugin/plugin.json')));
+    assert.ok(existsSync(join(pack, 'package/codex/hooks.json')));
+    assert.match(readFileSync(join(pack, 'package/bin/redcrayon.mjs'), 'utf8'), /Copyright \(c\) 2016 Luigi Pinca and contributors/);
     assert.ok(existsSync(join(pack, 'package/bin/chat-hook.mjs')), 'every chat hook would fail without the hook in the package');
     const targets = join(dir, 'release.targets');
     writeFileSync(targets, `tree ${join(pack, 'package')}\ntree .claude-plugin\n`);

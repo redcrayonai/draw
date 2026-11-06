@@ -10,12 +10,15 @@
  * running now is signalled. Text generating now runs to that next hook.
  */
 import { mkdirSync, readFileSync, readdirSync, statSync, unlinkSync, writeFileSync } from 'node:fs';
-import { createServer, type Server } from 'node:net';
+import { createServer, type Server, type Socket } from 'node:net';
 import { join, relative } from 'node:path';
 import { execFile } from 'node:child_process';
+import { randomUUID } from 'node:crypto';
 import { findSecret, isSecretFile } from '../../shared/capture';
 import { HelperError } from './capture';
 import { chatDir, chatSocketPath, removeDeadSockets } from './chat-path';
+import { connectCodex } from './chat-codex';
+import { CHAT_VIEWER_TTL_MS, type ChatSession, type ChatEvent, type ApprovalDecision } from '../../shared/chat';
 
 export const CHAT_USAGE = 'redcrayon: usage: redcrayon chat --token <token from start_chat>';
 const MAX_EVENTS = 500;
@@ -88,12 +91,98 @@ export interface ChatCoreDeps {
   send(event: Record<string, unknown>): void;
   /** A line on stdout: the harness wakes the agent with it. */
   wake(line: string): void;
+  /** Scoped hooks can only deliver after their async wake listener is waiting. */
+  canWake?(): boolean;
   /** Best effort: signal the shell running this command, if one can be found. */
   killCommand(command: string): void;
   changed?(): void;
 }
 
+export interface ChatExecution {
+  send(text: string): Promise<void>;
+  stop(): Promise<void>;
+  approve(id: string, decision: ApprovalDecision): Promise<void>;
+}
+
 export class ChatCore {
+  session?: ChatSession;
+  private execution?: ChatExecution;
+  private submitting = false;
+  private submissionEvents: ChatEvent[] = [];
+  private approvals = new Set<string>();
+  private answering = new Set<string>();
+  private localApprovals = new Map<string, (decision: ApprovalDecision | undefined) => void>();
+  private viewers = 0;
+  private viewerExpiry: ReturnType<typeof setTimeout> | undefined;
+
+  private setViewers(count: number): void {
+    clearTimeout(this.viewerExpiry);
+    this.viewers = count;
+    if (count > 0) this.viewerExpiry = setTimeout(() => this.setViewers(0), CHAT_VIEWER_TTL_MS);
+    else for (const finish of this.localApprovals.values()) finish(undefined);
+  }
+
+  attach(session: ChatSession, execution: ChatExecution): void {
+    this.session = session;
+    this.execution = execution;
+    this.hooksSeen = true;
+  }
+
+  /** Adapters supply lifecycle events, never raw terminal output. */
+  agent(event: ChatEvent): void {
+    if (this.submitting && event.type !== 'state') { this.submissionEvents.push(event); return; }
+    if (event.type === 'state') {
+      if (event.state === 'idle' || event.state === 'stopped') {
+        for (const [message, scrub] of this.scrubbers) this.record({ type: 'text', message, delta: scrub('', true), final: true });
+        this.scrubbers.clear();
+      }
+      if (event.state === 'stopped') this.paused = true;
+      this.setState(event.state);
+      if (event.state === 'idle') this.deliver();
+      return;
+    }
+    if (event.type === 'text') {
+      let scrub = this.scrubbers.get(event.message);
+      if (!scrub) this.scrubbers.set(event.message, scrub = scrubber());
+      const delta = scrub(event.delta.slice(0, MAX_TEXT_CHARS), event.final);
+      if (event.final) this.scrubbers.delete(event.message);
+      if (delta || event.final) this.record({ ...event, delta });
+      return;
+    }
+    if (event.type === 'approval') {
+      if (event.status === 'pending' && findSecret(event.summary)) {
+        this.record({ type: 'notice', tone: 'attention', text: 'This approval contains sensitive details. Review it in your agent.' });
+        return;
+      }
+      if (event.status === 'pending') this.approvals.add(event.id);
+      else { this.approvals.delete(event.id); this.answering.delete(event.id); }
+    }
+    if (event.type === 'user') this.record({ ...event, text: scrubber()(event.text.slice(0, MAX_TEXT_CHARS)) });
+    else if (event.type === 'tool') this.record({ ...event, ...(event.summary ? { summary: scrubber()(event.summary) } : {}) });
+    else this.record({ ...event, ...(event.type === 'notice' ? { text: scrubber()(event.text) } : {}), ...(event.type === 'approval' ? { summary: scrubber()(event.summary) } : {}) });
+  }
+
+  askApproval(id: string, summary: string): Promise<ApprovalDecision | undefined> {
+    if (!this.viewers) return Promise.resolve(undefined);
+    return new Promise(resolve => {
+      const timer = setTimeout(() => finish(undefined), 120_000);
+      const finish = (decision: ApprovalDecision | undefined) => {
+        clearTimeout(timer);
+        this.localApprovals.delete(id);
+        this.agent({ type: 'approval', id, summary, status: 'resolved' });
+        resolve(decision);
+      };
+      this.localApprovals.set(id, finish);
+      this.agent({ type: 'approval', id, summary, status: 'pending' });
+    });
+  }
+
+  dispose(): void {
+    this.setViewers(0);
+    clearTimeout(this.wholeText);
+    clearTimeout(this.wakeTimer);
+  }
+
   // The agent starts this helper in the middle of a turn: its Stop hook says when that turn ends.
   state: ChatState = 'working';
   queue: QueuedMessage[] = [];
@@ -111,15 +200,18 @@ export class ChatCore {
 
   constructor(private deps: ChatCoreDeps) {}
 
-  restore(saved: { events?: Event[]; queue?: QueuedMessage[]; paused?: boolean }): void {
-    this.events = saved.events ?? [];
+  restore(saved: { events?: Event[]; queue?: QueuedMessage[]; paused?: boolean; state?: ChatState }): void {
+    this.events = (saved.events ?? []).map(e => e.type === 'approval' ? { ...e, status: 'resolved' } : e);
+    this.nextId = Math.max(0, ...this.events.map(e => Number(String(e.id ?? e.message ?? '').match(/^[wts](\d+)$/)?.[1] ?? 0))) + 1;
     this.queue = saved.queue ?? [];
     this.paused = saved.paused ?? false;
+    if (saved.state && ['idle', 'working', 'stopping', 'stopped'].includes(saved.state)) this.state = saved.state;
+    this.afterStop = this.state === 'stopped' || this.state === 'stopping';
   }
 
   /** Newest talk first to survive: a long session must still fit in one frame. */
   snapshot() {
-    const frame = (events: Event[]) => ({ type: 'snapshot', events, queue: this.queue, state: this.state, paused: this.paused });
+    const frame = (events: Event[]) => ({ type: 'snapshot', events, queue: this.queue, state: this.state, paused: this.paused, ...(this.session ? { session: this.session } : {}) });
     let events = this.events;
     while (events.length > 0 && Buffer.byteLength(JSON.stringify(frame(events))) > MAX_SNAPSHOT_BYTES) events = events.slice(Math.ceil(events.length / 4));
     return frame(events);
@@ -136,6 +228,7 @@ export class ChatCore {
     if (this.state === state) return;
     this.state = state;
     this.deps.send({ type: 'state', state });
+    this.deps.changed?.();
   }
 
   private queueChanged(): void {
@@ -166,7 +259,31 @@ export class ChatCore {
 
   /** Blocking: an agent with hooks takes the next message only when idle; one without has no way to tell, so it gets them as they come. */
   private deliver(): void {
-    if (this.paused || (this.hooksSeen && this.state !== 'idle' && this.state !== 'stopped')) return;
+    if (this.submitting || this.paused || (this.hooksSeen && this.state !== 'idle' && this.state !== 'stopped')) return;
+    if (!this.execution && this.deps.canWake && !this.deps.canWake()) return;
+    if (this.execution) {
+      const next = this.queue[0];
+      if (!next) return;
+      this.submitting = true;
+      this.setState('working');
+      void this.execution.send(this.format(next)).then(() => {
+        // Remove only the accepted message; new arrivals remain queued.
+        this.queue = this.queue.filter(m => m.id !== next.id);
+        this.record({ type: 'delivered', ...next });
+        this.queueChanged();
+      }).catch(() => {
+        // A lost acknowledgement may have followed acceptance. Never replay automatically.
+        this.paused = true;
+        this.record({ type: 'notice', tone: 'attention', text: 'Could not confirm delivery. Check the conversation before resuming the queue.' });
+        this.queueChanged();
+      }).finally(() => {
+        this.submitting = false;
+        const events = this.submissionEvents.splice(0);
+        for (const event of events) this.agent(event);
+        if (this.state === 'idle' || this.state === 'stopped') this.agent({ type: 'state', state: this.state });
+      });
+      return;
+    }
     const next = this.take();
     if (!next) return;
     if (this.hooksSeen) this.setState('working');
@@ -186,15 +303,38 @@ export class ChatCore {
     this.record({ type: 'notice', text: 'Stopped.' });
   }
 
+  wakeReady(): void { this.deliver(); }
+
   /** A frame from the browser. */
-  person(msg: { type?: unknown; id?: unknown; text?: unknown; context?: unknown }): void {
+  person(msg: { type?: unknown; id?: unknown; text?: unknown; context?: unknown; decision?: unknown; session?: unknown; count?: unknown }): void {
+    if (msg.session && this.session && msg.session !== this.session.id) return;
+    if (msg.type === 'viewers' && typeof msg.count === 'number' && Number.isSafeInteger(msg.count) && msg.count >= 0) return this.setViewers(msg.count);
     if (msg.type === 'joined') return this.deps.send(this.snapshot());
-    if (msg.type === 'send') {
+    if (msg.type === 'send' || msg.type === 'receipt') {
       if (typeof msg.text !== 'string' || !msg.text.trim() || typeof msg.id !== 'string') return;
+      if (msg.id.length > 200 || msg.text.length > 32000 || this.queue.length >= 100 || this.queue.some(m => m.id === msg.id) || this.events.some(e => e.type === 'delivered' && e.id === msg.id)) return;
+      if (msg.type === 'receipt') {
+        return this.record({ type: 'delivered', id: msg.id, text: scrubber()(msg.text), ...(typeof msg.context === 'string' ? { context: scrubber()(msg.context) } : {}) });
+      }
+      const held = this.paused && this.queue.length > 0;
       this.queue.push({ id: msg.id, text: msg.text, ...(typeof msg.context === 'string' && msg.context ? { context: msg.context } : {}) });
-      this.paused = false;
+      this.paused = held;
       this.queueChanged();
       return this.deliver();
+    }
+    if (msg.type === 'approval') {
+      if ((!this.execution && !this.localApprovals.size) || !this.session?.capabilities.approvals || typeof msg.id !== 'string' || !this.approvals.has(msg.id) || this.answering.has(msg.id) || (msg.decision !== 'accept' && msg.decision !== 'decline')) return;
+      const id = msg.id;
+      this.answering.add(id);
+      const local = this.localApprovals.get(id);
+      if (local) { local(msg.decision); return; }
+      void this.execution!.approve(id, msg.decision).catch(() => {
+        this.answering.delete(id);
+        const approval = [...this.events].reverse().find(e => e.type === 'approval' && e.id === id);
+        if (approval && this.approvals.has(id)) this.record({ ...approval, status: 'pending' });
+        this.record({ type: 'notice', tone: 'attention', text: 'The approval could not be sent. Try again or answer in your agent.' });
+      });
+      return;
     }
     if (msg.type === 'delete') {
       this.queue = this.queue.filter(m => m.id !== msg.id);
@@ -206,11 +346,18 @@ export class ChatCore {
       return this.deliver();
     }
     if (msg.type === 'stop') {
+      if (this.session?.capabilities.stop === 'none') return;
       this.paused = true;
+      for (const finish of this.localApprovals.values()) finish('decline');
       this.queueChanged();
       if (this.state === 'idle' || this.state === 'stopped') return this.stopped();
       this.setState('stopping');
-      if (this.inFlight) this.deps.killCommand(this.inFlight.command);
+      if (this.execution) {
+        void this.execution.stop().catch(() => {
+          this.setState('working');
+          this.record({ type: 'notice', tone: 'attention', text: 'Could not confirm Stop. Your agent may still be working.' });
+        });
+      } else if (this.inFlight) this.deps.killCommand(this.inFlight.command);
     }
   }
 
@@ -236,14 +383,18 @@ export class ChatCore {
       }
       case 'UserPromptSubmit': {
         const prompt = String(input.prompt ?? '');
+        if (prompt && !/^\s*</.test(prompt) && !prompt.includes('Board chat:')) this.afterStop = false;
         this.textThisTurn = false;
         if (this.state !== 'stopping') this.setState('working');
         // Turns the harness starts itself carry its own wrapper, and a delivered message is already on the board.
         if (prompt && !/^\s*</.test(prompt) && !prompt.includes('Board chat:')) this.record({ type: 'user', id: `t${this.nextId++}`, text: scrubber()(prompt.slice(0, MAX_TEXT_CHARS)), origin: 'terminal' });
         return {};
       }
+      case 'PermissionRequest':
+        if (this.state === 'stopping' || this.afterStop) return halt({ hookSpecificOutput: { hookEventName: 'PermissionRequest', decision: { behavior: 'deny', message: STOPPED_REASON } } });
+        return {};
       case 'PreToolUse': {
-        if (this.state === 'stopping') return halt({ hookSpecificOutput: { hookEventName: 'PreToolUse', permissionDecision: 'deny', permissionDecisionReason: STOPPED_REASON } });
+        if (this.state === 'stopping' || this.afterStop) return halt({ hookSpecificOutput: { hookEventName: 'PreToolUse', permissionDecision: 'deny', permissionDecisionReason: STOPPED_REASON } });
         this.setState('working');
         const name = String(input.tool_name ?? '');
         const tool = input.tool_input ?? {};
@@ -280,8 +431,15 @@ export class ChatCore {
         this.inFlight = null;
         if (this.state === 'stopping') {
           this.stopped();
+          this.deliver();
           return {};
         }
+        if (this.deps.canWake) {
+          this.setState(this.afterStop ? 'stopped' : 'idle');
+          this.deliver();
+          return {};
+        }
+        if (this.state === 'stopped' && this.paused) return {};
         const next = this.paused ? undefined : this.take(LATE_TEXT_MS);
         if (next) {
           this.setState('working');
@@ -319,7 +477,7 @@ export function shellsRunning(command: string, rows: Proc[], self: number): Proc
 }
 
 /** Signals the Bash tool's shell running `command`, and what it started. Best effort. */
-export function killCommand(command: string, run: typeof execFile = execFile, kill: (pid: number) => void = pid => process.kill(pid, 'SIGTERM')): void {
+export function killCommand(command: string, run: typeof execFile = execFile, kill: (pid: number) => void = pid => process.kill(pid, 'SIGTERM'), owner?: string): void {
   // -ww: a shell's command line starts with a long snapshot path, and ps cuts it short otherwise.
   run('ps', ['-axww', '-o', 'pid=,ppid=,command='], { maxBuffer: 16 * 1024 * 1024 }, (err, stdout) => {
     if (err) return;
@@ -336,7 +494,13 @@ export function killCommand(command: string, run: typeof execFile = execFile, ki
         // already gone
       }
     };
-    const shells = shellsRunning(command, rows, process.pid);
+    const ownerPid = owner ? Number(owner.split(':')[0]) : undefined;
+    const ownerCommand = owner?.slice(owner.indexOf(':') + 1);
+    // Detached helpers may only inspect the recorded harness, never ancestors or siblings.
+    const root = ownerPid ? rows.find(r => r.pid === ownerPid && r.command === ownerCommand) : undefined;
+    if (ownerPid && !root) return;
+    const scoped = root ? rows.map(r => r.pid === root.pid ? { ...r, ppid: 0 } : r) : rows;
+    const shells = shellsRunning(command, scoped, root?.pid ?? process.pid);
     if (!shells.length) process.stderr.write('redcrayon chat: Stop found no shell running the command; it runs to its end.\n');
     for (const s of shells) down(s.pid);
   });
@@ -358,7 +522,7 @@ export function pruneSavedState(dir: string, now: number): void {
     if (!name.endsWith('.json')) continue;
     const file = join(dir, name);
     try {
-      if (now - statSync(file).mtimeMs > SAVED_STATE_MS) unlinkSync(file);
+      if (now - statSync(file).mtimeMs > (name.endsWith('.connection.json') ? 12 * 60 * 60_000 : SAVED_STATE_MS)) unlinkSync(file);
     } catch {
       // another helper got there first
     }
@@ -373,23 +537,42 @@ type Socketish = {
 };
 
 export async function runChat(argv: string[], origin: string, cwd: string, log: (line: string) => void, wake: (line: string) => void): Promise<number> {
-  if (argv.length !== 2 || argv[0] !== '--token' || !argv[1]) throw new HelperError(CHAT_USAGE);
-  const token = argv[1];
+  const flags = new Map<string, string>();
+  for (let i = 0; i < argv.length; i += 2) {
+    if (!['--token', '--session', '--agent', '--socket', '--owner'].includes(argv[i]) || !argv[i + 1] || flags.has(argv[i])) throw new HelperError(CHAT_USAGE);
+    flags.set(argv[i], argv[i + 1]);
+  }
+  const token = flags.get('--token');
+  if (!token) throw new HelperError(CHAT_USAGE);
+  const agent = flags.get('--agent') ?? 'claude-code';
+  if (agent !== 'claude-code' && agent !== 'codex') throw new HelperError(CHAT_USAGE);
+  const thread = flags.get('--session') ?? (agent === 'codex' ? process.env.CODEX_THREAD_ID : undefined);
+  if (thread && !/^[a-zA-Z0-9_:.-]{1,180}$/.test(thread)) throw new HelperError(CHAT_USAGE);
+  if (agent === 'codex' && !thread) throw new HelperError('redcrayon: chat needs the current conversation id.');
+  const sessionId = thread ? (thread.startsWith(`${agent}:`) ? thread : `${agent}:${thread}`) : undefined;
   const board = boardOfToken(token);
   const WS = (globalThis as { WebSocket?: new (url: string) => Socketish }).WebSocket;
   if (!WS) throw new HelperError('redcrayon: chat needs Node 22 or newer.');
   const url = `${origin.replace(/^http/, 'ws')}/chat/${board}`;
-  const path = chatSocketPath(cwd);
+  const path = chatSocketPath(cwd, sessionId);
   mkdirSync(chatDir(), { recursive: true, mode: 0o700 });
   pruneSavedState(chatDir(), Date.now());
   await removeDeadSockets(chatDir(), Date.now());
   const statePath = `${path}.json`;
 
   let ws: Socketish | null = null;
+  let relayReady = false;
+  let waiter: Socket | undefined;
+  let adapter: Awaited<ReturnType<typeof connectCodex>> | undefined;
+  const controller = new AbortController();
+  let done: (code: number) => void = () => {};
+  const finished = new Promise<number>(resolve => (done = resolve));
+  let closing = false;
+  const quit = () => { closing = true; done(0); controller.abort(); };
   let saveTimer: ReturnType<typeof setTimeout> | undefined;
   const save = () => {
     try {
-      writeFileSync(statePath, JSON.stringify({ board, events: core.events, queue: core.queue, paused: core.paused }), { mode: 0o600 });
+      writeFileSync(statePath, JSON.stringify({ board, origin, session: sessionId, state: core.state, events: core.events, queue: core.queue, paused: core.paused }), { mode: 0o600 });
     } catch {
       // history is a convenience
     }
@@ -398,8 +581,12 @@ export async function runChat(argv: string[], origin: string, cwd: string, log: 
     send: e => {
       if (ws?.readyState === 1) ws.send(JSON.stringify(e));
     },
-    wake,
-    killCommand: command => killCommand(command),
+    wake: line => {
+      if (!sessionId || agent !== 'claude-code') return wake(line);
+      if (waiter && !waiter.destroyed) { waiter.end(JSON.stringify({ wake: line }) + '\n'); waiter = undefined; }
+    },
+    canWake: sessionId && agent === 'claude-code' ? () => Boolean(waiter && !waiter.destroyed) : undefined,
+    killCommand: command => { if (!sessionId || flags.has('--owner')) killCommand(command, execFile, pid => process.kill(pid, 'SIGTERM'), flags.get('--owner')); },
     changed: () => {
       saveTimer ??= setTimeout(() => {
         saveTimer = undefined;
@@ -407,34 +594,64 @@ export async function runChat(argv: string[], origin: string, cwd: string, log: 
       }, 250);
     },
   });
+  if (sessionId && agent === 'claude-code') {
+    core.session = { id: sessionId, agent, name: 'Claude Code', capabilities: { stop: 'step', approvals: true } };
+    core.hook({ hook_event_name: 'Connected' });
+  }
   // A re-armed helper picks up where the last one stopped.
   try {
     const saved = JSON.parse(readFileSync(statePath, 'utf8'));
-    if (saved.board === board) core.restore(saved);
+    if (saved.board === board && saved.origin === origin && saved.session === sessionId) {
+      core.restore({ ...saved, ...(agent === 'codex' ? { events: [] } : {}) });
+      if (sessionId && core.queue.length) core.paused = true;
+    }
   } catch {
     // first run
   }
 
   const server: Server = createServer(conn => {
     let raw = '';
-    conn.on('data', chunk => {
-      raw += chunk.toString();
+    conn.setEncoding('utf8');
+    conn.on('data', async chunk => {
+      raw += chunk;
+      if (raw.length > 1024 * 1024) { conn.destroy(); return; }
       const end = raw.indexOf('\n');
       if (end < 0) return;
+      conn.removeAllListeners('data');
       let answer: Record<string, unknown> = {};
       try {
-        answer = core.hook(JSON.parse(raw.slice(0, end)));
-      } catch {
-        // a hook must never stop the agent
-      }
+        const input = JSON.parse(raw.slice(0, end));
+        if (input.hook_event_name === 'BoardChatWait') {
+          waiter?.end('{}\n');
+          waiter = conn;
+          core.wakeReady();
+          return;
+        }
+        if (input.hook_event_name === 'BoardChatPing') {
+          const claims = JSON.parse(Buffer.from(token.split('.')[1], 'base64url').toString());
+          answer = { running: true, connected: relayReady, board, origin, expiresAt: typeof claims.exp === 'number' ? claims.exp * 1000 : 0 };
+        }
+        else if (input.hook_event_name === 'SessionEnd') { conn.end('{}\n'); quit(); return; }
+        else if (input.hook_event_name === 'PermissionRequest' && core.session) {
+          answer = core.hook(input);
+          if (answer.hookSpecificOutput) { conn.end(`${JSON.stringify(answer)}\n`); return; }
+          if (findSecret(JSON.stringify(input.tool_input ?? {}))) {
+            core.agent({ type: 'notice', tone: 'attention', text: 'This approval contains sensitive details. Review it in your agent.' });
+            conn.end('{}\n'); return;
+          }
+          const id = `permission:${input.tool_use_id ?? randomUUID()}`;
+          const details = input.tool_name === 'Bash' ? input.tool_input?.command : input.tool_input?.file_path;
+          const decision = await core.askApproval(id, `Allow ${String(input.tool_name ?? 'this action')} in ${cwd}?${typeof details === 'string' ? `\n${details}` : '\nReview the action in your terminal.'}`);
+          if (decision) answer = { hookSpecificOutput: { hookEventName: 'PermissionRequest', decision: decision === 'accept' ? { behavior: 'allow' } : { behavior: 'deny', message: 'Declined from the board by the person running you.' } } };
+        } else answer = core.hook(input);
+      } catch { /* A failed hook leaves the terminal available. */ }
       conn.end(`${JSON.stringify(answer)}\n`);
     });
     conn.on('error', () => {});
+    conn.on('close', () => { if (waiter === conn) waiter = undefined; });
   });
-  try {
-    unlinkSync(path);
-  } catch {
-    // no stale socket
+  if (!sessionId) {
+    try { unlinkSync(path); } catch { /* Legacy Monitor replacement. */ }
   }
   await new Promise<void>((resolve, reject) => {
     server.once('error', reject);
@@ -443,22 +660,39 @@ export async function runChat(argv: string[], origin: string, cwd: string, log: 
 
   const socketFile = statSync(path).ino;
   let backoff = 1000;
-  let done: (code: number) => void = () => {};
-  const finished = new Promise<number>(resolve => (done = resolve));
-  let closing = false;
+  process.once('SIGINT', quit);
+  process.once('SIGTERM', quit);
+  if (agent === 'codex') {
+    try {
+      core.paused = true;
+      adapter = await connectCodex({ threadId: thread!.replace(/^codex:/, ''), cwd, socketPath: flags.get('--socket'), signal: controller.signal, emit: event => core.agent(event), onDisconnect: () => done(1) });
+      core.attach(adapter.session, adapter);
+      if (!core.queue.length) core.paused = false;
+    } catch (error) {
+      if (!closing) {
+        server.close();
+        core.dispose();
+        clearTimeout(saveTimer);
+        process.removeListener('SIGINT', quit);
+        process.removeListener('SIGTERM', quit);
+        throw error;
+      }
+    }
+  }
   const connect = () => {
     if (closing) return;
     const socket = new WS(url);
     ws = socket;
-    socket.addEventListener('open', () => socket.send(JSON.stringify({ auth: token, role: 'agent' })));
+    socket.addEventListener('open', () => socket.send(JSON.stringify({ auth: token, role: 'agent', ...(core.session ? { session: core.session } : {}) })));
     socket.addEventListener('message', ev => {
-      let msg: { ok?: boolean; type?: unknown; id?: unknown; text?: unknown; context?: unknown };
+      let msg: { ok?: boolean; type?: unknown; id?: unknown; text?: unknown; context?: unknown; count?: unknown };
       try {
         msg = JSON.parse(String(ev.data));
       } catch {
         return;
       }
       if (msg.ok) {
+        relayReady = true;
         backoff = 1000;
         log(`redcrayon chat: connected to board ${board}.`);
         return;
@@ -466,7 +700,7 @@ export async function runChat(argv: string[], origin: string, cwd: string, log: 
       core.person(msg);
     });
     socket.addEventListener('close', ev => {
-      if (ws === socket) ws = null;
+      if (ws === socket) { ws = null; relayReady = false; core.person({ type: 'viewers', count: 0 }); }
       if (closing) return;
       if (ev.code === 4001 || ev.code === 4008) {
         log(`redcrayon chat: ${ev.reason || 'the board refused this chat'}`);
@@ -480,13 +714,15 @@ export async function runChat(argv: string[], origin: string, cwd: string, log: 
   };
   connect();
 
-  const quit = () => done(0);
-  process.once('SIGINT', quit);
-  process.once('SIGTERM', quit);
   const code = await finished;
   closing = true;
   (ws as Socketish | null)?.close();
   clearTimeout(saveTimer);
+  core.dispose();
+  adapter?.close();
+  waiter?.end('{}\n');
+  process.removeListener('SIGINT', quit);
+  process.removeListener('SIGTERM', quit);
   // A newer helper took over: the socket file and the saved talk are its own now, and closing the server would delete that file.
   let ours = false;
   try {

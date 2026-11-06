@@ -65,7 +65,7 @@ export function apiBreak(labels, tags) {
 /** release-plugin.yml checks these four agree with the tag. */
 function stampPlugin(version) {
   if (!SEMVER.test(version)) throw new Error(`not a version: ${version}`);
-  for (const file of ['plugin/package.json', 'plugin/.claude-plugin/plugin.json', 'helper/package.json']) {
+  for (const file of ['plugin/package.json', 'plugin/.claude-plugin/plugin.json', 'plugin/.codex-plugin/plugin.json', 'helper/package.json']) {
     const json = JSON.parse(readFileSync(file, 'utf8'));
     writeFileSync(file, `${JSON.stringify({ ...json, version }, null, 2)}\n`);
   }
