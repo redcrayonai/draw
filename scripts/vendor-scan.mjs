@@ -41,7 +41,7 @@ export const SOURCE_ALLOW = [
   ["web/src/routes/settings/agent/page.test.ts", "expect(text).not.toMatch(/spacetime|maincloud|bsatn|clockwork|\\bstdb\\b/i);", "regression assertion that settings text discloses no backend names"],
   ["shared/capture.test.ts", "expect(findSecret('export const AKIA = 1;\\nconst key = process.env.API_KEY;\\nconst pk = \"pk_live_abc\";')).toBeUndefined();", "deliberately truncated public-key fixture proves it is not a secret"],
   ["scripts/ci-workflows.test.mjs", "assert.doesNotMatch(text, /\"routes\"|\"route\"|\"account_id\"|\"env\"/, `${dir}/wrangler.jsonc must stay dev-only`);", "regression assertion forbidding hosted account configuration in local files"],
-  ['mcp/wrangler.jsonc', /^\{ "tag": "v[123]", "new_sqlite_classes": \["(?:User|Capture|Live)"\] \},?$/, 'local Durable Object migration declarations required by workerd'],
+  ['mcp/wrangler.jsonc', /^\{ "tag": "v[1234]", "new_sqlite_classes": \["(?:User|Capture|Live|Chat)"\] \},?$/, 'local Durable Object migration declarations required by workerd'],
   ['mcp/wrangler.jsonc', /^\{ "name": "(?:CALLS_RL|IP_RL|ANTHROPIC_RL|FACTS_RL)", "namespace_id": "[1-4]", "simple": \{ "limit": (?:60|120|600), "period": 60 \} \},?$/, 'local rate-limit binding identifiers, without hosted account data'],
 ];
 export const HOSTED_PLUGIN_ORIGIN = 'https://mcp.redcrayon.ai';

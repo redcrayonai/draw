@@ -25,7 +25,7 @@ export interface MarkRow {
 export interface Round { round: number; sentAt: bigint; marks: MarkRow[] }
 export interface BannerState { kind: 'none' | 'not-listening' | 'waiting' | 'working' | 'answered'; done: number; total: number }
 /** Marks, waiters and the sender's read cursor of the shown board. */
-export interface ReviewModel { marks: MarkRow[]; lastReadAt: bigint; waiters: { owner: string; lastWaitAt: bigint }[]; now: bigint }
+export interface ReviewModel { marks: MarkRow[]; lastReadAt: bigint; waiters: { owner: string; lastWaitAt: bigint }[]; now: bigint; chatConnected?: boolean }
 export interface ReviewDeps {
   /** The person may only read this board: no crayon, so no Review button either. */
   readOnly(): boolean;
@@ -151,7 +151,7 @@ function paintBanner(banner: HTMLElement, model: ReviewModel, deps: ReviewDeps):
   const open = s.total - s.done;
   const waiters = live(model.waiters, model.now);
   const parts: (Node | string)[] =
-    s.kind === 'not-listening' ? ['No agent listening']
+    s.kind === 'not-listening' ? [model.chatConnected ? 'Waiting for review' : 'No agent listening']
     : s.kind === 'working' ? ['Working on ', b(`${open} mark${open === 1 ? '' : 's'}`)]
     : s.kind === 'answered' ? [b(`${s.done} of ${s.total}`), ' answered']
     : s.kind === 'waiting'

@@ -33,6 +33,7 @@ import {
 } from './chrome';
 import { paintAccessLine } from './access-line';
 import { renderBoard, focusOf, ghostEdges, contentBounds, evidenceClass, hasMachineEvidence, nodeRect, type RefBadge, type EdgeRefBadge, type LiveEdge, type EdgeMotion } from './render';
+import { chatUrl, mountAgentChat } from './agent-chat';
 import { LIVE_CHART_SOURCE, LiveSession, liveCsv, liveUrl, recordLive, resolveLive, tapPrompt, type LivePoint, type LiveState } from './live';
 import { formatWindow, mountWindowBrush, zoomOut, type TimeWindow } from './time-window';
 import { Glide, type XY } from './glide';
@@ -129,6 +130,7 @@ const RECONNECT_ATTEMPT_KEY = 'stdb_reconnect_attempt';
 const ACCOUNT_SEEN_KEY = `account_seen:${config.accounts ?? ''}`;
 const GUEST_CLAIM_KEY = `guest_claim:${config.uri}/${config.db}`;
 const GUEST_RECOVERY_KEY = `guest_recovery:${config.uri}/${config.db}`;
+const PAIR_HANDOFF_KEY = `agent_pair:${config.uri}/${config.db}`;
 
 let auth: Auth | undefined;
 let currentConn: DbConnection | undefined;
@@ -140,6 +142,33 @@ function dashboardLink(): string | undefined {
   const href = dashboardHref(config.dashboardUrl, config.db, config.defaultDb);
   return href ? auth?.authenticatedHref(href) ?? href : undefined;
 }
+
+/** A pairing code from the link's fragment, which never reaches a server: taken off the URL at once, so it stays out of history. */
+function takePairCode(): string | null {
+  const params = new URLSearchParams(location.hash.slice(1));
+  const code = params.get('pair');
+  const slug = params.get('b');
+  if (code !== null) {
+    params.delete('pair');
+    history.replaceState(null, '', `${location.pathname}${location.search}#${params.toString()}`);
+    // Like guest claims, keep this tab's explicit intent through sign-in redirects.
+    if (slug) sessionStorage.setItem(PAIR_HANDOFF_KEY, JSON.stringify({ code, slug }));
+    return code;
+  }
+  try {
+    const saved = JSON.parse(sessionStorage.getItem(PAIR_HANDOFF_KEY) ?? 'null');
+    return slug && saved?.slug === slug && typeof saved.code === 'string' ? saved.code : null;
+  } catch {
+    sessionStorage.removeItem(PAIR_HANDOFF_KEY);
+    return null;
+  }
+}
+let pendingPair = takePairCode();
+let offerPair: ((code: string) => void) | undefined;
+window.addEventListener('hashchange', () => {
+  pendingPair = takePairCode();
+  if (pendingPair) offerPair?.(pendingPair);
+});
 
 function newBoardHref(): string {
   const url = new URL(location.href);
@@ -360,7 +389,7 @@ async function boot(conn: DbConnection, identityHex: string, signedIn: boolean):
       const guestBoard = [...conn.db.myBoards.iter()].find(row => row.boardId === activeBoardId && row.access === 'owner' && !row.isSession);
       const architecture = [...conn.db.visibleArchitectureVersion.iter()].some(row => row.boardId === activeBoardId);
       // Sign-in returns to this page's #b=<slug>; the stored claim carries the slug to match it (claimForBoard).
-      const slug = conn.db.visibleBoard.id.find(activeBoardId!)?.slug ?? '';
+      const slug = activeBoardId === undefined ? '' : conn.db.visibleBoard.id.find(activeBoardId)?.slug ?? '';
       const ok = await signInWithGuestBoard(loaded,
         guestBoard && !architecture ? { id: activeBoardId!, slug } : undefined,
         request => conn.reducers.offerGuestClaim(request), sessionStorage, GUEST_CLAIM_KEY);
@@ -460,13 +489,51 @@ async function boot(conn: DbConnection, identityHex: string, signedIn: boolean):
   };
   // The board list comes first: the board tables return only the boards this connection opens (RC-605).
   const listed = await new Promise<boolean>(resolve =>
-    subscribeLists(conn, () => resolve(true), ctx => { boardFailed(ctx); resolve(false); }, signedIn && config.mcpUrl !== undefined));
+    subscribeLists(conn, () => resolve(true), ctx => { boardFailed(ctx); resolve(false); }, (signedIn || !config.accounts) && config.mcpUrl !== undefined));
   if (!listed) return;
   const picked = guestBoardId === undefined
     ? selectBoard(conn.db.visibleBoard.iter(), location.search, location.hash, conn.db.myBoards.iter())
     : conn.db.visibleBoard.id.find(guestBoardId) ?? 'Your board has not arrived. Please reload.';
   if (typeof picked === 'string') {
     showBoardUnavailable(boardsHref, newBoardHref(), shareToken !== null ? LINK_GONE : undefined);
+    if (config.mcpUrl !== undefined && signIn) {
+      offerPair = () => {
+        title.textContent = 'Agent connection';
+        document.getElementById('unavailable-title')!.textContent = 'Sign in to connect your agent';
+        document.querySelector('#board-unavailable p')!.textContent = 'After signing in, you can confirm the agent you started and open its board.';
+        const button = document.createElement('button');
+        button.type = 'button';
+        button.className = 'btn-primary';
+        button.textContent = 'Sign in to continue';
+        button.addEventListener('click', async () => {
+          button.disabled = true;
+          await signIn();
+          button.disabled = false;
+        });
+        document.querySelector('#board-unavailable .unavailable-actions')!.replaceChildren(button);
+      };
+      if (pendingPair) offerPair(pendingPair);
+    } else if (config.mcpUrl !== undefined && (signedIn || !config.accounts)) {
+      // Linking adopts the agent's private board; the canvas cannot mount before that consent.
+      const chat = mountAgentChat(document.getElementById('act-chat') as HTMLButtonElement, {
+        url: () => location.href,
+        token: async () => null,
+        selection: () => '',
+      });
+      offerPair = code => {
+        pendingPair = null;
+        sessionStorage.removeItem(PAIR_HANDOFF_KEY);
+        title.textContent = 'Agent connection';
+        document.getElementById('unavailable-title')!.textContent = 'Link your agent to continue';
+        document.querySelector('#board-unavailable p')!.textContent = 'Confirm the agent you started in the chat panel to open its board.';
+        chat.offerPair(async () => {
+          await conn.reducers.redeemAgentLink({ code });
+          location.reload();
+          return 'linked';
+        });
+      };
+      if (pendingPair) offerPair(pendingPair);
+    }
     return;
   }
   // The board on screen and the board its diff compares against.
@@ -1177,6 +1244,9 @@ async function boot(conn: DbConnection, identityHex: string, signedIn: boolean):
         void session.start();
       };
       liveRow.hidden = config.mcpUrl === undefined;
+
+      // The person's own agent, from the board: offered only to someone with a linked agent (mcp/src/chat.ts enforces it).
+      let agentChat: ReturnType<typeof mountAgentChat> | undefined;
       liveRow.addEventListener('click', () => (liveSession ? stopLive() : startLive()));
 
       const traceRow = () => conn.db.visibleTracePlayback.boardId.find(boardId) ?? null;
@@ -1303,6 +1373,10 @@ async function boot(conn: DbConnection, identityHex: string, signedIn: boolean):
       });
       let ops = new Ops(conn, identityHex, new History());
       // Red crayon drafts stay in this tab until Send (spec 2026-10-19 D3, D13).
+      const marksListening = () => listening(
+        [...conn.db.visibleMarkWaiter.iter()].filter(w => w.boardId === boardId).map(w => ({ lastWaitAt: w.lastWaitAt.microsSinceUnixEpoch })),
+        BigInt(Date.now()) * 1000n,
+      );
       const crayonUi = mountCrayon({
         wrap,
         world,
@@ -1317,11 +1391,13 @@ async function boot(conn: DbConnection, identityHex: string, signedIn: boolean):
         },
         exists: id => getAllNodes().some(n => n.id === id),
         // The module refuses agents, read-only visitors, off-board nodes and over-long batches.
-        send: (nodeIds, notes) => conn.reducers.sendMarks({ boardId, nodeIds, notes }),
-        listening: () => listening(
-          [...conn.db.visibleMarkWaiter.iter()].filter(w => w.boardId === boardId).map(w => ({ lastWaitAt: w.lastWaitAt.microsSinceUnixEpoch })),
-          BigInt(Date.now()) * 1000n,
-        ),
+        send: async (nodeIds, notes) => {
+          const message = `I sent ${nodeIds.length} red-crayon ${nodeIds.length === 1 ? 'mark' : 'marks'}. Call wait_for_marks with your session seat and review the saved marks.`;
+          const forward = agentChat?.prepareMessage(message, 'Red-crayon marks');
+          await conn.reducers.sendMarks({ boardId, nodeIds, notes });
+          return forward?.(!marksListening()) ?? false;
+        },
+        listening: marksListening,
       });
 
       const railEl = document.getElementById('rail') as HTMLElement;
@@ -2176,6 +2252,7 @@ async function boot(conn: DbConnection, identityHex: string, signedIn: boolean):
           panTo: id => editor.selectNodes([id]), // selecting reveals it (revealSelection)
         });
         return () => paint({
+          chatConnected: agentChat?.online ?? false,
           marks: [...conn.db.visibleMark.iter()].filter(m => m.boardId === boardId),
           lastReadAt: [...conn.db.visibleMarkRead.iter()].find(r => r.boardId === boardId)?.lastReadAt.microsSinceUnixEpoch ?? 0n,
           waiters: [...conn.db.visibleMarkWaiter.iter()]
@@ -2347,6 +2424,7 @@ async function boot(conn: DbConnection, identityHex: string, signedIn: boolean):
       const showBoard = (id: bigint, next: typeof board) => {
         board = next;
         stopLive();
+        agentChat?.switchBoard();
         palette.close();
         library.close();
         boardId = id;
@@ -2521,6 +2599,83 @@ async function boot(conn: DbConnection, identityHex: string, signedIn: boolean):
       enter = true;
       rerenderParticipants();
       requestAnimationFrame(finishBoardLoading);
+      // After everything the selection and the board read exists: a board with no agent can open the panel at once.
+      if (config.mcpUrl !== undefined) {
+        const mcpUrl = config.mcpUrl;
+        const chatButton = document.getElementById('act-chat') as HTMLButtonElement;
+        let framed = { tx: viewport.tx, ty: viewport.ty, scale: viewport.scale };
+        const hrefOf = (slug: string) => boardHref({ app: location.href, slug, db: config.db, home: config.defaultDb });
+        const chat = mountAgentChat(chatButton, {
+          // A board nobody has moved stays framed in the new width; one they have moved keeps what is in its middle.
+          boardWidthChanged: delta => {
+            if (viewport.tx === framed.tx && viewport.ty === framed.ty && viewport.scale === framed.scale) {
+              editor.fitView();
+              framed = { tx: viewport.tx, ty: viewport.ty, scale: viewport.scale };
+            } else viewport.panBy(delta / 2, 0);
+          },
+          url: () => chatUrl(mcpUrl, boardId),
+          token: liveToken,
+          selection: () => {
+            const nodes = getNodes().filter(n => editor.selection.has(n.id)).map(n => n.label || n.sublabel).filter(Boolean);
+            const byId = new Map(getNodes().map(n => [n.id, n.label || n.sublabel]));
+            const edges = getEdges().filter(e => editor.selectedEdges.has(e.id)).map(e => `${byId.get(e.fromNode) ?? '?'} → ${byId.get(e.toNode) ?? '?'}`);
+            return [...edges, ...nodes].join(', ').slice(0, 300);
+          },
+          // Where to go from a board with no agent: where it is drawing now, else the person's newest session board.
+          agentElsewhere: () => {
+            const live = findAgentBoard({
+              me: identityHex,
+              links: conn.db.myAgentLinks.iter(),
+              participants: conn.db.visibleParticipant.iter(),
+              selections: conn.db.visibleSelection.iter(),
+              boards: conn.db.visibleBoard.iter(),
+              onScreen: boardId,
+              now: Date.now(),
+            });
+            if (live?.here) return null;
+            if (live) return { board: live.board, href: hrefOf(live.slug), live: true };
+            const sessions = [...conn.db.myBoards.iter()].filter(b => b.isSession && b.boardId !== boardId).sort((x, y) => (x.boardId < y.boardId ? 1 : -1));
+            const latest = sessions[0] && conn.db.visibleBoard.id.find(sessions[0].boardId);
+            return latest ? { board: latest.name, href: hrefOf(latest.slug), live: false } : null;
+          },
+        });
+        agentChat = chat;
+        const refreshChat = () => {
+          chat.setAvailable([...conn.db.myAgentLinks.iter()].some(l => l.owner.toHexString() === identityHex));
+          chat.refresh();
+        };
+        for (const table of [conn.db.myAgentLinks, conn.db.visibleParticipant, conn.db.myBoards]) {
+          table.onInsert(refreshChat);
+          table.onDelete(refreshChat);
+        }
+        refreshChat();
+        // A build with accounts links signed-in people on its own; this is for one without.
+        if (signedIn || !config.accounts) {
+          offerPair = code => {
+            pendingPair = null;
+            sessionStorage.removeItem(PAIR_HANDOFF_KEY);
+            chat.offerPair(async () => {
+              const mine = () =>
+                [...conn.db.myAgentLinks.iter()].filter(l => l.owner.toHexString() === identityHex).sort((x, y) => y.linkedAt.toDate().getTime() - x.linkedAt.toDate().getTime())[0];
+              // A spent code, from someone already linked: say so, and change nothing, since the code no longer says which agent it named.
+              try {
+                await conn.reducers.redeemAgentLink({ code });
+              } catch (err) {
+                if (mine()) return 'already';
+                throw err;
+              }
+              for (let i = 0; i < 30 && !mine(); i++) await new Promise(resolve => setTimeout(resolve, 100));
+              // Their own board goes to the agent they just linked; on someone else's board the link alone stands.
+              await conn.reducers.grantAgentBoard({ boardId, agent: mine().agent }).catch(() => {});
+              refreshChat();
+              return 'linked';
+            });
+          };
+          if (pendingPair) offerPair(pendingPair);
+        }
+        document.addEventListener('pointerup', () => setTimeout(() => chat.refresh(), 0));
+        document.addEventListener('keyup', () => chat.refresh());
+      }
       if (demoFlow) {
         const feedDemo = () => {
           setActivity(demoActivity(getEdges().map(e => e.id), Date.now()));

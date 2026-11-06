@@ -146,7 +146,8 @@ export interface CrayonView {
   label(id: bigint): string;
   /** False once the node left the board: its draft is dropped. */
   exists(id: bigint): boolean;
-  send(nodeIds: bigint[], notes: string[]): Promise<void>;
+  /** True when an active chat received the saved marks. */
+  send(nodeIds: bigint[], notes: string[]): Promise<void | boolean>;
   /** An agent waits on this board's marks right now. */
   listening(): boolean;
 }
@@ -342,10 +343,10 @@ export function mountCrayon(view: CrayonView): { crayon: Crayon; sync: () => voi
     // Only these draft objects fly and leave: circles drawn (or re-drawn on a sent node) while it is in flight stay drafts.
     view.send(drafts.map(d => d.nodeId), drafts.map(d => d.note.trim()))
       .then(
-        () => {
+        delivered => {
           fly(drafts.filter(d => crayon.live().includes(d)).map(d => d.nodeId));
           crayon.removeSent(drafts);
-          if (!view.listening()) showNotice(NO_LISTENER);
+          if (!delivered && !view.listening()) showNotice(NO_LISTENER);
         },
         (err: unknown) => showError(err instanceof Error ? err.message : String(err)),
       )

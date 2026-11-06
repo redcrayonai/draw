@@ -95,6 +95,36 @@ export const agentSubject = (userId: string) => `agent:${userId}`;
 export const principalSubject = (principal: Principal) => principal.machine ? `machine:${principal.machine.keyId}` : agentSubject(principal.userId);
 export const SERVICE_SUBJECT = 'service:mcp';
 
+// ---- tokens for one purpose on one board: signed with the same key, under their own issuer and audience ----
+
+async function mintScoped(env: Env, iss: string, aud: string, ttlS: number, sub: string, board: bigint, now: number, extra: Record<string, string> = {}): Promise<string> {
+  const { kid, key } = await signingKey(env);
+  const iat = Math.floor(now / 1000);
+  const header = b64url(utf8.encode(JSON.stringify({ alg: 'ES256', typ: 'JWT', kid })));
+  const payload = b64url(utf8.encode(JSON.stringify({ iss, aud, sub, board: board.toString(), ...extra, iat, exp: iat + ttlS })));
+  const signature = new Uint8Array(await crypto.subtle.sign({ name: 'ECDSA', hash: 'SHA-256' }, key, utf8.encode(`${header}.${payload}`)));
+  return `${header}.${payload}.${b64url(signature)}`;
+}
+
+/** The token's claims, or null for anything not minted for this issuer and audience and still valid. */
+async function verifyScoped(env: Env, token: string, issuer: string, audience: string, now: number) {
+  try {
+    const { payload, protectedHeader } = await jwtVerify(token, createLocalJWKSet(jwks(env)), {
+      issuer,
+      audience,
+      algorithms: ['ES256'],
+      requiredClaims: ['exp'],
+      currentDate: new Date(now),
+    });
+    // Minting always names its key; jose would otherwise try the only key that fits.
+    if (!protectedHeader.kid || typeof payload.sub !== 'string') return null;
+    if (typeof payload.board !== 'string' || !/^\d{1,20}$/.test(payload.board)) return null;
+    return { payload, sub: payload.sub, board: BigInt(payload.board) };
+  } catch {
+    return null;
+  }
+}
+
 // ---- live tap publish tokens ----
 // Signed with the same key, but under their own issuer and audience: the
 // database fetches keys only for origins(env).issuer, so a tap token can never
@@ -105,31 +135,13 @@ const tapIssuer = (env: Env) => `${origins(env).mcp}/tap`;
 
 /** A token that lets the tap publish to one board's live channel for 12 hours. */
 export async function mintTap(env: Env, sub: string, board: bigint, now = Date.now()): Promise<string> {
-  const { kid, key } = await signingKey(env);
-  const iat = Math.floor(now / 1000);
-  const header = b64url(utf8.encode(JSON.stringify({ alg: 'ES256', typ: 'JWT', kid })));
-  const payload = b64url(utf8.encode(JSON.stringify({ iss: tapIssuer(env), aud: TAP_AUDIENCE, sub, board: board.toString(), iat, exp: iat + TAP_TTL_S })));
-  const signature = new Uint8Array(await crypto.subtle.sign({ name: 'ECDSA', hash: 'SHA-256' }, key, utf8.encode(`${header}.${payload}`)));
-  return `${header}.${payload}.${b64url(signature)}`;
+  return mintScoped(env, tapIssuer(env), TAP_AUDIENCE, TAP_TTL_S, sub, board, now);
 }
 
 /** The tap token's subject and board, or null for anything not minted by mintTap and still valid. */
 export async function verifyTap(env: Env, token: string, now = Date.now()): Promise<{ sub: string; board: bigint } | null> {
-  try {
-    const { payload, protectedHeader } = await jwtVerify(token, createLocalJWKSet(jwks(env)), {
-      issuer: tapIssuer(env),
-      audience: TAP_AUDIENCE,
-      algorithms: ['ES256'],
-      requiredClaims: ['exp'],
-      currentDate: new Date(now),
-    });
-    // mintTap always names its key; jose would otherwise try the only key that fits.
-    if (!protectedHeader.kid || typeof payload.sub !== 'string') return null;
-    if (typeof payload.board !== 'string' || !/^\d{1,20}$/.test(payload.board)) return null;
-    return { sub: payload.sub, board: BigInt(payload.board) };
-  } catch {
-    return null;
-  }
+  const claims = await verifyScoped(env, token, tapIssuer(env), TAP_AUDIENCE, now);
+  return claims && { sub: claims.sub, board: claims.board };
 }
 
 // ---- red crayon watcher tokens (spec 2026-10-19 D18): the helper's `marks` command waits with one ----
@@ -140,29 +152,30 @@ const marksIssuer = (env: Env) => `${origins(env).mcp}/marks`;
 
 /** A token that lets the watcher claim marks for one seat on one board for 12 hours. */
 export async function mintMarks(env: Env, sub: string, board: bigint, seat: string, now = Date.now()): Promise<string> {
-  const { kid, key } = await signingKey(env);
-  const iat = Math.floor(now / 1000);
-  const header = b64url(utf8.encode(JSON.stringify({ alg: 'ES256', typ: 'JWT', kid })));
-  const payload = b64url(utf8.encode(JSON.stringify({ iss: marksIssuer(env), aud: MARKS_AUDIENCE, sub, board: board.toString(), seat, iat, exp: iat + MARKS_TTL_S })));
-  const signature = new Uint8Array(await crypto.subtle.sign({ name: 'ECDSA', hash: 'SHA-256' }, key, utf8.encode(`${header}.${payload}`)));
-  return `${header}.${payload}.${b64url(signature)}`;
+  return mintScoped(env, marksIssuer(env), MARKS_AUDIENCE, MARKS_TTL_S, sub, board, now, { seat });
 }
 
 /** The marks token's subject, board and seat, or null for anything not minted by mintMarks and still valid. */
 export async function verifyMarks(env: Env, token: string, now = Date.now()): Promise<{ sub: string; board: bigint; seat: string } | null> {
-  try {
-    const { payload, protectedHeader } = await jwtVerify(token, createLocalJWKSet(jwks(env)), {
-      issuer: marksIssuer(env),
-      audience: MARKS_AUDIENCE,
-      algorithms: ['ES256'],
-      requiredClaims: ['exp'],
-      currentDate: new Date(now),
-    });
-    if (!protectedHeader.kid || typeof payload.sub !== 'string') return null;
-    if (typeof payload.board !== 'string' || !/^\d{1,20}$/.test(payload.board)) return null;
-    if (typeof payload.seat !== 'string' || !/^[A-Za-z0-9]{16}$/.test(payload.seat)) return null;
-    return { sub: payload.sub, board: BigInt(payload.board), seat: payload.seat };
-  } catch {
-    return null;
-  }
+  const claims = await verifyScoped(env, token, marksIssuer(env), MARKS_AUDIENCE, now);
+  const seat = claims?.payload.seat;
+  if (!claims || typeof seat !== 'string' || !/^[A-Za-z0-9]{16}$/.test(seat)) return null;
+  return { sub: claims.sub, board: claims.board, seat };
+}
+
+// ---- board chat tokens: the helper's `chat` command speaks for one agent on one board with one ----
+// Own issuer and audience, as for tap tokens: a chat token is neither a tap token nor a database token.
+export const CHAT_AUDIENCE = 'redcrayon-chat';
+export const CHAT_TTL_S = 12 * 60 * 60;
+const chatIssuer = (env: Env) => `${origins(env).mcp}/chat`;
+
+/** A token that lets the helper speak for this subject's agent on one board for 12 hours. */
+export async function mintChat(env: Env, sub: string, board: bigint, now = Date.now()): Promise<string> {
+  return mintScoped(env, chatIssuer(env), CHAT_AUDIENCE, CHAT_TTL_S, sub, board, now);
+}
+
+/** The chat token's subject and board, or null for anything not minted by mintChat and still valid. */
+export async function verifyChat(env: Env, token: string, now = Date.now()): Promise<{ sub: string; board: bigint } | null> {
+  const claims = await verifyScoped(env, token, chatIssuer(env), CHAT_AUDIENCE, now);
+  return claims && { sub: claims.sub, board: claims.board };
 }
