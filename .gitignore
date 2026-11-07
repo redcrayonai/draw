@@ -30,3 +30,6 @@ e2e/playwright-report/
 # Impeccable design-run scratch (mocks, decision pages); design.json is the DESIGN.md sidecar
 .impeccable/*
 !.impeccable/design.json
+
+# macOS Finder metadata
+.DS_Store

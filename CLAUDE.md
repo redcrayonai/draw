@@ -51,7 +51,7 @@ node scripts/vendor-scan.mjs --public --enforce
   `UNAVAILABLE` or `UNCONFIRMED`. No auth-provider names, cloud account ids or
   production hostnames anywhere in source (vendor-scan fails CI).
 - **The core stands alone.** Hosted-only code plugs in through seams
-  (`VITE_AUTH_PROVIDER` / `$auth`, `createWorker` deps); never import or
+  (`VITE_AUTH_PROVIDER` / `$auth`, `VITE_CANVAS_EXTRA` / `$extra`, `createWorker` deps); never import or
   reference it from here.
 - **Plugins** are optional features in this repo, off per workspace until an
   owner or admin turns them on, offered only when their server settings are
