@@ -13,7 +13,10 @@ const pluginDir = fileURLToPath(new URL('../plugins', import.meta.url));
 const linkedPlugins = existsSync(pluginDir) ? readdirSync(pluginDir).flatMap(name => { try { return [realpathSync(`${pluginDir}/${name}`)]; } catch { return []; } }) : [];
 
 export default defineConfig(({ mode }) => {
-  const provider = loadEnv(mode, process.cwd(), 'VITE_').VITE_AUTH_PROVIDER || 'anonymous';
+  const env = loadEnv(mode, process.cwd(), 'VITE_');
+  const provider = env.VITE_AUTH_PROVIDER || 'anonymous';
+  // VITE_CANVAS_EXTRA: a module (from client/, or absolute) that adds to the canvas; see src/extra.ts.
+  const extra = env.VITE_CANVAS_EXTRA || './src/extra.ts';
   return {
     build: { rollupOptions: { input: {
       main: fileURLToPath(new URL('./index.html', import.meta.url)),
@@ -22,6 +25,7 @@ export default defineConfig(({ mode }) => {
     server: { fs: { allow: [searchForWorkspaceRoot(process.cwd()), pluginDir, ...linkedPlugins] } },
     resolve: { alias: {
       $auth: fileURLToPath(new URL(BUILT_IN[provider] ?? provider, import.meta.url)),
+      $extra: fileURLToPath(new URL(extra, import.meta.url)),
       // The canvas plugin interface (plugins/README.md): a plugin's client/ part imports only this.
       '@draw/canvas': fileURLToPath(new URL('./src/plugin-api.ts', import.meta.url)),
     } },

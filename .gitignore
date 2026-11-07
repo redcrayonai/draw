@@ -44,3 +44,6 @@ tsconfig.api.json
 
 # outside plugin settings (compose env_file)
 plugins.env
+
+# macOS Finder metadata
+.DS_Store

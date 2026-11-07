@@ -151,17 +151,21 @@ function stepItem(step: GuideStep): HTMLLIElement {
  * pointerdown closes it, and every key stops at the panel so canvas
  * shortcuts never fire behind it. The agent row is an ARIA tablist: roving
  * tabindex, arrows / Home / End move along it and wrap.
+ *
+ * openGuide() shows the guide to an anonymous viewer too (offered to a build's
+ * extra module, see extra.ts): the agent still signs in to an account when it
+ * first connects, which the signed-out lead says.
  */
 export function setupConnect(
   url: string | undefined,
   opts: { viewer: () => Viewer; signIn?: () => void | Promise<void>; privacyUrl?: string }
-): { open(): void; refresh(): void } {
+): { open(): void; openGuide(): void; refresh(): void } {
   const root = document.getElementById('connect');
   const panel = document.getElementById('connect-panel');
   const tabRow = document.getElementById('connect-tabs');
   const panes = document.getElementById('connect-panes');
   const opener = document.getElementById('act-connect');
-  const inert = { open: () => {}, refresh: () => {} };
+  const inert = { open: () => {}, openGuide: () => {}, refresh: () => {} };
   if (url === undefined || root === null || panel === null || tabRow === null || panes === null) {
     // No hosted server to point an agent at yet: offer no way in.
     opener?.remove();
@@ -250,9 +254,9 @@ export function setupConnect(
       el => el.tabIndex >= 0 && el.closest('[hidden], details:not([open]) > :not(summary)') === null
     );
 
-  const open = (): void => {
+  const open = (guide = false): void => {
     // An agent links to an account, so ask an anonymous viewer for one first.
-    if (!opts.viewer().signedIn && opts.signIn) {
+    if (!guide && !opts.viewer().signedIn && opts.signIn) {
       void opts.signIn();
       return;
     }
@@ -270,8 +274,8 @@ export function setupConnect(
     returnFocus?.focus();
   };
 
-  opener?.addEventListener('click', open);
-  document.getElementById('empty-connect')?.addEventListener('click', open);
+  opener?.addEventListener('click', () => open());
+  document.getElementById('empty-connect')?.addEventListener('click', () => open());
   root.addEventListener('pointerdown', evt => {
     if (evt.target !== root) return;
     // Else the mousedown that follows focuses the now-hidden backdrop, dropping focus to <body>.
@@ -320,7 +324,8 @@ export function setupConnect(
     true
   );
   return {
-    open,
+    open: () => open(),
+    openGuide: () => open(true),
     refresh: () => {
       if (!root.hidden) renderLive();
     },

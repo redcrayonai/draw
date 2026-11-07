@@ -181,7 +181,7 @@ describe('findAgentBoard', () => {
 describe('Connect an agent dialog', () => {
   let viewer: import('./connect').Viewer = { signedIn: true, name: 'Alan Lee', agent: null };
   const signIn = vi.fn();
-  let dialog: { open(): void; refresh(): void };
+  let dialog: { open(): void; openGuide(): void; refresh(): void };
   const TABS = ['claude', 'cursor', 'codex', 'claude-ai', 'other'];
   const root = () => document.getElementById('connect') as HTMLDivElement;
   const panel = () => document.getElementById('connect-panel') as HTMLElement;
@@ -434,6 +434,18 @@ describe('Connect an agent dialog', () => {
       document.getElementById('empty-connect')!.click();
       expect(signIn).toHaveBeenCalledTimes(2);
       expect(root().hidden).toBe(true);
+    });
+
+    it('signed out, openGuide shows the guide without asking for an account; the agent signs in when it connects', () => {
+      viewer = { signedIn: false };
+      signIn.mockClear();
+      dialog.openGuide();
+      expect(signIn).not.toHaveBeenCalled();
+      expect(root().hidden).toBe(false);
+      expect(shownPanes()).toHaveLength(1);
+      expect(codes(shownPanes()[0]!).join('\n')).toContain(MCP);
+      expect(document.getElementById('connect-lead')!.textContent).toBe(LEAD_OUT);
+      expect(live().textContent).toBe("Sign in to see your agent's boards here.");
     });
   });
 
