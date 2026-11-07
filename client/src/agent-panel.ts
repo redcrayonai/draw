@@ -65,7 +65,7 @@ function randomId(): string {
 const newConversationId = () => `c-${randomId()}`;
 const validId = (id: string | null): id is string => id !== null && id.length <= 128 && /^[A-Za-z0-9:_-]+$/.test(id);
 
-export function mountAgentPanel(deps: AgentPanelDeps): { selectionChanged(): void } {
+export function mountAgentPanel(deps: AgentPanelDeps): { selectionChanged(): void; boardChanged(): void } {
   // Reading localStorage itself can throw when the browser blocks storage.
   let storage: Storage | undefined;
   try { storage = deps.storage ?? localStorage; } catch { storage = undefined; }
@@ -128,10 +128,11 @@ export function mountAgentPanel(deps: AgentPanelDeps): { selectionChanged(): voi
   const conversationId = async (): Promise<string> => {
     await starting;
     const key = await conversationKey(deps.boardLink());
-    const stored = load(key);
-    if (validId(stored)) return stored;
+    // memory first: a New chat id whose storage write failed must win over the old stored one
     const known = memory.get(key);
     if (known) return known;
+    const stored = load(key);
+    if (validId(stored)) return stored;
     const id = newConversationId();
     save(key, id);
     return id;
@@ -234,14 +235,18 @@ export function mountAgentPanel(deps: AgentPanelDeps): { selectionChanged(): voi
     evt.stopPropagation(); // the canvas's own Escape would clear the selection
     open(false);
   });
-  $<HTMLButtonElement>('agent-new').addEventListener('click', () => {
+  // Aborts the streaming reply and empties the transcript.
+  const clearChat = () => {
     running?.abort();
     running = null;
-    const link = deps.boardLink();
-    // a failed write leaves the old id; the next send makes one if none is kept
-    starting = starting.then(async () => save(await conversationKey(link), newConversationId())).catch(() => {});
     state = initialChat();
     render();
+  };
+  $<HTMLButtonElement>('agent-new').addEventListener('click', () => {
+    const link = deps.boardLink();
+    // a failed storage write still keeps the new id in memory for this page
+    starting = starting.then(async () => save(await conversationKey(link), newConversationId())).catch(() => {});
+    clearChat();
     input.focus();
   });
   $<HTMLButtonElement>('agent-about-clear').addEventListener('click', () => {
@@ -301,5 +306,7 @@ export function mountAgentPanel(deps: AgentPanelDeps): { selectionChanged(): voi
       if (deps.selectedNode()?.id !== cleared) cleared = undefined;
       renderAbout();
     },
+    // Another board is on screen: its own conversation picks up on the next send.
+    boardChanged: clearChat,
   };
 }

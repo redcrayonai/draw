@@ -2380,6 +2380,7 @@ async function boot(conn: DbConnection, identityHex: string, signedIn: boolean):
         overlayPref = readOverlayPref(board.name);
         showDiff = getVersion()?.assertionMode === 'intent';
         showBoardLink(board);
+        agentPanel?.boardChanged();
         title.textContent = `${getVersion()?.assertionMode === 'intent' ? 'Branch · ' : ''}${board.name}`;
         enter = false;
         onTableChange();

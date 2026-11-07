@@ -58,6 +58,14 @@ describe('createSseParser', () => {
     expect(crlf.events).toEqual(events);
   });
 
+  it('a chunk ending in half a CRLF still delivers the events before it', () => {
+    const { events, parser } = collect();
+    parser.push(frame('done', {}) + 'event: status\r');
+    expect(events).toEqual([{ type: 'done' }]);
+    parser.push('\ndata: {"message":"m"}\r\n\r\n');
+    expect(events).toEqual([{ type: 'done' }, { type: 'status', message: 'm' }]);
+  });
+
   it('ignores unknown event types and malformed data', () => {
     const { events, parser } = collect();
     parser.push(frame('ping', { n: 1 }) + 'event: delta\ndata: {nope\n\n' + frame('delta', { text: 'ok' }));
@@ -113,6 +121,17 @@ describe('streamChat', () => {
       fetchImpl: streamOf([frame('error', { code: 'x', message: 'y' })]),
     });
     expect(result).toBe('error');
+  });
+
+  it('resolves on done even if the stream stays open', async () => {
+    let cancelled = false;
+    const fetchImpl = (async () => new Response(new ReadableStream({
+      start(c) { c.enqueue(new TextEncoder().encode(frame('done', { text: 'ok' }))); }, // never closed
+      cancel() { cancelled = true; },
+    }))) as typeof fetch;
+    const result = await streamChat({ url: 'https://agent.example', token: 't', body, onEvent: () => {}, fetchImpl });
+    expect(result).toBe('done');
+    expect(cancelled).toBe(true);
   });
 
   it('a stream that ends without done resolves dropped', async () => {

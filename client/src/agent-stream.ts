@@ -54,7 +54,7 @@ export function createSseParser(onEvent: (e: AgentEvent) => void): { push(chunk:
     push(chunk) {
       // A CRLF can straddle two chunks, so normalise only once the text is joined.
       buffer = (buffer + chunk).replace(/\r\n/g, '\n');
-      if (buffer.endsWith('\r')) return; // wait for its \n
+      // A trailing \r (half a CRLF) stays in the buffer until its \n arrives.
       let end: number;
       while ((end = buffer.indexOf('\n\n')) !== -1) {
         dispatch(buffer.slice(0, end));
@@ -116,6 +116,11 @@ export async function streamChat(opts: {
       const { done, value } = await reader.read();
       if (done) break;
       parser.push(decoder.decode(value, { stream: true }));
+      // The agent has finished: stop here, even if the server or a proxy keeps the stream open.
+      if (outcome !== 'dropped') {
+        void reader.cancel().catch(() => {});
+        return outcome;
+      }
     }
     parser.push(decoder.decode());
   } catch { /* a failed or aborted connection is a dropped reply */ }

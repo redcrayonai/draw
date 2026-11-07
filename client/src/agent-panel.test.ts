@@ -181,6 +181,26 @@ describe('agent panel', () => {
     expect(sentBody(fake, 2).conversationId).not.toBe(id);
   });
 
+  it('new chat holds when storage can be read but not written', async () => {
+    localStorage.setItem(KEY, 'c-earlier');
+    const full = {
+      getItem: (k: string) => localStorage.getItem(k),
+      setItem: () => { throw new DOMException('full', 'QuotaExceededError'); },
+    } as unknown as Storage;
+    const { fake, input, sendBtn } = mount(sseFetch(), full);
+    (document.getElementById('agent-new') as HTMLButtonElement).click();
+    ask(input, 'one');
+    await fake.started();
+    expect(sentBody(fake).conversationId).not.toBe('c-earlier');
+    const id = sentBody(fake).conversationId;
+    fake.push('done', { text: 'ok' });
+    fake.close();
+    await vi.waitFor(() => expect(sendBtn.disabled).toBe(false));
+    ask(input, 'two');
+    await vi.waitFor(() => expect(fake.calls).toHaveLength(2));
+    expect(sentBody(fake, 1).conversationId).toBe(id);
+  });
+
   it('keeps the stored conversation id for the board', async () => {
     localStorage.setItem(KEY, 'c-earlier');
     const { fake, input } = mount();
@@ -308,6 +328,23 @@ describe('agent panel', () => {
     fake.close(); // no done or error
     await vi.waitFor(() => expect(items(msgs)[msgs.children.length - 1]).toEqual(['agent-msg agent-error', DROPPED]));
     expect(sendBtn.disabled).toBe(false);
+  });
+
+  it('switching boards clears the chat and continues the new board\'s conversation', async () => {
+    localStorage.setItem('agent-conversation:payments', 'c-payments');
+    const { fake, input, msgs, sendBtn, panel } = mount();
+    ask(input, 'one');
+    await fake.started();
+    fake.push('delta', { text: 'Half' });
+    await vi.waitFor(() => expect(msgs.children).toHaveLength(2));
+    link = 'https://draw.example/?db=demo#b=payments';
+    panel.boardChanged();
+    expect((fake.calls[0].init.signal as AbortSignal).aborted).toBe(true);
+    expect(msgs.children).toHaveLength(0);
+    expect(sendBtn.disabled).toBe(false);
+    ask(input, 'two');
+    await vi.waitFor(() => expect(fake.calls).toHaveLength(2));
+    expect(sentBody(fake, 1)).toMatchObject({ boardLink: link, conversationId: 'c-payments' });
   });
 
   it('new chat during a reply does not show dropped', async () => {
