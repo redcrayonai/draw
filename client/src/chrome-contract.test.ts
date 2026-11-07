@@ -825,4 +825,19 @@ describe('library chrome (L, ⇧L)', () => {
     // the header wraps past --topbar-h on phones: its popovers drop from its real bottom, not over its buttons
     expect(phone).toMatch(/#presence-pop,\n#theme-pop,\n#review-pop,\n#share-pop,\n#account-pop \{\n {2}top: calc\(100% \+ var\(--space-2\)\);/);
   });
+
+  it('keeps the agent panel layout: a resize edge off on phones, kept line breaks, a spinner that fits its line', async () => {
+    const css = await readCss();
+    const block = (source: string, selector: string) => {
+      const at = source.indexOf(`\n${selector} {`);
+      return at < 0 ? '' : source.slice(at, source.indexOf('}', at));
+    };
+    expect(block(css, '#agent-resize')).toMatch(/cursor: col-resize;/);
+    expect(block(css, '.agent-msg')).toMatch(/overflow-wrap: anywhere;[\s\S]*white-space: pre-wrap;/);
+    expect(block(css, '.agent-status.run::before')).toMatch(/box-sizing: border-box;/);
+    const at = css.indexOf('\n@media (max-width: 720px) {');
+    const phone = css.slice(at, css.indexOf('\n}', at)).replace(/\n {2}/g, '\n');
+    expect(block(phone, '#agent-resize')).toMatch(/display: none;/);
+    expect(block(phone, '#agent-panel')).toMatch(/width: 100%;/);
+  });
 });

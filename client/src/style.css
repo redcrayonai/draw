@@ -2440,6 +2440,297 @@ body.lib-dragging #board {
   display: none;
 }
 
+/* ---------- agent chat (agent-panel.ts) ----------
+   A round button on the canvas corner, above the Shortcuts pill, opens a
+   full-height panel docked on the right. */
+
+:root {
+  --agent-panel-w: 320px;
+}
+
+.agent-orb {
+  position: absolute;
+  right: var(--space-4);
+  bottom: calc(var(--space-5) + var(--shortcuts-h) + var(--space-3));
+  width: 44px;
+  height: 44px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  border: 1px solid var(--hairline);
+  background: var(--panel-2);
+  color: var(--ink);
+  box-shadow: var(--shadow-lg);
+  z-index: 13;
+  transition: background var(--dur) var(--ease);
+}
+
+.agent-orb:hover {
+  background: var(--panel-hi);
+}
+
+.agent-orb[hidden] {
+  display: none;
+}
+
+.agent-orb-logo {
+  display: grid;
+  place-items: center;
+}
+
+#agent-panel {
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  width: var(--agent-panel-w);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  padding: var(--space-3);
+  background: var(--panel);
+  border-left: 1px solid var(--border);
+  z-index: 16;
+}
+
+#agent-panel[hidden] {
+  display: none;
+}
+
+/* The left edge drags to resize the panel (agent-panel.ts); its line shows on hover and while dragging. */
+#agent-resize {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: -3px;
+  width: 6px;
+  cursor: col-resize;
+  touch-action: none;
+  z-index: 1;
+}
+
+#agent-resize::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 2px;
+  width: 2px;
+  background: transparent;
+  transition: background var(--dur) var(--ease);
+}
+
+#agent-resize:hover::after,
+#agent-resize.drag::after {
+  background: var(--hairline);
+}
+
+#agent-resize:focus-visible {
+  outline: 2px solid var(--sel);
+  outline-offset: -2px;
+}
+
+body.agent-resizing {
+  cursor: col-resize;
+  user-select: none;
+}
+
+/* The inspector steps aside so the two never overlap. */
+@media (min-width: 721px) {
+  body.agent-open #inspector {
+    right: calc(var(--agent-panel-w) + var(--space-4));
+  }
+}
+
+.agent-head {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.agent-title {
+  flex: 1;
+  font: 600 13px/1.3 var(--sans);
+  color: var(--ink);
+}
+
+.agent-text-btn {
+  font: 400 12px/1 var(--sans);
+  color: var(--muted);
+  padding: 6px var(--space-2);
+  border-radius: var(--r-sm);
+  transition: background var(--dur) var(--ease), color var(--dur) var(--ease);
+}
+
+.agent-text-btn:hover {
+  background: var(--panel-hi);
+  color: var(--ink);
+}
+
+#agent-msgs {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  font: 400 13px/1.45 var(--sans);
+  color: var(--ink);
+  scrollbar-width: thin;
+}
+
+.agent-msg {
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+
+.agent-me {
+  align-self: flex-end;
+  max-width: 85%;
+  padding: 7px 10px;
+  border-radius: 11px 11px 3px 11px;
+  border: 1px solid var(--border);
+  background: var(--panel-hi);
+  color: var(--ink);
+}
+
+.agent-agent {
+  align-self: flex-start;
+  max-width: 92%;
+}
+
+/* the mark sits on the first line when the text wraps */
+.agent-status {
+  --status-line: 17px;
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  font-size: 12px;
+  line-height: var(--status-line);
+  color: var(--muted);
+}
+
+.agent-status::before {
+  content: '✓';
+  flex: none;
+  font-size: 10px;
+  line-height: var(--status-line);
+  color: var(--ok);
+}
+
+.agent-status.notice::before { content: none; }
+
+.agent-status.run::before {
+  content: '';
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  border: 1.5px solid var(--muted);
+  border-top-color: transparent;
+  box-sizing: border-box;
+  margin-top: calc((var(--status-line) - 8px) / 2);
+  animation: agent-spin 0.8s linear infinite;
+}
+
+@keyframes agent-spin { to { transform: rotate(360deg); } }
+
+.agent-error {
+  padding: var(--space-2) 10px;
+  border-radius: var(--r-md);
+  background: var(--panel-hi);
+  font-size: 12px;
+}
+
+#agent-about {
+  align-self: flex-start;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  max-width: 100%;
+  padding: 3px 4px 3px var(--space-2);
+  border-radius: 999px;
+  border: 1px solid var(--sel);
+  background: var(--sel-soft);
+  font: 400 12px/1.3 var(--sans);
+  color: var(--ink);
+}
+
+#agent-about[hidden] {
+  display: none;
+}
+
+#agent-about > span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+#agent-about b {
+  font-weight: 600;
+}
+
+#agent-about-clear {
+  flex: none;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  color: var(--muted);
+  line-height: 1;
+}
+
+#agent-about-clear:hover {
+  background: var(--panel-hi);
+  color: var(--ink);
+}
+
+#agent-form {
+  display: flex;
+  align-items: flex-end;
+  gap: 6px;
+  padding: 7px 7px 7px 10px;
+  border: 1px solid var(--hairline);
+  border-radius: 10px;
+  background: var(--panel-2);
+}
+
+#agent-input {
+  flex: 1;
+  min-width: 0;
+  resize: none;
+  border: 0;
+  outline: none;
+  background: transparent;
+  font: 400 13px/1.45 var(--sans);
+  color: var(--ink);
+  padding: 3px 0;
+}
+
+#agent-input::placeholder {
+  color: var(--faint);
+}
+
+#agent-form:focus-within {
+  border-color: var(--sel);
+}
+
+#agent-send {
+  flex: none;
+  width: 28px;
+  height: 28px;
+  display: grid;
+  place-items: center;
+  border-radius: var(--r-sm);
+  background: var(--ink);
+  color: var(--app);
+}
+
+#agent-send:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
 /* An open CODE body widens the panel so snippets wrap less (P3): 384 px at
    1024, 440 px from 1440 up, always leaving 360 px of canvas beside the
    232 px rail. The panel observer in interactions.ts re-runs the selection
@@ -3547,6 +3838,20 @@ textarea#inline-edit {
   .zoom-cluster,
   #shortcuts-toggle {
     bottom: calc(max(var(--space-4), env(safe-area-inset-bottom)) + var(--dock-h) + var(--space-3));
+  }
+
+  .agent-orb {
+    bottom: calc(max(var(--space-4), env(safe-area-inset-bottom)) + var(--dock-h) + var(--zoom-h) + 2 * var(--space-3));
+  }
+
+  /* the panel takes the whole width, so there is no edge to drag */
+  #agent-panel {
+    width: 100%;
+    border-left: 0;
+  }
+
+  #agent-resize {
+    display: none;
   }
 
   #shortcuts-toggle {
@@ -5627,6 +5932,7 @@ a.ctl {
 
 :root[data-theme='brutal'] :is(.topbar, #rail, #inspector, #toolbar, .tb-popover, #dock, .zoom-cluster,
   #shortcuts-toggle, #legend, #shortcuts, #presence-pop, #theme-pop, #palette-panel, .btn-primary, #chart-tip,
+  #agent-panel, #agent-form,
   #connect-panel, #act-connect, #act-share, #share-pop, #empty-connect) {
   border-width: 2px;
   border-color: var(--ink);

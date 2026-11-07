@@ -16,3 +16,9 @@ regexes = ['''AKIAABCDEFGHIJKLMNOP''']
 [[allowlists]]
 description = "dummy share token (0123456789abcdef repeated) in mcp/src/tools.test.ts share-link parsing; CI scans every remote branch"
 regexes = ['''0123456789abcdef0123456789abcdef''']
+
+[[allowlists]]
+description = "fake private key body (MIIabc) in helper/src/chat.test.ts, the chat scrubber test; CI scans every remote branch"
+condition = "AND"
+paths = ['''^helper/src/chat\.test\.ts$''']
+regexes = ['''MIIabc''']
