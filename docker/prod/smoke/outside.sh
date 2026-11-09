@@ -16,6 +16,8 @@ cd "$(dirname "$0")/../../.."
 domain=smoke.localhost
 project=rc-outside
 version="${DRAW_VERSION:-$(git describe --tags --abbrev=0 --match 'v[0-9]*' | sed 's/^v//')}"
+# The smoke owns plugins.env while it runs and deletes it after; never someone's real one.
+[ ! -e plugins.env ] || { echo "outside.sh: move plugins.env out of the repo root first" >&2; exit 1; }
 work="$(mktemp -d)"
 deploy="$work/deploy"
 canary="canary-$(openssl rand -hex 16)"

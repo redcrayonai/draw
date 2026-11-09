@@ -166,7 +166,10 @@ export function database(work) {
   const env = { ...process.env, STDB_TEST_ROOT: dir, STDB_TEST_PORT: String(port) };
   const script = join(work, 'scripts/stdb-test.sh');
   const started = spawnSync('bash', [script, 'start'], { env, encoding: 'utf8' });
-  if (started.status !== 0) throw new Error(rule(`the local database did not start: ${started.stderr.trim()}`));
+  if (started.status !== 0) {
+    rmSync(dir, { recursive: true, force: true });
+    throw new Error(rule(`the local database did not start: ${started.stderr.trim()}`));
+  }
   const cli = (args, cwd) => spawnSync('spacetime', ['--root-dir', dir, ...args], { cwd, encoding: 'utf8', maxBuffer: 1 << 28 });
   return {
     /** Publishes <moduleDir>; fresh replaces the database, otherwise an update that never deletes data. */
@@ -331,8 +334,7 @@ const sh = (command, args, options) => {
 /** builder build: §7.1 of the builder spec. Returns build.json's content. */
 export function build({ config: dir, root = ROOT, out, sources, seams, dev = false, cache, env = process.env }) {
   const config = readConfig(dir), locked = readLock(dir);
-  const paths = Object.fromEntries(Object.entries(config.plugins).filter(([, entry]) => entry.kind === 'path'));
-  const problems = deployProblems(dev ? { plugins: Object.fromEntries(Object.entries(config.plugins).filter(([id]) => !paths[id])) } : config, locked, inRepoIds(root));
+  const problems = deployProblems(config, locked, inRepoIds(root), { dev });
   if (problems.length) throw new Error(problems.join('\n'));
   const scratch = mkdtempSync(join(tmpdir(), 'draw-builder-'));
   let db;

@@ -23,10 +23,13 @@ done
 echo "bundle $out/mcp/app/mcp/worker.js" >>"$out/targets"
 if [ -n "${CANARY:-}" ]; then
   for image in canvas dashboard mcp module-setup; do
-    if docker save "ghcr.io/redcrayonai/redcrayon-$image:$tag" | grep -aqF "$CANARY"; then
+    # Saved first: a failed save must stop the scan, not read as clean.
+    docker save -o "$out/image.tar" "ghcr.io/redcrayonai/redcrayon-$image:$tag"
+    if grep -aqF "$CANARY" "$out/image.tar"; then
       echo "scan-images: the build secret is in redcrayon-$image:$tag" >&2
       exit 1
     fi
+    rm "$out/image.tar"
   done
   echo "scan-images: no image holds the build secret"
 fi

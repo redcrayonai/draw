@@ -128,7 +128,7 @@ WORKDIR /app
 FROM workerd AS dashboard
 COPY --from=build /out/dashboard /app/dashboard
 # The config with the plugin setting bindings the build generated.
-COPY --from=build /out/dashboard.capnp /app/
+COPY --from=build /out/dashboard.capnp /out/plugin-settings.env.example /app/
 COPY --from=builder /draw/docker/prod/assets.js /app/
 EXPOSE 5174
 ENTRYPOINT ["/app/workerd-entrypoint.sh", "dashboard"]

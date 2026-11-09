@@ -186,3 +186,18 @@ test('deployProblems: local folders, unlocked, stale and dropped entries', () =>
   assert.match(deployProblems(configOf({ sk: repoEntry('v1.0.0', { skip: true }), old: { kind: 'retired' } }), lockOf({}), []).join('\n'),
     /sk: "skip": true needs an entry in the lock[\s\S]*old: \{ "retired": true \} needs an entry in the lock/);
 });
+
+test('a skipped plugin keeps its locked pin; a retired one may be skipped', () => {
+  const moved = lockPlan(configOf({ pin: repoEntry('v2.0.0', { skip: true }) }), lockOf({ pin: entry() }), []);
+  assert.match(moved.problems[0], /pin: a skipped plugin keeps its locked pin \(v1\.0\.0\)/);
+  assert.match(deployProblems(configOf({ pin: repoEntry('v2.0.0', { skip: true }) }), lockOf({ pin: entry() }), []).join('\n'), /pin: lock is stale/);
+  const retired = lockOf({ pin: entry({ schema: SCHEMA, retired: true }) });
+  assert.deepEqual(lockPlan(configOf({ pin: repoEntry('v1.0.0', { skip: true }) }), retired, []).skip, ['pin']);
+  assert.deepEqual(deployProblems(configOf({ pin: repoEntry('v1.0.0', { skip: true }) }), retired, []), []);
+});
+
+test('development builds accept a local folder that also has a lock entry', () => {
+  const config = configOf({ pin: { kind: 'path', path: '../pin', skip: false } }), lock = lockOf({ pin: entry({ schema: SCHEMA }) });
+  assert.deepEqual(deployProblems(config, lock, [], { dev: true }), []);
+  assert.match(deployProblems(config, lock, []).join('\n'), /'pin' is a local folder/);
+});

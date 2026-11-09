@@ -141,7 +141,10 @@ const inRepoMessage = id => rule(`${id}: is a plugin in this repository; it is a
 const needsLock = (id, entry) => rule(entry.kind === 'retired'
   ? `${id}: { "retired": true } needs an entry in the lock; a plugin never locked has no tables to keep`
   : `${id}: "skip": true needs an entry in the lock; remove the entry instead, nothing would be kept`);
-const changed = (entry, locked) => entry.repo !== locked.repo || entry.ref !== locked.ref || locked.retired === true;
+const movedPin = (entry, locked) => entry.repo !== locked.repo || entry.ref !== locked.ref;
+const changed = (entry, locked) => movedPin(entry, locked) || locked.retired === true;
+// A skipped plugin is not fetched, so its pin cannot move while skipped.
+const skipMoved = (id, locked) => rule(`${id}: a skipped plugin keeps its locked pin (${locked.ref}); put that ref back, or drop "skip" to lock the new one`);
 
 /** What builder lock does with each entry (spec §5.1). */
 export function lockPlan(config, lock, inRepoIds) {
@@ -152,6 +155,7 @@ export function lockPlan(config, lock, inRepoIds) {
     else if (entry.kind === 'path') continue;
     else if (entry.kind === 'retired' || entry.skip) {
       if (!locked) plan.problems.push(needsLock(id, entry));
+      else if (entry.skip && movedPin(entry, locked)) plan.problems.push(skipMoved(id, locked));
       else plan[entry.kind === 'retired' ? 'retire' : 'skip'].push(id);
     } else plan[locked && !changed(entry, locked) ? 'keep' : 'resolve'].push(id);
   }
@@ -164,14 +168,14 @@ export function lockPlan(config, lock, inRepoIds) {
 }
 
 /** Why a deploy build refuses this plugins file and lock (spec §5.1). */
-export function deployProblems(config, lock, inRepoIds) {
+export function deployProblems(config, lock, inRepoIds, { dev = false } = {}) {
   const problems = [], stale = id => problems.push(rule(`${id}: lock is stale; run builder lock`));
   for (const [id, entry] of Object.entries(config.plugins)) {
     const locked = lock.plugins[id];
     if (inRepoIds.includes(id)) problems.push(inRepoMessage(id));
-    else if (entry.kind === 'path') problems.push(rule(`${CONFIG_FILE}: '${id}' is a local folder; deploy builds take only repo + ref. Use builder build --dev, or pin a tag.`));
+    else if (entry.kind === 'path') { if (!dev) problems.push(rule(`${CONFIG_FILE}: '${id}' is a local folder; deploy builds take only repo + ref. Use builder build --dev, or pin a tag.`)); }
     else if (!locked) problems.push(entry.kind === 'retired' || entry.skip ? needsLock(id, entry) : rule(`${id}: not in the lock; run builder lock`));
-    else if (entry.kind === 'retired' ? locked.retired !== true : changed(entry, locked)) stale(id);
+    else if (entry.kind === 'retired' ? locked.retired !== true : entry.skip ? movedPin(entry, locked) : changed(entry, locked)) stale(id);
   }
   for (const [id, locked] of Object.entries(lock.plugins)) {
     if (Object.hasOwn(config.plugins, id)) continue;

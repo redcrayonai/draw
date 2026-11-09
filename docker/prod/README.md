@@ -43,8 +43,8 @@ docker buildx bake -f <draw>/docker/prod/docker-bake.hcl --load \
 With a `seams/` folder, also pass `--set "*.contexts.seams=$PWD/seams"`; leave it
 out otherwise, since a context must exist.
 
-Put plugin settings in `plugins.env` next to `compose.prod.yml`; the build writes
-`plugin-settings.env.example` with every name. Upgrading draw: change the builder
+Put plugin settings in `plugins.env` next to `compose.prod.yml`. The dashboard image
+lists every name: `docker run --rm --entrypoint cat <dashboard image> /app/plugin-settings.env.example`. Upgrading draw: change the builder
 version and rebuild; a plugin outside its draw range fails the build, and
 `"skip": true` leaves it out while keeping its tables and data. Retiring a plugin
 (`{ "retired": true }`) does the same for good. Its data stays until you delete it
