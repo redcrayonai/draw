@@ -1,7 +1,7 @@
 [
   "module", "client", "mcp", "agent", "web", "shared", "scripts", "importer", "helper", "e2e", "plugin", "plugins",
   "docker", "docker-compose.yml", "compose.prod.yml",
-  ".dockerignore", ".env.example", ".gitignore", ".gitleaks.toml", ".mcp.json",
+  ".dockerignore", ".env.example", ".gitignore", ".gitleaks.toml", ".gitleaksignore", ".mcp.json",
   "flake.nix", "flake.lock", "LICENSE", "SELF_HOSTING.md", "CLAUDE.md", "PRODUCT.md", "DESIGN.md", "CONTRIBUTING.md", "SECURITY.md", "THIRD_PARTY_NOTICES.md",
   ".claude-plugin", ".github/actions", ".github/ISSUE_TEMPLATE", ".github/dependabot.yml",
   ".github/workflows/ci.yml", ".github/workflows/bindings-check.yml", ".github/workflows/build-client.yml", ".github/workflows/build-web.yml",
