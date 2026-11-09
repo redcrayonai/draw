@@ -406,7 +406,8 @@ export function build({ config: dir, root = ROOT, out, sources, seams, dev = fal
     const program = join(out, 'module-program');
     const noTests = source => !/\.test\./.test(source);
     cpSync(join(work, 'module'), join(program, 'module'), { recursive: true, filter: source => noTests(source) && !source.endsWith('/node_modules') });
-    cpSync(realpathSync(join(root, 'module/node_modules')), join(program, 'module/node_modules'), { recursive: true, verbatimSymlinks: true });
+    // Not the builder's own cache (its database description).
+    cpSync(realpathSync(join(root, 'module/node_modules')), join(program, 'module/node_modules'), { recursive: true, verbatimSymlinks: true, filter: source => !source.includes('/node_modules/.cache') });
     for (const plugin of plugins) if (plugin.parts.module) cpSync(join(work, 'plugins', plugin.id, 'module'), join(program, 'plugins', plugin.id, 'module'), { recursive: true, filter: noTests });
     cpSync(join(work, 'shared'), join(program, 'shared'), { recursive: true, filter: source => noTests(source) && !source.endsWith('/node_modules') });
     if (existsSync(join(root, 'shared/node_modules'))) cpSync(realpathSync(join(root, 'shared/node_modules')), join(program, 'shared/node_modules'), { recursive: true, verbatimSymlinks: true });
