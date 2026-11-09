@@ -71,6 +71,8 @@ test('incompatible upgrades are refused and leave the lock as it was', () => {
   assert.throws(() => lock({ config, cache, env, root }), /column 'text' was String, is now U32/);
   plugins({ repo: url, ref: 'v2.1.0' });
   assert.throws(() => lock({ config, cache, env, root }), /changes public view my_pinboard_notes/);
+  plugins({ repo: url, ref: 'v3.0.0' });
+  assert.throws(() => lock({ config, cache, env, root }), /the lock drops its database schema/);
   assert.equal(readFileSync(join(config, 'draw-plugins.lock.json'), 'utf8'), before);
   plugins({ repo: url, ref: 'v1.1.0' });
 });

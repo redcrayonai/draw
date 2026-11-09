@@ -70,3 +70,11 @@ test('the check leaves no files behind', { skip }, t => {
   apiTypeProblems(dir, 'module', exportedTypes, 'HEAD');
   for (const file of ['module/.api-base', 'module/api-compat.generated.ts', 'module/tsconfig.api.json']) assert.equal(existsSync(join(dir, file)), false, file);
 });
+
+test('a checker that cannot run is a problem, not a pass', { skip }, t => {
+  const dir = repo(t);
+  rmSync(join(dir, 'module/node_modules'));
+  const problems = apiTypeProblems(dir, 'module', exportedTypes, 'HEAD');
+  assert.equal(problems.length, 1);
+  assert.match(problems[0], /^plugin rule: the interface check did not run: /);
+});

@@ -291,6 +291,8 @@ export function lock({ config: dir, root = ROOT, cache, env = process.env }) {
   }
   for (const id of plan.retire) next.plugins[id] = { ...next.plugins[id], retired: true };
   for (const id of plan.drop) delete next.plugins[id];
+  const history = lockProblems(current, next);
+  if (history.length) throw new Error(history.join('\n'));
   writeLock(dir, next);
   return { plan, lock: next };
 }
@@ -440,8 +442,13 @@ export function link({ config: dir, root = ROOT }) {
     if (existsSync(target) && !lstatSync(target).isSymbolicLink()) throw new Error(rule(`${id}: plugins/${id} exists in this repo`));
     rmSync(target, { force: true });
     symlinkSync(resolve(dir, entry.path), target);
-    const exclude = join(root, '.git/info/exclude');
-    if (existsSync(dirname(exclude)) && !readFileSync(exclude, 'utf8').split('\n').includes(`/plugins/${id}`)) appendFileSync(exclude, `/plugins/${id}\n`);
+    // --git-path: in a worktree .git is a file and info/exclude lives in the common dir.
+    let exclude = null;
+    try { exclude = resolve(root, execFileSync('git', ['rev-parse', '--git-path', 'info/exclude'], { cwd: root, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim()); } catch {}
+    if (exclude) {
+      mkdirSync(dirname(exclude), { recursive: true });
+      if (!(existsSync(exclude) && readFileSync(exclude, 'utf8').split('\n').includes(`/plugins/${id}`))) appendFileSync(exclude, `/plugins/${id}\n`);
+    }
     linked.push(id);
   }
   regenerate(root);

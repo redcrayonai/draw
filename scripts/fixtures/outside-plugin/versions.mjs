@@ -21,8 +21,14 @@ export const VERSIONS = {
       .replace("text: t.string() });", "text: t.string(), pinned: t.bool() });")
       .replace('text: n.text })', 'text: n.text, pinned: n.pinned })'),
   }),
+  // v3.0.0 (from v1.1.0): incompatible. The module part and its tables are gone; null deletes a file.
+  'v3.0.0': files => {
+    const manifest = JSON.parse(files['plugin.json']);
+    delete manifest.tables;
+    return { 'plugin.json': `${JSON.stringify(manifest, null, 2)}\n`, 'module/index.ts': null };
+  },
 };
-export const BASES = { 'v1.1.0': 'v1.0.0', 'v2.0.0': 'v1.1.0', 'v2.1.0': 'v1.1.0' };
+export const BASES = { 'v1.1.0': 'v1.0.0', 'v2.0.0': 'v1.1.0', 'v2.1.0': 'v1.1.0', 'v3.0.0': 'v1.1.0' };
 
 
 const V1 = fileURLToPath(new URL('./v1/', import.meta.url));
@@ -33,11 +39,11 @@ export function filesOf(tag, range) {
   const v1 = Object.fromEntries(Object.entries(read(V1)).map(([f, text]) => [f, text.replace('DRAW_RANGE', range)]));
   if (tag === 'v1.0.0') return v1;
   const base = filesOf(BASES[tag], range);
-  return { ...base, ...VERSIONS[tag](base) };
+  return Object.fromEntries(Object.entries({ ...base, ...VERSIONS[tag](base) }).filter(([, text]) => text !== null));
 }
 
 /** A git repository at <dir> with every tag committed; returns { tag: commit }. */
-export function makeRepo(dir, range, tags = ['v1.0.0', 'v1.1.0', 'v2.0.0', 'v2.1.0']) {
+export function makeRepo(dir, range, tags = ['v1.0.0', 'v1.1.0', 'v2.0.0', 'v2.1.0', 'v3.0.0']) {
   const git = (...args) => execFileSync('git', ['-c', 'user.name=fixture', '-c', 'user.email=fixture@example.com', '-c', 'init.defaultBranch=main', ...args], { cwd: dir, encoding: 'utf8' }).trim();
   mkdirSync(dir, { recursive: true });
   git('init', '-q');

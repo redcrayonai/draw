@@ -59,23 +59,25 @@ export function apiTypeProblems(root, part, exportedTypes, ref = 'origin/main') 
   const { text, names } = compatSource(present, file => exportedTypes(readFileSync(join(base, `${file.replace(/^src\//, '')}.ts`), 'utf8')));
   writeFileSync(join(pkg, 'api-compat.generated.ts'), text);
   const bin = name => join(pkg, 'node_modules/.bin', name);
-  let output;
+  let result;
   if (part === 'module') {
     writeFileSync(join(pkg, 'tsconfig.api.json'), JSON.stringify({ extends: './tsconfig.json', include: [], files: ['api-compat.generated.ts'] }));
-    output = spawnSync(bin('tsc'), ['--noEmit', '--pretty', 'false', '-p', 'tsconfig.api.json'], { cwd: pkg, encoding: 'utf8' }).stdout;
+    result = spawnSync(bin('tsc'), ['--noEmit', '--pretty', 'false', '-p', 'tsconfig.api.json'], { cwd: pkg, encoding: 'utf8' });
   } else {
     spawnSync(bin('svelte-kit'), ['sync'], { cwd: pkg, encoding: 'utf8' });
     const include = ['.svelte-kit/ambient.d.ts', '.svelte-kit/non-ambient.d.ts', 'src/app.d.ts', 'src/auth-provider.d.ts', 'api-compat.generated.ts'].filter(f => existsSync(join(pkg, f)));
     writeFileSync(join(pkg, 'tsconfig.api.json'), JSON.stringify({ extends: './tsconfig.json', include }));
-    output = spawnSync(bin('svelte-check'), ['--tsconfig', './tsconfig.api.json', '--output', 'machine'], { cwd: pkg, encoding: 'utf8' }).stdout;
+    result = spawnSync(bin('svelte-check'), ['--tsconfig', './tsconfig.api.json', '--output', 'machine'], { cwd: pkg, encoding: 'utf8' });
   }
   const problems = [];
-  for (const line of output.split('\n')) {
+  for (const line of (result.stdout ?? '').split('\n')) {
     // tsc: api-compat.generated.ts(12,14): error TS…  svelte-check: <ts> ERROR "api-compat.generated.ts" 12:14 "…"
     const match = /^api-compat\.generated\.ts\((\d+),\d+\): error \w+: (.*)$/.exec(line) ?? /ERROR "api-compat\.generated\.ts" (\d+):\d+ "(.*)"$/.exec(line);
     if (match) problems.push(`plugin rule: ${names[match[1]] ?? `line ${match[1]}`} changed incompatibly; that needs a breaking release (a minor on 0.x, a major from 1.0). ${match[2]}`);
     else if (/^(?:[^(]+\(\d+,\d+\): error |\d+ ERROR )/.test(line)) problems.push(`plugin rule: the interface check could not compile: ${line}`);
   }
+  // A checker that crashed or never started must not read as "no breaking changes".
+  if (result.status !== 0 && !problems.length) problems.push(`plugin rule: the interface check did not run: ${String(result.error?.message || result.stderr || `exit ${result.status}`).trim().split('\n').slice(-3).join(' ')}`);
   return problems;
   }
 }

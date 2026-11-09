@@ -11,6 +11,7 @@ tag, and fetch the repository by `file://` URL like any plugin outside this repo
 | `v1.1.0` | private column appended, new table and index | compatible upgrade |
 | `v2.0.0` | a column changes type | refused by `lock` |
 | `v2.1.0` | the public view's row gains a field | refused by `lock` |
+| `v3.0.0` | from `v1.1.0`: the module part and its tables are gone | refused by `lock` |
 
 `plugin.json` holds `DRAW_RANGE`; tests replace it with a range that includes the draw
 version under test.
