@@ -52,7 +52,7 @@ builder() { docker run --rm -u "$(id -u):$(id -g)" -e HOME=/tmp -v "$deploy:/con
 images() {
   builder lock --config /config --cache /tmp/cache
   TAG="$1" DRAW_VERSION="$version" docker buildx bake -f docker/prod/docker-bake.hcl --load \
-    --set "*.contexts.deploy=$deploy" --secret "id=git_credentials,src=$work/git-credentials"
+    --set "*.contexts.deploy=$deploy" --set "*.secrets=id=git_credentials,src=$work/git-credentials"
 }
 use() { sed -i "s/^REDCRAYON_VERSION=.*/REDCRAYON_VERSION=$1/" "$work/.env"; dc up -d --wait --quiet-pull; }
 

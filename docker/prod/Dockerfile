@@ -18,7 +18,7 @@
 #   docker buildx bake -f docker/prod/docker-bake.hcl \
 #     --set '*.contexts.deploy=<config dir>' --set '*.contexts.seams=<config dir>/seams' \
 #     --set '*.contexts.builder=docker-image://ghcr.io/redcrayonai/draw-builder:<version>' \
-#     --secret id=git_credentials,src=<git credential-store file>
+#     --set '*.secrets=id=git_credentials,src=<git credential-store file>'
 #
 # Only the fetch stage sees the credentials; they never enter a layer or an output.
 #

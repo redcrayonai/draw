@@ -37,7 +37,7 @@ docker run --rm -u "$(id -u):$(id -g)" -e HOME=/tmp -v "$PWD:/config" \
 docker buildx bake -f <draw>/docker/prod/docker-bake.hcl --load \
   --set "*.contexts.deploy=$PWD" --set "*.contexts.seams=$PWD/seams" \
   --set '*.contexts.builder=docker-image://ghcr.io/redcrayonai/draw-builder:<version>' \
-  --secret id=git_credentials,src="$HOME/.git-credentials"
+  --set "*.secrets=id=git_credentials,src=$HOME/.git-credentials"
 ```
 
 Put plugin settings in `plugins.env` next to `compose.prod.yml`; the build writes
