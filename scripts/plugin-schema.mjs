@@ -110,7 +110,10 @@ const describeType = type => {
   if (kind === 'Sum' && type.Sum[0]?.[0] === 'some') return `Option<${describeType(type.Sum[0][1])}>`;
   return PRIMITIVES.includes(kind) ? kind : JSON.stringify(type);
 };
-const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
+// Key order does not count: the lock file stores keys sorted.
+const canonical = value => Array.isArray(value) ? value.map(canonical)
+  : value && typeof value === 'object' ? Object.fromEntries(Object.keys(value).sort().map(key => [key, canonical(value[key])])) : value;
+export const same = (a, b) => JSON.stringify(canonical(a)) === JSON.stringify(canonical(b));
 // Structural: type names do not matter to the database (spike S1).
 const resolved = (type, types) => {
   const kind = tag(type), value = type[kind];

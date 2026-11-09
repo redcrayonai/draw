@@ -35,3 +35,8 @@ e2e/playwright-report/
 .api-base/
 api-compat.generated.ts
 tsconfig.api.json
+
+# outside plugins (scripts/builder.mjs): a contributor's local list and seams stay local
+/draw-plugins.json
+/draw-plugins.lock.json
+.seams/

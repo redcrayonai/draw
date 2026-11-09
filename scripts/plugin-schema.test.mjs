@@ -133,3 +133,9 @@ test('renderRetained writes named types, options, arrays and table-level indexes
   assert.match(text, /kind: retainedT\.enum\("PinKind", \{ plain: retainedT\.unit\(\), weight: retainedT\.u32\(\) \}\),/);
   assert.match(text, /list: retainedT\.array\(retainedT\.u64\(\)\),/);
 });
+
+test('comparisons ignore key order, as the lock file sorts keys', async () => {
+  const { same } = await import('./plugin-schema.mjs');
+  assert.ok(same({ name: 'a', columns: ['x'], accessor: 'b' }, { accessor: 'b', columns: ['x'], name: 'a' }));
+  assert.ok(!same({ columns: ['x', 'y'] }, { columns: ['y', 'x'] }));
+});

@@ -67,6 +67,15 @@ test('manifest validation refuses missing, malformed and unknown fields', t => {
   assert.throws(() => readPlugins(dir), /plugin rule:.*plugin.json/);
 });
 
+test('a symlinked plugin folder is read like any other', t => {
+  const dir = fixture(t), outside = mkdtempSync(join(tmpdir(), 'draw-linked-'));
+  t.after(() => rmSync(outside, { recursive: true, force: true }));
+  put(outside, 'plugin.json', JSON.stringify(manifest('linked')));
+  mkdirSync(join(dir, 'plugins'), { recursive: true });
+  symlinkSync(outside, join(dir, 'plugins/linked'));
+  assert.deepEqual(readPlugins(dir).map(p => p.id), ['linked']);
+});
+
 test('the optional draw field must be a caret range and is kept', t => {
   const dir = fixture(t);
   plugin(dir, { ...manifest(), draw: '^0.2.0 || ^1.0.0' });

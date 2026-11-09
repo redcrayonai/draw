@@ -15,7 +15,8 @@ export function readPlugins(root) {
   const directory = join(root, 'plugins');
   if (!existsSync(directory)) return plugins;
   for (const entry of readdirSync(directory, { withFileTypes: true }).sort((a, b) => a.name.localeCompare(b.name, 'en'))) {
-    if (!entry.isDirectory()) continue;
+    // A linked folder counts (builder link); importProblems still keeps its imports inside it.
+    if (!statSync(join(directory, entry.name)).isDirectory()) continue;
     const folder = entry.name, file = `plugins/${folder}/plugin.json`;
     const fail = message => errors.push(rule(`${file}: ${message}`));
     let data;
