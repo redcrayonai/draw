@@ -3,6 +3,7 @@ import { existsSync, lstatSync, mkdirSync, readFileSync, readdirSync, realpathSy
 import { dirname, join, relative, resolve, sep } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { execFileSync } from 'node:child_process';
+import { parseRange } from './plugin-lock.mjs';
 
 const PARTS = { module: '@draw/module', server: '@draw/server', web: '@draw/client' };
 const object = value => value !== null && typeof value === 'object' && !Array.isArray(value);
@@ -23,13 +24,14 @@ export function readPlugins(root) {
     if (!object(data)) { fail('manifest must be an object'); continue; }
     data = { settings: [], tables: {}, ...data };
     const fields = ['id', 'name', 'description', 'settings', 'tables'];
-    for (const key of Object.keys(data)) if (!fields.includes(key)) fail(`unknown field '${key}'`);
+    for (const key of Object.keys(data)) if (![...fields, 'draw'].includes(key)) fail(`unknown field '${key}'`);
     for (const key of fields) if (!Object.hasOwn(data, key)) fail(`missing field '${key}'`);
     if (typeof data.id !== 'string' || !/^[a-z][a-z0-9]{1,30}$/.test(data.id)) fail('id must match /^[a-z][a-z0-9]{1,30}$/');
     if (data.id !== folder) fail('id must match its folder');
     for (const [key, max] of [['name', 40], ['description', 200]]) {
       if (typeof data[key] !== 'string' || data[key].length < 1 || data[key].length > max) fail(`${key} must have 1..${max} characters`);
     }
+    if (Object.hasOwn(data, 'draw')) { try { parseRange(data.draw); } catch (error) { fail(error.message.replace(/^plugin rule: /, '')); } }
     if (!Array.isArray(data.settings)) fail('settings must be an array');
     else for (const setting of data.settings) {
       if (typeof setting !== 'string' || !/^[A-Z][A-Z0-9_]*$/.test(setting)) { fail('each setting must match /^[A-Z][A-Z0-9_]*$/'); continue; }

@@ -67,6 +67,16 @@ test('manifest validation refuses missing, malformed and unknown fields', t => {
   assert.throws(() => readPlugins(dir), /plugin rule:.*plugin.json/);
 });
 
+test('the optional draw field must be a caret range and is kept', t => {
+  const dir = fixture(t);
+  plugin(dir, { ...manifest(), draw: '^0.2.0 || ^1.0.0' });
+  assert.equal(readPlugins(dir)[0].draw, '^0.2.0 || ^1.0.0');
+  for (const draw of [3, '>=1', '', '^1.2']) {
+    plugin(dir, { ...manifest(), draw });
+    assert.throws(() => readPlugins(dir), /plugin rule: plugins\/sample\/plugin\.json: draw must be a caret range/, String(draw));
+  }
+});
+
 test('aggregates errors, including shared settings and tables across plugins', t => {
   const dir = fixture(t);
   const data = { settings: ['SHARED'], tables: { sharedTable: { why: 'reason', board: 'outlives' } } };
@@ -257,7 +267,7 @@ test('CLI writes generated files; --check fails stale output without writing any
   const dir = fixture(t);
   plugin(dir);
   mkdirSync(join(dir, 'scripts'));
-  cpSync(join(root, 'scripts/plugin-build.mjs'), join(dir, 'scripts/plugin-build.mjs'));
+  for (const name of ['plugin-build.mjs', 'plugin-lock.mjs']) cpSync(join(root, 'scripts', name), join(dir, 'scripts', name));
   const run = (...args) => spawnSync(process.execPath, ['scripts/plugin-build.mjs', ...args], { cwd: dir, encoding: 'utf8' });
   assert.equal(run('--check').status, 1);
   assert.equal(existsSync(join(dir, 'module')), false);
@@ -491,7 +501,7 @@ test('CLI API major override permits only removals and combined checks still ref
   plugin(dir);
   put(dir, file, 'export const removed = 1;');
   mkdirSync(join(dir, 'scripts'));
-  cpSync(join(root, 'scripts/plugin-build.mjs'), join(dir, 'scripts/plugin-build.mjs'));
+  for (const name of ['plugin-build.mjs', 'plugin-lock.mjs']) cpSync(join(root, 'scripts', name), join(dir, 'scripts', name));
   const run = (major, ...args) => spawnSync(process.execPath, ['scripts/plugin-build.mjs', ...args], {
     cwd: dir, encoding: 'utf8', env: { ...process.env, PLUGIN_API_MAJOR: major },
   });
