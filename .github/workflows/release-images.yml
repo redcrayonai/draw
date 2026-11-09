@@ -4,7 +4,8 @@
 #   1. builds them for the runner and checks them: the entrypoint tests, the
 #      vendor scan over each image's files, and the compose.prod.yml smoke;
 #   2. pushes ghcr.io/redcrayonai/redcrayon-{canvas,dashboard,mcp,module-setup,importer}:<version>
-#      for both platforms. The JavaScript builds run once, on the runner's
+#      for both platforms, and ghcr.io/redcrayonai/draw-builder:<version> (outside plugins)
+#      for linux/amd64. The JavaScript builds run once, on the runner's
 #      platform; arm64 only adds binaries and copies files (under QEMU).
 #
 # Packages pushed from a private repo start private: make each public once.
@@ -42,7 +43,9 @@ jobs:
       - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
 
       - name: Image tag
-        run: echo "TAG=${TAG#v}" >> "$GITHUB_ENV"
+        run: |
+          echo "TAG=${TAG#v}" >> "$GITHUB_ENV"
+          echo "DRAW_VERSION=${TAG#v}" >> "$GITHUB_ENV"
 
       - name: Build for the runner
         uses: docker/bake-action@59cb1203cd42bcefd40a1b6d73b589e48c86040e # v7.5.0
@@ -75,4 +78,15 @@ jobs:
           push: true
           set: |
             *.platform=linux/amd64,linux/arm64
+            *.cache-from=type=gha
+
+      - name: Push the builder image
+        uses: docker/bake-action@59cb1203cd42bcefd40a1b6d73b589e48c86040e # v7.5.0
+        with:
+          source: .
+          files: docker/prod/docker-bake.hcl
+          targets: builder
+          push: true
+          set: |
+            builder.platform=linux/amd64
             *.cache-from=type=gha

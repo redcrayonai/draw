@@ -40,3 +40,6 @@ tsconfig.api.json
 /draw-plugins.json
 /draw-plugins.lock.json
 .seams/
+
+# outside plugin settings (compose env_file)
+plugins.env

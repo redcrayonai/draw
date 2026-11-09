@@ -7,6 +7,8 @@
 
 variable "REGISTRY" { default = "ghcr.io/redcrayonai" }
 variable "TAG" { default = "dev" }
+# The draw release the builder image holds; outside plugins check their draw range against it.
+variable "DRAW_VERSION" { default = "dev" }
 
 group "default" {
   targets = ["canvas", "dashboard", "mcp", "module-setup", "importer"]
@@ -15,6 +17,7 @@ group "default" {
 target "_prod" {
   context    = "."
   dockerfile = "docker/prod/Dockerfile"
+  args       = { DRAW_VERSION = DRAW_VERSION }
 }
 
 target "canvas" {
@@ -44,4 +47,13 @@ target "module-setup" {
 target "importer" {
   context = "importer"
   tags    = ["${REGISTRY}/redcrayon-importer:${TAG}"]
+}
+
+# The builder image (PLUGINS.md): draw's source and tools, for builds with outside plugins.
+# Its build outputs are the same on every platform, so it is published for the build
+# platform only: release-images.yml pushes it separately, for linux/amd64.
+target "builder" {
+  inherits = ["_prod"]
+  target   = "builder"
+  tags     = ["${REGISTRY}/draw-builder:${TAG}"]
 }

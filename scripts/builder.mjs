@@ -519,6 +519,14 @@ if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1]
       if (!flags.out) throw Object.assign(new Error('build needs --out'), { usage: true });
       const summary = build({ config, cache, out: resolve(flags.out), dev: Boolean(flags.dev), sources: flags.sources && resolve(flags.sources), seams: flags.seams && resolve(flags.seams) });
       console.log(`build: draw ${summary.draw}; ${Object.entries(summary.plugins).map(([id, p]) => `${id} ${p.state}`).join(', ') || 'no outside plugins'} → ${flags.out}`);
+    } else if (command === 'baseline') {
+      // The builder image captures draw's own database description once, at image build.
+      const db = database(ROOT);
+      try {
+        const describe = coreDescribe(ROOT, db);
+        mkdirSync(join(ROOT, '.builder'), { recursive: true });
+        writeFileSync(join(ROOT, '.builder/core.describe.json'), JSON.stringify(describe));
+      } finally { db.stop(); }
     } else if (command === 'link') {
       console.log(`linked ${link({ config }).join(', ') || 'nothing'}; run unlink before committing`);
     } else if (command === 'unlink') {
