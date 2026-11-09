@@ -138,14 +138,20 @@ After a manifest change, run the generator from the repository root:
 node scripts/plugin-build.mjs
 node scripts/plugin-build.mjs --check
 node scripts/plugin-build.mjs --check --api
+node scripts/plugin-build.mjs --api-types module   # after pnpm -C module install
+node scripts/plugin-build.mjs --api-types web      # after pnpm -C web and -C shared install
 ```
 
 The first command checks manifests and imports, then writes the registries and
 setting bindings. `--check` refuses stale generated files without writing.
-`--api` also compares public export names with `origin/main`. CI runs the
-combined command. A PR with the `major` label permits removed names through
-`PLUGIN_API_MAJOR=true`. The current comparison checks names only. Type
-compatibility checks must precede the first plugin outside this repository.
+`--api` also compares public export names with `origin/main`. `--api-types`
+compares the interface's types with `origin/main`: every value must still fit
+its old uses, types draw hands to plugins may only grow, and the types plugins
+hand to draw (`ModulePart`, `ServerPart`, `WebPart`) must still accept what
+plugins wrote for the old ones. CI runs all three. A breaking change needs a
+breaking core release: a PR labelled `release:core` with `minor` while draw is
+0.x, or `major` from 1.0 on, sets `PLUGIN_API_MAJOR=true` and the checks report
+without failing.
 
 Do not hand-edit `module/src/plugin-meta.generated.ts`,
 `module/src/plugin-parts.generated.ts`, `web/src/lib/server/plugins.generated.ts`,

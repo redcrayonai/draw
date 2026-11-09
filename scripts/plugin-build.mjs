@@ -154,8 +154,12 @@ function tokens(source, inspectTemplateExpressions = true, markup = false) {
   return result;
 }
 
-export function exportedNames(source) {
-  const list = tokens(source, false), names = new Set();
+export const exportedNames = source => [...exportedKinds(source).keys()].sort();
+/** Type-only exports, which `isolatedModules` forces to be written `export type` or as declarations. */
+export const exportedTypes = source => [...exportedKinds(source)].filter(([, type]) => type).map(([name]) => name).sort();
+
+function exportedKinds(source) {
+  const list = tokens(source, false), names = new Map();
   let depth = 0;
   for (let i = 0; i < list.length; i++) {
     const token = list[i];
@@ -163,15 +167,17 @@ export function exportedNames(source) {
     if (token.kind === 'punctuation' && token.value === '}') depth--;
     if (depth !== 0 || token.kind !== 'word' || token.value !== 'export' || list[i - 1]?.value === '.') continue;
     let j = i + 1;
-    if (list[j]?.value === 'type' && ['{', '*'].includes(list[j + 1]?.value)) j++;
+    const typeOnly = list[j]?.value === 'type' && ['{', '*'].includes(list[j + 1]?.value);
+    if (typeOnly) j++;
     if (list[j]?.value === '*') throw new Error(rule('wildcard exports are not allowed in the plugin interface'));
     if (list[j]?.value === '{') {
       j++;
       while (j < list.length && list[j].value !== '}') {
-        if (list[j].value === 'type' && list[j + 1]?.kind === 'word' && list[j + 1].value !== 'as') j++;
+        const typeItem = list[j].value === 'type' && list[j + 1]?.kind === 'word' && list[j + 1].value !== 'as';
+        if (typeItem) j++;
         let name = list[j++].value;
         if (list[j]?.value === 'as') { name = list[j + 1].value; j += 2; }
-        names.add(name);
+        names.set(name, typeOnly || typeItem);
         if (list[j]?.value === ',') j++;
       }
       i = j;
@@ -189,7 +195,7 @@ export function exportedNames(source) {
             const boundary = !next || (next.kind === 'punctuation' && ['=', ':', ',', ';', '!'].includes(next.value))
               || (next.kind === 'word' && ['export', 'const', 'let', 'var'].includes(next.value));
             if (token.kind !== 'word' || !boundary) throw new Error(rule('unsupported exported variable declaration in the plugin interface'));
-            names.add(token.value);
+            names.set(token.value, false);
             binding = false;
             typePosition = [':', '!'].includes(next?.value);
           } else if (token.kind === 'punctuation') {
@@ -207,14 +213,14 @@ export function exportedNames(source) {
         const declaration = list[j++]?.value;
         if (declaration === 'function' && list[j]?.value === '*') j++;
         if (!['function', 'class', 'interface', 'type', 'enum'].includes(declaration) || list[j]?.kind !== 'word') throw new Error(rule('unsupported export declaration in the plugin interface; use named exports'));
-        names.add(list[j].value);
+        names.set(list[j].value, ['interface', 'type'].includes(declaration));
       }
     }
   }
-  return [...names].sort();
+  return names;
 }
 
-// shortcut: names only, compare types when a plugin outside this repo exists
+// Names only, fast and dependency-free; --api-types (plugin-api-types.mjs) compares types.
 export function apiProblems(root, ref = 'origin/main') {
   const git = (...args) => execFileSync('git', args, { cwd: root, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
   const commit = git('rev-parse', '--verify', `${ref}^{commit}`).trim();
@@ -354,7 +360,15 @@ export function generate(root, plugins, retained = []) {
 if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1])).href) {
   try {
     const root = fileURLToPath(new URL('..', import.meta.url));
-    if (process.argv.slice(2).some(arg => !['--check', '--api'].includes(arg))) throw new Error(rule('usage: node scripts/plugin-build.mjs [--check] [--api]'));
+    const args = process.argv.slice(2);
+    if (args[0] === '--api-types' && args.length === 2) {
+      const { apiTypeProblems } = await import('./plugin-api-types.mjs');
+      const problems = apiTypeProblems(root, args[1], exportedTypes);
+      if (problems.length && process.env.PLUGIN_API_MAJOR === 'true') console.error(problems.join('\n'));
+      else if (problems.length) throw new Error(problems.join('\n'));
+      process.exit();
+    }
+    if (args.some(arg => !['--check', '--api'].includes(arg))) throw new Error(rule('usage: node scripts/plugin-build.mjs [--check] [--api] | --api-types module|web'));
     const plugins = readPlugins(root), errors = importProblems(root, plugins);
     const outputs = generate(root, plugins);
     if (process.argv.includes('--check')) {
