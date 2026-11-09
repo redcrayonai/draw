@@ -1,6 +1,7 @@
 {
   "compilerOptions": {
     "strict": true,
+    "paths": { "@draw/module": ["./src/plugin-api.ts"] },
     "skipLibCheck": true,
     "moduleResolution": "bundler",
 

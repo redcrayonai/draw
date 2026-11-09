@@ -1,5 +1,5 @@
 import type { EmbedGraph, EmbedScene } from './embed-contracts';
-import { schema, table, t, SenderError } from 'spacetimedb/server';
+import { schema, table, t, SenderError, type ModuleExport } from 'spacetimedb/server';
 import { Timestamp } from 'spacetimedb';
 import { checkEvidencePrefix, evidenceClass, parseCoverage } from './health-rules';
 import { validateGraph, edgeKey, graphSignature, proposalSatisfied, type Graph } from './architecture';
@@ -81,8 +81,9 @@ import {
   MARK_SEAT_RULE,
   MARK_SEND_RULE,
 } from './marks';
-import { pluginFeatures, workspacePlugin } from './plugins';
-import { versionFeatures, versionTables } from './versions';
+import { pluginFeatures, workspacePlugin, checkPlugins, pluginActions } from './plugins';
+import type { ModuleApi } from './plugin-api';
+import { PLUGIN_PARTS, pluginTables } from './plugin-parts.generated';
 import { procedureJson } from './procedure-json';
 import { sha256Bytes } from './sha256';
 
@@ -147,7 +148,6 @@ const tables = {
   ...workspaceServiceAccountTables,
   workspaceApiKeyExpiry,
   workspacePlugin,
-  ...versionTables,
   architectureHistory,
   boardCreation,
   // shortcut: expired receipts are swept on the next create or board deletion; schedule cleanup if idle-board storage becomes material.
@@ -850,7 +850,8 @@ const tables = {
   ),
 };
 
-const spacetimedb = schema(tables);
+checkPlugins(Object.keys(tables), PLUGIN_PARTS);
+const spacetimedb = schema({ ...tables, ...pluginTables });
 
 export default spacetimedb;
 
@@ -6000,10 +6001,8 @@ export const nativeWorkspaces = spacetimedb.exportGroup(workspaceFeatures(spacet
   },
 }));
 
-// Optional plugins (PLUGINS.md): the on/off seam, then each plugin.
-export const plugins = spacetimedb.exportGroup(pluginFeatures(spacetimedb, { reducer, isHuman: workspaceHuman }));
-
-export const versions = spacetimedb.exportGroup(versionFeatures(spacetimedb, {
+// Optional plugins (PLUGINS.md): every part receives the same budget and access hooks.
+const api: ModuleApi = {
   reducer,
   isHuman: workspaceHuman,
   assertService,
@@ -6013,4 +6012,8 @@ export const versions = spacetimedb.exportGroup(versionFeatures(spacetimedb, {
   initCallerBoard,
   refreshStats,
   emit,
-}));
+};
+const switches = pluginFeatures(spacetimedb, api);
+// Preserve the SDK export group names and order so generated bindings stay stable.
+export const plugins = spacetimedb.exportGroup(switches);
+export const versions = spacetimedb.exportGroup(pluginActions(PLUGIN_PARTS, spacetimedb, api, Object.keys(switches)) as Record<string, ModuleExport>);

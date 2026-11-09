@@ -43,12 +43,16 @@ NODE
 candidate="$scratch/candidate/module"
 mkdir -p "$candidate"
 cp -R "$repo/module/src" "$candidate/src"
+cp -R "$repo/plugins" "$scratch/candidate/plugins"
 cp "$repo/module/package.json" "$repo/module/pnpm-lock.yaml" "$repo/module/tsconfig.json" "$candidate/"
 ln -s "$repo/module/node_modules" "$candidate/node_modules"
 
 if [ -z "$baseline" ]; then
   mkdir -p "$scratch/baseline"
   git -C "$repo" archive origin/main module | tar -xf - -C "$scratch/baseline"
+  if git -C "$repo" cat-file -e origin/main:plugins 2>/dev/null; then
+    git -C "$repo" archive origin/main plugins | tar -xf - -C "$scratch/baseline"
+  fi
   pnpm -C "$scratch/baseline/module" install --frozen-lockfile
 fi
 bash "$repo/scripts/stdb-test.sh" start

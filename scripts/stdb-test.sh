@@ -148,7 +148,7 @@ versions() {
   : "${VERSIONS_S3_ENDPOINT:?set VERSIONS_S3_ENDPOINT and the other VERSIONS_S3_* variables (SELF_HOSTING.md) to a local store}"
   [ -d "$REPO/web/node_modules" ] || pnpm --dir "$REPO/web" install --frozen-lockfile
   VERSIONS_E2E=1 STDB_URL="$URL" STDB_DB="$DB" STDB_OWNER_TOKEN="$(cat "$ROOT/owner-token")" \
-    pnpm --dir "$REPO/web" exec vitest run src/lib/server/versions.e2e.test.ts
+    pnpm --dir "$REPO/web" exec vitest run ../plugins/versions/server/versions.e2e.test.ts
 }
 
 cmd="${1:-}"

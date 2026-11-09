@@ -4,9 +4,11 @@
 // operator's configuration (web/src/lib/server/plugins.ts), not a row here.
 import { table, t, SenderError } from 'spacetimedb/server';
 import { membership } from './workspaces';
+import type { ModuleApi, ModulePart } from './plugin-api';
+import { PLUGIN_IDS, PLUGIN_TABLES, type PluginId } from './plugin-meta.generated';
 
-export const PLUGINS = ['versions'] as const;
-export type PluginId = (typeof PLUGINS)[number];
+export const PLUGINS = PLUGIN_IDS;
+export type { PluginId } from './plugin-meta.generated';
 
 export const workspacePlugin = table({}, {
   key: t.string().primaryKey(), // `<workspaceId>:<plugin>`
@@ -43,4 +45,31 @@ export function pluginFeatures(db: any, hooks: { reducer: any; isHuman: (ctx: an
         [...ctx.db.workspacePlugin.workspaceId.filter(m.workspaceId)].map((p: any) => ({ key: p.key, workspaceId: p.workspaceId, plugin: p.plugin, enabled: p.enabled, updatedAt: p.updatedAt })));
     }),
   };
+}
+
+// Validate ownership before spreading tables into the SDK schema.
+export function checkPlugins(coreTables: string[], parts: Record<string, ModulePart>): void {
+  const expected = new Map<string, { plugin: string }>(Object.entries(PLUGIN_TABLES));
+  const found = new Map<string, string>();
+  for (const [id, part] of Object.entries(parts)) for (const name of Object.keys(part.tables)) {
+    if (coreTables.includes(name)) throw new Error(`plugin rule: table '${name}' collides with core`);
+    if (found.has(name)) throw new Error(`plugin rule: table '${name}' belongs to multiple parts`);
+    if (expected.get(name)?.plugin !== id) {
+      throw new Error(`plugin rule: table '${name}' does not match the manifest for '${id}'`);
+    }
+    found.set(name, id);
+  }
+  for (const name of Object.keys(PLUGIN_TABLES)) if (!found.has(name)) throw new Error(`plugin rule: manifest table '${name}' is missing`);
+}
+
+export function pluginActions(parts: Record<string, ModulePart>, db: any, api: ModuleApi, taken: string[]): Record<string, unknown> {
+  const actions: Record<string, unknown> = Object.create(null);
+  const names = new Set(taken);
+  // Factory errors must abort publication rather than publish a module missing actions.
+  for (const [id, part] of Object.entries(parts)) for (const [name, action] of Object.entries(part.features?.(db, api) ?? {})) {
+    if (names.has(name)) throw new Error(`plugin rule: action '${name}' from '${id}' is already taken`);
+    names.add(name);
+    actions[name] = action;
+  }
+  return actions;
 }
