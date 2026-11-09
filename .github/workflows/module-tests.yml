@@ -63,6 +63,11 @@ jobs:
           node scripts/plugin-build.mjs --check --api
           node scripts/plugin-build.mjs --api-types module
 
+      # Add, upgrade, refuse, skip, retire and roll back the test plugin outside this repo.
+      - name: Outside plugins
+        if: matrix.variant == 'local'
+        run: scripts/stdb-test.sh outside
+
       - name: The committed issuers are the none variant
         if: matrix.variant == 'none'
         run: |

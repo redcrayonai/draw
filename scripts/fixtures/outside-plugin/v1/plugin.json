@@ -1,0 +1,10 @@
+{
+  "id": "pinboard",
+  "name": "Pinboard",
+  "description": "Test plugin outside this repo: notes pinned to boards.",
+  "draw": "DRAW_RANGE",
+  "settings": ["PINBOARD_GREETING"],
+  "tables": {
+    "pinboardNote": { "why": "pinboard notes", "board": "outlives" }
+  }
+}

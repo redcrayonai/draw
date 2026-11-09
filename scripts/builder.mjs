@@ -171,8 +171,16 @@ export function database(work) {
   return {
     /** Publishes <moduleDir>; fresh replaces the database, otherwise an update that never deletes data. */
     publish(moduleDir, name, { fresh = false } = {}) {
-      const result = cli(['publish', '--no-config', '--server', url, ...(fresh ? ['--yes', '--delete-data=always'] : ['--yes=break-clients,migrate']), name], moduleDir);
-      return { ok: result.status === 0, log: plain(`${result.stdout}\n${result.stderr}`) };
+      // One stream in order, as module-setup logs it (docker/prod/rollback.sh reads that log).
+      const result = spawnSync('sh', ['-c', 'exec "$@" 2>&1', 'sh', 'spacetime', '--root-dir', dir, 'publish', '--no-config', '--server', url,
+        ...(fresh ? ['--yes', '--delete-data=always'] : ['--yes=break-clients,migrate']), name], { cwd: moduleDir, encoding: 'utf8', maxBuffer: 1 << 28 });
+      return { ok: result.status === 0, log: plain(result.stdout) };
+    },
+    /** SQL as the database owner; the module must carry the local issuers (scripts/module-env.mjs). */
+    sql(name, query) {
+      const result = cli(['sql', '--server', url, name, query]);
+      if (result.status !== 0) throw new Error(rule(`sql failed: ${query}: ${result.stderr.trim()}`));
+      return plain(result.stdout);
     },
     describe(name) {
       const result = cli(['describe', '--json', '--server', url, name]);
@@ -287,6 +295,28 @@ export function lock({ config: dir, root = ROOT, cache, env = process.env }) {
   return { plan, lock: next };
 }
 
+/**
+ * Every locked plugin's tables in the compiled module equal the lock exactly, and an
+ * included plugin's locked public contracts are unchanged. `states`: id → included |
+ * skipped | retired | local; `pluginKeys`: every plugin table key in the module.
+ */
+export function verifyLocked(candidate, locked, states, pluginKeys) {
+  const keys = new Set(pluginKeys);
+  const core = { sections: candidate.sections.map(section => section.Tables ? { Tables: section.Tables.filter(t => !keys.has(t.source_name)) } : section) };
+  const wire = publicWire(candidate), drift = [];
+  for (const [id, entry] of Object.entries(locked.plugins)) {
+    if (!entry.schema || !['included', 'skipped', 'retired'].includes(states[id])) continue;
+    const found = pluginSchema(candidate, core, entry.tables).schema;
+    for (const [key, table] of Object.entries(entry.schema.tables)) {
+      if (!sameJson(found.tables[key], table)) drift.push(rule(`${id}: table ${table.name} differs from the lock; the lock is not what ${entry.ref} compiles to. Run builder lock.`));
+    }
+    if (states[id] === 'included') for (const [name, contract] of Object.entries(entry.schema.wire)) {
+      if (!sameJson(wire[name], contract)) drift.push(rule(`${id}: public ${contract.kind} ${name} differs from the lock. Run builder lock.`));
+    }
+  }
+  return drift;
+}
+
 // ---- build ----
 
 const PROVIDERS = { anonymous: {}, oidc: { VITE_OIDC_ISSUER: '__rc_oidc_issuer__', VITE_OIDC_CLIENT_ID: '__rc_oidc_client_id__' } };
@@ -334,19 +364,8 @@ export function build({ config: dir, root = ROOT, out, sources, seams, dev = fal
     const candidate = db.describe('build');
     db.stop();
     db = undefined;
-    const pluginKeys = new Set([...plugins.flatMap(p => Object.keys(p.tables)), ...retained.flatMap(r => Object.keys(r.tables))]);
-    const core = { sections: candidate.sections.map(section => section.Tables ? { Tables: section.Tables.filter(t => !pluginKeys.has(t.source_name)) } : section) };
-    const wire = publicWire(candidate), drift = [];
-    for (const [id, entry] of Object.entries(locked.plugins)) {
-      if (!entry.schema || !['included', 'skipped', 'retired'].includes(states[id])) continue;
-      const found = pluginSchema(candidate, core, entry.tables).schema;
-      for (const [key, table] of Object.entries(entry.schema.tables)) {
-        if (!sameJson(found.tables[key], table)) drift.push(rule(`${id}: table ${table.name} differs from the lock; the lock is not what ${entry.ref} compiles to. Run builder lock.`));
-      }
-      if (states[id] === 'included') for (const [name, contract] of Object.entries(entry.schema.wire)) {
-        if (!sameJson(wire[name], contract)) drift.push(rule(`${id}: public ${contract.kind} ${name} differs from the lock. Run builder lock.`));
-      }
-    }
+    const pluginKeys = [...plugins.flatMap(p => Object.keys(p.tables)), ...retained.flatMap(r => Object.keys(r.tables))];
+    const drift = verifyLocked(candidate, locked, states, pluginKeys);
     if (drift.length) throw new Error(drift.join('\n'));
 
     // The dashboard reads plugin tables through regenerated bindings.
