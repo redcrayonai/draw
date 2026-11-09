@@ -114,10 +114,10 @@ export function readConfig(dir) {
 }
 
 /** draw-plugins.lock.json, or an empty lock. Written only by builder lock. */
-export function readLock(dir) {
-  const text = readText(dir, LOCK_FILE);
+export function readLock(dir, file = LOCK_FILE) {
+  const text = readText(dir, file);
   if (text === undefined) return { lockVersion: 1, plugins: {} };
-  const fail = message => { throw new Error(rule(`${LOCK_FILE}: ${message}`)); };
+  const fail = message => { throw new Error(rule(`${file}: ${message}`)); };
   let data;
   try { data = JSON.parse(text); } catch (error) { fail(`cannot read JSON: ${error.message}`); }
   if (!object(data) || !Number.isInteger(data.lockVersion) || !object(data.plugins)) fail('must be { "lockVersion": 1, "plugins": { … } }');
