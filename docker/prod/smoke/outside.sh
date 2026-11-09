@@ -51,7 +51,7 @@ plugins() { printf '{ "plugins": { "pinboard": %s } }\n' "$1" >"$deploy/draw-plu
 builder() { docker run --rm -u "$(id -u):$(id -g)" -e HOME=/tmp -v "$deploy:/config" "ghcr.io/redcrayonai/draw-builder:dev" "$@"; }
 images() {
   builder lock --config /config --cache /tmp/cache
-  TAG="$1" DRAW_VERSION="$version" docker buildx bake -f docker/prod/docker-bake.hcl --load \
+  TAG="$1" DRAW_VERSION="$version" docker buildx bake -f docker/prod/docker-bake.hcl --load --allow "fs.read=$work" \
     --set "*.contexts.deploy=$deploy" --set "*.secrets=id=git_credentials,src=$work/git-credentials"
 }
 use() { sed -i "s/^REDCRAYON_VERSION=.*/REDCRAYON_VERSION=$1/" "$work/.env"; dc up -d --wait --quiet-pull; }

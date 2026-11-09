@@ -20,6 +20,7 @@
 #     --set '*.contexts.builder=docker-image://ghcr.io/redcrayonai/draw-builder:<version>' \
 #     --set '*.secrets=id=git_credentials,src=<git credential-store file>'
 #
+# A config directory outside the current directory also needs --allow fs.read=<dir>.
 # Only the fetch stage sees the credentials; they never enter a layer or an output.
 #
 # VITE_* values are inlined at build, so the canvas and dashboard are built
