@@ -11,7 +11,8 @@ export function attach(conn: DbConnection, stale: () => boolean): void {
   if (!('myBoardVersions' in conn.db)) return;
   const rebuild = () => {
     if (stale()) return;
-    boardVersions.set([...conn.db.myBoardVersions.iter()].sort((a, b) => Number(b.createdAt.microsSinceUnixEpoch - a.createdAt.microsSinceUnixEpoch)));
+    boardVersions.set([...conn.db.myBoardVersions.iter()].sort((a, b) =>
+      Number(b.createdAt.microsSinceUnixEpoch - a.createdAt.microsSinceUnixEpoch) || Number(b.id - a.id)));
   };
   conn.db.myBoardVersions.onInsert(rebuild);
   conn.db.myBoardVersions.onUpdate(rebuild);

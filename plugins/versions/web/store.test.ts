@@ -30,6 +30,18 @@ it('subscribes separately and rebuilds versions newest first on applied and row 
   }
 });
 
+it('orders equal timestamps by descending id while keeping the newest timestamp first', () => {
+  const { c, subscription, rows } = connection();
+  rows([
+    { ...version(9n), createdAt: new Timestamp(1n) },
+    { ...version(1n), createdAt: new Timestamp(2n) },
+    { ...version(3n), createdAt: new Timestamp(2n) },
+  ]);
+  attach(c, () => false);
+  subscription.onApplied.mock.calls[0][0]();
+  expect(get(boardVersions).map(row => row.id)).toEqual([3n, 1n, 9n]);
+});
+
 it('ignores stale row, applied, and error callbacks after a new account has rows', () => {
   const { c, table, subscription } = connection();
   let stale = false;

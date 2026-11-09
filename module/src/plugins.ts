@@ -65,6 +65,7 @@ export function checkPlugins(coreTables: string[], parts: Record<string, ModuleP
 export function pluginActions(parts: Record<string, ModulePart>, db: any, api: ModuleApi, taken: string[]): Record<string, unknown> {
   const actions: Record<string, unknown> = Object.create(null);
   const names = new Set(taken);
+  // Factory errors must abort publication rather than publish a module missing actions.
   for (const [id, part] of Object.entries(parts)) for (const [name, action] of Object.entries(part.features?.(db, api) ?? {})) {
     if (names.has(name)) throw new Error(`plugin rule: action '${name}' from '${id}' is already taken`);
     names.add(name);

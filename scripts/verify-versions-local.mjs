@@ -377,6 +377,7 @@ test('a retried restore makes one board; a failed one leaves none and can be ret
   assert.equal(await count(), n, 'no partial board');
   const first = await restoreCall(O, [S, request, 'Second try']); // the staged bundle survived the rollback
   assert.deepEqual(await restoreCall(O, [S, request, 'Second try']), first);
+  refused(await restoreCall(O, [S, request, 'bad\u0001name']), 'board name');
   assert.equal(await count(), n + 1);
 });
 

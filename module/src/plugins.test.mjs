@@ -46,3 +46,12 @@ test('duplicate actions between parts or reserved switch/core actions fail befor
     assert.throws(() => pluginActions({ first: part(name) }, {}, {}, [name]), /plugin rule:/);
   }
 });
+
+test('a factory error aborts module publication instead of silently omitting plugin actions', () => {
+  const error = new Error('invalid plugin factory');
+  const parts = {
+    broken: { tables: {}, features() { throw error; } },
+    next: { tables: {}, features() { assert.fail('factory failure must stop initialization'); } },
+  };
+  assert.throws(() => pluginActions(parts, {}, {}, []), failure => failure === error);
+});

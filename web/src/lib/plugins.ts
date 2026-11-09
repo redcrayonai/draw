@@ -20,6 +20,7 @@ export function resetPlugins(): void {
 
 /** Its own subscription, as attachWorkspaces: an older server without these views still serves boards. */
 export function attachPlugins(c: import('../module_bindings').DbConnection, stale: () => boolean): void {
+  void loadCatalog();
   if (!('myWorkspacePlugins' in c.db)) return;
   const rebuild = () => {
     if (stale()) return;
@@ -30,7 +31,6 @@ export function attachPlugins(c: import('../module_bindings').DbConnection, stal
   c.db.myWorkspacePlugins.onDelete(rebuild);
   c.subscriptionBuilder().onApplied(rebuild).onError(() => { if (!stale()) resetPlugins(); })
     .subscribe(['SELECT * FROM my_workspace_plugins']);
-  void loadCatalog();
 }
 
 async function loadCatalog(): Promise<void> {

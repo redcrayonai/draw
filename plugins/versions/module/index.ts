@@ -166,7 +166,7 @@ export function features(db: any, api: ModuleApi): any {
     // private board. Returns { boardId } (charged; a procedure so that a refusal still spends its write).
     restoreBoardVersion: db.procedure({ versionId: t.u64(), requestKey: t.string(), name: t.string() }, t.string(), (ctx: any, { versionId, requestKey, name }: any) => charged(ctx, 'restore', (tx: any, read: (bytes: number) => void) => {
       if (!/^[A-Za-z0-9_-]{32,128}$/.test(requestKey)) fail('the restore request key must contain 32–128 URL-safe characters');
-      if (name.trim()) api.assertBoardName(name.trim()); // before the hashing and parsing below
+      if (name.trim()) api.assertBoardName(name.trim()); // Validate retries too, before hashing or parsing.
       const receipt = tx.db.boardCreation.requestKey.find(requestKey);
       if (receipt) {
         if (!receipt.owner.isEqual(tx.sender)) fail('this restore request key belongs to someone else');
