@@ -34,6 +34,7 @@ pnpm -C <package> test                    # plus typecheck/build where the packa
 node --test scripts/*.test.mjs            # repo and workflow contracts
 scripts/stdb-test.sh run                  # reducer integration suites on an isolated database
 scripts/check-module-upgrade.sh           # schema must stay compatible with origin/main
+node scripts/builder.mjs build --out /tmp/out   # outside-plugin builder (PLUGINS.md); scripts/stdb-test.sh outside tests it
 node scripts/vendor-scan.mjs --public --enforce
 ```
 

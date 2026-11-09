@@ -30,19 +30,21 @@ mount points, generated files, and test commands.
 
 ### Design: plugins outside this repo
 
-Status: direction agreed 2026-10-31. Steps 1–2 are built: the manifest,
-generator, public interfaces, mounts, and Versions migration. Steps 3–4 remain
-unbuilt: the outside-plugin builder, fetch, lock file, version ranges,
-`skip`/retire support, and template. The rollback publish skip in decision 7
-also exists. The decisions below include that future work.
+Status: direction agreed 2026-10-31. Steps 1–3 are built: the manifest,
+generator, public interfaces, mounts, Versions migration, and the outside-plugin
+builder (fetch, lock file, version ranges, `skip`/retire, type-level interface
+check). Step 4, the template repository and its documentation, remains. The
+rollback publish skip in decision 7 also exists.
 
-Approved limits and departures for steps 1–2:
+Approved limits and departures:
 
 - Board-owned plugin tables (`board: "part"`) wait until a plugin needs them.
   Current board-keyed tables must declare `board: "outlives"`.
-- The compatible draw version range waits for the outside-plugin builder in step 3.
-- CI compares public export names only. Type compatibility checks must precede the first outside plugin.
-- The generator writes Cap'n Proto setting bindings. Compose environment forwarding, `.env.example`, and `role_networks` remain manual.
+- The generator writes Cap'n Proto setting bindings. In-repo plugins keep manual
+  compose entries and `.env.example` lines; outside plugins use `plugins.env`.
+  `role_networks` stays manual.
+- The builder image is published for linux/amd64 only; its outputs are the same
+  for every platform, and the images it builds are amd64 and arm64.
 - New routes use `/api/plugins/<id>[/path]`. The old Versions POST routes remain
   forwarders for open clients. Open clients keep working across upgrades.
 
@@ -207,9 +209,11 @@ repo.
      `ERR_PNPM_IGNORED_BUILDS`).
    - The builder fetches a plugin with git and compiles its code into draw's
      build. It never installs in a plugin's folder or runs a script from its
-     `package.json`, and the manifest is data, not code, so no plugin code runs
-     during a build. Plugin screens are not prerendered (the dashboard sets
-     `prerender = false`).
+     `package.json`, and the manifest is data, not code. No plugin code runs in
+     Node, in the fetch step, or with build secrets. To capture and check a
+     plugin's tables, `lock` and `build` publish the module to a disposable
+     local database, which runs it in its own sandbox, as production does.
+     Plugin screens are not prerendered (the dashboard sets `prerender = false`).
    - In the first version a plugin uses only what draw already installs, plus
      its own code. Its own dependencies (a lockfile the builder installs,
      version clashes, the vendor scan) come later, through the same pnpm rules.
@@ -234,10 +238,68 @@ repo.
 - Private repositories are read with credentials given to the build only (build
   secrets), never written into an image.
 
-**Left to the builder.** The plugins file's name and format, fetch and lock
-behavior, compatible draw version ranges, skip and retirement, the template's
-files, and the builder image's internals and name remain future work. The
-manifest, public interfaces, and dashboard mount points already exist.
+### The builder
+
+`node scripts/builder.mjs` (the `draw-builder` image runs the same file) builds
+draw with outside plugins. The open repo never names one.
+
+**Plugins file.** `draw-plugins.json` in a deployment's config directory:
+
+```json
+{
+  "plugins": {
+    "pinboard": { "repo": "https://example.com/acme/draw-pinboard.git", "ref": "v1.2.0" },
+    "audit":    { "repo": "git@example.com:acme/draw-audit.git", "ref": "<40-hex commit>", "skip": true },
+    "legacy":   { "retired": true },
+    "scratch":  { "path": "../draw-scratch" }
+  }
+}
+```
+
+A key is the plugin id. `ref` is a tag or a full commit; branches and short
+commits are refused. URLs carry no credentials. A `path` entry is for
+development: deploy builds refuse it. The plugin repository root is the plugin
+folder; only `plugin.json`, `module/`, `server/` and `web/` are used, without
+test files.
+
+**Version range.** An outside plugin's `plugin.json` declares `"draw"`: caret
+ranges such as `"^0.3.0"` or `"^0.3.0 || ^0.4.0"`, with npm semantics, so on 0.x
+each minor release ends a range. Every build also type-checks plugin code
+against this draw's interface.
+
+**Lock file.** `draw-plugins.lock.json`, written only by `builder lock`, records
+each plugin's exact commit, its manifest tables and, with a database part, its
+schema as the database describes it (tables, indexes, public contracts).
+
+| Refused | Where |
+|---|---|
+| A tag that now points at another commit | `lock`, `fetch`, `build`, `check-lock` |
+| A plugin database change other than new tables, new indexes, or columns appended to private tables; a changed public table or view row | `lock` (rules, then the database itself), `check-lock` |
+| A plugins file that drops a plugin with tables, unless it is `{ "retired": true }` | `lock`, `build` |
+| A lock that differs from what its commits compile to | `build` |
+| A plugin outside its draw range, or importing outside its interface | `lock`, `build` |
+
+**Skip and retire.** `"skip": true` leaves a plugin out of a build, explicitly
+and temporarily. `{ "retired": true }` leaves it out for good. Either way its
+tables stay, rebuilt from the lock's schema with none of its code, and its data
+and workspace switches stay. Deleting a retired plugin's data is a manual
+cleanup. A plugin with no database part can simply be removed.
+
+**Commands.**
+
+| Command | Does |
+|---|---|
+| `lock [--config dir]` | Resolves new and changed entries, captures schemas, applies the upgrade rules, proves each plugin's tables can be rebuilt for a later skip or retirement. |
+| `fetch --into dir` | Deploy-mode fetch, verified against the lock. The only step that reads credentials (a git credential-store file as the build secret `git_credentials`, or ssh). |
+| `build --out dir [--sources dir] [--seams dir] [--dev]` | Compiles draw with the plugins in a scratch copy and writes the module program, dashboard, canvas and agent server builds, `dashboard.capnp`, `plugin-settings.env.example` and `build.json`. `--dev` allows `path` entries. |
+| `check-lock --base file` | The lock must be a compatible upgrade of a base lock (for a deployment's CI). |
+| `link` / `unlink` | In a clone, links `path` entries into `plugins/` for live development. Unlink before committing. |
+
+`--seams` takes `auth.ts` (a third sign-in build, `custom`), `worker-extra.js`
+(the dashboard's `redcrayon-worker-extra`) and `mcp-worker.ts` (the agent
+server's entry). `docker/prod/Dockerfile` runs `fetch` and `build`; the images
+package their outputs. The dashboard reads outside plugins' settings from
+`plugins.env` next to the compose file.
 
 ## Versions
 
