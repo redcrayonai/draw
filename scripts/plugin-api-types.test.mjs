@@ -5,7 +5,7 @@ import { cpSync, existsSync, mkdirSync, mkdtempSync, rmSync, symlinkSync, writeF
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { execFileSync } from 'node:child_process';
+import { execFileSync, spawnSync } from 'node:child_process';
 import { apiTypeProblems, compatSource } from './plugin-api-types.mjs';
 import { exportedTypes } from './plugin-build.mjs';
 
@@ -77,4 +77,15 @@ test('a checker that cannot run is a problem, not a pass', { skip }, t => {
   const problems = apiTypeProblems(dir, 'module', exportedTypes, 'HEAD');
   assert.equal(problems.length, 1);
   assert.match(problems[0], /^plugin rule: the interface check did not run: /);
+});
+
+test('a breaking-release label never excuses a check that could not run', { skip }, t => {
+  const dir = repo(t);
+  rmSync(join(dir, 'module/node_modules'));
+  execFileSync('git', ['update-ref', 'refs/remotes/origin/main', 'HEAD'], { cwd: dir }); // the CLI compares with origin/main
+  mkdirSync(join(dir, 'scripts'));
+  for (const name of ['plugin-build.mjs', 'plugin-lock.mjs', 'plugin-api-types.mjs']) cpSync(join(root, 'scripts', name), join(dir, 'scripts', name));
+  const result = spawnSync(process.execPath, ['scripts/plugin-build.mjs', '--api-types', 'module'], { cwd: dir, encoding: 'utf8', env: { ...process.env, PLUGIN_API_MAJOR: 'true' } });
+  assert.equal(result.status, 1, result.stderr);
+  assert.match(result.stderr, /the interface check did not run/);
 });

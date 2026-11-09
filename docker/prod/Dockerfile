@@ -16,10 +16,11 @@
 # checkout, the published builder image:
 #
 #   docker buildx bake -f docker/prod/docker-bake.hcl \
-#     --set '*.contexts.deploy=<config dir>' --set '*.contexts.seams=<config dir>/seams' \
+#     --set '*.contexts.deploy=<config dir>' \
 #     --set '*.contexts.builder=docker-image://ghcr.io/redcrayonai/draw-builder:<version>' \
 #     --set '*.secrets=id=git_credentials,src=<git credential-store file>'
 #
+# With seams, add --set '*.contexts.seams=<config dir>/seams' (a context must exist).
 # A config directory outside the current directory also needs --allow fs.read=<dir>.
 # Only the fetch stage sees the credentials; they never enter a layer or an output.
 #

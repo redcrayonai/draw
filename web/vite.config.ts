@@ -10,7 +10,8 @@ const BUILT_IN: Record<string, string> = { anonymous: '../shared/auth-anonymous.
 
 // Plugins linked in by `node scripts/builder.mjs link` are served from their real path.
 const pluginDir = fileURLToPath(new URL('../plugins', import.meta.url));
-const linkedPlugins = existsSync(pluginDir) ? readdirSync(pluginDir).map(name => realpathSync(`${pluginDir}/${name}`)) : [];
+// A link whose checkout moved is skipped, not fatal: `builder unlink` removes it.
+const linkedPlugins = existsSync(pluginDir) ? readdirSync(pluginDir).flatMap(name => { try { return [realpathSync(`${pluginDir}/${name}`)]; } catch { return []; } }) : [];
 
 export default defineConfig(({ mode }) => {
   const provider = loadEnv(mode, process.cwd(), 'VITE_').VITE_AUTH_PROVIDER || 'anonymous';

@@ -35,10 +35,13 @@ docker run --rm -u "$(id -u):$(id -g)" -e HOME=/tmp -v "$PWD:/config" \
   ghcr.io/redcrayonai/draw-builder:<version> lock --config /config
 # Build the images. Private repositories: a git credential-store file as a build secret.
 docker buildx bake -f <draw>/docker/prod/docker-bake.hcl --load \
-  --set "*.contexts.deploy=$PWD" --set "*.contexts.seams=$PWD/seams" \
+  --set "*.contexts.deploy=$PWD" \
   --set '*.contexts.builder=docker-image://ghcr.io/redcrayonai/draw-builder:<version>' \
   --set "*.secrets=id=git_credentials,src=$HOME/.git-credentials"
 ```
+
+With a `seams/` folder, also pass `--set "*.contexts.seams=$PWD/seams"`; leave it
+out otherwise, since a context must exist.
 
 Put plugin settings in `plugins.env` next to `compose.prod.yml`; the build writes
 `plugin-settings.env.example` with every name. Upgrading draw: change the builder

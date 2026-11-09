@@ -365,8 +365,11 @@ if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1]
     if (args[0] === '--api-types' && args.length === 2) {
       const { apiTypeProblems } = await import('./plugin-api-types.mjs');
       const problems = apiTypeProblems(root, args[1], exportedTypes);
-      if (problems.length && process.env.PLUGIN_API_MAJOR === 'true') console.error(problems.join('\n'));
-      else if (problems.length) throw new Error(problems.join('\n'));
+      // A breaking release excuses incompatible changes, never a check that could not run.
+      const excused = process.env.PLUGIN_API_MAJOR === 'true' ? problems.filter(p => p.includes('changed incompatibly')) : [];
+      if (excused.length) console.error(excused.join('\n'));
+      const failing = problems.filter(p => !excused.includes(p));
+      if (failing.length) throw new Error(failing.join('\n'));
       process.exit();
     }
     if (args.some(arg => !['--check', '--api'].includes(arg))) throw new Error(rule('usage: node scripts/plugin-build.mjs [--check] [--api] | --api-types module|web'));
