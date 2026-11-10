@@ -2,7 +2,8 @@
 # should ship carries one or more of release:plugin, release:core, release:mcp
 # and exactly one of major, minor, patch:
 #
-#   1. while the PR is open, the check job fails on a half-labelled PR;
+#   1. while the PR is open, the check job fails on a half-labelled PR
+#      (Dependabot's own major, minor or patch label alone is not one);
 #   2. on merge, each labelled component gets the next tag after its last one
 #      (plugin-vX.Y.Z, vX.Y.Z, mcp-vX.Y.Z) and a GitHub release with notes
 #      since that tag;
@@ -38,6 +39,7 @@ jobs:
       - name: Check the release labels
         env:
           LABELS: ${{ toJSON(github.event.pull_request.labels.*.name) }}
+          AUTHOR: ${{ github.event.pull_request.user.login }}
         run: node scripts/release-labels.mjs check
 
   release:
@@ -62,6 +64,7 @@ jobs:
       - name: Plan the releases
         env:
           LABELS: ${{ toJSON(github.event.pull_request.labels.*.name) }}
+          AUTHOR: ${{ github.event.pull_request.user.login }}
         run: |
           # only tags from before this merge, so a re-run plans the same tags
           TAGS=$(git tag --merged "$SHA^")

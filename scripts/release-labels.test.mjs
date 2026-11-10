@@ -8,6 +8,11 @@ test('release labels need a component and exactly one bump', () => {
   assert.throws(() => parseLabels(['release:plugin']), /exactly one of major, minor, patch; found none/);
   assert.throws(() => parseLabels(['release:plugin', 'major', 'patch']), /exactly one/);
   assert.throws(() => parseLabels(['minor']), /needs a release:<component>/);
+  assert.deepEqual(parseLabels(['major', 'dependencies'], 'dependabot[bot]'), { components: [], bump: null });
+  assert.deepEqual(plan(['major', 'dependencies'], [], undefined, 'dependabot[bot]'), []);
+  assert.throws(() => parseLabels(['major', 'dependencies'], 'someone'), /needs a release:<component>/);
+  assert.deepEqual(parseLabels(['release:core', 'patch', 'dependencies'], 'dependabot[bot]'), { components: ['core'], bump: 'patch' });
+  assert.throws(() => parseLabels(['release:core', 'dependencies'], 'dependabot[bot]'), /exactly one/);
   assert.throws(() => parseLabels(['release:web', 'patch']), /unknown label release:web/);
 });
 
