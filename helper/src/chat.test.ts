@@ -45,9 +45,9 @@ describe('the blocking queue', () => {
     const scrub = scrubber();
     const chunks: string[] = [];
     for (let i = 0; i < 100; i++) chunks.push(scrub('a'.repeat(32000), false));
-    chunks.push(scrub('sk_live_' + 'a'.repeat(40) + '\nSafe line', true));
+    chunks.push(scrub('AKIA' + 'ABCDEFGHIJKLMNOP' + '\nSafe line', true));
     expect(chunks.every(chunk => Buffer.byteLength(chunk) < MAX_SNAPSHOT_BYTES)).toBe(true);
-    expect(chunks.join('')).not.toContain('sk_live_');
+    expect(chunks.join('')).not.toContain('AKIA' + 'ABCDEFGHIJKLMNOP');
     expect(chunks.join('')).toContain('Safe line');
   });
 
