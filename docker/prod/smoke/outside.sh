@@ -71,15 +71,16 @@ retry 60 dc cp caddy:/data/caddy/pki/authorities/local/root.crt "$work/ca.crt" |
 route() { curl -sS --cacert "$work/ca.crt" --resolve "dash.$domain:443:127.0.0.1" -o "$work/body" -w '%{http_code}' "https://dash.$domain/api/plugins/pinboard"; }
 answers() { [ "$(route)" = "$1" ]; }
 retry 60 answers 503 || fail "without its setting the plugin route answered $(route), not 503"
-# Every script the canvas page loads, concatenated.
+# The canvas page's scripts and the chunks they import (the app loads behind a small boot chunk), concatenated.
+canvas_get() { curl -sS --cacert "$work/ca.crt" --resolve "$domain:443:127.0.0.1" "https://$domain/$1"; }
 canvas_js() {
-  local page asset
-  page="$(curl -sS --cacert "$work/ca.crt" --resolve "$domain:443:127.0.0.1" "https://$domain/")"
-  for asset in $(printf '%s' "$page" | grep -o '/assets/[^"]*\.js'); do
-    curl -sS --cacert "$work/ca.crt" --resolve "$domain:443:127.0.0.1" "https://$domain$asset"
+  local entry chunk
+  for entry in $(canvas_get | grep -o 'assets/[A-Za-z0-9._-]*\.js' | sort -u); do
+    for chunk in $(canvas_get "$entry" | grep -o 'assets/[A-Za-z0-9._-]*\.js' | sort -u) "$entry"; do canvas_get "$chunk"; done
   done
 }
-canvas_js | grep -q 'pinboard-banner' || fail "the canvas bundle has no pinboard canvas part"
+has_part() { canvas_js | grep -q 'pinboard-banner'; }
+retry 60 has_part || fail "the canvas bundle has no pinboard canvas part"
 printf 'PINBOARD_GREETING=hello-from-plugins-env\nPINBOARD_BANNER=banner-from-plugins-env\n' >plugins.env
 dc up -d --wait dashboard canvas
 retry 60 answers 200 || fail "with plugins.env the plugin route answered $(route)"
