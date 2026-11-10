@@ -15,13 +15,15 @@ export const COMPONENTS = {
   mcp: { prefix: 'mcp-v', seed: 'mcp/package.json' },
 };
 const BUMPS = ['major', 'minor', 'patch'];
+const DEPENDABOT = 'dependabot[bot]';
 const SEMVER = /^(\d+)\.(\d+)\.(\d+)$/;
 
 /** Returns { components, bump }, or throws when the labels are half set. */
-export function parseLabels(labels) {
+export function parseLabels(labels, author) {
   const components = labels.filter(l => l.startsWith('release:')).map(l => l.slice('release:'.length));
   const bumps = labels.filter(l => BUMPS.includes(l));
-  if (!components.length && !bumps.length) return { components: [], bump: null };
+  // Dependabot labels its own PRs major, minor or patch; without a component that is no release
+  if (!components.length && (!bumps.length || author === DEPENDABOT)) return { components: [], bump: null };
   const unknown = components.filter(c => !Object.hasOwn(COMPONENTS, c));
   if (unknown.length) throw new Error(`unknown label ${unknown.map(c => `release:${c}`).join(', ')}; use ${Object.keys(COMPONENTS).map(c => `release:${c}`).join(', ')}`);
   if (!components.length) throw new Error(`label ${bumps.join(', ')} also needs a release:<component> label (${Object.keys(COMPONENTS).join(', ')})`);
@@ -46,8 +48,8 @@ const seedOf = component => {
   return file ? JSON.parse(readFileSync(file, 'utf8')).version : '0.0.0';
 };
 
-export function plan(labels, tags, seed = seedOf) {
-  const { components, bump } = parseLabels(labels);
+export function plan(labels, tags, seed = seedOf, author) {
+  const { components, bump } = parseLabels(labels, author);
   return components.map(c => ({ component: c, ...nextTag(COMPONENTS[c].prefix, tags, bump, seed(c)) }));
 }
 
@@ -80,12 +82,15 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
   try {
     const [command, arg] = process.argv.slice(2);
     const labels = () => JSON.parse(process.env.LABELS ?? '[]');
+    const author = process.env.AUTHOR;
     if (command === 'check') {
-      const { components, bump } = parseLabels(labels());
+      const { components, bump } = parseLabels(labels(), author);
       console.log(components.length ? `merging releases ${components.map(c => `${c} (${bump})`).join(', ')}` : 'no release labels; merging releases nothing');
+      // shortcut: a warning, since labels do not say who set them; read the PR's label events to refuse instead
+      if (components.length && author === DEPENDABOT) console.log(`::warning::this is a Dependabot PR and ${bump} may be its own label; set the bump you mean before merging`);
     } else if (command === 'plan') {
       const tags = (process.env.TAGS ?? '').split('\n').map(t => t.trim()).filter(Boolean);
-      for (const { component, tag, last } of plan(labels(), tags)) console.log(`${component} ${tag} ${last ?? ''}`.trim());
+      for (const { component, tag, last } of plan(labels(), tags, seedOf, author)) console.log(`${component} ${tag} ${last ?? ''}`.trim());
     } else if (command === 'api-break') {
       console.log(apiBreak(labels(), (process.env.TAGS ?? '').split('\n').map(t => t.trim()).filter(Boolean)));
     } else if (command === 'stamp-plugin') {

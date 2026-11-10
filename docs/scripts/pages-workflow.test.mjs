@@ -27,7 +27,7 @@ test('Pages publishes only checked main builds, including manual runs', () => {
 	assert.match(deploy, /uses: actions\/deploy-pages@v5/);
 	const upload = workflow.match(/      - name: Upload Pages artifact\n([\s\S]*?)(?=\n  deploy:)/)[1];
 	assert.equal(upload.match(/^        if: (.+)$/m)[1], condition);
-	assert.match(upload, /uses: actions\/upload-pages-artifact@v4/);
+	assert.match(upload, /uses: actions\/upload-pages-artifact@v5/);
 	assert.match(upload, /^          path: docs\/dist$/m);
 	assert.ok(workflow.indexOf('name: Check page vocabulary') < workflow.indexOf('name: Upload Pages artifact'));
 });
