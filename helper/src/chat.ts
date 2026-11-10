@@ -18,7 +18,7 @@ import { findSecret, isSecretFile } from '../../shared/capture';
 import { HelperError } from './capture';
 import { chatDir, chatSocketPath, removeDeadSockets } from './chat-path';
 import { connectCodex } from './chat-codex';
-import { CHAT_VIEWER_TTL_MS, type ChatSession, type ChatEvent, type ApprovalDecision } from '../../shared/chat';
+import { CHAT_PERSON_MAX_CHARS, CHAT_VIEWER_TTL_MS, type ChatSession, type ChatEvent, type ApprovalDecision } from '../../shared/chat';
 
 export const CHAT_USAGE = 'redcrayon: usage: redcrayon chat --token <token from start_chat>';
 const MAX_EVENTS = 500;
@@ -48,24 +48,34 @@ const secretLine = (kind: string) => `[hidden: this line looks like a ${kind}]`;
 export function scrubber(): (text: string, last?: boolean) => string {
   let inKey = false;
   let waiting = '';
+  let dropping = false;
+  const lineLimit = 16 * 1024;
   return (text, last = true) => {
-    const all = waiting + text;
-    const end = last ? all.length : all.lastIndexOf('\n') + 1;
-    waiting = all.slice(end);
-    return all
-      .slice(0, end)
-      .split('\n')
-      .map(line => {
-        if (inKey) {
-          if (/-----END [A-Z0-9 ]*PRIVATE KEY/.test(line)) inKey = false;
-          return line === '' ? line : secretLine('private key');
-        }
-        const hit = findSecret(line);
-        if (!hit) return line;
-        if (hit.kind === 'private key' && !/-----END [A-Z0-9 ]*PRIVATE KEY/.test(line)) inKey = true;
-        return secretLine(hit.kind);
-      })
-      .join('\n');
+    const lines = (waiting + text).split('\n');
+    waiting = last ? '' : lines.pop()!;
+    const safe = lines.map(line => {
+      const wasKey = inKey;
+      if (/-----BEGIN [A-Z0-9 ]*PRIVATE KEY/.test(line)) inKey = true;
+      const privateLine = wasKey || inKey;
+      if (/-----END [A-Z0-9 ]*PRIVATE KEY/.test(line)) inKey = false;
+      const discarded = dropping;
+      dropping = false;
+      if (discarded) return '';
+      if (line.length > lineLimit) return '[hidden: line exceeds the chat limit]';
+      if (privateLine) return line === '' ? line : secretLine('private key');
+      const hit = findSecret(line);
+      return hit ? secretLine(hit.kind) : line;
+    }).join('\n');
+    let result = safe + (!last && lines.length ? '\n' : '');
+    if (waiting.length > lineLimit || dropping) {
+      if (/-----BEGIN [A-Z0-9 ]*PRIVATE KEY/.test(waiting)) inKey = true;
+      if (/-----END [A-Z0-9 ]*PRIVATE KEY/.test(waiting)) inKey = false;
+      if (!dropping) result += '[hidden: line exceeds the chat limit]';
+      dropping = true;
+      // Keep only enough to recognize a private-key marker split across updates.
+      waiting = waiting.slice(-80);
+    }
+    return result;
   };
 }
 
@@ -209,15 +219,28 @@ export class ChatCore {
     this.afterStop = this.state === 'stopped' || this.state === 'stopping';
   }
 
+  /** Queue frames are previews; the complete messages stay here until delivered. */
+  private queuePreview(): QueuedMessage[] {
+    const preview = (text: string, max: number) => text.length > max ? text.slice(0, max) + '…' : text;
+    return this.queue.map(m => ({ ...m, text: preview(m.text, 500), ...(m.context ? { context: preview(m.context, 300) } : {}) }));
+  }
+
   /** Newest talk first to survive: a long session must still fit in one frame. */
   snapshot() {
-    const frame = (events: Event[]) => ({ type: 'snapshot', events, queue: this.queue, state: this.state, paused: this.paused, ...(this.session ? { session: this.session } : {}) });
+    const queue = this.queuePreview();
+    const frame = (events: Event[]) => ({ type: 'snapshot', events, queue, state: this.state, paused: this.paused, ...(this.session ? { session: this.session } : {}) });
     let events = this.events;
     while (events.length > 0 && Buffer.byteLength(JSON.stringify(frame(events))) > MAX_SNAPSHOT_BYTES) events = events.slice(Math.ceil(events.length / 4));
     return frame(events);
   }
 
   private record(event: Event): void {
+    if (event.type === 'text' && typeof event.delta === 'string' && event.delta.length > 16 * 1024) {
+      for (let at = 0; at < event.delta.length; at += 16 * 1024) {
+        this.record({ ...event, delta: event.delta.slice(at, at + 16 * 1024), final: Boolean(event.final) && at + 16 * 1024 >= event.delta.length });
+      }
+      return;
+    }
     this.events.push(event);
     if (this.events.length > MAX_EVENTS) this.events.splice(0, this.events.length - MAX_EVENTS);
     this.deps.send(event);
@@ -232,7 +255,7 @@ export class ChatCore {
   }
 
   private queueChanged(): void {
-    this.deps.send({ type: 'queue', queue: this.queue, paused: this.paused });
+    this.deps.send({ type: 'queue', queue: this.queuePreview(), paused: this.paused });
     this.deps.changed?.();
   }
 
@@ -312,7 +335,7 @@ export class ChatCore {
     if (msg.type === 'joined') return this.deps.send(this.snapshot());
     if (msg.type === 'send' || msg.type === 'receipt') {
       if (typeof msg.text !== 'string' || !msg.text.trim() || typeof msg.id !== 'string') return;
-      if (msg.id.length > 200 || msg.text.length > 32000 || this.queue.length >= 100 || this.queue.some(m => m.id === msg.id) || this.events.some(e => e.type === 'delivered' && e.id === msg.id)) return;
+      if (msg.id.length > 200 || msg.text.length > CHAT_PERSON_MAX_CHARS || this.queue.length >= 100 || this.queue.some(m => m.id === msg.id) || this.events.some(e => e.type === 'delivered' && e.id === msg.id)) return;
       if (msg.type === 'receipt') {
         return this.record({ type: 'delivered', id: msg.id, text: scrubber()(msg.text), ...(typeof msg.context === 'string' ? { context: scrubber()(msg.context) } : {}) });
       }

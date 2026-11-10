@@ -1,5 +1,7 @@
 /** The board speaks this protocol; execution adapters translate their own harness events. */
 export type ChatState = 'idle' | 'working' | 'stopping' | 'stopped';
+export const CHAT_PERSON_MAX_CHARS = 32000;
+export const CHAT_PERSON_MAX_BYTES = 64 * 1024;
 export const CHAT_VIEWER_TTL_MS = 90_000;
 
 export interface ChatSession {

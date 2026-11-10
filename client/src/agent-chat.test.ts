@@ -186,6 +186,36 @@ describe('mountAgentChat', () => {
     expect(input.value).toBe('Unsent question');
   });
 
+  it.each(['語'.repeat(30000), 'x'.repeat(32001)])('keeps an oversized message in the composer and explains the refusal', async text => {
+    const { button, socket } = await mount();
+    button.click();
+    socket.frame({ type: 'snapshot', events: [], queue: [], state: 'idle' });
+    const input = panel().querySelector('textarea')!;
+    input.value = text;
+    input.dispatchEvent(new Event('input'));
+    input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+    expect(input.value).toBe(text);
+    expect(socket.sent.some(frame => frame.type === 'send')).toBe(false);
+    expect(panel().textContent).toContain('too long to send');
+    socket.handlers.close({ code: 4008, reason: 'Rejected oversized message' });
+    expect(panel().textContent).toContain('Rejected oversized message');
+  });
+
+  it('reports connection changes so review banners can repaint immediately', async () => {
+    const changed = vi.fn();
+    const chat = mountAgentChat(document.createElement('button'), {
+      url: () => 'wss://x/chat/1', token: async () => 'tok', selection: () => '', onlineChanged: changed,
+    });
+    chat.setAvailable(true);
+    await flush();
+    const socket = FakeSocket.all[0];
+    changed.mockClear();
+    socket.frame({ type: 'snapshot', events: [], queue: [], state: 'idle' });
+    expect(changed).toHaveBeenCalledOnce();
+    socket.frame({ agent: 'gone' });
+    expect(changed).toHaveBeenCalledTimes(2);
+  });
+
   it('retries a refusal with a fresh connection, and says why only once it keeps happening', async () => {
     const { button, socket } = await mount();
     socket.frame({ agent: 'gone' });
@@ -458,7 +488,11 @@ describe('mountAgentChat', () => {
     const first = FakeSocket.all[0];
     first.frame(snapshot());
     type('board one draft');
+    chat.close();
+    first.frame({ type: 'text', message: 'unread', delta: 'new reply', final: true });
+    expect(button.dataset.unread).toBe('true');
     chat.switchBoard();
+    expect(button.dataset.unread).toBe('false');
     url = 'wss://x/chat/2';
     selection = 'node two';
     await flush();
@@ -473,6 +507,7 @@ describe('mountAgentChat', () => {
     chat.switchBoard();
     await flush();
     FakeSocket.all[2].frame(snapshot());
+    if (panel().hidden) button.click();
     expect(input().value).toBe('board one draft');
     expect(panel().querySelector('.ac-chips')?.textContent).toBe('node one');
     sendButton().click();

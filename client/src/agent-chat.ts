@@ -255,6 +255,7 @@ export interface AgentChatOpts {
   agentElsewhere?(): AgentElsewhere | null;
   onOpen?(): void;
   canAutoOpen?(): boolean;
+  onlineChanged?(): void;
   /** The board gained (+) or lost (-) this much width beside it. */
   boardWidthChanged?(delta: number): void;
 }
@@ -518,6 +519,7 @@ export function mountAgentChat(chatButton: HTMLButtonElement, opts: AgentChatOpt
     model.paused = false;
     model.online = false;
     model.connection = 'syncing';
+    opts.onlineChanged?.();
     shown.clear();
     expanded.clear();
     rendered.clear();
@@ -957,6 +959,7 @@ export function mountAgentChat(chatButton: HTMLButtonElement, opts: AgentChatOpt
         if (status === 'syncing' && model.online) return;
         model.connection = status;
         model.online = false;
+        opts.onlineChanged?.();
         wasOnline = false;
         model.closed = reason ?? null;
         render();
@@ -969,7 +972,9 @@ export function mountAgentChat(chatButton: HTMLButtonElement, opts: AgentChatOpt
         const before = model.state;
         const previous = model.selected;
         if (f.type === 'sessions' || f.type === 'snapshot') saveDraft();
+        const wasConnected = model.online;
         applyFrame(model, f);
+        if (model.online !== wasConnected) opts.onlineChanged?.();
         if (f.type === 'approval') pendingApprovals.delete(String(f.id));
         if (previous !== model.selected) {
           // A first descriptor identifies the draft typed while this session was connecting.
@@ -1024,6 +1029,7 @@ export function mountAgentChat(chatButton: HTMLButtonElement, opts: AgentChatOpt
     connection = null;
     previous?.close();
     model.online = false;
+    opts.onlineChanged?.();
     model.connection = 'offline';
     wasOnline = false;
   }
@@ -1129,6 +1135,8 @@ export function mountAgentChat(chatButton: HTMLButtonElement, opts: AgentChatOpt
       setOpen(false);
       disconnect();
       Object.assign(model, emptyChat());
+      unread = false;
+      renderStatus();
       shown.clear();
       expanded.clear();
       switchingBoard = true;

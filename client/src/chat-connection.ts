@@ -1,3 +1,5 @@
+import { CHAT_PERSON_MAX_BYTES, CHAT_PERSON_MAX_CHARS } from '../../shared/chat';
+
 /** The relay transport owns retries and authentication; the shell owns conversation state. */
 export type ChatFrame = Record<string, any>;
 export type ConnectionStatus = 'connecting' | 'reconnecting' | 'waiting' | 'syncing' | 'ready' | 'offline';
@@ -36,7 +38,13 @@ export function createChatConnection(opts: ChatConnectionOptions): ChatConnectio
   const send = (frame: ChatFrame): boolean => {
     if (socket?.readyState !== 1) return false;
     try {
-      socket.send(JSON.stringify(frame));
+      const raw = JSON.stringify(frame);
+      if (((frame.type === 'send' || frame.type === 'receipt') && typeof frame.text === 'string' && frame.text.length > CHAT_PERSON_MAX_CHARS) ||
+          new TextEncoder().encode(raw).byteLength > CHAT_PERSON_MAX_BYTES) {
+        opts.receive({ type: 'notice', tone: 'attention', text: 'That message is too long to send. Shorten it and try again.' });
+        return false;
+      }
+      socket.send(raw);
       return true;
     } catch {
       const failed = socket;
@@ -109,6 +117,7 @@ export function createChatConnection(opts: ChatConnectionOptions): ChatConnectio
         socket = null;
         agentPresent = false;
         clearTimeout(reauth);
+        if (event.code === 4008) opts.receive({ type: 'notice', tone: 'attention', text: event.reason || 'That message could not be sent.' });
         retryLater(event.code === 4001 || event.code === 4008 ? event.reason || 'The chat closed.' : undefined);
       });
     } catch {

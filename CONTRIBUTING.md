@@ -92,6 +92,12 @@ Contributions are licensed under the [Apache License 2.0](LICENSE).
 
 ## Agent chat integration
 
+A deployment using its own Worker entry and configuration must export `Chat`
+from `mcp/src/worker.ts`, bind it as `CHAT`, and add a new Durable Object
+migration for the SQLite class `Chat`. Add the binding to each named environment
+as well; those bindings do not inherit the top-level configuration. The local
+configuration in `mcp/wrangler.jsonc` is not a production deployment file.
+
 `shared/chat.ts` defines the conversation descriptor, capabilities, events and
 approval decisions. The canvas shell consumes that protocol through
 `client/src/chat-connection.ts`. It does not depend on a local process or provider.

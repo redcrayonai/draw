@@ -47,6 +47,12 @@ export async function connectCodex(options: {
   const users = new Set<string>();
   const boardTurns = new Set<string>();
   const finishedTurns = new Set<string>();
+  const historyOverlap = new Set<string>();
+  // Bound replay protection to the recent history window (20 turns x 200 items).
+  const remember = (seen: Set<string>, id: string) => {
+    seen.add(id);
+    if (seen.size > 4000) seen.delete(seen.values().next().value!);
+  };
   let deferredUsers: Frame[] = [];
   let buffered: Frame[] = [];
   const setState = (next: ChatState) => { state = next; emit({ type: 'state', state }); };
@@ -103,7 +109,7 @@ export async function connectCodex(options: {
     if (value.type === 'userMessage') {
       if (sending) { deferredUsers.push({ item: value, turnId }); return; }
       if (users.has(id)) return;
-      users.add(id);
+      remember(users, id);
       if (boardTurns.has(turnId)) return;
       const content = Array.isArray(value.content) ? value.content : [];
       const prompt = content.filter((part: Frame) => part.type === 'text' && typeof part.text === 'string').map((part: Frame) => part.text).join('\n');
@@ -116,7 +122,7 @@ export async function connectCodex(options: {
       const delta = whole.startsWith(previous) ? whole.slice(previous.length) : '';
       text.set(id, whole.startsWith(previous) ? whole : previous);
       if (delta || done) emit({ type: 'text', message: id, delta, final: done });
-      if (done) { completed.add(id); text.delete(id); }
+      if (done) { remember(completed, id); historyOverlap.delete(id); text.delete(id); }
     } else if (summaries[value.type]) {
       emit({ type: 'tool', id, phase: done ? 'done' : 'start', summary: summaries[value.type] });
     }
@@ -153,20 +159,39 @@ export async function connectCodex(options: {
         activeTurn = p.turn.id;
         setState('working');
         break;
-      case 'turn/completed':
+      case 'turn/completed': {
         if (typeof p.turn?.id !== 'string') return;
         clearApprovals(p.turn.id);
-        finishedTurns.add(p.turn.id);
+        if (sending) finishedTurns.add(p.turn.id);
         if (activeTurn && p.turn.id !== activeTurn) return;
         activeTurn = undefined;
+        const uncertain = new Map([...text].filter(([id]) => historyOverlap.delete(id)));
+        if (uncertain.size) {
+          // Delta notifications have no offsets. Read authoritative text after an interrupted
+          // turn instead of guessing which buffered suffix was already in attachment history.
+          void rpc('thread/turns/list', { threadId, limit: 20, sortDirection: 'desc', itemsView: 'full' }).then(history => {
+            if (closed) return;
+            const items = history.data?.find((turn: Frame) => turn.id === p.turn.id)?.items ?? [];
+            for (const [message, previous] of uncertain) {
+              const whole = items.find((entry: Frame) => entry.id === message)?.text;
+              if (typeof whole !== 'string' || !whole.startsWith(previous)) throw new Error('Incomplete reply history');
+              emit({ type: 'text', message, delta: whole.slice(previous.length), final: true });
+            }
+          }).catch(() => {
+            if (closed) return;
+            for (const message of uncertain.keys()) emit({ type: 'text', message, delta: '', final: true });
+            emit({ type: 'notice', tone: 'attention', text: 'Could not restore the end of this reply. Check the terminal.' });
+          });
+        }
         for (const message of text.keys()) {
-          emit({ type: 'text', message, delta: '', final: true });
-          completed.add(message);
+          if (!uncertain.has(message)) emit({ type: 'text', message, delta: '', final: true });
+          remember(completed, message);
         }
         text.clear();
         if (p.turn.status === 'failed') emit({ type: 'notice', tone: 'attention', text: 'The agent could not finish this turn. Check the terminal for details.' });
         setState(p.turn.status === 'interrupted' ? 'stopped' : 'idle');
         break;
+      }
       case 'thread/status/changed':
         if (p.status?.type === 'active') { if (state !== 'stopping') setState('working'); }
         else if (p.status?.type === 'idle') { activeTurn = undefined; clearApprovals(); if (state !== 'stopping' && state !== 'stopped') setState('idle'); }
@@ -176,7 +201,7 @@ export async function connectCodex(options: {
         if (p.item && typeof p.turnId === 'string') item(p.item, p.turnId, frame.method === 'item/completed');
         break;
       case 'item/agentMessage/delta':
-        if (typeof p.itemId !== 'string' || typeof p.delta !== 'string' || completed.has(p.itemId)) return;
+        if (typeof p.itemId !== 'string' || typeof p.delta !== 'string' || completed.has(p.itemId) || historyOverlap.has(p.itemId)) return;
         text.set(p.itemId, (text.get(p.itemId) ?? '') + p.delta);
         emit({ type: 'text', message: p.itemId, delta: p.delta, final: false });
         break;
@@ -254,7 +279,10 @@ export async function connectCodex(options: {
     ready = true;
     // Buffered deltas may already be in history; completion fills any missing suffix.
     for (const frame of buffered) {
-      if (frame.method === 'item/agentMessage/delta' && historyIds.has(frame.params?.itemId)) continue;
+      if (frame.method === 'item/agentMessage/delta' && historyIds.has(frame.params?.itemId)) {
+        if (text.has(frame.params.itemId)) historyOverlap.add(frame.params.itemId);
+        continue;
+      }
       handle(frame);
     }
     buffered = [];
@@ -271,13 +299,14 @@ export async function connectCodex(options: {
           try {
             const result = await rpc('turn/start', { threadId, input: [{ type: 'text', text: prompt, text_elements: [] }] });
             if (typeof result.turn?.id !== 'string') throw new Error('UNCONFIRMED: the terminal did not identify the new turn. Check it before retrying.');
-            boardTurns.add(result.turn.id);
+            remember(boardTurns, result.turn.id);
             if (result.turn.status === 'inProgress' && !finishedTurns.has(result.turn.id)) activeTurn = result.turn.id;
           } catch (error) {
             if (!closed && !activeTurn) setState('idle');
             throw error;
           } finally {
             sending = undefined;
+            finishedTurns.clear();
             const queued = deferredUsers;
             deferredUsers = [];
             for (const entry of queued) item(entry.item, entry.turnId, true);

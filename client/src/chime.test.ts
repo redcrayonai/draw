@@ -24,6 +24,13 @@ describe('chime', () => {
 
   const click = () => document.dispatchEvent(new Event('pointerdown'));
 
+  it('arms sound from keyboard interaction', () => {
+    armChime();
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter' }));
+    chime('done', false);
+    expect(FakeContext.started).toEqual([784, 523.25]);
+  });
+
   it('is silent until the page has had a click', () => {
     armChime();
     chime('done', false);

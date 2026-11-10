@@ -33,6 +33,16 @@ function setup() {
 }
 
 describe('ChatHub', () => {
+  it('does not advertise sessions to an expired access lease when a helper reconnects', async () => {
+    const { open, tick } = setup();
+    const person = await open('ada', 'person');
+    person.sent.length = 0;
+    tick(90_001);
+    await open('tok-agent-ada', 'agent');
+    expect(person.sent).toEqual([]);
+    expect(person.closedWith).toBe(CHAT_CLOSE.auth);
+  });
+
   it('reports only current visible viewers of the selected agent and clears them on leave or revocation', async () => {
     const { hub, open, links, tick } = setup();
     const agent = await open('tok-agent-ada', 'agent');
@@ -190,10 +200,10 @@ describe('ChatHub with a long conversation and an idle tab', () => {
     expect(agent.closedWith).toBeUndefined();
   });
 
-  it('an idle tab hears its agent connect, then re-checks and asks for the talk with sync', async () => {
+  it('an idle tab with current access hears its agent connect, then requests the talk', async () => {
     const { hub, open, tick } = setup();
     const ada = await open('ada', 'person');
-    tick(CHAT_REAUTH_MS * 10);
+    tick(CHAT_REAUTH_MS);
     const agent = await open('tok-agent-ada', 'agent');
     expect(ada.closedWith).toBeUndefined();
     expect(ada.sent).toContainEqual({ agent: 'connected' });

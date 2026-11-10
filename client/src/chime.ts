@@ -22,13 +22,15 @@ export function setSound(on: boolean): void {
 }
 
 let ctx: AudioContext | null = null;
-/** Created on the first click anywhere: a context made earlier stays silent. */
+/** Created on the first pointer or keyboard interaction. */
 export function armChime(target: EventTarget = document): void {
-  target.addEventListener('pointerdown', () => {
+  const arm = () => {
     const Ctor = (globalThis as { AudioContext?: typeof AudioContext }).AudioContext;
     if (!ctx && Ctor) ctx = new Ctor();
     void ctx?.resume?.();
-  }, { capture: true });
+  };
+  target.addEventListener('pointerdown', arm, { capture: true });
+  target.addEventListener('keydown', arm, { capture: true });
 }
 
 export function chime(kind: ChimeKind, watching: boolean): void {

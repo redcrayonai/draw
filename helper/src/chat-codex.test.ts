@@ -147,6 +147,19 @@ describe('the shared terminal conversation', () => {
     expect(JSON.stringify(s.events)).not.toContain('private');
   });
 
+  it('bounds replay IDs to recent history while still ignoring recent duplicates', async () => {
+    const history = Array.from({ length: 20 }, (_, t) => turn(`old-${t}`, 'completed',
+      Array.from({ length: 200 }, (_, i) => ({ id: `a-${t * 200 + i}`, type: 'agentMessage', text: 'reply' }))));
+    const s = server({ 'thread/turns/list': () => ({ data: history.reverse() }) });
+    await s.start();
+    const done = (id: string) => s.notification('item/completed', { turnId: 'new', item: { id, type: 'agentMessage', text: 'reply' } });
+    done('newest');
+    done('newest');
+    done('a-0');
+    await vi.waitFor(() => expect(s.events.filter(e => e.type === 'text')).toHaveLength(4002));
+    expect(s.events.filter(e => e.type === 'text' && e.message === 'newest')).toHaveLength(1);
+  });
+
   it('interrupts the exact active turn and waits for confirmation', async () => {
     const s = server({ 'thread/resume': () => ({ thread: thread('active') }), 'thread/turns/list': () => ({ data: [turn()] }) });
     const connection = await s.start();
@@ -177,6 +190,22 @@ describe('the shared terminal conversation', () => {
     s.notification('item/completed', { turnId: 'turn-1', item: { type: 'agentMessage', id: 'active', text: 'already in history and completed' } });
     await flush();
     expect(s.events.filter(event => event.type === 'text').map(event => event.delta).join('')).toBe('already in history and completed');
+  });
+
+  it('recovers buffered text newer than history when interruption omits item completion', async () => {
+    let reads = 0;
+    const s = server({ 'thread/turns/list': () => {
+      if (++reads === 1) {
+        s.notification('item/agentMessage/delta', { turnId: 'turn-1', itemId: 'active', delta: ' newer suffix' });
+        return { data: [turn('turn-1', 'inProgress', [{ type: 'agentMessage', id: 'active', text: 'prefix' }])] };
+      }
+      return { data: [turn('turn-1', 'interrupted', [{ type: 'agentMessage', id: 'active', text: 'prefix newer suffix' }])] };
+    } });
+    await s.start();
+    s.notification('item/agentMessage/delta', { turnId: 'turn-1', itemId: 'active', delta: ' suffix' });
+    s.notification('turn/completed', { turn: turn('turn-1', 'interrupted') });
+    await vi.waitFor(() => expect(s.events.filter(e => e.type === 'text').map(e => e.delta).join('')).toBe('prefix newer suffix'));
+    expect(s.events.filter(e => e.type === 'text').at(-1)).toMatchObject({ final: true });
   });
 
   it('does not leave a fast completed turn marked active after the start response', async () => {

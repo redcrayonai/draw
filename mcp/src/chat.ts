@@ -11,7 +11,7 @@
  * only adapts hibernatable WebSockets to it.
  */
 
-import { CHAT_VIEWER_TTL_MS, type ChatSession } from '../../shared/chat';
+import { CHAT_PERSON_MAX_BYTES, CHAT_VIEWER_TTL_MS, type ChatSession } from '../../shared/chat';
 
 type Selection = { id: string; agent: string };
 export type ChatAttachment =
@@ -35,7 +35,7 @@ export interface ChatDeps {
 }
 
 export const CHAT_AUTH_MS = 10_000;
-export const CHAT_MAX_BYTES = 64 * 1024;
+export const CHAT_MAX_BYTES = CHAT_PERSON_MAX_BYTES;
 export const CHAT_MAX_AGENT_BYTES = 1024 * 1024;
 export const CHAT_MAX_STRIKES = 20;
 export const CHAT_REAUTH_MS = 30_000;
@@ -94,7 +94,7 @@ export class ChatHub {
 
   private advertise(ws: ChatSocket): void {
     const a = ws.attachment();
-    if (a?.role !== 'person' || this.ended.has(ws)) return;
+    if (a?.role !== 'person' || this.ended.has(ws) || !this.fresh(ws, a)) return;
     const sessions = this.online().filter(s => a.agents.includes(s.attachment.agent));
     // Keep the chosen identity through disconnects; a different agent cannot inherit it.
     if (!a.selected && sessions.length === 1) {

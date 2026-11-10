@@ -2641,6 +2641,7 @@ async function boot(conn: DbConnection, identityHex: string, signedIn: boolean):
         const chat = mountAgentChat(chatButton, {
           onOpen: () => canvasPlugins?.close(),
           canAutoOpen: () => !canvasPlugins?.isOpen,
+          onlineChanged: paintReview,
           // A board nobody has moved stays framed in the new width; one they have moved keeps what is in its middle.
           boardWidthChanged: delta => {
             if (viewport.tx === framed.tx && viewport.ty === framed.ty && viewport.scale === framed.scale) {
@@ -2679,8 +2680,9 @@ async function boot(conn: DbConnection, identityHex: string, signedIn: boolean):
           chat.setAvailable([...conn.db.myAgentLinks.iter()].some(l => l.owner.toHexString() === identityHex));
           chat.refresh();
         };
-        for (const table of [conn.db.myAgentLinks, conn.db.visibleParticipant, conn.db.myBoards]) {
+        for (const table of [conn.db.myAgentLinks, conn.db.visibleParticipant, conn.db.visibleSelection, conn.db.visibleBoard, conn.db.myBoards]) {
           table.onInsert(refreshChat);
+          table.onUpdate(refreshChat);
           table.onDelete(refreshChat);
         }
         refreshChat();

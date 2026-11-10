@@ -1,6 +1,6 @@
 import type { Page, WebSocketRoute } from '@playwright/test';
 import { randomBytes } from 'node:crypto';
-import { test, expect, openBoard, boardIdOf, boardLink, linkedAgent, signInOnRequest, boardWith, armCrayon, send, type Stack } from '../fixtures';
+import { test, expect, openBoard, boardIdOf, boardLink, linkedAgent, signInOnRequest, boardWith, armCrayon, send, guestToken, type Stack } from '../fixtures';
 
 // Chat with the agent you are running, from the board, against a mocked relay:
 // page.routeWebSocket stands in for the hosted Worker at wss://mcp.e2e.invalid/chat/<board>.
@@ -51,6 +51,35 @@ test('someone with no linked agent is not offered a chat', async ({ account, sta
   await openBoard(page, `${stack.url}?new=1`);
   await expect(page.locator('#act-share')).toBeVisible();
   await expect(page.getByRole('button', { name: 'Chat with agent' })).toBeHidden();
+});
+
+test('chat follows a linked agent when only its selection moves to another board', async ({ account, guest, stack }) => {
+  const token = stack.accountToken();
+  const owner = await account(token);
+  await owner.routeWebSocket(/\/chat\/\d+$/, ws => ws.onMessage(raw => {
+    if (JSON.parse(String(raw)).role === 'person') {
+      ws.send(JSON.stringify({ ok: true, role: 'person' }));
+      ws.send(JSON.stringify({ agent: 'gone' }));
+    }
+  }));
+  await openBoard(owner, `${stack.url}?new=1`);
+  const here = await boardIdOf(stack, owner);
+  const agentPage = await guest();
+  await openBoard(agentPage, `${stack.url}?new=1`);
+  const away = await boardIdOf(stack, agentPage);
+  const agent = await agentPage.evaluate(() => (window as any).myIdentityHex as string);
+  const code = randomBytes(32).toString('base64url');
+  await stack.callReducer(await guestToken(agentPage), 'offer_agent_link', [code]);
+  await stack.callReducer(token, 'redeem_agent_link', [code]);
+  await stack.callReducer(token, 'grant_agent_board', [here, { __identity__: `0x${agent}` }]);
+  await agentPage.evaluate(() => (window as any).conn.reducers.joinBoard({ displayName: 'Review agent', kind: 'agent' }));
+  await agentPage.evaluate(id => (window as any).conn.reducers.setSelection({ boardId: BigInt(id), nodeIds: [] }), String(away));
+  const link = owner.locator('#agent-chat .ac-empty a');
+  await expect(link).toBeVisible();
+  await agentPage.evaluate(id => (window as any).conn.reducers.setSelection({ boardId: BigInt(id), nodeIds: [] }), String(here));
+  await expect(link).toHaveCount(0);
+  await agentPage.evaluate(id => (window as any).conn.reducers.setSelection({ boardId: BigInt(id), nodeIds: [] }), String(away));
+  await expect(link).toBeVisible();
 });
 
 test('the latest inactive session never links back to an older session', async ({ account, stack }) => {
@@ -153,6 +182,10 @@ test('sending crayon marks saves their data and sends only a label-free nudge to
   await expect(chatLog(page)).toContainText('I sent 2 red-crayon marks');
   await expect(page.locator('#mark-banner')).toHaveText('Waiting for review');
   await page.screenshot({ path: testInfo.outputPath('marks-in-chat.png') });
+  push(r, { agent: 'gone' });
+  await expect(page.locator('#mark-banner')).toHaveText('No agent listening', { timeout: 1000 });
+  push(r, { type: 'snapshot', events: [], queue: [], state: 'idle' });
+  await expect(page.locator('#mark-banner')).toHaveText('Waiting for review', { timeout: 1000 });
 });
 
 test('a live mark watcher gets a chat receipt without a second review request', async ({ account, stack }) => {
@@ -374,6 +407,20 @@ async function pairingLink(stack: Stack, B: number) {
   return { agent, code, href: `${await boardLink(stack, B)}&pair=${code}` };
 }
 const links = (stack: Stack, agent: string) => stack.sql(`SELECT * FROM agent_link WHERE agent = 0x${agent}`);
+
+test('redeeming a second agent grants the board to that agent, not an existing link', async ({ account, stack }) => {
+  const token = stack.accountToken();
+  const page = await account(token);
+  await relay(page);
+  await openBoard(page, `${stack.url}?new=1`);
+  const B = await boardIdOf(stack, page);
+  const old = await linkedAgent(stack, token);
+  const { agent, href } = await pairingLink(stack, B);
+  await page.goto(href);
+  await page.getByRole('button', { name: 'Link agent', exact: true }).click();
+  await expect.poll(async () => (await stack.sql(`SELECT id FROM agent_grant WHERE board_id = ${B} AND agent = 0x${agent.identity}`)).length).toBe(1);
+  expect(await stack.sql(`SELECT id FROM agent_grant WHERE board_id = ${B} AND agent = 0x${old.identity}`)).toEqual([]);
+});
 
 test('sign-in preserves a private pairing link and still asks for consent on the same board', async ({ guest, stack }, testInfo) => {
   const agent = await stack.mintIdentity();

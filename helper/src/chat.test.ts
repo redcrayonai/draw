@@ -19,6 +19,38 @@ const hook = (core: ChatCore, hook_event_name: string, rest: Record<string, unkn
 const send = (core: ChatCore, id: string, text = id, context?: string) => core.person({ type: 'send', id, text, context });
 
 describe('the blocking queue', () => {
+  it('keeps a full queue within the snapshot limit without shortening what the agent receives', () => {
+    const { core, sent } = setup();
+    hook(core, 'PreToolUse', { tool_name: 'Read', tool_input: {} });
+    const text = '語'.repeat(32000);
+    for (let i = 0; i < 100; i++) send(core, String(i), text, 'context'.repeat(4000));
+    expect(core.queue).toHaveLength(100);
+    expect(core.queue[99].text).toBe(text);
+    expect(Buffer.byteLength(JSON.stringify(core.snapshot()))).toBeLessThanOrEqual(MAX_SNAPSHOT_BYTES);
+    expect(Buffer.byteLength(JSON.stringify(sent.filter(e => e.type === 'queue').at(-1)))).toBeLessThanOrEqual(MAX_SNAPSHOT_BYTES);
+    expect(core.snapshot().queue.map(m => m.id)).toEqual(core.queue.map(m => m.id));
+  });
+
+  it('splits escaped text into relay-sized frames while preserving the reply', () => {
+    const { core, sent } = setup();
+    const text = ('\u0000'.repeat(1000) + '\n').repeat(250);
+    core.agent({ type: 'text', message: 'long', delta: text, final: true });
+    const frames = sent.filter(e => e.type === 'text');
+    expect(frames.map(e => e.delta).join('')).toBe(text);
+    expect(frames.every(e => Buffer.byteLength(JSON.stringify(e)) < MAX_SNAPSHOT_BYTES)).toBe(true);
+    expect(frames.filter(e => e.final)).toHaveLength(1);
+  });
+
+  it('bounds unfinished lines without exposing a secret split at the boundary', () => {
+    const scrub = scrubber();
+    const chunks: string[] = [];
+    for (let i = 0; i < 100; i++) chunks.push(scrub('a'.repeat(32000), false));
+    chunks.push(scrub('sk_live_' + 'a'.repeat(40) + '\nSafe line', true));
+    expect(chunks.every(chunk => Buffer.byteLength(chunk) < MAX_SNAPSHOT_BYTES)).toBe(true);
+    expect(chunks.join('')).not.toContain('sk_live_');
+    expect(chunks.join('')).toContain('Safe line');
+  });
+
   it('an idle agent is woken with the message; the next waits until it finishes', () => {
     const { core, wakes } = setup();
     hook(core, 'Stop');
@@ -385,6 +417,14 @@ describe('scrubber', () => {
   const key = 'AKIA' + 'ABCDEFGHIJKLMNOP';
   it('hides a line that looks like a secret and keeps the rest', () => {
     expect(scrubber()(`ok\nmy key is ${key}\nfine`)).toBe('ok\n[hidden: this line looks like a AWS access key]\nfine');
+  });
+
+  it('still recognizes a private-key marker across discarded long-line chunks', () => {
+    const scrub = scrubber();
+    scrub('a'.repeat(20000) + '-----BEGIN PRIVATE', false);
+    const rest = scrub(' KEY-----\nprivate-body\n-----END PRIVATE KEY-----\nsafe');
+    expect(rest).not.toContain('private-body');
+    expect(rest).toContain('safe');
   });
 
   it('hides a private key\'s whole body, across batches', () => {
