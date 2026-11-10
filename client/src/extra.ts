@@ -14,7 +14,8 @@ export interface CanvasExtra {
 }
 
 export interface BoardReady {
-  /** The page was opened without a board or share link (#b=, #s=, ?boardId=), as it was before boot rewrote the URL. */
+  /** The page was opened without a board or share link (#b=, #s=, ?board=, ?boardId=), as it was before boot
+   *  rewrote the URL. Also true for ?new=1, the "start a new board" link, signed in or not. */
   bareVisit: boolean;
   /** Opens the Connect guide, even to a signed-out viewer. Undefined when this build has no agent server. */
   openConnectGuide?: () => void;
