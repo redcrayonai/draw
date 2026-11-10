@@ -1,5 +1,7 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import html from '../index.html?raw';
+import { mountAgentChat } from './agent-chat';
+import type { ChatConnectionOptions } from './chat-connection';
 import { mountCanvasPlugins, type CanvasHostDeps, type CanvasPlugin } from './plugin-mounts';
 import type { Canvas, CanvasPanel } from './plugin-api';
 
@@ -51,6 +53,8 @@ beforeEach(() => {
   selected = [];
 });
 
+afterEach(() => vi.unstubAllGlobals());
+
 describe('canvas plugin panels', () => {
   it('shows a labeled launcher only on a workspace board whose workspace turned the plugin on, with its settings set', () => {
     const chat = recorder('Agent');
@@ -101,6 +105,48 @@ describe('canvas plugin panels', () => {
     expect(dock.hidden).toBe(true);
     expect(chat.mounts).toHaveLength(1);
     expect(chat.cleanups).not.toHaveBeenCalled();
+  });
+
+  it('switches between a plugin and local chat without losing either draft or stealing the open panel', () => {
+    vi.stubGlobal('matchMedia', () => ({ matches: true }));
+    sessionStorage.clear();
+    let chat: ReturnType<typeof mountAgentChat>;
+    let transport: ChatConnectionOptions;
+    const remote = recorder('Agent');
+    const { api, launch, dock, body } = host([plugin('chat', remote.panel)], { onOpen: () => chat.close() });
+    const button = document.getElementById('act-chat') as HTMLButtonElement;
+    chat = mountAgentChat(button, {
+      url: () => 'wss://chat.test/chat/1', token: async () => null, selection: () => '',
+      onOpen: () => api.close(), canAutoOpen: () => !api.isOpen,
+      connection(options) {
+        transport = options;
+        return { start() {}, close() {}, send: () => true };
+      },
+    });
+    chat.setAvailable(true);
+    launch('chat')!.click();
+    const remoteInput = body.querySelector('textarea')!;
+    remoteInput.value = 'Plugin draft';
+    transport!.receive({ type: 'snapshot', events: [], queue: [], state: 'idle' });
+    const local = document.getElementById('agent-chat')!;
+    expect(local.hidden).toBe(true);
+    expect(api.isOpen).toBe(true);
+
+    button.click();
+    expect(dock.hidden).toBe(true);
+    expect(local.hidden).toBe(false);
+    const localInput = local.querySelector('textarea')!;
+    localInput.value = 'Local draft';
+    localInput.dispatchEvent(new Event('input'));
+    launch('chat')!.click();
+    expect(local.hidden).toBe(true);
+    expect(document.activeElement).toBe(remoteInput);
+    expect(remoteInput.value).toBe('Plugin draft');
+    button.click();
+    expect(localInput.value).toBe('Local draft');
+    expect(document.activeElement).toBe(localInput);
+    expect(remote.mounts).toHaveLength(1);
+    chat.setAvailable(false);
   });
 
   it('a plugin that throws on mount shows an error card; the other plugin still works', () => {

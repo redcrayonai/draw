@@ -1753,6 +1753,7 @@ async function boot(conn: DbConnection, identityHex: string, signedIn: boolean):
         nodes.map(n => ({ id: n.id, ...nodeRect(n, editor.overrides) }));
       const selectedNodes = (): Node[] => getNodes().filter(n => editor.selection.has(n.id));
       canvasPlugins = mountCanvasPlugins({
+        onOpen: () => agentChat?.close(),
         // Off workspaces (personal boards, share-link guests) there is no workspace id and no panel.
         board: () => ({ id: boardId, workspaceId: permission()?.workspaceId, link: location.href }),
         enabled: (plugin, workspaceId) => [...conn.db.myWorkspacePlugins.iter()].some(row => row.workspaceId === workspaceId && row.plugin === plugin && row.enabled),
@@ -2638,6 +2639,8 @@ async function boot(conn: DbConnection, identityHex: string, signedIn: boolean):
         let framed = { tx: viewport.tx, ty: viewport.ty, scale: viewport.scale };
         const hrefOf = (slug: string) => boardHref({ app: location.href, slug, db: config.db, home: config.defaultDb });
         const chat = mountAgentChat(chatButton, {
+          onOpen: () => canvasPlugins?.close(),
+          canAutoOpen: () => !canvasPlugins?.isOpen,
           // A board nobody has moved stays framed in the new width; one they have moved keeps what is in its middle.
           boardWidthChanged: delta => {
             if (viewport.tx === framed.tx && viewport.ty === framed.ty && viewport.scale === framed.scale) {

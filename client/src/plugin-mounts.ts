@@ -14,11 +14,12 @@ export type CanvasHostDeps = {
   enabled(pluginId: string, workspaceId: bigint): boolean;
   selectedNodes(): CanvasNode[];
   token(): Promise<string | null>;
+  onOpen?(): void;
   parts?: CanvasPlugin[];
   storage?: Storage;
 };
 
-export type CanvasHost = { refresh(): void; boardChanged(): void; selectionChanged(): void };
+export type CanvasHost = { readonly isOpen: boolean; close(): void; refresh(): void; boardChanged(): void; selectionChanged(): void };
 
 const WIDTH_KEY = 'plugin-dock-width';
 const WIDTH_DEFAULT = 320;
@@ -116,6 +117,7 @@ export function mountCanvasPlugins(deps: CanvasHostDeps): CanvasHost {
   };
 
   const open = (plugin: CanvasPlugin, focus = true) => {
+    deps.onOpen?.();
     const entry = mount(plugin);
     active = plugin.id;
     for (const other of mounted.values()) other.el.hidden = other !== entry;
@@ -125,6 +127,7 @@ export function mountCanvasPlugins(deps: CanvasHostDeps): CanvasHost {
   };
 
   const close = () => {
+    if (!active) return;
     const was = active;
     active = undefined;
     show(false);
@@ -211,6 +214,8 @@ export function mountCanvasPlugins(deps: CanvasHostDeps): CanvasHost {
   refresh();
 
   return {
+    get isOpen() { return active !== undefined; },
+    close,
     refresh,
     boardChanged() {
       const was = active;

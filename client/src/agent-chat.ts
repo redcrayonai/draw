@@ -253,6 +253,8 @@ export interface AgentChatOpts {
   selection(): string;
   connection?(options: ChatConnectionOptions): ChatConnection;
   agentElsewhere?(): AgentElsewhere | null;
+  onOpen?(): void;
+  canAutoOpen?(): boolean;
   /** The board gained (+) or lost (-) this much width beside it. */
   boardWidthChanged?(delta: number): void;
 }
@@ -1028,7 +1030,7 @@ export function mountAgentChat(chatButton: HTMLButtonElement, opts: AgentChatOpt
 
   /** The panel comes to the person once per board, unless they closed it there. A phone keeps the board. */
   function arrive(): void {
-    if (open || drawing || sessionStorage.getItem(closedKey()) || !docked()) return;
+    if (open || drawing || sessionStorage.getItem(closedKey()) || !docked() || opts.canAutoOpen?.() === false) return;
     setOpen(true);
   }
 
@@ -1042,6 +1044,7 @@ export function mountAgentChat(chatButton: HTMLButtonElement, opts: AgentChatOpt
   function setOpen(next: boolean, byPerson = false): void {
     if (next || byPerson) setDrawing(false);
     if (next === open) return;
+    if (next) opts.onOpen?.();
     open = next;
     draw.hidden = !next;
     panel.hidden = !next;
@@ -1073,6 +1076,7 @@ export function mountAgentChat(chatButton: HTMLButtonElement, opts: AgentChatOpt
 
   return {
     get online(): boolean { return model.online; },
+    close(): void { setOpen(false, true); },
     /** Capture the destination before a board action saves; never forward into a later conversation. */
     prepareMessage(text: string, attached?: string): ((wake?: boolean) => boolean) | undefined {
       if ((!open && !drawing) || !model.online || !text.trim()) return;

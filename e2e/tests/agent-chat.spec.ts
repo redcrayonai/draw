@@ -89,7 +89,14 @@ test('the panel opens once when the agent connects, and stays closed once the pe
   await expect(page.getByRole('button', { name: 'Chat with agent' })).toBeVisible();
   await page.waitForTimeout(500);
   await expect(page.locator('#agent-chat')).toBeHidden();
-  await page.getByRole('button', { name: 'Chat with agent' }).click();
+  const launcher = page.getByRole('button', { name: 'Chat with agent' });
+  const bounds = (await launcher.boundingBox())!;
+  const viewport = page.viewportSize()!;
+  expect(bounds.x).toBeGreaterThan(viewport.width - 120);
+  expect(bounds.y).toBeGreaterThan(viewport.height - 180);
+  expect(bounds.width).toBeGreaterThanOrEqual(44);
+  expect(bounds.height).toBeGreaterThanOrEqual(44);
+  await launcher.click();
   await expect(input(page)).toBeFocused();
 });
 

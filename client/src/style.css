@@ -2448,13 +2448,23 @@ body.lib-dragging #board {
   --plugin-dock-w: 320px;
 }
 
-#plugin-launcher {
+#canvas-launcher {
   position: absolute;
   right: var(--space-4);
-  bottom: calc(var(--space-5) + var(--shortcuts-h) + var(--space-3));
+  bottom: calc(var(--space-5) + var(--shortcuts-h) + var(--space-3) + var(--canvas-launcher-lift, 0px));
   display: flex;
+  align-items: center;
   gap: var(--space-2);
-  z-index: 13;
+  z-index: 17;
+}
+
+#plugin-launcher { display: flex; gap: var(--space-2); }
+
+/* Leave the red-crayon Send button reachable while marks are pending. */
+body:has(.mark-send:not([hidden])) { --canvas-launcher-lift: 48px; }
+
+@media (min-width: 721px) {
+  body.plugin-dock-open #canvas-launcher { right: calc(var(--plugin-dock-w) + var(--space-4)); }
 }
 
 #plugin-launcher[hidden] {
@@ -3699,9 +3709,12 @@ textarea#inline-edit {
     bottom: calc(max(var(--space-4), env(safe-area-inset-bottom)) + var(--dock-h) + var(--space-3));
   }
 
-  #plugin-launcher {
-    bottom: calc(max(var(--space-4), env(safe-area-inset-bottom)) + var(--dock-h) + var(--zoom-h) + 2 * var(--space-3));
+  #canvas-launcher {
+    bottom: calc(max(var(--space-4), env(safe-area-inset-bottom)) + var(--dock-h) + var(--zoom-h) + 2 * var(--space-3) + var(--canvas-launcher-lift, 0px));
   }
+
+  :root[data-agent-chat] #canvas-launcher,
+  body.plugin-dock-open #canvas-launcher { visibility: hidden; }
 
   /* the dock takes the whole width, so there is no edge to drag */
   #plugin-dock {
@@ -6325,6 +6338,10 @@ svg:not(.armed) #crayon .mark-chip { pointer-events: all; cursor: pointer; }
 
 #act-chat {
   position: relative;
+  min-width: 44px;
+  height: 44px;
+  justify-content: center;
+  box-shadow: var(--shadow-lg);
   flex-shrink: 0;
   display: flex;
   align-items: center;
@@ -6340,9 +6357,8 @@ svg:not(.armed) #crayon .mark-chip { pointer-events: all; cursor: pointer; }
 }
 #act-chat:hover { background: color-mix(in srgb, var(--panel-hi) 80%, var(--tint)); }
 #act-chat[hidden] { display: none; }
-@media (max-width: 1200px) { #act-chat .ac-more { display: none; } }
 #act-chat[aria-expanded='true'] { background: var(--sel-soft); border-color: var(--sel); }
-#act-chat .ac-dot { background: var(--faint); }
+#act-chat .ac-dot { position: absolute; right: 5px; top: 5px; background: var(--faint); }
 #act-chat[data-state='on'] .ac-dot { background: var(--ok); }
 #act-chat[data-state='busy'] .ac-dot { background: var(--accent); animation: ac-pulse 1.2s ease-in-out infinite; }
 #act-chat[data-unread='true']::after {
@@ -6398,7 +6414,7 @@ svg:not(.armed) #crayon .mark-chip { pointer-events: all; cursor: pointer; }
 
 /* Chat and drawing take turns; neither has to squeeze the full tool dock. */
 :root[data-agent-chat] #dock { display: none; }
-:root[data-agent-drawing] #act-chat > span:not(.ac-dot):not(.ac-back) { display: none; }
+:root[data-agent-drawing] #act-chat { padding-inline: 14px; }
 #chat-draw {
   position: absolute;
   left: min(50vw, calc(100% - 22px - var(--space-4)));
