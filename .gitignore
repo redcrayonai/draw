@@ -13,6 +13,7 @@ agent/.agent-token*
 # the helper bundle, copied into the plugin at release time
 plugin/bin/redcrayon.mjs
 client/.env
+video/.env
 
 # superpowers brainstorm companion
 .superpowers/

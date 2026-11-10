@@ -40,6 +40,12 @@ export const LIBRARY_VIEWS = ['my_library'];
  * and a guest links no agent.
  */
 export const AGENT_LINK_VIEWS = ['my_agent_links'];
+/**
+ * Which plugins the caller's workspaces turned on, for canvas plugin panels (plugin-mounts.ts).
+ * Signed-in tabs of a build with canvas plugins only: a sender-aware view re-runs once per
+ * subscriber, and a guest is in no workspace.
+ */
+export const PLUGIN_VIEWS = ['my_workspace_plugins'];
 /** The owner's link includes: the share menu's Threats and Code boxes. */
 export const SHARE_VIEWS = ['my_link_includes'];
 /** Effective permissions are optional for servers predating native workspaces. */
@@ -58,7 +64,7 @@ export const CORE_TABLES = ['visible_cursor', 'visible_edge', 'visible_hide_set'
  * (spec §1.6), as a sender-aware view re-runs once per subscriber, and
  * visible_repo_file, which only agents read, service_demo_reset, the mcp cron's, and the stored-code setting (RC-690), which the dashboard and agents read.
  */
-export const NOT_SUBSCRIBED = ['my_workspaces', 'my_workspace_members', 'my_workspace_teams', 'my_workspace_team_members', 'my_workspace_board_grants', 'my_workspace_team_grants', 'my_workspace_invites', 'my_workspace_service_accounts', 'my_workspace_api_keys', 'service_workspace_api_keys', 'my_guest_board', 'my_board_creations', 'my_board_slugs', 'my_activity', 'service_outbox', 'service_demo_reset', 'my_architecture_histories', 'my_agent_grants', 'visible_repo_file', 'visible_board_people', 'my_code_consent', 'visible_board_code_consent', 'embedded_chart', 'embedded_board', 'my_workspace_plugins', 'my_board_versions', 'my_incidents'];
+export const NOT_SUBSCRIBED = ['my_workspaces', 'my_workspace_members', 'my_workspace_teams', 'my_workspace_team_members', 'my_workspace_board_grants', 'my_workspace_team_grants', 'my_workspace_invites', 'my_workspace_service_accounts', 'my_workspace_api_keys', 'service_workspace_api_keys', 'my_guest_board', 'my_board_creations', 'my_board_slugs', 'my_activity', 'service_outbox', 'service_demo_reset', 'my_architecture_histories', 'my_agent_grants', 'visible_repo_file', 'visible_board_people', 'my_code_consent', 'visible_board_code_consent', 'embedded_chart', 'embedded_board', 'my_board_versions', 'my_incidents'];
 
 interface Builder {
   onApplied(cb: () => void): Builder;
@@ -73,7 +79,8 @@ export function subscribeLists(
   conn: { subscriptionBuilder(): Builder },
   onApplied: () => void,
   onError: (ctx: { event?: unknown }) => void,
-  agentLinks = false
+  agentLinks = false,
+  plugins = false
 ): void {
   conn.subscriptionBuilder().onApplied(onApplied).onError(onError).subscribe(all(LIST_TABLES));
   conn.subscriptionBuilder()
@@ -95,6 +102,11 @@ export function subscribeLists(
     conn.subscriptionBuilder()
       .onError(ctx => console.warn('agent links unavailable:', ctx.event))
       .subscribe(all(AGENT_LINK_VIEWS));
+  }
+  if (plugins) {
+    conn.subscriptionBuilder()
+      .onError(ctx => console.warn('workspace plugins unavailable:', ctx.event))
+      .subscribe(all(PLUGIN_VIEWS));
   }
 }
 

@@ -12,7 +12,7 @@ and no event bus. Two switches decide whether it runs:
 
 | Switch | Who | Where | Effect |
 |---|---|---|---|
-| Deployment | The operator | Server settings. A plugin is offered only when its `configured()` check passes (`web/src/lib/server/plugins.ts`). | Unoffered plugins show greyed out and their API answers `UNAVAILABLE`. |
+| Deployment | The operator | Server settings. A plugin is offered only when its `configured()` check passes and its canvas settings are set (`web/src/lib/server/plugins.ts`). | Unoffered plugins show greyed out and their API answers `UNAVAILABLE`. |
 | Workspace | A workspace owner or admin | `workspace_plugin` row through `set_workspace_plugin` (`module/src/plugins.ts`). | Off by default. Off stops every action of the plugin in that workspace and keeps its data. |
 
 Members see their workspaces' switches through the `my_workspace_plugins` view.
@@ -20,7 +20,7 @@ The dashboard lists offered plugins under **Settings › Plugins**.
 
 To add a plugin:
 
-1. Create `plugins/<id>/plugin.json` and the optional `module/`, `server/`, and `web/` parts.
+1. Create `plugins/<id>/plugin.json` and the optional `module/`, `server/`, `web/`, and `client/` parts.
 2. Use each part's public `@draw/*` interface and keep helpers inside that part.
 3. Run `node scripts/plugin-build.mjs` to generate the registries and setting bindings.
 4. Add manual environment forwarding, run the relevant checks, and enable the workspace switch.
@@ -33,8 +33,8 @@ mount points, generated files, and test commands.
 Status: direction agreed 2026-10-31. Steps 1–3 are built: the manifest,
 generator, public interfaces, mounts, Versions migration, and the outside-plugin
 builder (fetch, lock file, version ranges, `skip`/retire, type-level interface
-check). Step 4, the template repository and its documentation, remains. The
-rollback publish skip in decision 7 also exists.
+check). Canvas parts (decision 5) are built too. Step 4, the template repository
+and its documentation, remains. The rollback publish skip in decision 7 also exists.
 
 Approved limits and departures:
 
@@ -64,8 +64,8 @@ The open repo never names or knows an outside plugin.
 - A deployment is a fixed set of images: what runs is exactly what was built and
   tested, and rolling back means running the previous images.
 
-**Non-goals.** Agent tools (MCP) and canvas features in plugins (later, each
-needs its own mount point); loading or downloading plugin code while draw runs;
+**Non-goals.** Agent tools (MCP) in plugins (later, with a mount point of its
+own); canvas features beyond the docked panel of decision 5; loading or downloading plugin code while draw runs;
 a marketplace or registry; isolating plugins from draw (a plugin runs with the
 same power as draw itself); hooks into board events; per-workspace plugin
 settings beyond on and off; any particular plugin (an OKF export was an
@@ -111,10 +111,25 @@ repo.
    with no outside plugins never builds anything.
 5. *A plugin can add, in the first version:* its own data (tables, actions and
    views in the board database), dashboard-server actions with their server
-   settings, and dashboard screens (its row on the Plugins page and its panels).
-   Every part is optional: a plugin that saves nothing of its own (an export
-   that reads what boards store) has no database part. Its only database row is
-   the core's on/off switch per workspace.
+   settings, dashboard screens (its row on the Plugins page and its panels), and
+   a canvas panel (`client/`, through `@draw/canvas`). Every part is optional: a
+   plugin that saves nothing of its own (an export that reads what boards store)
+   has no database part. Its only database row is the core's on/off switch per
+   workspace.
+   - *The canvas panel* is one mount point: the core shows a labeled button per
+     plugin on the board's corner and one dock on the right, and owns the dock's
+     frame, Close, Escape and width. The plugin fills the dock's body with
+     `panel.mount(el, canvas)`. `canvas` gives the board (id, workspace, link),
+     the selection and its changes, the person's token and the plugin's canvas
+     settings; nothing that writes to the board. A board switch remounts the
+     panel. Each panel renders inside an error boundary (decision 14).
+   - *Canvas settings* (`canvasSettings` in the manifest) are public: the canvas
+     ships their values to every browser. They are filled when the canvas
+     container starts, from `<NAME>` or `plugins.env`, as the canvas's own runtime
+     values are, and the dashboard offers the plugin only when they are set.
+   - The workspace switch decides as everywhere: a canvas panel shows only on a
+     workspace board whose workspace turned the plugin on, so never on a personal
+     board or to a share-link guest.
 6. *At run time nothing changes:* the deployment switch (a plugin is offered only
    when its server settings are complete) and the workspace switch (owners and
    admins; off by default; off keeps data) apply to every plugin.
@@ -259,8 +274,8 @@ draw with outside plugins. The open repo never names one.
 A key is the plugin id. `ref` is a tag or a full commit; branches and short
 commits are refused. URLs carry no credentials. A `path` entry is for
 development: deploy builds refuse it. The plugin repository root is the plugin
-folder; only `plugin.json`, `module/`, `server/` and `web/` are used, without
-test files.
+folder; only `plugin.json`, `module/`, `server/`, `web/` and `client/` are used,
+without test files.
 
 **Version range.** An outside plugin's `plugin.json` declares `"draw"`: caret
 ranges such as `"^0.3.0"` or `"^0.3.0 || ^0.4.0"`, with npm semantics, so on 0.x
@@ -291,7 +306,7 @@ cleanup. A plugin with no database part can simply be removed.
 |---|---|
 | `lock [--config dir]` | Resolves new and changed entries, captures schemas, applies the upgrade rules, proves each plugin's tables can be rebuilt for a later skip or retirement. |
 | `fetch --into dir` | Deploy-mode fetch, verified against the lock. The only step that reads credentials (a git credential-store file as the build secret `git_credentials`, or ssh). |
-| `build --out dir [--sources dir] [--seams dir] [--dev]` | Compiles draw with the plugins in a scratch copy and writes the module program, dashboard, canvas and agent server builds, `dashboard.capnp`, `plugin-settings.env.example` and `build.json`. `--dev` allows `path` entries. |
+| `build --out dir [--sources dir] [--seams dir] [--dev]` | Compiles draw with the plugins in a scratch copy, type-checks the dashboard and the canvas with plugin code, and writes the module program, dashboard, canvas and agent server builds, `dashboard.capnp`, `canvas-settings`, `plugin-settings.env.example` and `build.json`. `--dev` allows `path` entries. |
 | `check-lock --base file` | The lock must be a compatible upgrade of a base lock (for a deployment's CI). |
 | `link` / `unlink` | In a clone, links `path` entries into `plugins/` for live development. Unlink before committing. |
 
@@ -299,7 +314,8 @@ cleanup. A plugin with no database part can simply be removed.
 (the dashboard's `redcrayon-worker-extra`) and `mcp-worker.ts` (the agent
 server's entry). `docker/prod/Dockerfile` runs `fetch` and `build`; the images
 package their outputs. The dashboard reads outside plugins' settings from
-`plugins.env` next to the compose file.
+`plugins.env` next to the compose file; the canvas reads their canvas settings
+from it too.
 
 ## Versions
 

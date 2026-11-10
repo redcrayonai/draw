@@ -20,6 +20,7 @@ import {
   CODE_LINK_TABLES,
   INCIDENT_TABLES,
   NOT_SUBSCRIBED,
+  PLUGIN_VIEWS,
   ROUTE_TABLES,
   LIST_TABLES,
   openBoards,
@@ -49,7 +50,7 @@ describe('board subscription', () => {
   it('list + core + companion + route tables + the unsubscribed dashboard views are exactly the tables in module_bindings', () => {
     const inBindings = [...bindings.matchAll(/^ {4}name: '(\w+)',$/gm)].map(m => m[1]).sort();
     expect(
-      [...LIST_TABLES, ...CORE_TABLES, ...COMPANION_TABLES, ...ROUTE_TABLES, ...ARCHITECTURE_TABLES, ...CHART_TABLES, ...ICON_TABLES, ...LIBRARY_VIEWS, ...TRACE_TABLES, ...CHANGE_NOTE_TABLES, ...THREAT_TABLES, ...MARK_TABLES, ...EDGE_WEIGHT_TABLES, ...EDGE_MOTION_TABLES, ...CODE_LINK_TABLES, ...INCIDENT_TABLES, ...AGENT_LINK_VIEWS, ...SHARE_VIEWS, ...EMBED_VIEWS, ...PERMISSION_VIEWS, ...NOT_SUBSCRIBED].sort()
+      [...LIST_TABLES, ...CORE_TABLES, ...COMPANION_TABLES, ...ROUTE_TABLES, ...ARCHITECTURE_TABLES, ...CHART_TABLES, ...ICON_TABLES, ...LIBRARY_VIEWS, ...TRACE_TABLES, ...CHANGE_NOTE_TABLES, ...THREAT_TABLES, ...MARK_TABLES, ...EDGE_WEIGHT_TABLES, ...EDGE_MOTION_TABLES, ...CODE_LINK_TABLES, ...INCIDENT_TABLES, ...AGENT_LINK_VIEWS, ...SHARE_VIEWS, ...EMBED_VIEWS, ...PERMISSION_VIEWS, ...PLUGIN_VIEWS, ...NOT_SUBSCRIBED].sort()
     ).toEqual(inBindings);
   });
 
@@ -175,6 +176,18 @@ describe('board subscription', () => {
     expect(queries(false).flat()).not.toContain('SELECT * FROM my_agent_links');
     expect(queries(true)).toHaveLength(7);
     expect(queries(true)[6]).toEqual(['SELECT * FROM my_agent_links']);
+  });
+
+  it('subscribes to workspace plugin switches only when asked (signed in, canvas plugins built in), in a group of its own', () => {
+    const queries = (plugins: boolean) => {
+      const conn = fakeConn();
+      subscribeLists(conn, () => {}, () => {}, false, plugins);
+      return conn.subs.map(s => s.queries);
+    };
+    expect(PLUGIN_VIEWS).toEqual(['my_workspace_plugins']);
+    expect(queries(false).flat()).not.toContain('SELECT * FROM my_workspace_plugins');
+    const on = queries(true);
+    expect(on[on.length - 1]).toEqual(['SELECT * FROM my_workspace_plugins']);
   });
 });
 

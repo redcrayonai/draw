@@ -4,6 +4,7 @@
   "description": "Test plugin outside this repo: notes pinned to boards.",
   "draw": "DRAW_RANGE",
   "settings": ["PINBOARD_GREETING"],
+  "canvasSettings": ["PINBOARD_BANNER"],
   "tables": {
     "pinboardNote": { "why": "pinboard notes", "board": "outlives" }
   }

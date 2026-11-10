@@ -149,6 +149,10 @@ services:
     restart: unless-stopped
     environment:
       <<: [*auth, *browser]
+    # Canvas settings of outside plugins (public: the canvas sends them to every browser).
+    env_file:
+      - path: plugins.env
+        required: false
     # an upgrade's client must not load before its module is published (RC-603)
     depends_on:
       module-setup: { condition: service_completed_successfully }

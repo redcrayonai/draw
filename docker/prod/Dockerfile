@@ -109,6 +109,7 @@ RUN case "$TARGETARCH" in amd64) arch=x64 ;; arm64) arch=arm64 ;; *) echo "no db
 # ---- canvas: static files behind Caddy ----
 FROM caddy:2.11.7-alpine AS canvas
 COPY --from=build /out/canvas /app/site
+COPY --from=build /out/canvas-settings /app/canvas-settings
 COPY --from=builder /draw/docker/prod/canvas.Caddyfile /etc/caddy/Caddyfile
 COPY --from=builder /draw/docker/prod/guard.sh /draw/docker/prod/runtime-config.sh /draw/docker/prod/canvas-entrypoint.sh /app/
 # No privileges needed: port 8080, writes only under /tmp.

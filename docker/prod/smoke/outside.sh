@@ -5,7 +5,8 @@
 #   docker/prod/smoke/outside.sh
 #
 #   1. builder lock, then the images with a canary build secret: no layer holds it.
-#   2. up: the plugin route answers 503 without its setting, 200 with plugins.env.
+#   2. up: the plugin route answers 503 without its settings, 200 with plugins.env;
+#      the canvas bundle carries the plugin's canvas part and, from plugins.env, its canvas setting.
 #   3. upgrade to v1.1.0 (a new column): the row written before stays.
 #   4. retire: the route is gone, the row stays.
 #   5. roll back to the v1.1.0 images, then to the v1.0.0 ones (older than the
@@ -70,11 +71,24 @@ retry 60 dc cp caddy:/data/caddy/pki/authorities/local/root.crt "$work/ca.crt" |
 route() { curl -sS --cacert "$work/ca.crt" --resolve "dash.$domain:443:127.0.0.1" -o "$work/body" -w '%{http_code}' "https://dash.$domain/api/plugins/pinboard"; }
 answers() { [ "$(route)" = "$1" ]; }
 retry 60 answers 503 || fail "without its setting the plugin route answered $(route), not 503"
-echo "PINBOARD_GREETING=hello-from-plugins-env" >plugins.env
-dc up -d --wait dashboard
+# The canvas page's scripts and the chunks they import (the app loads behind a small boot chunk), concatenated.
+canvas_get() { curl -sS --cacert "$work/ca.crt" --resolve "$domain:443:127.0.0.1" "https://$domain/${1:-}"; }
+canvas_js() {
+  local entry chunk
+  for entry in $(canvas_get | grep -o 'assets/[A-Za-z0-9._-]*\.js' | sort -u); do
+    for chunk in $(canvas_get "$entry" | grep -o 'assets/[A-Za-z0-9._-]*\.js' | sort -u) "$entry"; do canvas_get "$chunk"; done
+  done
+}
+# Read it whole first: under pipefail, grep -q closing the pipe early fails curl, and with it the check.
+has_part() { local js; js="$(canvas_js)"; grep -q 'pinboard-banner' <<<"$js"; }
+retry 60 has_part || fail "the canvas bundle has no pinboard canvas part"
+printf 'PINBOARD_GREETING=hello-from-plugins-env\nPINBOARD_BANNER=banner-from-plugins-env\n' >plugins.env
+dc up -d --wait dashboard canvas
 retry 60 answers 200 || fail "with plugins.env the plugin route answered $(route)"
 grep -q hello-from-plugins-env "$work/body" || fail "the setting did not reach the plugin: $(cat "$work/body")"
-echo "ok: plugins.env reaches the plugin; it is offered only with its setting"
+banner() { local js; js="$(canvas_js)"; grep -q banner-from-plugins-env <<<"$js"; }
+retry 60 banner || fail "the canvas setting from plugins.env is not in the canvas bundle"
+echo "ok: plugins.env reaches the plugin and its canvas part; it is offered only with its settings"
 
 sql() { dc run --rm --no-deps -T --entrypoint spacetime module-setup sql --server http://spacetimedb:3000 redcrayon "$1"; }
 sql "INSERT INTO pinboard_note (id, workspace_id, board_id, text) VALUES (0, 1, 2, 'kept')" >/dev/null

@@ -32,7 +32,7 @@ export const BASES = { 'v1.1.0': 'v1.0.0', 'v2.0.0': 'v1.1.0', 'v2.1.0': 'v1.1.0
 
 
 const V1 = fileURLToPath(new URL('./v1/', import.meta.url));
-const read = dir => Object.fromEntries(readdirSync(dir, { recursive: true }).map(String).filter(f => !f.endsWith('/') && !['module', 'server', 'web'].includes(f)).map(f => [f, readFileSync(join(dir, f), 'utf8')]));
+const read = dir => Object.fromEntries(readdirSync(dir, { recursive: true }).map(String).filter(f => !f.endsWith('/') && !['module', 'server', 'web', 'client'].includes(f)).map(f => [f, readFileSync(join(dir, f), 'utf8')]));
 
 /** Files of one tag; `range` replaces DRAW_RANGE. */
 export function filesOf(tag, range) {

@@ -12,10 +12,11 @@ import { existsSync, mkdirSync, rmSync, symlinkSync, writeFileSync, readFileSync
 import { join } from 'node:path';
 import { execFileSync, spawnSync } from 'node:child_process';
 
-export const PLUGIN_PROVIDES = ['ModulePart', 'ServerPart', 'WebPart'];
+export const PLUGIN_PROVIDES = ['ModulePart', 'ServerPart', 'WebPart', 'CanvasPart'];
 const PARTS = {
   module: { dir: 'module', archive: 'module/src', files: { Module: 'src/plugin-api' } },
   web: { dir: 'web', archive: 'web/src/lib', files: { Client: 'src/lib/plugin-api', Server: 'src/lib/server/plugin-api' } },
+  client: { dir: 'client', archive: 'client/src', files: { Canvas: 'src/plugin-api' } },
 };
 
 /** The generated assertions; `lines` maps a line number to the name it checks. */
@@ -40,7 +41,7 @@ export function compatSource(files, typesOf) {
 /** `exportedTypes` comes from plugin-build.mjs (passed in to keep the two modules acyclic). */
 export function apiTypeProblems(root, part, exportedTypes, ref = 'origin/main') {
   const spec = PARTS[part];
-  if (!spec) throw new Error(`plugin rule: --api-types takes module or web, not '${part}'`);
+  if (!spec) throw new Error(`plugin rule: --api-types takes module, web or client, not '${part}'`);
   const pkg = join(root, spec.dir), base = join(pkg, '.api-base');
   const git = (...args) => execFileSync('git', args, { cwd: root, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
   const commit = git('rev-parse', '--verify', `${ref}^{commit}`).trim();
@@ -60,7 +61,7 @@ export function apiTypeProblems(root, part, exportedTypes, ref = 'origin/main') 
   writeFileSync(join(pkg, 'api-compat.generated.ts'), text);
   const bin = name => join(pkg, 'node_modules/.bin', name);
   let result;
-  if (part === 'module') {
+  if (part === 'module' || part === 'client') {
     writeFileSync(join(pkg, 'tsconfig.api.json'), JSON.stringify({ extends: './tsconfig.json', include: [], files: ['api-compat.generated.ts'] }));
     result = spawnSync(bin('tsc'), ['--noEmit', '--pretty', 'false', '-p', 'tsconfig.api.json'], { cwd: pkg, encoding: 'utf8' });
   } else {

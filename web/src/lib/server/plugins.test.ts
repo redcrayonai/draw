@@ -1,13 +1,15 @@
 // @vitest-environment node
 import { beforeEach, expect, it, vi } from 'vitest';
+import { env } from '$env/dynamic/private';
 import { dispatchPlugin, available } from './plugins';
 import { GET as CATALOG } from '../../routes/api/plugins/+server';
 import { fallback } from '../../routes/api/plugins/[plugin]/[...path]/+server';
 
 const fixture = vi.hoisted(() => ({ configured: true, broken: false, response: new Response('plugin response', { status: 202, headers: { 'x-plugin': 'yes' } }), handle: vi.fn() }));
 vi.mock('./plugins.generated', () => ({ PLUGIN_LIST: [
-  { id: 'sample', name: 'Sample', description: 'A sample', settings: ['SECRET'], server: { configured: () => { if (fixture.broken) throw new Error('bad configuration'); return fixture.configured; }, handle: fixture.handle } },
-  { id: 'bare', name: 'Bare', description: 'No server', settings: [] }
+  { id: 'sample', name: 'Sample', description: 'A sample', settings: ['SECRET'], canvasSettings: [], server: { configured: () => { if (fixture.broken) throw new Error('bad configuration'); return fixture.configured; }, handle: fixture.handle } },
+  { id: 'bare', name: 'Bare', description: 'No server', settings: [], canvasSettings: [] },
+  { id: 'panel', name: 'Panel', description: 'A canvas panel', settings: [], canvasSettings: ['PANEL_ENDPOINT'] }
 ] }));
 beforeEach(() => { fixture.configured = true; fixture.broken = false; fixture.handle.mockReset().mockResolvedValue(fixture.response); });
 const request = new Request('http://dash.test/api/plugins/sample/a/b?db=dash', { method: 'PATCH' });
@@ -49,9 +51,19 @@ it('contains a broken configuration check and keeps settings out of the catalog'
     expect(response.status).toBe(200);
     expect(await response.json()).toEqual({ plugins: [
       { id: 'sample', name: 'Sample', description: 'A sample', available: false },
-      { id: 'bare', name: 'Bare', description: 'No server', available: true }
+      { id: 'bare', name: 'Bare', description: 'No server', available: true },
+      { id: 'panel', name: 'Panel', description: 'A canvas panel', available: false }
     ] });
     expect(logged).toHaveBeenCalled();
     expect((await dispatchPlugin('sample', { request, url, path: [] })).status).toBe(503);
   } finally { logged.mockRestore(); }
+});
+
+it('offers a plugin with canvas settings only when every one is set', () => {
+  env.PANEL_ENDPOINT = '';
+  expect(available('panel')).toBe(false);
+  env.PANEL_ENDPOINT = '  ';
+  expect(available('panel')).toBe(false);
+  env.PANEL_ENDPOINT = 'https://panel.test';
+  try { expect(available('panel')).toBe(true); } finally { env.PANEL_ENDPOINT = ''; }
 });
