@@ -72,20 +72,21 @@ route() { curl -sS --cacert "$work/ca.crt" --resolve "dash.$domain:443:127.0.0.1
 answers() { [ "$(route)" = "$1" ]; }
 retry 60 answers 503 || fail "without its setting the plugin route answered $(route), not 503"
 # The canvas page's scripts and the chunks they import (the app loads behind a small boot chunk), concatenated.
-canvas_get() { curl -sS --cacert "$work/ca.crt" --resolve "$domain:443:127.0.0.1" "https://$domain/$1"; }
+canvas_get() { curl -sS --cacert "$work/ca.crt" --resolve "$domain:443:127.0.0.1" "https://$domain/${1:-}"; }
 canvas_js() {
   local entry chunk
   for entry in $(canvas_get | grep -o 'assets/[A-Za-z0-9._-]*\.js' | sort -u); do
     for chunk in $(canvas_get "$entry" | grep -o 'assets/[A-Za-z0-9._-]*\.js' | sort -u) "$entry"; do canvas_get "$chunk"; done
   done
 }
-has_part() { canvas_js | grep -q 'pinboard-banner'; }
+# Read it whole first: under pipefail, grep -q closing the pipe early fails curl, and with it the check.
+has_part() { local js; js="$(canvas_js)"; grep -q 'pinboard-banner' <<<"$js"; }
 retry 60 has_part || fail "the canvas bundle has no pinboard canvas part"
 printf 'PINBOARD_GREETING=hello-from-plugins-env\nPINBOARD_BANNER=banner-from-plugins-env\n' >plugins.env
 dc up -d --wait dashboard canvas
 retry 60 answers 200 || fail "with plugins.env the plugin route answered $(route)"
 grep -q hello-from-plugins-env "$work/body" || fail "the setting did not reach the plugin: $(cat "$work/body")"
-banner() { canvas_js | grep -q banner-from-plugins-env; }
+banner() { local js; js="$(canvas_js)"; grep -q banner-from-plugins-env <<<"$js"; }
 retry 60 banner || fail "the canvas setting from plugins.env is not in the canvas bundle"
 echo "ok: plugins.env reaches the plugin and its canvas part; it is offered only with its settings"
 
