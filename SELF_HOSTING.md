@@ -84,6 +84,11 @@ This sets the server and the code-ref helper to the same local endpoint.
 Other MCP clients use the URL directly. For their code refs, run
 `REDCRAYON_MCP_URL=http://localhost:8788/mcp npx -y @redcrayonai/draw@1 capture`.
 
+## Upgrade and roll back
+
+For the prebuilt production stack, see
+[Upgrade and roll back](https://docs.redcrayon.ai/self-host/quickstart/#upgrade-and-roll-back).
+
 ## Versions (optional)
 
 The Versions plugin keeps saved versions of boards in an S3-compatible bucket

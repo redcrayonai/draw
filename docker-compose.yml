@@ -114,6 +114,10 @@ services:
       VERSIONS_S3_REGION: ${VERSIONS_S3_REGION:-}
       VERSIONS_S3_ACCESS_KEY_ID: ${VERSIONS_S3_ACCESS_KEY_ID:-}
       VERSIONS_S3_SECRET_ACCESS_KEY: ${VERSIONS_S3_SECRET_ACCESS_KEY:-}
+    # Settings of outside plugins (.env.example). The settings above win over this file.
+    env_file:
+      - path: plugins.env
+        required: false
     volumes: [state:/state:ro]
     depends_on:
       setup: { condition: service_completed_successfully }

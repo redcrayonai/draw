@@ -42,8 +42,10 @@
       "undici@8": "^8.12.2"
     },
     "ignoredBuiltDependencies": [
+      "bufferutil",
       "esbuild",
       "sharp",
+      "utf-8-validate",
       "workerd"
     ]
   },

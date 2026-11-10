@@ -17,6 +17,9 @@
 #   scripts/stdb-test.sh versions                  start, publish fresh, run the dashboard's
 #                                                  Versions code against it and the store in
 #                                                  VERSIONS_S3_*, stop
+#   scripts/stdb-test.sh outside                   the outside-plugin builder with its test plugin
+#                                                  (scripts/fixtures/outside-plugin) on its own
+#                                                  disposable databases
 #   scripts/stdb-test.sh failclosed                start, publish the committed
 #                                                  `none` issuers, check that it
 #                                                  refuses every sender, stop
@@ -148,7 +151,7 @@ versions() {
   : "${VERSIONS_S3_ENDPOINT:?set VERSIONS_S3_ENDPOINT and the other VERSIONS_S3_* variables (SELF_HOSTING.md) to a local store}"
   [ -d "$REPO/web/node_modules" ] || pnpm --dir "$REPO/web" install --frozen-lockfile
   VERSIONS_E2E=1 STDB_URL="$URL" STDB_DB="$DB" STDB_OWNER_TOKEN="$(cat "$ROOT/owner-token")" \
-    pnpm --dir "$REPO/web" exec vitest run src/lib/server/versions.e2e.test.ts
+    pnpm --dir "$REPO/web" exec vitest run ../plugins/versions/server/versions.e2e.test.ts
 }
 
 cmd="${1:-}"
@@ -172,6 +175,10 @@ case "$cmd" in
     publish
     "$cmd"
     ;;
+  outside)
+    # The builder starts and stops its own disposable databases.
+    node --test --test-concurrency=1 "$@" "$REPO/scripts/verify-outside-plugins-local.mjs"
+    ;;
   failclosed)
     # Nothing but a service account can connect, the owner included, so only the issuer suite runs.
     trap stop EXIT
@@ -181,7 +188,7 @@ case "$cmd" in
       node --test "$@" "$REPO/scripts/verify-issuers-local.mjs"
     ;;
   *)
-    echo "usage: scripts/stdb-test.sh run|start|publish|legacy|test|parity|mcp|versions|failclosed|stop [node --test args]" >&2
+    echo "usage: scripts/stdb-test.sh run|start|publish|legacy|test|parity|mcp|versions|outside|failclosed|stop [node --test args]" >&2
     exit 2
     ;;
 esac

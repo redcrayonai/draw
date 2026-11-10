@@ -4,6 +4,7 @@
 #   private  every image's /app: no auth vendor, hosted account or production host
 #            (enforced, as for the public tree)
 #   bundle   the mcp Worker: no database vendor word, no source map, as hosted
+#   CANARY=<value>: no layer of any image holds it (a build secret, docker/prod/smoke/outside.sh)
 # The canvas and dashboard bundles still name the database (the client SDK, the
 # server's settings), as their hosted builds do; they become `bundle` targets
 # when vendor-scan.targets takes the hosted ones.
@@ -20,4 +21,16 @@ for image in canvas dashboard mcp module-setup importer; do
   echo "private $out/$image/app" >>"$out/targets"
 done
 echo "bundle $out/mcp/app/mcp/worker.js" >>"$out/targets"
+if [ -n "${CANARY:-}" ]; then
+  for image in canvas dashboard mcp module-setup; do
+    # Saved first: a failed save must stop the scan, not read as clean.
+    docker save -o "$out/image.tar" "ghcr.io/redcrayonai/redcrayon-$image:$tag"
+    if grep -aqF "$CANARY" "$out/image.tar"; then
+      echo "scan-images: the build secret is in redcrayon-$image:$tag" >&2
+      exit 1
+    fi
+    rm "$out/image.tar"
+  done
+  echo "scan-images: no image holds the build secret"
+fi
 node scripts/vendor-scan.mjs "$out/targets" "$@"

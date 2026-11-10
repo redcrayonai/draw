@@ -20,9 +20,286 @@ The dashboard lists offered plugins under **Settings › Plugins**.
 
 To add a plugin:
 
-1. Add its id to `PLUGINS` in `module/src/plugins.ts`. Check `pluginEnabled(ctx, workspaceId, id)` in every reducer, procedure and view it adds.
-2. Put its tables and reducers in their own module file, exported as a group from `index.ts` (as `versions.ts`). Its tables go into `LEFT_OUT` in `module/src/board-bundle.ts` unless they are board content.
-3. Add an entry to `PLUGINS` in `web/src/lib/server/plugins.ts` with the variables it needs. Bind each variable in `docker/prod/dashboard.capnp`, `compose.prod.yml`, `docker-compose.yml` and `.env.example`.
+1. Create `plugins/<id>/plugin.json` and the optional `module/`, `server/`, and `web/` parts.
+2. Use each part's public `@draw/*` interface and keep helpers inside that part.
+3. Run `node scripts/plugin-build.mjs` to generate the registries and setting bindings.
+4. Add manual environment forwarding, run the relevant checks, and enable the workspace switch.
+
+The [plugin author guide](plugins/README.md) defines the manifest, interfaces,
+mount points, generated files, and test commands.
+
+### Design: plugins outside this repo
+
+Status: direction agreed 2026-10-31. Steps 1–3 are built: the manifest,
+generator, public interfaces, mounts, Versions migration, and the outside-plugin
+builder (fetch, lock file, version ranges, `skip`/retire, type-level interface
+check). Step 4, the template repository and its documentation, remains. The
+rollback publish skip in decision 7 also exists.
+
+Approved limits and departures:
+
+- Board-owned plugin tables (`board: "part"`) wait until a plugin needs them.
+  Current board-keyed tables must declare `board: "outlives"`.
+- The generator writes Cap'n Proto setting bindings. In-repo plugins keep manual
+  compose entries and `.env.example` lines; outside plugins use `plugins.env`.
+  `role_networks` stays manual.
+- The builder image is published for linux/amd64 only; its outputs are the same
+  for every platform, and the images it builds are amd64 and arm64.
+- New routes use `/api/plugins/<id>[/path]`. The old Versions POST routes remain
+  forwarders for open clients. Open clients keep working across upgrades.
+
+**Intent.** Plugins keep being built in this repo, in the open. Anyone may also
+keep a plugin in a repo of their own, private or public: an operator with
+features they do not want to open source, or something specific to how they use
+draw; a company shipping a draw plugin next to its own product. Adding an
+outside plugin should feel like a Go import: name its repository, build, done.
+The open repo never names or knows an outside plugin.
+
+**Goals.**
+
+- One plugin shape. A plugin in this repo and a plugin in someone else's repo
+  are built the same way; only where the code lives differs.
+- Simple for plugin authors: one folder, one command to run draw with the
+  plugin live, one command to build deployable images.
+- A deployment is a fixed set of images: what runs is exactly what was built and
+  tested, and rolling back means running the previous images.
+
+**Non-goals.** Agent tools (MCP) and canvas features in plugins (later, each
+needs its own mount point); loading or downloading plugin code while draw runs;
+a marketplace or registry; isolating plugins from draw (a plugin runs with the
+same power as draw itself); hooks into board events; per-workspace plugin
+settings beyond on and off; any particular plugin (an OKF export was an
+example only).
+
+**Anti-goals.** A plugin that breaks only in production; a deployment that changes
+because a container restarted or a plugin repo moved; private plugin credentials
+inside a running system or an image; an outside plugin that needs edits to this
+repo.
+
+**Decided.**
+
+1. *Build time only.* Plugins are compiled in when images are built; nothing is
+   fetched or compiled while draw runs. A deployment on a platform that cannot
+   load code at run time must still work, and production images stay free of
+   build tools.
+2. *A plugins file* lists outside plugins, each a repository URL pinned to a tag
+   or commit (as `go.mod`). For development an entry may name a local folder
+   instead (as Go's `replace` / `go.work`). Plugins in this repo are always
+   included and need no entry. A lock file committed next to it (as `go.sum`)
+   records each plugin's exact commit and, when it has a database part, that
+   part's schema. A build fails when a tag no longer points at its locked commit
+   (tags can be moved), when a plugin's database part changes in a way the
+   database would refuse (a removed or renamed column, compared with the locked
+   schema as `scripts/check-module-upgrade.sh` compares the core with `main`),
+   and a deploy build refuses local-folder entries.
+3. *A builder image per draw release*, published with the other images
+   (`ghcr.io/redcrayonai/draw-builder:<version>`): that release's source and
+   every tool needed to run or build it.
+   - Develop: a template gives a plugin repo `compose.yml` (the draw dev stack
+     from the builder image, with the plugin folder mounted). `docker compose up`
+     in the plugin folder runs draw with the plugin live: dashboard screens
+     reload on edit; a database-part change republishes as a core change does.
+   - Deploy: one command builds the deployment's whole set of images (canvas,
+     dashboard, agent server, `module-setup`, importer), for example
+     `docker buildx bake` with the template's bake file and the plugins file.
+     A deployment can do the same from its own private repo.
+   - Upgrade draw: change the builder version and rebuild. An incompatible
+     plugin fails the build.
+   - People changing draw and a plugin together keep using a clone of this repo
+     with the plugin linked by local folder.
+4. *The regular published images* include this repo's plugins. A self-hoster
+   with no outside plugins never builds anything.
+5. *A plugin can add, in the first version:* its own data (tables, actions and
+   views in the board database), dashboard-server actions with their server
+   settings, and dashboard screens (its row on the Plugins page and its panels).
+   Every part is optional: a plugin that saves nothing of its own (an export
+   that reads what boards store) has no database part. Its only database row is
+   the core's on/off switch per workspace.
+6. *At run time nothing changes:* the deployment switch (a plugin is offered only
+   when its server settings are complete) and the workspace switch (owners and
+   admins; off by default; off keeps data) apply to every plugin.
+7. *Rollback:* roll back the app images (dashboard, canvas, agent server); the
+   database stays at its newer version, which accepts older apps because every
+   database change stays compatible with older clients. So a plugin's database
+   part only ever adds tables and columns. The database refuses to drop a table
+   that holds data ("Cannot remove table …: table contains data") or any column
+   ("Removing a column … requires a manual migration"), and drops an empty
+   table quietly; both refusals leave the data and the running program as they
+   were (tested 2026-10-31). So publishing an older database program after a
+   newer one added a column, or a table that was used, fails, for the core as
+   for plugins, and that used to keep the whole stack from starting.
+   `module-setup` now skips the publish, and logs it, when
+   these are the only refusals: its database program lacks columns or
+   data-holding tables the live database has. The stack starts on the newer
+   database. Rolling forward again finds the data where it was.
+8. *Versions moves into this shape* as the first plugin built that way, still in
+   this repo, to prove it.
+9. *Stopping an outside plugin with a database part retires it; nothing is
+   destroyed.* Its tables stay in the build for good, rebuilt from the schema
+   in the lock file with none of the plugin's code (its data stays, unused); its
+   screens and actions go. The build refuses a plugins
+   file that drops a plugin the lock file says has a database part, unless the
+   plugin is marked retired. Deleting a retired plugin's data is a manual,
+   documented cleanup, never a build step. A plugin with no database part can
+   be dropped from the plugins file at any time.
+10. *A formal plugin contract, versioned with draw.* Plugins use a small,
+   documented plugin interface, never draw's other code: the mount points for a
+   plugin's data, server actions and screens, and the helpers a plugin may call.
+   It follows draw's semantic versioning: a minor release may add to it; only a
+   major release may change or remove anything. A plugin states the draw
+   versions it works with, and a build outside that range fails. A build also
+   fails if a plugin imports any of draw's code outside the interface, so the
+   promise covers everything a plugin can reach. The interface
+   starts as what Versions needs (Versions is then built only through it) and
+   grows when a real plugin needs more. CI checks that a non-major change leaves
+   it compatible, as `scripts/check-wire-compat.mjs` already does for public
+   views.
+11. *Plugin data about boards states what it is.* Each plugin table keyed by a
+   board says whether it is *part of the board* (deleted with it, as every row
+   about a board must be) or *outlives the board* (kept, as Versions keeps a
+   deleted board's saved versions). The build refuses a board-keyed table that
+   says neither; the core never guesses. `scripts/verify-deletion-local.mjs`
+   will cover "part of the board" plugin tables when that support exists.
+   In the first version, plugin data is not copied into versions or branches,
+   and a restore or branch says which plugins' data it left out, never silently
+   (copying it comes with a
+   version 2 bundle format).
+12. *Back up before changing plugins.* The docs tell operators to take a backup
+   of the database and their settings (the plugins file, `.env`) before adding,
+   upgrading, retiring or removing a plugin.
+13. *The build generates the core's plugin lists.* Each plugin's manifest
+   declares its id, its tables (and each board-keyed table's relationship to
+   the board) and its server settings. From the manifests the build generates
+   the module's plugin ids and export groups, the dashboard's plugin registry,
+   the table classification in
+   `module/src/board-bundle.ts`, and the setting bindings in
+   `docker/prod/dashboard.capnp`. An outside plugin never edits this repo.
+14. *No plugin author can block draw or a deployment.*
+   - draw's releases: this repo's CI never builds outside plugins; it checks only
+     that the plugin interface stays compatible. The contract promises the
+     interface and nothing else, and the import check keeps plugins inside it. A
+     breaking change to the interface ships in a major release, when the owner
+     chooses.
+   - An operator's upgrade: any plugin can be marked `skip` in the plugins file
+     and the build leaves it out; skipping is explicit, never automatic. A
+     skipped or retired plugin with a database part keeps its tables, rebuilt
+     from the lock file's schema with none of its code, so nothing of the
+     author's has to compile against the new draw.
+   - At run time: a plugin action that fails fails only its own request, and
+     each plugin screen renders inside an error boundary, so one broken panel
+     shows an error instead of taking down the page. A slow plugin or one that
+     writes where it should not cannot be contained (plugins run with draw's
+     power): include an outside plugin only if you would trust it as you trust
+     draw, like any dependency. Skipping it is the emergency exit.
+15. *A build produces files; images are packaging.* The builder's output is the
+   board database program, the dashboard and canvas builds and the agent
+   server. A deployment with its own pipeline deploys those files itself and
+   gives the build its seam modules (`$auth` provider,
+   `redcrayon-worker-extra`) as inputs, so every deployment shares one build.
+16. *Installs use pnpm, and no package or plugin runs a script.*
+   - Every install in an image or the builder is `pnpm install --frozen-lockfile`
+     at the version pinned in `packageManager`, never npm or yarn. The two
+     `npm pack` calls in `docker/prod/Dockerfile` only download a registry
+     tarball, which runs no scripts.
+   - pnpm 10 runs no dependency's install scripts unless it is listed in
+     `onlyBuiltDependencies`; this repo lists none (`esbuild`, `sharp` and
+     `workerd` sit in `ignoredBuiltDependencies`). The builder will also set
+     `strict-dep-builds`, so a new dependency that wants a script fails the
+     install until someone lists it (pnpm 10.34.5 exits 1 with
+     `ERR_PNPM_IGNORED_BUILDS`).
+   - The builder fetches a plugin with git and compiles its code into draw's
+     build. It never installs in a plugin's folder or runs a script from its
+     `package.json`, and the manifest is data, not code. No plugin code runs in
+     Node, in the fetch step, or with build secrets. To capture and check a
+     plugin's tables, `lock` and `build` publish the module to a disposable
+     local database, which runs it in its own sandbox, as production does.
+     Plugin screens are not prerendered (the dashboard sets `prerender = false`).
+   - In the first version a plugin uses only what draw already installs, plus
+     its own code. Its own dependencies (a lockfile the builder installs,
+     version clashes, the vendor scan) come later, through the same pnpm rules.
+
+**Constraints from the codebase.**
+
+- One board database program: a plugin's database part is compiled into the
+  core module, so its table, reducer and view names share one namespace.
+  Collisions must fail the build.
+- Database changes are additive and keep older clients working (CLAUDE.md);
+  the generated bindings follow the module.
+- Every board table is classified in `module/src/board-bundle.ts` as bundle
+  content or left out; a plugin's tables must be too, or Versions' coverage test
+  fails.
+- Dashboard server settings reach a self-hosted dashboard only when bound in
+  `docker/prod/dashboard.capnp` and passed through the compose files.
+- Text users or models read names no vendor; refusals start with `REJECTED`,
+  `UNAVAILABLE` or `UNCONFIRMED`; source names no production host or account.
+- Sign-in and deployment customizations use existing seams (`VITE_AUTH_PROVIDER` /
+  `$auth`, `createWorker` deps, `redcrayon-worker-extra`); those stay. Plugins
+  are the general route for features; the seams stay for sign-in and hosting.
+- Private repositories are read with credentials given to the build only (build
+  secrets), never written into an image.
+
+### The builder
+
+`node scripts/builder.mjs` (the `draw-builder` image runs the same file) builds
+draw with outside plugins. The open repo never names one.
+
+**Plugins file.** `draw-plugins.json` in a deployment's config directory:
+
+```json
+{
+  "plugins": {
+    "pinboard": { "repo": "https://example.com/acme/draw-pinboard.git", "ref": "v1.2.0" },
+    "audit":    { "repo": "git@example.com:acme/draw-audit.git", "ref": "<40-hex commit>", "skip": true },
+    "legacy":   { "retired": true },
+    "scratch":  { "path": "../draw-scratch" }
+  }
+}
+```
+
+A key is the plugin id. `ref` is a tag or a full commit; branches and short
+commits are refused. URLs carry no credentials. A `path` entry is for
+development: deploy builds refuse it. The plugin repository root is the plugin
+folder; only `plugin.json`, `module/`, `server/` and `web/` are used, without
+test files.
+
+**Version range.** An outside plugin's `plugin.json` declares `"draw"`: caret
+ranges such as `"^0.3.0"` or `"^0.3.0 || ^0.4.0"`, with npm semantics, so on 0.x
+each minor release ends a range. Every build also type-checks plugin code
+against this draw's interface.
+
+**Lock file.** `draw-plugins.lock.json`, written only by `builder lock`, records
+each plugin's exact commit, its manifest tables and, with a database part, its
+schema as the database describes it (tables, indexes, public contracts).
+
+| Refused | Where |
+|---|---|
+| A tag that now points at another commit | `lock`, `fetch`, `build`, `check-lock` |
+| A plugin database change other than new tables, new indexes, or columns appended to private tables; a changed public table or view row | `lock` (rules, then the database itself), `check-lock` |
+| A plugins file that drops a plugin with tables, unless it is `{ "retired": true }` | `lock`, `build` |
+| A lock that differs from what its commits compile to | `build` |
+| A plugin outside its draw range, or importing outside its interface | `lock`, `build` |
+
+**Skip and retire.** `"skip": true` leaves a plugin out of a build, explicitly
+and temporarily. `{ "retired": true }` leaves it out for good. Either way its
+tables stay, rebuilt from the lock's schema with none of its code, and its data
+and workspace switches stay. Deleting a retired plugin's data is a manual
+cleanup. A plugin with no database part can simply be removed.
+
+**Commands.**
+
+| Command | Does |
+|---|---|
+| `lock [--config dir]` | Resolves new and changed entries, captures schemas, applies the upgrade rules, proves each plugin's tables can be rebuilt for a later skip or retirement. |
+| `fetch --into dir` | Deploy-mode fetch, verified against the lock. The only step that reads credentials (a git credential-store file as the build secret `git_credentials`, or ssh). |
+| `build --out dir [--sources dir] [--seams dir] [--dev]` | Compiles draw with the plugins in a scratch copy and writes the module program, dashboard, canvas and agent server builds, `dashboard.capnp`, `plugin-settings.env.example` and `build.json`. `--dev` allows `path` entries. |
+| `check-lock --base file` | The lock must be a compatible upgrade of a base lock (for a deployment's CI). |
+| `link` / `unlink` | In a clone, links `path` entries into `plugins/` for live development. Unlink before committing. |
+
+`--seams` takes `auth.ts` (a third sign-in build, `custom`), `worker-extra.js`
+(the dashboard's `redcrayon-worker-extra`) and `mcp-worker.ts` (the agent
+server's entry). `docker/prod/Dockerfile` runs `fetch` and `build`; the images
+package their outputs. The dashboard reads outside plugins' settings from
+`plugins.env` next to the compose file.
 
 ## Versions
 
@@ -42,13 +319,13 @@ cannot save or restore.
 
 ### Ownership
 
-| Core (any plugin may use it) | Versions plugin |
+| Core (through the public interface) | Versions plugin |
 |---|---|
-| Bundle format, capture and restore: `module/src/board-bundle.ts` | Version index `board_version`, restore staging `board_version_chunk`: `module/src/versions.ts` |
+| Bundle format, capture and restore: `module/src/board-bundle.ts` | Version index `board_version`, restore staging `board_version_chunk`: `plugins/versions/module/index.ts` |
 | SHA-256 in the module: `module/src/sha256.ts` | Save, list and restore rules and actions |
-| Workspace plugin switch: `module/src/plugins.ts` | Object storage and its settings: `web/src/lib/server/versions.ts` |
-| Board access (`humanBoardRole`, workspace roles) | Dashboard UI: `BoardVersions.svelte`, `/workspaces/plugins` |
-| S3-compatible client: `web/src/lib/server/object-store.ts` | |
+| Workspace plugin switch: `module/src/plugins.ts` | Object storage and its settings: `plugins/versions/server/versions.ts` |
+| Board access (`humanBoardRole`, workspace roles) | Dashboard UI and stores: `plugins/versions/web/`; the core mounts panels and owns `/workspaces/plugins` |
+| | S3-compatible client: `plugins/versions/server/object-store.ts` |
 
 ### Save
 
@@ -239,7 +516,7 @@ settings (the server log does). Object keys contain workspace and board ids only
 - The bucket is used only by this deployment. Its access keys, or the machine's
   role, can read and write objects there.
 - Without keys the dashboard server signs with the machine's role
-  (`machineCredentials` in `web/src/lib/server/object-store.ts`): the container
+  (`machineCredentials` in `plugins/versions/server/object-store.ts`): the container
   credentials endpoint when `AWS_CONTAINER_CREDENTIALS_*` is set (an ECS task
   role), else the instance metadata service with IMDSv2 (an EC2 instance
   profile), with the role's session token, kept until five minutes before it

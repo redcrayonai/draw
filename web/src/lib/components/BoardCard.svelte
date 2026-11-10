@@ -5,7 +5,7 @@
   import { accessLabel, ago, canvasHref, cardState, idTail, isEpoch, plural, shareLink, type MyBoard } from '$lib/boards';
   import type { Workspace, BoardPermission } from '$lib/workspaces';
   import BoardWorkspaceAccess from './BoardWorkspaceAccess.svelte';
-  import BoardVersions from './BoardVersions.svelte';
+  import { WEB_PARTS } from '$lib/plugin-mounts';
   import Badge from './Badge.svelte';
   import Button from './Button.svelte';
   let { board, permission, workspaces = [], slug = '', teams = [], onclose, onshare, onlink, onrename, ondelete, version, disabled = false, agents = [], granted = [], onagent }: {
@@ -225,7 +225,14 @@
     </details>
   {/if}
   {#if native && permission}
-    <BoardVersions boardId={board.boardId} workspaceId={permission.workspaceId} canEdit={permission.canEdit} {disabled} />
+    {#each WEB_PARTS as part (part.id)}
+      {#if part.web.BoardPanel}
+        <svelte:boundary>
+          <part.web.BoardPanel boardId={board.boardId} workspaceId={permission.workspaceId} canEdit={permission.canEdit} {disabled} />
+          {#snippet failed()}<p role="alert">This plugin's panel failed. The rest of the card works.</p>{/snippet}
+        </svelte:boundary>
+      {/if}
+    {/each}
   {/if}
   {#if manager && workspaces.length}
     <BoardWorkspaceAccess boardId={board.boardId} {permission} {workspaces} {disabled} />

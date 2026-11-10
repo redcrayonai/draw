@@ -4,6 +4,7 @@
 //
 //   LABELS='["release:plugin","minor"]' node scripts/release-labels.mjs check
 //   LABELS=… TAGS="$(git tag)" node scripts/release-labels.mjs plan   # "<component> <tag> <last tag or empty>" per line
+//   LABELS=… TAGS="$(git tag)" node scripts/release-labels.mjs api-break  # true when the PR may break the plugin interface
 //   node scripts/release-labels.mjs stamp-plugin 1.2.3                # writes the version into the files that ship
 import { readFileSync, writeFileSync } from 'node:fs';
 import { pathToFileURL } from 'node:url';
@@ -50,6 +51,17 @@ export function plan(labels, tags, seed = seedOf) {
   return components.map(c => ({ component: c, ...nextTag(COMPONENTS[c].prefix, tags, bump, seed(c)) }));
 }
 
+/**
+ * Whether a PR may break the plugin interface (PLUGIN_API_MAJOR): a core release that
+ * semver lets break it. On 0.x that is a minor release; from 1.0 only a major one.
+ */
+export function apiBreak(labels, tags) {
+  if (!labels.includes('release:core')) return false;
+  if (labels.includes('major')) return true;
+  const { last } = nextTag(COMPONENTS.core.prefix, tags, 'patch');
+  return labels.includes('minor') && (!last || SEMVER.exec(last.slice(1))[1] === '0');
+}
+
 /** release-plugin.yml checks these four agree with the tag. */
 function stampPlugin(version) {
   if (!SEMVER.test(version)) throw new Error(`not a version: ${version}`);
@@ -74,10 +86,12 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
     } else if (command === 'plan') {
       const tags = (process.env.TAGS ?? '').split('\n').map(t => t.trim()).filter(Boolean);
       for (const { component, tag, last } of plan(labels(), tags)) console.log(`${component} ${tag} ${last ?? ''}`.trim());
+    } else if (command === 'api-break') {
+      console.log(apiBreak(labels(), (process.env.TAGS ?? '').split('\n').map(t => t.trim()).filter(Boolean)));
     } else if (command === 'stamp-plugin') {
       stampPlugin(arg ?? '');
     } else {
-      throw new Error('usage: release-labels.mjs check | plan | stamp-plugin <version>');
+      throw new Error('usage: release-labels.mjs check | plan | api-break | stamp-plugin <version>');
     }
   } catch (error) {
     console.error(`::error::${error.message}`);

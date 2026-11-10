@@ -11,3 +11,4 @@ docs
 **/.env*
 **/.dev.vars
 agent/.agent-token*
+plugins.env

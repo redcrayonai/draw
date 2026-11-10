@@ -1,13 +1,28 @@
 # syntax=docker/dockerfile:1.7
-# The self-host images compose.prod.yml runs (RC-608). Build them all with
-# docker-bake.hcl in this directory, from the repo root:
+# The self-host images compose.prod.yml runs (RC-608), and the builder image that
+# builds them. Build them all with docker-bake.hcl in this directory, from the
+# repo root:
 #
 #   docker buildx bake -f docker/prod/docker-bake.hcl --load
 #
-# Targets: canvas, dashboard, mcp, module-setup. The importer image is
-# importer/Dockerfile. The JavaScript builds run once on the build machine's
-# platform (they are the same for every architecture); the per-architecture
-# stages only add a binary and copy files, so amd64 + arm64 builds stay fast.
+# Targets: canvas, dashboard, mcp, module-setup, builder. The importer image is
+# importer/Dockerfile. scripts/builder.mjs makes every build output once, on the
+# build machine's platform (they are the same for every architecture); the
+# per-architecture stages only add a binary and copy files, so amd64 + arm64
+# builds stay fast. The images package the builder's outputs.
+#
+# Outside plugins (PLUGINS.md): a deployment passes its config directory (the
+# plugins file and its lock, optional seams/) and, to build without a draw
+# checkout, the published builder image:
+#
+#   docker buildx bake -f docker/prod/docker-bake.hcl \
+#     --set '*.contexts.deploy=<config dir>' \
+#     --set '*.contexts.builder=docker-image://ghcr.io/redcrayonai/draw-builder:<version>' \
+#     --set '*.secrets=id=git_credentials,src=<git credential-store file>'
+#
+# With seams, add --set '*.contexts.seams=<config dir>/seams' (a context must exist).
+# A config directory outside the current directory also needs --allow fs.read=<dir>.
+# Only the fetch stage sees the credentials; they never enter a layer or an output.
 #
 # VITE_* values are inlined at build, so the canvas and dashboard are built
 # with placeholders (__rc_<name>__) that runtime-config.sh replaces with the
@@ -20,13 +35,20 @@
 ARG WORKERD_VERSION=1.20261006.1
 ARG SPACETIME_IMAGE=clockworklabs/spacetime:v2.8.1
 
+FROM --platform=$BUILDPLATFORM ${SPACETIME_IMAGE} AS spacetime-native
 FROM ${SPACETIME_IMAGE} AS spacetime
 
-# ---- shared build stage (build platform) ----
-FROM --platform=$BUILDPLATFORM node:22-bookworm-slim AS deps
+# ---- builder: draw's source, its installed packages and every build tool ----
+# Published as draw-builder for the build platform only (docker-bake.hcl).
+FROM --platform=$BUILDPLATFORM node:22-bookworm-slim AS builder
+RUN apt-get update && apt-get install -y --no-install-recommends git openssh-client ca-certificates curl \
+ && rm -rf /var/lib/apt/lists/*
 RUN corepack enable && corepack prepare pnpm@10.34.5 --activate
 ENV WRANGLER_SEND_METRICS=false
-WORKDIR /src
+# The disposable local database the builder checks schemas with.
+COPY --from=spacetime-native /opt/spacetime/spacetimedb-cli /usr/local/bin/spacetime
+COPY --from=spacetime-native /opt/spacetime/spacetimedb-standalone /usr/local/bin/spacetimedb-standalone
+WORKDIR /draw
 COPY module/package.json module/pnpm-lock.yaml module/
 COPY shared/package.json shared/pnpm-lock.yaml shared/
 COPY agent/package.json agent/pnpm-lock.yaml agent/
@@ -34,50 +56,38 @@ COPY agent/patches agent/patches
 COPY mcp/package.json mcp/pnpm-lock.yaml mcp/
 COPY client/package.json client/pnpm-lock.yaml client/
 COPY web/package.json web/pnpm-lock.yaml web/
-RUN for p in module shared agent mcp client web; do pnpm --dir "$p" install --frozen-lockfile || exit 1; done
+# No package runs an install script: a new dependency that wants one fails here.
+RUN for p in module shared agent mcp client web; do pnpm --dir "$p" install --frozen-lockfile --config.strict-dep-builds=true || exit 1; done
 COPY module module
+COPY plugins plugins
 COPY shared shared
 COPY agent agent
 COPY mcp mcp
 COPY client client
 COPY web web
+COPY scripts scripts
+COPY docker/prod docker/prod
+ARG DRAW_VERSION=dev
+RUN echo "$DRAW_VERSION" > VERSION && node scripts/builder.mjs baseline
+ENTRYPOINT ["node", "/draw/scripts/builder.mjs"]
 
-# Fails the build when a placeholder did not survive into the output (a
-# minifier folded it away), since runtime-config.sh could not set it then.
-COPY docker/prod/check-placeholders.sh /usr/local/bin/
+# ---- the build: fetch outside plugins (with credentials), then build (without) ----
+# Empty unless a deployment passes them as named contexts.
+FROM scratch AS deploy
+FROM scratch AS seams
 
-FROM deps AS canvas-build
-ENV VITE_SPACETIME_URI=__rc_spacetime_uri__ VITE_SPACETIME_DB=__rc_spacetime_db__ \
-    VITE_DASHBOARD_URL=__rc_dashboard_url__ VITE_MCP_URL=__rc_mcp_url__
-WORKDIR /src/client
-RUN VITE_AUTH_PROVIDER=anonymous pnpm exec vite build --outDir /out/anonymous \
- && VITE_AUTH_PROVIDER=oidc VITE_OIDC_ISSUER=__rc_oidc_issuer__ VITE_OIDC_CLIENT_ID=__rc_oidc_client_id__ \
-    VITE_REQUIRE_AUTH=__rc_require_auth__ pnpm exec vite build --outDir /out/oidc \
- && check-placeholders.sh /out/anonymous spacetime_uri spacetime_db dashboard_url mcp_url \
- && check-placeholders.sh /out/oidc spacetime_uri spacetime_db dashboard_url mcp_url oidc_issuer oidc_client_id require_auth
+FROM builder AS fetch
+RUN --mount=type=bind,from=deploy,target=/config \
+    --mount=type=secret,id=git_credentials,required=false \
+    --mount=type=ssh,required=false \
+    --mount=type=cache,target=/cache/plugins \
+    node /draw/scripts/builder.mjs fetch --config /config --into /fetched --cache /cache/plugins
 
-FROM deps AS dashboard-build
-ENV VITE_SPACETIME_URI=__rc_spacetime_uri__ VITE_SPACETIME_DB=__rc_spacetime_db__ \
-    VITE_CANVAS_URL=__rc_canvas_url__ VITE_MCP_URL=__rc_mcp_url__
-WORKDIR /src/web
-# The adapter's output plus wrangler's bundle of worker.js; workerd serves the
-# assets through assets.js, so the adapter's own worker and _headers go.
-RUN for p in anonymous oidc; do \
-      if [ "$p" = oidc ]; then export VITE_OIDC_ISSUER=__rc_oidc_issuer__ VITE_OIDC_CLIENT_ID=__rc_oidc_client_id__; fi; \
-      VITE_AUTH_PROVIDER=$p pnpm exec vite build >/dev/null \
-      && pnpm exec wrangler deploy --dry-run --env '' --outdir "/out/$p" >/dev/null \
-      && cp -R .svelte-kit/cloudflare "/out/$p/assets" \
-      && rm -f "/out/$p/assets/_worker.js" "/out/$p/assets/_headers" "/out/$p"/*.map "/out/$p/README.md" \
-      && sed -i '/^\/\/# sourceMappingURL=/d' "/out/$p/worker.js" \
-      || exit 1; \
-    done \
- && check-placeholders.sh /out/anonymous spacetime_uri spacetime_db canvas_url mcp_url \
- && check-placeholders.sh /out/oidc spacetime_uri spacetime_db canvas_url mcp_url oidc_issuer oidc_client_id
-
-FROM deps AS mcp-build
-WORKDIR /src/mcp
-RUN pnpm exec wrangler deploy --dry-run --env '' --outdir /out >/dev/null \
- && rm -f /out/*.map /out/README.md
+FROM builder AS build
+COPY --from=fetch /fetched /fetched
+RUN --mount=type=bind,from=deploy,target=/config \
+    --mount=type=bind,from=seams,target=/seams \
+    node /draw/scripts/builder.mjs build --config /config --sources /fetched --seams /seams --out /out
 
 # The workerd binary for the target architecture, from the same npm package
 # wrangler installs (npm checks the registry's integrity hash).
@@ -88,21 +98,19 @@ RUN case "$TARGETARCH" in amd64) arch=64 ;; arm64) arch=arm64 ;; *) echo "no wor
  && npm pack --silent "@cloudflare/workerd-linux-$arch@$WORKERD_VERSION" >/dev/null \
  && tar -xzf ./*.tgz && install package/bin/workerd /workerd
 
-# The module's runtime dependencies for module-setup: pure JavaScript, plus the
-# dbmate binary for the target architecture.
-FROM deps AS setup-deps
+# The dbmate binary for the target architecture, at the version the dashboard installs.
+FROM builder AS dbmate-bin
 ARG TARGETARCH
 RUN case "$TARGETARCH" in amd64) arch=x64 ;; arm64) arch=arm64 ;; *) echo "no dbmate for $TARGETARCH" >&2; exit 1 ;; esac \
- && version="$(node -p 'require("/src/web/node_modules/dbmate/package.json").version')" \
+ && version="$(node -p 'require("/draw/web/node_modules/dbmate/package.json").version')" \
  && cd /tmp && npm pack --silent "@dbmate/linux-$arch@$version" >/dev/null \
- && tar -xzf ./*.tgz && install package/bin/dbmate /dbmate \
- && find /src/module/src /src/shared -maxdepth 1 -name '*.test.*' -delete
+ && tar -xzf ./*.tgz && install package/bin/dbmate /dbmate
 
 # ---- canvas: static files behind Caddy ----
 FROM caddy:2.11.7-alpine AS canvas
-COPY --from=canvas-build /out /app/site
-COPY docker/prod/canvas.Caddyfile /etc/caddy/Caddyfile
-COPY docker/prod/guard.sh docker/prod/runtime-config.sh docker/prod/canvas-entrypoint.sh /app/
+COPY --from=build /out/canvas /app/site
+COPY --from=builder /draw/docker/prod/canvas.Caddyfile /etc/caddy/Caddyfile
+COPY --from=builder /draw/docker/prod/guard.sh /draw/docker/prod/runtime-config.sh /draw/docker/prod/canvas-entrypoint.sh /app/
 # No privileges needed: port 8080, writes only under /tmp.
 USER 65534
 ENV XDG_DATA_HOME=/tmp/caddy-data XDG_CONFIG_HOME=/tmp/caddy-config
@@ -113,19 +121,21 @@ ENTRYPOINT ["/app/canvas-entrypoint.sh"]
 FROM debian:bookworm-slim AS workerd
 COPY --from=workerd-bin /workerd /usr/local/bin/workerd
 RUN mkdir /data && chown 10001:10001 /data
-COPY docker/prod/guard.sh docker/prod/runtime-config.sh docker/prod/workerd-entrypoint.sh /app/
+COPY --from=builder /draw/docker/prod/guard.sh /draw/docker/prod/runtime-config.sh /draw/docker/prod/workerd-entrypoint.sh /app/
 USER 10001
 WORKDIR /app
 
 FROM workerd AS dashboard
-COPY --from=dashboard-build /out /app/dashboard
-COPY docker/prod/dashboard.capnp docker/prod/assets.js /app/
+COPY --from=build /out/dashboard /app/dashboard
+# The config with the plugin setting bindings the build generated.
+COPY --from=build /out/dashboard.capnp /out/plugin-settings.env.example /app/
+COPY --from=builder /draw/docker/prod/assets.js /app/
 EXPOSE 5174
 ENTRYPOINT ["/app/workerd-entrypoint.sh", "dashboard"]
 
 FROM workerd AS mcp
-COPY --from=mcp-build /out/worker.js /app/mcp/worker.js
-COPY docker/prod/mcp.capnp docker/prod/ratelimit.js /app/
+COPY --from=build /out/mcp/worker.js /app/mcp/worker.js
+COPY --from=builder /draw/docker/prod/mcp.capnp /draw/docker/prod/ratelimit.js /app/
 # Durable Object storage (SQLite files): mount a volume on /data.
 EXPOSE 8788
 ENTRYPOINT ["/app/workerd-entrypoint.sh", "mcp"]
@@ -134,11 +144,11 @@ ENTRYPOINT ["/app/workerd-entrypoint.sh", "mcp"]
 FROM node:22-bookworm-slim AS module-setup
 RUN apt-get update && apt-get install -y --no-install-recommends curl ca-certificates && rm -rf /var/lib/apt/lists/*
 COPY --from=spacetime /opt/spacetime/spacetimedb-cli /usr/local/bin/spacetime
-COPY --from=setup-deps /dbmate /usr/local/bin/dbmate
+COPY --from=dbmate-bin /dbmate /usr/local/bin/dbmate
 WORKDIR /app
-COPY --from=setup-deps /src/module module
-COPY --from=setup-deps /src/shared shared
-COPY web/db/migrations web/db/migrations
-COPY scripts/module-env.mjs scripts/publish-module.sh scripts/
-COPY docker/prod/guard.sh docker/prod/db-issuers.sh docker/prod/module-setup.sh docker/prod/
+# The module program: the module, its included plugin parts and shared/, without tests.
+COPY --from=build /out/module-program/ /app/
+COPY --from=builder /draw/web/db/migrations web/db/migrations
+COPY --from=builder /draw/scripts/module-env.mjs /draw/scripts/publish-module.sh scripts/
+COPY --from=builder /draw/docker/prod/guard.sh /draw/docker/prod/db-issuers.sh /draw/docker/prod/rollback.sh /draw/docker/prod/module-setup.sh docker/prod/
 ENTRYPOINT ["/app/docker/prod/module-setup.sh"]

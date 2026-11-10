@@ -40,9 +40,22 @@ const src = readFileSync(new URL('./index.ts', import.meta.url), 'utf8');
 const workspaceSrc = readFileSync(new URL('./workspaces.ts', import.meta.url), 'utf8');
 const serviceAccountSrc = readFileSync(new URL('./workspace-service-accounts.ts', import.meta.url), 'utf8');
 const pluginSrc = readFileSync(new URL('./plugins.ts', import.meta.url), 'utf8');
-const versionSrc = readFileSync(new URL('./versions.ts', import.meta.url), 'utf8');
+function pluginSources(folder) {
+  return readdirSync(folder, { withFileTypes: true }).flatMap(entry => {
+    const file = new URL(`${entry.name}${entry.isDirectory() ? '/' : ''}`, folder);
+    return entry.isDirectory() ? pluginSources(file) : entry.name.endsWith('.ts') && !entry.name.includes('.test.') ? [{ file, source: readFileSync(file, 'utf8') }] : [];
+  });
+}
+const pluginModules = readdirSync(new URL('../../plugins/', import.meta.url), { withFileTypes: true })
+  .filter(entry => entry.isDirectory())
+  .flatMap(entry => {
+    const folder = new URL(`../../plugins/${entry.name}/module/`, import.meta.url);
+    try { return pluginSources(folder); } catch (error) { if (error.code === 'ENOENT') return []; throw error; }
+  });
+const versionSrc = pluginModules.find(({ file }) => file.pathname.endsWith('/versions/module/index.ts'))?.source;
+assert.ok(versionSrc, 'the Versions module is included in the plugin audit');
 const declared = new Map([...src.matchAll(/^export const (\w+) = (reducer|spacetimedb\.reducer)\(/gm)].map(([, name, how]) => [name, how]));
-const features = [workspaceSrc, serviceAccountSrc, pluginSrc, versionSrc];
+const features = [workspaceSrc, serviceAccountSrc, pluginSrc, ...pluginModules.map(({ source }) => source)];
 for (const feature of features) {
   for (const [, name, how] of feature.matchAll(/^ {4}(\w+): (reducer|db\.reducer)\(/gm)) declared.set(name, how === 'reducer' ? how : 'spacetimedb.reducer');
 }
@@ -59,24 +72,37 @@ test('every exported reducer has a budgeted or explicitly exempt handler', () =>
   assert.match(src, /workspaceFeatures\(spacetimedb, \{\s*reducer,/, 'the native workspace group receives the same write-budget wrapper');
   assert.match(serviceAccountSrc, /const reducer = hooks\.reducer;/, 'service account management uses the supplied write-budget wrapper');
   assert.match(src, /workspaceServiceAccountFeatures\(spacetimedb, \{\s*reducer,/, 'service account management receives the same write-budget wrapper');
-  for (const [feature, group] of [[pluginSrc, 'pluginFeatures'], [versionSrc, 'versionFeatures']]) {
-    assert.match(feature, /const reducer = hooks\.reducer;/, `${group} handlers use the supplied write-budget wrapper`);
-    assert.match(src, new RegExp(`${group}\\(spacetimedb, \\{\\s*reducer,`), `${group} receives the same write-budget wrapper`);
+  assert.match(pluginSrc, /const reducer = hooks\.reducer;/, 'plugin switches use the supplied write-budget wrapper');
+  assert.match(src, /const api: ModuleApi = \{\s*reducer,/, 'the shared plugin API receives the write-budget wrapper');
+  assert.match(src, /pluginFeatures\(spacetimedb, api\)/, 'plugin switches receive the shared API');
+  assert.match(src, /pluginActions\(PLUGIN_PARTS, spacetimedb, api,/, 'every plugin receives the shared API');
+  for (const { file, source } of pluginModules) {
+    if (/\breducer\(/.test(source)) assert.match(source, /const reducer = api\.reducer;/, `${file} uses the supplied write-budget wrapper`);
   }
   // A procedure is not a reducer: each Versions procedure spends one write in a transaction of its own (charged).
-  assert.match(versionSrc, /function charged\([^]*?ctx\.withTx\(\(tx: any\) => \{\s*hooks\.spendWrite\(tx\);/);
+  assert.match(versionSrc, /function charged\([^]*?ctx\.withTx\(\(tx: any\) => \{\s*api\.spendWrite\(tx\);/);
   const procedures = [...versionSrc.matchAll(/^ {4}(\w+): db\.procedure\(/gm)].map(([, name]) => name);
   assert.deepEqual(procedures, ['captureBoardVersion', 'restoreBoardVersion']);
   for (const name of procedures) assert.match(versionSrc.slice(versionSrc.indexOf(`    ${name}: `)).split(/\n    \w+: /)[0], /charged\(ctx, '\w+', /, `${name} spends a write`);
 });
 
+test('plugin switches and generated actions retain the SDK export groups that stabilize bindings', () => {
+  assert.match(src, /export const plugins = spacetimedb\.exportGroup\(switches\);/);
+  assert.match(src, /export const versions = spacetimedb\.exportGroup\(pluginActions\(PLUGIN_PARTS, spacetimedb, api, Object\.keys\(switches\)\) as Record<string, ModuleExport>\);/);
+});
+
 test('every exported procedure spends a write or is explicitly read-only', () => {
   const direct = [...src.matchAll(/^export const (\w+) = spacetimedb\.procedure\(/gm)];
-  const version = [...versionSrc.matchAll(/^ {4}(\w+): db\.procedure\(/gm)].map(([, name]) => name);
+  const pluginProcedures = pluginModules.flatMap(({ source }) => [...source.matchAll(/^ {4}(\w+): db\.procedure\(/gm)].map(match => ({ name: match[1], source, index: match.index })));
+  for (const { name, source, index } of pluginProcedures) {
+    const body = source.slice(index).split(/\n    \w+: /)[0];
+    assert.match(body, /charged\(ctx, '\w+', /, `${name} spends a write`);
+    assert.match(source, /function charged\([^]*?ctx\.withTx\(\(tx: any\) => \{\s*api\.spendWrite\(tx\);/, `${name} charges its transaction`);
+  }
   const exported = readdirSync(new URL('../../client/src/module_bindings/', import.meta.url))
     .filter(f => f.endsWith('_procedure.ts'))
     .map(f => camel(f.slice(0, -'_procedure.ts'.length)));
-  assert.deepEqual([...direct.map(([, name]) => name), ...version].sort(), exported.sort(), 'every procedure is covered by the budget contract');
+  assert.deepEqual([...direct.map(([, name]) => name), ...pluginProcedures.map(({ name }) => name)].sort(), exported.sort(), 'every procedure is covered by the budget contract');
   const readOnly = ['readBoardSnapshot'];
   assert.deepEqual(readOnly.filter(name => !direct.some(([, declared]) => declared === name)), [], 'read-only exemptions still name a procedure');
   for (const match of direct) {

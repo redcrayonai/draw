@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { nextTag, parseLabels, plan } from './release-labels.mjs';
+import { apiBreak, nextTag, parseLabels, plan } from './release-labels.mjs';
 
 test('release labels need a component and exactly one bump', () => {
   assert.deepEqual(parseLabels(['bug', 'size:S']), { components: [], bump: null });
@@ -31,4 +31,15 @@ test('plan releases every labelled component with one bump', () => {
     { component: 'plugin', tag: 'plugin-v1.1.0', last: 'plugin-v1.0.2' },
     { component: 'core', tag: 'v0.1.0', last: null },
   ]);
+});
+
+test('a core minor may break the plugin interface on 0.x; from 1.0 only a major may', () => {
+  const zero = ['v0.2.1', 'v0.1.0', 'plugin-v1.0.3'], one = ['v1.4.0', 'v0.9.0'];
+  assert.equal(apiBreak(['release:core', 'minor'], zero), true);
+  assert.equal(apiBreak(['release:core', 'minor'], []), true);
+  assert.equal(apiBreak(['release:core', 'minor'], one), false);
+  assert.equal(apiBreak(['release:core', 'major'], one), true);
+  assert.equal(apiBreak(['release:core', 'patch'], zero), false);
+  assert.equal(apiBreak(['release:plugin', 'minor'], zero), false);
+  assert.equal(apiBreak([], zero), false);
 });

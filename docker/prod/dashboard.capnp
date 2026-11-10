@@ -32,15 +32,16 @@ const dashboard :Workerd.Worker = (
     (name = "IMPORT_CALLBACK_URL", fromEnvironment = "IMPORT_CALLBACK_URL"),
     (name = "OIDC_ISSUER", fromEnvironment = "OIDC_ISSUER"),
     (name = "IMPORTS_ANONYMOUS", fromEnvironment = "IMPORTS_ANONYMOUS"),
+    # plugin settings: scripts/plugin-build.mjs writes these from plugins/*/plugin.json
     (name = "VERSIONS_S3_ENDPOINT", fromEnvironment = "VERSIONS_S3_ENDPOINT"),
     (name = "VERSIONS_S3_BUCKET", fromEnvironment = "VERSIONS_S3_BUCKET"),
     (name = "VERSIONS_S3_REGION", fromEnvironment = "VERSIONS_S3_REGION"),
     (name = "VERSIONS_S3_ACCESS_KEY_ID", fromEnvironment = "VERSIONS_S3_ACCESS_KEY_ID"),
     (name = "VERSIONS_S3_SECRET_ACCESS_KEY", fromEnvironment = "VERSIONS_S3_SECRET_ACCESS_KEY"),
-    # Versions without keys: the container credentials endpoint an ECS task role sets these for.
     (name = "AWS_CONTAINER_CREDENTIALS_RELATIVE_URI", fromEnvironment = "AWS_CONTAINER_CREDENTIALS_RELATIVE_URI"),
     (name = "AWS_CONTAINER_CREDENTIALS_FULL_URI", fromEnvironment = "AWS_CONTAINER_CREDENTIALS_FULL_URI"),
     (name = "AWS_CONTAINER_AUTHORIZATION_TOKEN", fromEnvironment = "AWS_CONTAINER_AUTHORIZATION_TOKEN"),
+    # end of plugin settings
   ],
   # The adapter's worker reads caches.default on every request, which throws
   # without a cache: always a miss (assets.js noCache).
