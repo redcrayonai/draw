@@ -9,7 +9,7 @@
  * older core keeps working when a field is added.
  */
 export interface CanvasExtra {
-  /** Called once per page, after the first board has painted. */
+  /** Called once per page, when the first board is drawn, in the frame that first paints it. */
   boardReady?(ctx: BoardReady): void;
 }
 

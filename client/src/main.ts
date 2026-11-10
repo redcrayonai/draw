@@ -412,16 +412,13 @@ async function boot(conn: DbConnection, identityHex: string, signedIn: boolean):
         : { signedIn: false },
     signIn,
   });
-  // The build's extra hears about the first painted board once; its failure never takes the board down.
-  let extraReady = false;
+  // The build's extra hears about the first drawn board (the view below is set up once per page, a board
+  // switch reuses it); its failure never takes the board down.
   const tellExtra = (): void => {
-    if (extraReady) return;
-    extraReady = true;
-    try {
-      extra.boardReady?.({ bareVisit: BARE_VISIT, openConnectGuide: config.mcpUrl === undefined ? undefined : connectDialog.openGuide });
-    } catch (error) {
-      console.error('canvas extra failed', error);
-    }
+    // Through a promise: a throw and an async extra's rejection are logged alike.
+    void Promise.resolve()
+      .then(() => extra.boardReady?.({ bareVisit: BARE_VISIT, openConnectGuide: config.mcpUrl === undefined ? undefined : connectDialog.openGuide }))
+      .catch(error => console.error('canvas extra failed', error));
   };
   for (const table of [conn.db.myAgentLinks, conn.db.visibleSelection, conn.db.visibleParticipant, conn.db.visibleBoard]) {
     table.onInsert(connectDialog.refresh);
