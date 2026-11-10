@@ -160,6 +160,7 @@ describe('mountAgentChat', () => {
     expect(panel().hidden).toBe(true);
     old.button.click();
     expect(panel().textContent).toContain('Open old');
+    expect(panel().textContent).toContain('ask your agent to reconnect board chat if it is offline');
     panel().remove();
 
     FakeSocket.all = [];
@@ -168,6 +169,21 @@ describe('mountAgentChat', () => {
     live.chat.refresh();
     expect(panel().hidden).toBe(false);
     expect(panel().textContent).toContain('Your agent is on now');
+  });
+
+  it('asks the person to reconnect an absent agent while keeping the draft and history', async () => {
+    const { button, socket } = await mount();
+    button.click();
+    socket.frame({ type: 'snapshot', events: [{ type: 'user', id: 'old', text: 'Earlier conversation' }], queue: [], state: 'idle' });
+    const input = panel().querySelector('textarea')!;
+    input.value = 'Unsent question';
+    input.dispatchEvent(new Event('input'));
+    socket.frame({ agent: 'gone' });
+    expect(panel().textContent).toContain('Waiting for agent');
+    expect(panel().textContent).toContain('Ask your agent to reconnect board chat');
+    expect(panel().textContent).not.toContain('Reconnecting automatically');
+    expect(panel().textContent).toContain('Earlier conversation');
+    expect(input.value).toBe('Unsent question');
   });
 
   it('retries a refusal with a fresh connection, and says why only once it keeps happening', async () => {

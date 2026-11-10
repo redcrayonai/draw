@@ -740,7 +740,7 @@ export function mountAgentChat(chatButton: HTMLButtonElement, opts: AgentChatOpt
     const elsewhere = opts.agentElsewhere?.() ?? null;
     if (elsewhere) {
       card.append(el('h4', undefined, elsewhere.live ? `Your agent is on ${elsewhere.board}` : `Your latest session is ${elsewhere.board}`));
-      card.append(el('p', undefined, elsewhere.live ? 'This board has no agent. Go to the board it is drawing on.' : 'This board has no agent connected.'));
+      card.append(el('p', undefined, elsewhere.live ? 'This board has no agent. Go to the board it is drawing on.' : 'Open this board, then ask your agent to reconnect board chat if it is offline.'));
       const go = el('a', 'ac-action primary', `Open ${elsewhere.board}`);
       go.href = elsewhere.href;
       card.append(go);
@@ -752,8 +752,8 @@ export function mountAgentChat(chatButton: HTMLButtonElement, opts: AgentChatOpt
       return card;
     }
     const syncing = model.connection === 'syncing';
-    card.append(el('h4', undefined, syncing ? 'Restoring your conversation' : model.connection === 'reconnecting' ? 'Reconnecting to your agent' : 'Connecting to your agent'));
-    card.append(el('p', undefined, syncing ? 'Your messages will appear here in a moment.' : model.connection === 'waiting' ? 'Waiting for your agent to become available. You can keep a draft here.' : 'Your conversation and draft will stay here while we reconnect.'));
+    card.append(el('h4', undefined, syncing ? 'Restoring your conversation' : model.connection === 'waiting' ? 'No agent connected' : model.connection === 'reconnecting' ? 'Reconnecting to your agent' : 'Connecting to your agent'));
+    card.append(el('p', undefined, syncing ? 'Your messages will appear here in a moment.' : model.connection === 'waiting' ? 'Ask your agent to reconnect board chat and include this board’s URL. You can keep a draft here.' : 'Your conversation and draft will stay here while we reconnect.'));
     return card;
   }
 
@@ -833,7 +833,7 @@ export function mountAgentChat(chatButton: HTMLButtonElement, opts: AgentChatOpt
       : 'Select a node to attach it';
     foot.hidden = pairing !== null;
     lost.hidden = model.online || model.items.length === 0;
-    lost.textContent = model.connection === 'syncing' ? 'Restoring your conversation…' : 'Reconnecting automatically. Your draft is saved here.';
+    lost.textContent = model.connection === 'syncing' ? 'Restoring your conversation…' : model.connection === 'waiting' ? 'Ask your agent to reconnect board chat. Your draft is saved here.' : 'Reconnecting automatically. Your draft is saved here.';
   }
 
   function render(): void {

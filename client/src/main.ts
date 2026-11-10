@@ -2666,9 +2666,9 @@ async function boot(conn: DbConnection, identityHex: string, signedIn: boolean):
             });
             if (live?.here) return null;
             if (live) return { board: live.board, href: hrefOf(live.slug), live: true };
-            const sessions = [...conn.db.myBoards.iter()].filter(b => b.isSession && b.boardId !== boardId).sort((x, y) => (x.boardId < y.boardId ? 1 : -1));
+            const sessions = [...conn.db.myBoards.iter()].filter(b => b.isSession).sort((x, y) => (x.boardId < y.boardId ? 1 : -1));
             const latest = sessions[0] && conn.db.visibleBoard.id.find(sessions[0].boardId);
-            return latest ? { board: latest.name, href: hrefOf(latest.slug), live: false } : null;
+            return latest && latest.id !== boardId ? { board: latest.name, href: hrefOf(latest.slug), live: false } : null;
           },
         });
         agentChat = chat;

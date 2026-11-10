@@ -53,6 +53,34 @@ test('someone with no linked agent is not offered a chat', async ({ account, sta
   await expect(page.getByRole('button', { name: 'Chat with agent' })).toBeHidden();
 });
 
+test('the latest inactive session never links back to an older session', async ({ account, stack }) => {
+  const token = stack.accountToken();
+  const page = await account(token);
+  await page.routeWebSocket(/\/chat\/\d+$/, ws => {
+    ws.onMessage(raw => {
+      if (JSON.parse(String(raw)).role !== 'person') return;
+      ws.send(JSON.stringify({ ok: true, role: 'person' }));
+      ws.send(JSON.stringify({ agent: 'gone' }));
+    });
+  });
+  await openBoard(page, `${stack.url}?new=1`);
+  await linkedAgent(stack, token);
+  const names = ['Older session', 'Latest session'].map(name => `${name} ${randomBytes(4).toString('hex')}`);
+  const ids: number[] = [];
+  for (const name of names) {
+    await stack.callReducer(token, 'start_session', [name, '/tmp/chat-navigation-e2e', 'a'.repeat(40)]);
+    ids.push(Number((await stack.sql(`SELECT id FROM board WHERE name = '${name}'`))[0].id));
+  }
+  await openBoard(page, await boardLink(stack, ids[0]));
+  await page.getByRole('button', { name: 'Chat with agent' }).click();
+  await page.getByRole('link', { name: `Open ${names[1]}`, exact: true }).click();
+  await expect(page.locator('#board-title')).toHaveText(names[1]);
+  await page.getByRole('button', { name: 'Chat with agent' }).click();
+  await expect(page.locator('#agent-chat')).toBeVisible();
+  await expect(page.locator('#agent-chat')).toContainText('Ask your agent to reconnect board chat');
+  await expect(page.locator('#agent-chat .ac-empty a')).toHaveCount(0);
+});
+
 test('the panel opens once when the agent connects, and stays closed once the person closes it', async ({ account, stack }) => {
   const { page } = await linkedBoard(account, stack);
   await page.getByRole('button', { name: 'Close chat' }).click();
