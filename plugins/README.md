@@ -44,6 +44,7 @@ The manifest accepts only these fields:
 | `id` | Required. Matches its folder and `/^[a-z][a-z0-9]{1,30}$/`. |
 | `name` | Required string, 1–40 characters. |
 | `description` | Required string, 1–200 characters. |
+| `draw` | Optional here; required for a plugin outside this repo. Caret ranges of draw versions it supports, such as `"^0.3.0"` or `"^0.3.0 \|\| ^0.4.0"`. |
 | `settings` | Optional array, defaults to `[]`. Each name matches `/^[A-Z][A-Z0-9_]*$/`. Names are unique within and across plugins. |
 | `tables` | Optional object, defaults to `{}`. Each key matches `/^[a-z][A-Za-z0-9]*$/` and is unique across plugins. |
 | `tables.<key>.why` | Required string, 1–80 characters. Explains why the bundle leaves this table out. |
@@ -109,10 +110,11 @@ clients.
 The generator writes manifest settings into the marked section of
 [docker/prod/dashboard.capnp](../docker/prod/dashboard.capnp). Do not edit that
 section by hand. A setting must not reuse a binding outside the generated
-section in `dashboard.capnp`. Environment forwarding still needs manual entries in
-[compose.prod.yml](../compose.prod.yml), [docker-compose.yml](../docker-compose.yml),
-and [.env.example](../.env.example). Network access through `role_networks`
-also remains manual.
+section in `dashboard.capnp`. Plugins in this repo add their environment
+forwarding to [compose.prod.yml](../compose.prod.yml),
+[docker-compose.yml](../docker-compose.yml) and [.env.example](../.env.example).
+Plugins outside this repo need no entries: the dashboard reads `plugins.env`.
+Network access through `role_networks` remains manual.
 
 ## Dashboard UI part
 
@@ -138,14 +140,20 @@ After a manifest change, run the generator from the repository root:
 node scripts/plugin-build.mjs
 node scripts/plugin-build.mjs --check
 node scripts/plugin-build.mjs --check --api
+node scripts/plugin-build.mjs --api-types module   # after pnpm -C module install
+node scripts/plugin-build.mjs --api-types web      # after pnpm -C web and -C shared install
 ```
 
 The first command checks manifests and imports, then writes the registries and
 setting bindings. `--check` refuses stale generated files without writing.
-`--api` also compares public export names with `origin/main`. CI runs the
-combined command. A PR with the `major` label permits removed names through
-`PLUGIN_API_MAJOR=true`. The current comparison checks names only. Type
-compatibility checks must precede the first plugin outside this repository.
+`--api` also compares public export names with `origin/main`. `--api-types`
+compares the interface's types with `origin/main`: every value must still fit
+its old uses, types draw hands to plugins may only grow, and the types plugins
+hand to draw (`ModulePart`, `ServerPart`, `WebPart`) must still accept what
+plugins wrote for the old ones. CI runs all three. A breaking change needs a
+breaking core release: a PR labelled `release:core` with `minor` while draw is
+0.x, or `major` from 1.0 on, sets `PLUGIN_API_MAJOR=true` and the checks report
+without failing.
 
 Do not hand-edit `module/src/plugin-meta.generated.ts`,
 `module/src/plugin-parts.generated.ts`, `web/src/lib/server/plugins.generated.ts`,
@@ -177,6 +185,13 @@ scripts/stdb-test.sh versions
 pnpm -C e2e test tests/board-versions.spec.ts
 ```
 
-The outside-plugin builder, repository fetch, lock file, draw version range,
-`skip`/retire support, and plugin template remain steps 3–4. They are not
-implemented. This guide describes the in-repository contract from steps 1–2.
+## Plugins outside this repo
+
+The same folder can live in a repository of its own, with `plugin.json` at its
+root and a `draw` range. Deployments name it in `draw-plugins.json` and build
+with `node scripts/builder.mjs` or the `draw-builder` image; see
+[PLUGINS.md](../PLUGINS.md#the-builder). To change draw and a plugin together,
+list the plugin's folder as a `path` entry in a clone and run
+`node scripts/builder.mjs link` (`unlink` before committing).
+`scripts/fixtures/outside-plugin/` is the builder's test plugin. A template
+repository comes later.

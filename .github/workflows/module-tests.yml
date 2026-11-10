@@ -52,11 +52,21 @@ jobs:
         if: matrix.variant == 'local'
         run: scripts/check-module-upgrade.sh
 
+      # A core release semver lets break the interface may (scripts/release-labels.mjs api-break).
       - name: Preserve the plugin interface from main
         if: matrix.variant == 'local'
         env:
-          PLUGIN_API_MAJOR: ${{ contains(github.event.pull_request.labels.*.name, 'major') }}
-        run: node scripts/plugin-build.mjs --check --api
+          LABELS: ${{ toJSON(github.event.pull_request.labels.*.name) }}
+        run: |
+          PLUGIN_API_MAJOR="$(TAGS="$(git tag)" node scripts/release-labels.mjs api-break)"
+          export PLUGIN_API_MAJOR
+          node scripts/plugin-build.mjs --check --api
+          node scripts/plugin-build.mjs --api-types module
+
+      # Add, upgrade, refuse, skip, retire and roll back the test plugin outside this repo.
+      - name: Outside plugins
+        if: matrix.variant == 'local'
+        run: scripts/stdb-test.sh outside
 
       - name: The committed issuers are the none variant
         if: matrix.variant == 'none'

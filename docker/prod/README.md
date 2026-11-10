@@ -18,7 +18,37 @@ docker buildx bake -f docker/prod/docker-bake.hcl --load
 ```
 
 `.github/workflows/release-images.yml` pushes them for amd64 and arm64 on a `v*`
-tag. `.github/workflows/compose-prod-smoke.yml` builds them and runs the stack.
+tag, and the builder image `draw-builder` for amd64. `.github/workflows/compose-prod-smoke.yml`
+builds them and runs the stack, also with an outside plugin (`smoke/outside.sh`).
+
+The image build runs `scripts/builder.mjs`: `fetch`, then `build`. The images copy
+its outputs.
+
+## Outside plugins
+
+Back up the database, `.env`, `plugins.env` and your plugin files first. Then, in a
+config directory holding `draw-plugins.json` ([PLUGINS.md](../../PLUGINS.md#the-builder)):
+
+```sh
+# Lock: exact commits and database schemas. Commit both files.
+docker run --rm -u "$(id -u):$(id -g)" -e HOME=/tmp -v "$PWD:/config" \
+  ghcr.io/redcrayonai/draw-builder:<version> lock --config /config
+# Build the images. Private repositories: a git credential-store file as a build secret.
+docker buildx bake -f <draw>/docker/prod/docker-bake.hcl --load \
+  --set "*.contexts.deploy=$PWD" \
+  --set '*.contexts.builder=docker-image://ghcr.io/redcrayonai/draw-builder:<version>' \
+  --set "*.secrets=id=git_credentials,src=$HOME/.git-credentials"
+```
+
+With a `seams/` folder, also pass `--set "*.contexts.seams=$PWD/seams"`; leave it
+out otherwise, since a context must exist.
+
+Put plugin settings in `plugins.env` next to `compose.prod.yml`. The dashboard image
+lists every name: `docker run --rm --entrypoint cat <dashboard image> /app/plugin-settings.env.example`. Upgrading draw: change the builder
+version and rebuild; a plugin outside its draw range fails the build, and
+`"skip": true` leaves it out while keeping its tables and data. Retiring a plugin
+(`{ "retired": true }`) does the same for good. Its data stays until you delete it
+by hand. Rolling back is running the previous images.
 
 ## Runtime settings
 

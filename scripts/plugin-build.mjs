@@ -3,6 +3,7 @@ import { existsSync, lstatSync, mkdirSync, readFileSync, readdirSync, realpathSy
 import { dirname, join, relative, resolve, sep } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { execFileSync } from 'node:child_process';
+import { parseRange } from './plugin-lock.mjs';
 
 const PARTS = { module: '@draw/module', server: '@draw/server', web: '@draw/client' };
 const object = value => value !== null && typeof value === 'object' && !Array.isArray(value);
@@ -14,7 +15,8 @@ export function readPlugins(root) {
   const directory = join(root, 'plugins');
   if (!existsSync(directory)) return plugins;
   for (const entry of readdirSync(directory, { withFileTypes: true }).sort((a, b) => a.name.localeCompare(b.name, 'en'))) {
-    if (!entry.isDirectory()) continue;
+    // A linked folder counts (builder link); importProblems still keeps its imports inside it.
+    if (!statSync(join(directory, entry.name)).isDirectory()) continue;
     const folder = entry.name, file = `plugins/${folder}/plugin.json`;
     const fail = message => errors.push(rule(`${file}: ${message}`));
     let data;
@@ -23,13 +25,14 @@ export function readPlugins(root) {
     if (!object(data)) { fail('manifest must be an object'); continue; }
     data = { settings: [], tables: {}, ...data };
     const fields = ['id', 'name', 'description', 'settings', 'tables'];
-    for (const key of Object.keys(data)) if (!fields.includes(key)) fail(`unknown field '${key}'`);
+    for (const key of Object.keys(data)) if (![...fields, 'draw'].includes(key)) fail(`unknown field '${key}'`);
     for (const key of fields) if (!Object.hasOwn(data, key)) fail(`missing field '${key}'`);
     if (typeof data.id !== 'string' || !/^[a-z][a-z0-9]{1,30}$/.test(data.id)) fail('id must match /^[a-z][a-z0-9]{1,30}$/');
     if (data.id !== folder) fail('id must match its folder');
     for (const [key, max] of [['name', 40], ['description', 200]]) {
       if (typeof data[key] !== 'string' || data[key].length < 1 || data[key].length > max) fail(`${key} must have 1..${max} characters`);
     }
+    if (Object.hasOwn(data, 'draw')) { try { parseRange(data.draw); } catch (error) { fail(error.message.replace(/^plugin rule: /, '')); } }
     if (!Array.isArray(data.settings)) fail('settings must be an array');
     else for (const setting of data.settings) {
       if (typeof setting !== 'string' || !/^[A-Z][A-Z0-9_]*$/.test(setting)) { fail('each setting must match /^[A-Z][A-Z0-9_]*$/'); continue; }
@@ -152,8 +155,12 @@ function tokens(source, inspectTemplateExpressions = true, markup = false) {
   return result;
 }
 
-export function exportedNames(source) {
-  const list = tokens(source, false), names = new Set();
+export const exportedNames = source => [...exportedKinds(source).keys()].sort();
+/** Type-only exports, which `isolatedModules` forces to be written `export type` or as declarations. */
+export const exportedTypes = source => [...exportedKinds(source)].filter(([, type]) => type).map(([name]) => name).sort();
+
+function exportedKinds(source) {
+  const list = tokens(source, false), names = new Map();
   let depth = 0;
   for (let i = 0; i < list.length; i++) {
     const token = list[i];
@@ -161,15 +168,17 @@ export function exportedNames(source) {
     if (token.kind === 'punctuation' && token.value === '}') depth--;
     if (depth !== 0 || token.kind !== 'word' || token.value !== 'export' || list[i - 1]?.value === '.') continue;
     let j = i + 1;
-    if (list[j]?.value === 'type' && ['{', '*'].includes(list[j + 1]?.value)) j++;
+    const typeOnly = list[j]?.value === 'type' && ['{', '*'].includes(list[j + 1]?.value);
+    if (typeOnly) j++;
     if (list[j]?.value === '*') throw new Error(rule('wildcard exports are not allowed in the plugin interface'));
     if (list[j]?.value === '{') {
       j++;
       while (j < list.length && list[j].value !== '}') {
-        if (list[j].value === 'type' && list[j + 1]?.kind === 'word' && list[j + 1].value !== 'as') j++;
+        const typeItem = list[j].value === 'type' && list[j + 1]?.kind === 'word' && list[j + 1].value !== 'as';
+        if (typeItem) j++;
         let name = list[j++].value;
         if (list[j]?.value === 'as') { name = list[j + 1].value; j += 2; }
-        names.add(name);
+        names.set(name, typeOnly || typeItem);
         if (list[j]?.value === ',') j++;
       }
       i = j;
@@ -187,7 +196,7 @@ export function exportedNames(source) {
             const boundary = !next || (next.kind === 'punctuation' && ['=', ':', ',', ';', '!'].includes(next.value))
               || (next.kind === 'word' && ['export', 'const', 'let', 'var'].includes(next.value));
             if (token.kind !== 'word' || !boundary) throw new Error(rule('unsupported exported variable declaration in the plugin interface'));
-            names.add(token.value);
+            names.set(token.value, false);
             binding = false;
             typePosition = [':', '!'].includes(next?.value);
           } else if (token.kind === 'punctuation') {
@@ -205,14 +214,14 @@ export function exportedNames(source) {
         const declaration = list[j++]?.value;
         if (declaration === 'function' && list[j]?.value === '*') j++;
         if (!['function', 'class', 'interface', 'type', 'enum'].includes(declaration) || list[j]?.kind !== 'word') throw new Error(rule('unsupported export declaration in the plugin interface; use named exports'));
-        names.add(list[j].value);
+        names.set(list[j].value, ['interface', 'type'].includes(declaration));
       }
     }
   }
-  return [...names].sort();
+  return names;
 }
 
-// shortcut: names only, compare types when a plugin outside this repo exists
+// Names only, fast and dependency-free; --api-types (plugin-api-types.mjs) compares types.
 export function apiProblems(root, ref = 'origin/main') {
   const git = (...args) => execFileSync('git', args, { cwd: root, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
   const commit = git('rev-parse', '--verify', `${ref}^{commit}`).trim();
@@ -288,24 +297,40 @@ export function importProblems(root, plugins) {
   return errors;
 }
 
-export function generate(root, plugins) {
+// retained: skipped or retired outside plugins, [{ id, tables, source }]; only their tables are compiled,
+// from source rendered from the lock (scripts/builder.mjs), which defines `const retained_<id>`.
+export function generate(root, plugins, retained = []) {
   const sorted = [...plugins].sort((a, b) => a.id.localeCompare(b.id, 'en'));
+  const kept = [...retained].sort((a, b) => a.id.localeCompare(b.id, 'en'));
+  const owners = new Map(sorted.flatMap(plugin => Object.keys(plugin.tables).map(name => [name, plugin.id])));
+  for (const { id, tables } of kept) {
+    if (typeof id !== 'string' || !/^[a-z][a-z0-9]{1,30}$/.test(id)) throw new Error(rule(`retained plugin id '${id}' must match /^[a-z][a-z0-9]{1,30}$/`));
+    if (sorted.some(plugin => plugin.id === id) || kept.filter(other => other.id === id).length > 1) throw new Error(rule(`retained plugin '${id}' is also included`));
+    for (const name of Object.keys(tables)) {
+      if (owners.has(name)) throw new Error(rule(`retained table '${name}' of '${id}' is already owned by ${owners.get(name)}`));
+      owners.set(name, id);
+    }
+  }
+  const byId = (a, b) => a.id.localeCompare(b.id, 'en');
   for (const plugin of sorted) for (const part of Object.keys(PARTS)) {
     if (!plugin.parts[part]) continue;
     const entry = join(root, 'plugins', plugin.id, part, 'index.ts');
     if (!existsSync(entry) || !statSync(entry).isFile()) throw new Error(rule(`plugins/${plugin.id}: missing ${part}/index.ts`));
   }
-  const tables = Object.fromEntries(sorted.flatMap(plugin => Object.entries(plugin.tables).map(([name, table]) => [name, { plugin: plugin.id, ...table }])));
+  const tables = Object.fromEntries([...sorted, ...kept].sort(byId).flatMap(plugin => Object.entries(plugin.tables).map(([name, table]) => [name, { plugin: plugin.id, ...table }])));
   const header = '// Generated by scripts/plugin-build.mjs from plugins/*/plugin.json; do not edit.\n';
   const content = header
     + `export const PLUGIN_IDS = ${JSON.stringify(sorted.map(p => p.id), null, 2)} as const;\n`
     + 'export type PluginId = (typeof PLUGIN_IDS)[number];\n'
     + `export const PLUGIN_TABLES = ${JSON.stringify(tables, null, 2)} as const;\n`;
   const modules = sorted.filter(plugin => plugin.parts.module);
+  const local = id => (kept.some(plugin => plugin.id === id) ? 'retained_' : 'plugin_') + id;
+  const all = [...modules, ...kept].sort(byId);
   const parts = header
     + modules.map(plugin => `import * as plugin_${plugin.id} from '../../plugins/${plugin.id}/module/index';\n`).join('')
-    + 'export const pluginTables = {\n' + modules.map(plugin => `  ...plugin_${plugin.id}.tables,\n`).join('') + '};\n'
-    + 'export const PLUGIN_PARTS = {\n' + modules.map(plugin => `  ${plugin.id}: plugin_${plugin.id},\n`).join('') + '};\n';
+    + (kept.length ? "import { table as retainedTable, t as retainedT } from './plugin-api';\n" + kept.map(plugin => plugin.source.trimEnd() + '\n').join('') : '')
+    + 'export const pluginTables = {\n' + all.map(plugin => `  ...${local(plugin.id)}.tables,\n`).join('') + '};\n'
+    + 'export const PLUGIN_PARTS = {\n' + all.map(plugin => `  ${plugin.id}: ${local(plugin.id)},\n`).join('') + '};\n';
   const servers = sorted.filter(plugin => plugin.parts.server);
   const server = header
     + "import type { ServerPart } from './plugin-api';\n"
@@ -336,7 +361,18 @@ export function generate(root, plugins) {
 if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1])).href) {
   try {
     const root = fileURLToPath(new URL('..', import.meta.url));
-    if (process.argv.slice(2).some(arg => !['--check', '--api'].includes(arg))) throw new Error(rule('usage: node scripts/plugin-build.mjs [--check] [--api]'));
+    const args = process.argv.slice(2);
+    if (args[0] === '--api-types' && args.length === 2) {
+      const { apiTypeProblems } = await import('./plugin-api-types.mjs');
+      const problems = apiTypeProblems(root, args[1], exportedTypes);
+      // A breaking release excuses incompatible changes, never a check that could not run.
+      const excused = process.env.PLUGIN_API_MAJOR === 'true' ? problems.filter(p => p.includes('changed incompatibly')) : [];
+      if (excused.length) console.error(excused.join('\n'));
+      const failing = problems.filter(p => !excused.includes(p));
+      if (failing.length) throw new Error(failing.join('\n'));
+      process.exit();
+    }
+    if (args.some(arg => !['--check', '--api'].includes(arg))) throw new Error(rule('usage: node scripts/plugin-build.mjs [--check] [--api] | --api-types module|web'));
     const plugins = readPlugins(root), errors = importProblems(root, plugins);
     const outputs = generate(root, plugins);
     if (process.argv.includes('--check')) {

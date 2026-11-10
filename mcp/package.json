@@ -26,7 +26,8 @@
   },
   "pnpm": {
     "ignoredBuiltDependencies": [
-      "esbuild"
+      "esbuild",
+      "workerd"
     ],
     "overrides": {
       "body-parser": "^2.4.0",

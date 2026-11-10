@@ -53,12 +53,25 @@ After a plugin manifest change, regenerate its registries and setting bindings:
 node scripts/plugin-build.mjs
 node scripts/plugin-build.mjs --check
 node scripts/plugin-build.mjs --check --api
+node scripts/plugin-build.mjs --api-types module
+node scripts/plugin-build.mjs --api-types web
 ```
 
-The combined check also runs in CI. It compares public export names with
-`origin/main`, not their types. Type compatibility checks must precede the first
-outside plugin. See the [plugin author guide](plugins/README.md) for the contract,
-generated files, and test discovery.
+CI runs these. `--api` compares public export names with `origin/main`;
+`--api-types` compares their types. See the [plugin author guide](plugins/README.md)
+for the contract, generated files, and test discovery.
+
+To work on draw and a plugin outside this repo together, list the plugin's folder
+in a `draw-plugins.json` at the repo root (git-ignored) and link it in:
+
+```sh
+echo '{ "plugins": { "pinboard": { "path": "../draw-pinboard" } } }' > draw-plugins.json
+node scripts/builder.mjs link     # plugins/pinboard -> ../draw-pinboard, registries regenerated
+node scripts/builder.mjs unlink   # before committing
+```
+
+The builder's own checks: `node --test scripts/builder.test.mjs` and
+`scripts/stdb-test.sh outside` (a real local database).
 
 ## Publication checks
 
