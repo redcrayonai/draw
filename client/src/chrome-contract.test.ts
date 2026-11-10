@@ -826,18 +826,17 @@ describe('library chrome (L, ⇧L)', () => {
     expect(phone).toMatch(/#presence-pop,\n#theme-pop,\n#review-pop,\n#share-pop,\n#account-pop \{\n {2}top: calc\(100% \+ var\(--space-2\)\);/);
   });
 
-  it('keeps the agent panel layout: a resize edge off on phones, kept line breaks, a spinner that fits its line', async () => {
+  it('keeps the plugin dock layout: a resize edge off on phones, the full width there, the inspector stepping aside', async () => {
     const css = await readCss();
     const block = (source: string, selector: string) => {
       const at = source.indexOf(`\n${selector} {`);
       return at < 0 ? '' : source.slice(at, source.indexOf('}', at));
     };
-    expect(block(css, '#agent-resize')).toMatch(/cursor: col-resize;/);
-    expect(block(css, '.agent-msg')).toMatch(/overflow-wrap: anywhere;[\s\S]*white-space: pre-wrap;/);
-    expect(block(css, '.agent-status.run::before')).toMatch(/box-sizing: border-box;/);
+    expect(block(css, '#plugin-dock-resize')).toMatch(/cursor: col-resize;/);
+    expect(css).toMatch(/body\.plugin-dock-open #inspector \{\n {4}right: calc\(var\(--plugin-dock-w\) \+ var\(--space-4\)\);/);
     const at = css.indexOf('\n@media (max-width: 720px) {');
     const phone = css.slice(at, css.indexOf('\n}', at)).replace(/\n {2}/g, '\n');
-    expect(block(phone, '#agent-resize')).toMatch(/display: none;/);
-    expect(block(phone, '#agent-panel')).toMatch(/width: 100%;/);
+    expect(block(phone, '#plugin-dock-resize')).toMatch(/display: none;/);
+    expect(block(phone, '#plugin-dock')).toMatch(/width: 100%;/);
   });
 });
