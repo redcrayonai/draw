@@ -10,7 +10,7 @@ import type { Env } from './env';
 import { UserLedger } from './user';
 import { CAPTURE_TTL_MS, CaptureVault } from './captures';
 import { verifyTap } from './issuer';
-import { AUTH_MS, LiveHub, type Attachment, type LiveSocket } from './live';
+import { AUTH_MS, LiveHub, type Attachment, type LiveSocket, type LiveStatus } from './live';
 import { dbHttp } from '../../shared/db-http';
 
 export class User extends DurableObject<Env> {
@@ -91,6 +91,8 @@ export class Live extends DurableObject<Env> {
   private readonly hub = new LiveHub(
     {
       verifyTap: token => verifyTap(this.env, token),
+      revokedBefore: async () => (await this.ctx.storage.get<number>('revokedBefore')) ?? 0,
+      revoke: at => this.ctx.storage.put('revokedBefore', at),
       canRead: (token, board) => canReadBoard(this.env, token, board),
       now: () => Date.now(),
     },
@@ -131,6 +133,16 @@ export class Live extends DurableObject<Env> {
     server.serializeAttachment({ role: 'pending', board, at: Date.now() } satisfies Attachment);
     if ((await this.ctx.storage.getAlarm()) === null) await this.ctx.storage.setAlarm(Date.now() + AUTH_MS);
     return new Response(null, { status: 101, webSocket: client });
+  }
+
+  /** tap_status, by RPC from the tools: reads the sockets; closes an expired tap. */
+  async status(): Promise<LiveStatus> {
+    return this.hub.status();
+  }
+
+  /** stop_tap, by RPC from the tools. */
+  async stop(): Promise<boolean> {
+    return this.hub.stop();
   }
 
   async webSocketMessage(ws: WebSocket, message: string | ArrayBuffer): Promise<void> {
