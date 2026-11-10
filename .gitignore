@@ -12,7 +12,11 @@ agent/.agent-token*
 
 # the helper bundle, copied into the plugin at release time
 plugin/bin/redcrayon.mjs
-client/.env
+
+# local secrets (API keys); the .env.example files are the committed templates
+.env
+.env.*
+!.env.example
 video/.env
 
 # superpowers brainstorm companion
