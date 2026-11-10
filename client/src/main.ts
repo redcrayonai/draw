@@ -2695,15 +2695,20 @@ async function boot(conn: DbConnection, identityHex: string, signedIn: boolean):
               const mine = () =>
                 [...conn.db.myAgentLinks.iter()].filter(l => l.owner.toHexString() === identityHex).sort((x, y) => y.linkedAt.toDate().getTime() - x.linkedAt.toDate().getTime())[0];
               // A spent code, from someone already linked: say so, and change nothing, since the code no longer says which agent it named.
+              const before = mine()?.linkedAt.toDate().getTime() ?? -Infinity;
               try {
                 await conn.reducers.redeemAgentLink({ code });
               } catch (err) {
                 if (mine()) return 'already';
                 throw err;
               }
-              for (let i = 0; i < 30 && !mine(); i++) await new Promise(resolve => setTimeout(resolve, 100));
+              // Redeeming stamps linkedAt, so the newest link is this code's agent, never an older one.
+              const redeemed = () => { const link = mine(); return link && link.linkedAt.toDate().getTime() > before ? link : undefined; };
+              for (let i = 0; i < 30 && !redeemed(); i++) await new Promise(resolve => setTimeout(resolve, 100));
+              const linked = redeemed();
+              if (!linked) throw new Error('UNCONFIRMED: the link did not arrive. Reload the board.');
               // Their own board goes to the agent they just linked; on someone else's board the link alone stands.
-              await conn.reducers.grantAgentBoard({ boardId, agent: mine().agent }).catch(() => {});
+              await conn.reducers.grantAgentBoard({ boardId, agent: linked.agent }).catch(() => {});
               refreshChat();
               return 'linked';
             });
