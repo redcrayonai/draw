@@ -51,6 +51,8 @@ import { tidyGrid, distributeHorizontally, connectInOrder, GRID, type Box } from
 import { initAuth, SignedOutError, type Auth } from './auth';
 import { runBootWithRecovery } from './connection-recovery';
 import { mountAgentPanel } from './agent-panel';
+import { mountCanvasPlugins, type CanvasHost } from './plugin-mounts';
+import { CANVAS_PARTS } from './plugins.generated';
 import { openBoards, subscribeBoard, subscribeLists } from './subscribe';
 import { selectBoard, hasBoardLink, shouldOpenDashboard, viewOnly, opensNewShareLink } from './board-select';
 import { shareTokenOf } from '../../shared/share-link';
@@ -347,6 +349,8 @@ async function boot(conn: DbConnection, identityHex: string, signedIn: boolean):
   };
   // The node the agent chat is about; the board view below points it at its editor's selection.
   let chatAbout: () => { id: bigint; label: string } | undefined = () => undefined;
+  // Canvas plugin panels; the board view below mounts them once its selection and permissions exist.
+  let canvasPlugins: CanvasHost | undefined;
   const agentPanel = config.agentUrl === undefined ? undefined : mountAgentPanel({
     url: config.agentUrl,
     token: liveToken,
@@ -475,7 +479,7 @@ async function boot(conn: DbConnection, identityHex: string, signedIn: boolean):
   };
   // The board list comes first: the board tables return only the boards this connection opens (RC-605).
   const listed = await new Promise<boolean>(resolve =>
-    subscribeLists(conn, () => resolve(true), ctx => { boardFailed(ctx); resolve(false); }, signedIn && config.mcpUrl !== undefined));
+    subscribeLists(conn, () => resolve(true), ctx => { boardFailed(ctx); resolve(false); }, signedIn && config.mcpUrl !== undefined, signedIn && CANVAS_PARTS.length > 0));
   if (!listed) return;
   const picked = guestBoardId === undefined
     ? selectBoard(conn.db.visibleBoard.iter(), location.search, location.hash, conn.db.myBoards.iter())
@@ -1656,6 +1660,7 @@ async function boot(conn: DbConnection, identityHex: string, signedIn: boolean):
           if (openThreat !== null && !(editor.selection.size === 1 && editor.selection.has(openThreat.anchorId) && editor.selectedEdges.size === 0)) closeThreat();
           publishSelection();
           agentPanel?.selectionChanged();
+          canvasPlugins?.selectionChanged();
         },
         placeTemplate,
         toggleLibrary: () => library.toggle(),
@@ -1675,6 +1680,18 @@ async function boot(conn: DbConnection, identityHex: string, signedIn: boolean):
         return nodes.length === 1 ? { id: nodes[0].id, label: nodes[0].label } : undefined;
       };
       agentPanel?.selectionChanged();
+      canvasPlugins = mountCanvasPlugins({
+        // Off workspaces (personal boards, share-link guests) there is no workspace id and no panel.
+        board: () => ({ id: boardId, workspaceId: permission()?.workspaceId, link: location.href }),
+        enabled: (plugin, workspaceId) => [...conn.db.myWorkspacePlugins.iter()].some(row => row.workspaceId === workspaceId && row.plugin === plugin && row.enabled),
+        selectedNodes: () => selectedNodes().map(n => ({ id: n.id, label: n.label })),
+        token: liveToken,
+      });
+      for (const table of [conn.db.myWorkspacePlugins, ...(conn.db.myBoardPermissions ? [conn.db.myBoardPermissions] : [])]) {
+        table.onInsert(() => canvasPlugins?.refresh());
+        table.onUpdate(() => canvasPlugins?.refresh());
+        table.onDelete(() => canvasPlugins?.refresh());
+      }
       const report = (err: unknown): void => showError((err as Error).message);
       // Managers can rename and delete; versioned boards are named by their history.
       const canRename = () => !getVersion() && canManage();
@@ -2381,6 +2398,7 @@ async function boot(conn: DbConnection, identityHex: string, signedIn: boolean):
         showDiff = getVersion()?.assertionMode === 'intent';
         showBoardLink(board);
         agentPanel?.boardChanged();
+        canvasPlugins?.boardChanged();
         title.textContent = `${getVersion()?.assertionMode === 'intent' ? 'Branch · ' : ''}${board.name}`;
         enter = false;
         onTableChange();

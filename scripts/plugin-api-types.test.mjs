@@ -1,7 +1,7 @@
 // Needs module/node_modules (typescript); module-tests.yml runs it after the module install.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { cpSync, existsSync, mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
+import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -88,4 +88,24 @@ test('a breaking-release label never excuses a check that could not run', { skip
   const result = spawnSync(process.execPath, ['scripts/plugin-build.mjs', '--api-types', 'module'], { cwd: dir, encoding: 'utf8', env: { ...process.env, PLUGIN_API_MAJOR: 'true' } });
   assert.equal(result.status, 1, result.stderr);
   assert.match(result.stderr, /the interface check did not run/);
+});
+
+test('the canvas interface is checked with the client\'s compiler, CanvasPart in the plugins-provide direction', { skip: !existsSync(join(root, 'client/node_modules/.bin/tsc')) && 'needs pnpm -C client install' }, t => {
+  const dir = mkdtempSync(join(tmpdir(), 'draw-api-types-client-'));
+  t.after(() => rmSync(dir, { recursive: true, force: true }));
+  mkdirSync(join(dir, 'client/src'), { recursive: true });
+  cpSync(join(root, 'client/tsconfig.json'), join(dir, 'client/tsconfig.json'));
+  symlinkSync(join(root, 'client/node_modules'), join(dir, 'client/node_modules'));
+  cpSync(join(root, 'client/src/plugin-api.ts'), join(dir, 'client/src/plugin-api.ts'));
+  const git = (...args) => execFileSync('git', args, { cwd: dir, stdio: 'ignore' });
+  git('init', '-q'); git('add', 'client');
+  git('-c', 'user.name=t', '-c', 'user.email=t@t', 'commit', '-qm', 'base');
+  const current = readFileSync(join(root, 'client/src/plugin-api.ts'), 'utf8');
+  const run = source => { writeFileSync(join(dir, 'client/src/plugin-api.ts'), source); return apiTypeProblems(dir, 'client', exportedTypes, 'HEAD'); };
+  assert.deepEqual(run(current), []);
+  // draw hands Canvas to plugins: removing a member breaks them
+  assert.match(run(current.replace(/  token\(\): Promise<string \| null>;\n/, '')).join('\n'), /'Canvas' changed incompatibly/);
+  // plugins hand CanvasPart to draw: a new required member breaks plugins written for the old one
+  assert.match(run(current.replace('export type CanvasPart = { panel?: CanvasPanel };', 'export type CanvasPart = { panel?: CanvasPanel; toolbar: string };')).join('\n'), /'CanvasPart' changed incompatibly/);
+  for (const file of ['client/.api-base', 'client/api-compat.generated.ts', 'client/tsconfig.api.json']) assert.equal(existsSync(join(dir, file)), false, file);
 });

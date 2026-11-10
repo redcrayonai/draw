@@ -145,3 +145,17 @@ test('a local folder builds only in development; deploy builds refuse it', async
   assert.ok(prepare(root, work, { sources: { pinboard: repoDir }, modulesOnly: true }).some(p => p.id === 'pinboard'));
   plugins({ retired: true });
 });
+
+test('a client part compiles into the canvas; its canvas setting is read as VITE_<name>', () => {
+  const into = join(scratch, 'sources-canvas'), work = join(scratch, 'work-canvas');
+  fetchPlugin({ id: 'pinboard', repo: url, ref: 'v1.0.0' }, { into, cache, env: gitEnv(env, { credentials: null }) });
+  assert.ok(prepare(root, work, { sources: { pinboard: join(into, 'pinboard') } }).find(p => p.id === 'pinboard').parts.client);
+  const registry = readFileSync(join(work, 'client/src/plugins.generated.ts'), 'utf8');
+  assert.match(registry, /import \* as plugin_pinboard from '\.\.\/\.\.\/plugins\/pinboard\/client\/index';/);
+  assert.match(registry, /PINBOARD_BANNER: import\.meta\.env\.VITE_PINBOARD_BANNER \?\? ''/);
+  const tsc = spawnSync(join(work, 'client/node_modules/.bin/tsc'), ['--noEmit', '-p', 'tsconfig.json'], { cwd: join(work, 'client'), encoding: 'utf8' });
+  assert.equal(tsc.status, 0, tsc.stdout + tsc.stderr);
+  // A type error in the plugin's canvas code fails the canvas check.
+  writeFileSync(join(work, 'plugins/pinboard/client/index.ts'), "import type { CanvasPanel } from '@draw/canvas';\nexport const panel: CanvasPanel = { label: 1, mount() {} };\n");
+  assert.notEqual(spawnSync(join(work, 'client/node_modules/.bin/tsc'), ['--noEmit', '-p', 'tsconfig.json'], { cwd: join(work, 'client') }).status, 0);
+});

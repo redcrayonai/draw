@@ -8,7 +8,8 @@
     "module": "ESNext",
     "isolatedModules": true,
     "noEmit": true,
-    "types": ["vite/client"]
+    "types": ["vite/client"],
+    "paths": { "@draw/canvas": ["./src/plugin-api.ts"] }
   },
   "include": ["src"]
 }

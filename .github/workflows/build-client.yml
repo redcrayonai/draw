@@ -60,3 +60,13 @@ jobs:
       - name: Build
         working-directory: client
         run: pnpm run build
+
+      # Types of the canvas's plugin interface against main (scripts/plugin-api-types.mjs).
+      - name: Preserve the plugin interface types from main
+        env:
+          LABELS: ${{ toJSON(github.event.pull_request.labels.*.name) }}
+        run: |
+          git fetch --quiet --tags origin main
+          PLUGIN_API_MAJOR="$(TAGS="$(git tag)" node scripts/release-labels.mjs api-break)"
+          export PLUGIN_API_MAJOR
+          node scripts/plugin-build.mjs --api-types client

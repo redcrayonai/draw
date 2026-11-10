@@ -22,7 +22,7 @@ import { publicWire } from './check-wire-compat.mjs';
 
 const ROOT = fileURLToPath(new URL('..', import.meta.url));
 const COMMIT = /^[0-9a-f]{40}$/;
-const PATHS = ['plugin.json', 'module', 'server', 'web'];
+const PATHS = ['plugin.json', 'module', 'server', 'web', 'client'];
 
 /**
  * Environment for git child processes only: never prompt, credentials from a build
@@ -57,7 +57,7 @@ export function resolveRef(repo, ref, env) {
 }
 
 /**
- * Fetches one plugin and writes only plugin.json, module/, server/ and web/ of its commit
+ * Fetches one plugin and writes only plugin.json, module/, server/, web/ and client/ of its commit
  * to <into>/<id>/, without test files, .git or remote URLs. Returns the commit.
  */
 export function fetchPlugin({ id, repo, ref, commit: locked }, { into, cache, env }) {
@@ -394,13 +394,19 @@ export function build({ config: dir, root = ROOT, out, sources, seams, dev = fal
       check(target, 'spacetime_uri', 'spacetime_db', 'canvas_url', 'mcp_url', ...(name === 'oidc' ? ['oidc_issuer', 'oidc_client_id'] : []));
     }
     const client = join(work, 'client');
-    const canvasEnv = { VITE_SPACETIME_URI: '__rc_spacetime_uri__', VITE_SPACETIME_DB: '__rc_spacetime_db__', VITE_DASHBOARD_URL: '__rc_dashboard_url__', VITE_MCP_URL: '__rc_mcp_url__' };
+    // The canvas type-checks plugin client parts against @draw/canvas.
+    sh(bin('client')('tsc'), ['--noEmit', '-p', 'tsconfig.json'], { cwd: client });
+    // Plugin canvas settings get placeholders too; canvas-entrypoint.sh fills them from <NAME> (plugins.env).
+    const canvasSettings = plugins.flatMap(p => p.canvasSettings).map(name => name.toLowerCase());
+    const canvasEnv = { VITE_SPACETIME_URI: '__rc_spacetime_uri__', VITE_SPACETIME_DB: '__rc_spacetime_db__', VITE_DASHBOARD_URL: '__rc_dashboard_url__', VITE_MCP_URL: '__rc_mcp_url__',
+      ...Object.fromEntries(canvasSettings.map(name => [`VITE_${name.toUpperCase()}`, `__rc_${name}__`])) };
     for (const [name, extra] of Object.entries(variants)) {
       const target = join(out, 'canvas', name);
       const oidc = name === 'oidc' ? { ...extra, VITE_REQUIRE_AUTH: '__rc_require_auth__' } : extra;
       sh(bin('client')('vite'), ['build', '--outDir', target], { cwd: client, env: { ...canvasEnv, ...oidc, VITE_AUTH_PROVIDER: provider(name) } });
-      check(target, 'spacetime_uri', 'spacetime_db', 'dashboard_url', 'mcp_url', ...(name === 'oidc' ? ['oidc_issuer', 'oidc_client_id', 'require_auth'] : []));
+      check(target, 'spacetime_uri', 'spacetime_db', 'dashboard_url', 'mcp_url', ...canvasSettings, ...(name === 'oidc' ? ['oidc_issuer', 'oidc_client_id', 'require_auth'] : []));
     }
+    writeFileSync(join(out, 'canvas-settings'), canvasSettings.map(name => `${name.toUpperCase()}\n`).join(''));
     const mcp = join(work, 'mcp'), mcpOut = join(scratch, 'mcp-out');
     sh(bin('mcp')('wrangler'), ['deploy', ...(has('mcp-worker.ts') ? ['./.seams/mcp-worker.ts'] : []), '--dry-run', '--env', '', '--outdir', mcpOut], { cwd: mcp });
     mkdirSync(join(out, 'mcp'), { recursive: true });
@@ -416,8 +422,9 @@ export function build({ config: dir, root = ROOT, out, sources, seams, dev = fal
     cpSync(join(work, 'shared'), join(program, 'shared'), { recursive: true, filter: source => noTests(source) && !source.endsWith('/node_modules') });
     if (existsSync(join(root, 'shared/node_modules'))) cpSync(realpathSync(join(root, 'shared/node_modules')), join(program, 'shared/node_modules'), { recursive: true, verbatimSymlinks: true });
     cpSync(join(work, 'docker/prod/dashboard.capnp'), join(out, 'dashboard.capnp'));
-    writeFileSync(join(out, 'plugin-settings.env.example'), plugins.filter(p => p.settings.length)
-      .map(p => `# ${p.name} (${p.id})\n${p.settings.map(name => `${name}=`).join('\n')}\n`).join('\n'));
+    writeFileSync(join(out, 'plugin-settings.env.example'), plugins.filter(p => p.settings.length || p.canvasSettings.length)
+      .map(p => `# ${p.name} (${p.id})\n${[...p.settings, ...p.canvasSettings].map(name => `${name}=`).join('\n')}\n`
+        + (p.canvasSettings.length ? `# public: the canvas sends ${p.canvasSettings.join(', ')} to every browser\n` : '')).join('\n'));
     const lockText = existsSync(join(dir, 'draw-plugins.lock.json')) ? readFileSync(join(dir, 'draw-plugins.lock.json')) : '';
     const summary = {
       draw: version,

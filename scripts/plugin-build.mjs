@@ -5,7 +5,9 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 import { execFileSync } from 'node:child_process';
 import { parseRange } from './plugin-lock.mjs';
 
-const PARTS = { module: '@draw/module', server: '@draw/server', web: '@draw/client' };
+const PARTS = { module: '@draw/module', server: '@draw/server', web: '@draw/client', client: '@draw/canvas' };
+// The canvas's own runtime values (VITE_<name>, docker/prod/canvas-entrypoint.sh): a canvas setting may not reuse one.
+export const CORE_CANVAS_SETTINGS = ['AUTH_PROVIDER', 'CANVAS_URL', 'DASHBOARD_URL', 'MCP_URL', 'NAME', 'OIDC_CLIENT_ID', 'OIDC_ISSUER', 'PREVIEW', 'PRIVACY_URL', 'REQUIRE_AUTH', 'SPACETIME_DB', 'SPACETIME_DB_ALLOWED', 'SPACETIME_URI'];
 const object = value => value !== null && typeof value === 'object' && !Array.isArray(value);
 const inside = (base, path) => { const rel = relative(base, path); return rel !== '..' && !rel.startsWith(`..${sep}`) && !rel.startsWith(sep); };
 const rule = message => `plugin rule: ${message}`;
@@ -23,8 +25,8 @@ export function readPlugins(root) {
     try { data = JSON.parse(readFileSync(join(root, file), 'utf8')); }
     catch (error) { fail(error.code === 'ENOENT' ? 'missing plugin.json' : `cannot read JSON: ${error.message}`); continue; }
     if (!object(data)) { fail('manifest must be an object'); continue; }
-    data = { settings: [], tables: {}, ...data };
-    const fields = ['id', 'name', 'description', 'settings', 'tables'];
+    data = { settings: [], canvasSettings: [], tables: {}, ...data };
+    const fields = ['id', 'name', 'description', 'settings', 'canvasSettings', 'tables'];
     for (const key of Object.keys(data)) if (![...fields, 'draw'].includes(key)) fail(`unknown field '${key}'`);
     for (const key of fields) if (!Object.hasOwn(data, key)) fail(`missing field '${key}'`);
     if (typeof data.id !== 'string' || !/^[a-z][a-z0-9]{1,30}$/.test(data.id)) fail('id must match /^[a-z][a-z0-9]{1,30}$/');
@@ -37,6 +39,14 @@ export function readPlugins(root) {
     else for (const setting of data.settings) {
       if (typeof setting !== 'string' || !/^[A-Z][A-Z0-9_]*$/.test(setting)) { fail('each setting must match /^[A-Z][A-Z0-9_]*$/'); continue; }
       if (settings.has(setting)) fail(`setting '${setting}' is already owned by ${settings.get(setting)}`);
+      else settings.set(setting, folder);
+    }
+    // Public: the canvas ships these values to every browser. One namespace with settings (plugins.env holds both).
+    if (!Array.isArray(data.canvasSettings)) fail('canvasSettings must be an array');
+    else for (const setting of data.canvasSettings) {
+      if (typeof setting !== 'string' || !/^[A-Z][A-Z0-9_]*$/.test(setting)) { fail('each canvas setting must match /^[A-Z][A-Z0-9_]*$/'); continue; }
+      if (CORE_CANVAS_SETTINGS.includes(setting)) fail(`canvas setting '${setting}' is one of the canvas's own settings`);
+      else if (settings.has(setting)) fail(`setting '${setting}' is already owned by ${settings.get(setting)}`);
       else settings.set(setting, folder);
     }
     if (!object(data.tables)) fail('tables must be an object');
@@ -226,7 +236,7 @@ export function apiProblems(root, ref = 'origin/main') {
   const git = (...args) => execFileSync('git', args, { cwd: root, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
   const commit = git('rev-parse', '--verify', `${ref}^{commit}`).trim();
   const errors = [];
-  for (const file of ['module/src/plugin-api.ts', 'web/src/lib/server/plugin-api.ts', 'web/src/lib/plugin-api.ts']) {
+  for (const file of ['module/src/plugin-api.ts', 'web/src/lib/server/plugin-api.ts', 'web/src/lib/plugin-api.ts', 'client/src/plugin-api.ts']) {
     const current = new Set(exportedNames(existsSync(join(root, file)) ? readFileSync(join(root, file), 'utf8') : ''));
     if (!git('ls-tree', '--name-only', commit, '--', file).trim()) continue;
     for (const name of exportedNames(git('show', `${commit}:${file}`))) {
@@ -335,9 +345,9 @@ export function generate(root, plugins, retained = []) {
   const server = header
     + "import type { ServerPart } from './plugin-api';\n"
     + servers.map(plugin => `import * as plugin_${plugin.id} from '../../../../plugins/${plugin.id}/server/index';\n`).join('')
-    + 'export const PLUGIN_LIST: { id: string; name: string; description: string; settings: string[]; server?: ServerPart }[] = [\n'
-    + sorted.map(({ id, name, description, settings }) => {
-      const metadata = JSON.stringify({ id, name, description, settings }, null, 2);
+    + 'export const PLUGIN_LIST: { id: string; name: string; description: string; settings: string[]; canvasSettings: string[]; server?: ServerPart }[] = [\n'
+    + sorted.map(({ id, name, description, settings, canvasSettings }) => {
+      const metadata = JSON.stringify({ id, name, description, settings, canvasSettings }, null, 2);
       return metadata.slice(0, -2) + (servers.some(plugin => plugin.id === id) ? `,\n  server: plugin_${id}` : '') + '\n},\n';
     }).join('') + '];\n';
   const webs = sorted.filter(plugin => plugin.parts.web);
@@ -346,16 +356,24 @@ export function generate(root, plugins, retained = []) {
     + webs.map(plugin => `import * as plugin_${plugin.id} from '../../../plugins/${plugin.id}/web/index';\n`).join('')
     + 'export const WEB_PARTS: { id: string; web: WebPart }[] = [\n'
     + webs.map(plugin => `  { id: '${plugin.id}', web: plugin_${plugin.id} },\n`).join('') + '];\n';
+  // Canvas settings are read as VITE_<name>: Vite inlines them (placeholders in image builds, see builder.mjs).
+  const canvases = sorted.filter(plugin => plugin.parts.client);
+  const canvas = header
+    + "import type { CanvasPart } from './plugin-api';\n"
+    + canvases.map(plugin => `import * as plugin_${plugin.id} from '../../plugins/${plugin.id}/client/index';\n`).join('')
+    + 'export const CANVAS_PARTS: { id: string; name: string; settings: Record<string, string>; canvas: CanvasPart }[] = [\n'
+    + canvases.map(plugin => `  { id: '${plugin.id}', name: ${JSON.stringify(plugin.name)}, settings: {${plugin.canvasSettings.map(name => ` ${name}: import.meta.env.VITE_${name} ?? ''`).join(',')}${plugin.canvasSettings.length ? ' ' : ''}}, canvas: plugin_${plugin.id} },\n`).join('') + '];\n';
   const configFile = 'docker/prod/dashboard.capnp', config = readFileSync(join(root, configFile), 'utf8');
   const starts = [...config.matchAll(/^    # plugin settings: scripts\/plugin-build\.mjs writes these from plugins\/\*\/plugin\.json$/gm)];
   const ends = [...config.matchAll(/^    # end of plugin settings$/gm)];
   if (starts.length !== 1 || ends.length !== 1 || starts[0].index >= ends[0].index) throw new Error(rule(`${configFile}: require exactly one ordered plugin settings marker pair`));
   const before = config.slice(0, starts[0].index + starts[0][0].length + 1), after = config.slice(ends[0].index);
   const outsideNames = new Set([...`${before}${after}`.replace(/#[^\n]*/g, '').matchAll(/\bname\s*=\s*"([^"]+)"/g)].map(match => match[1]));
-  const settings = sorted.flatMap(plugin => plugin.settings);
+  // The dashboard also reads canvas settings: it offers a plugin only when they are set (web/src/lib/server/plugins.ts).
+  const settings = sorted.flatMap(plugin => [...plugin.settings, ...plugin.canvasSettings]);
   for (const name of settings) if (outsideNames.has(name)) throw new Error(rule(`${configFile}: setting '${name}' is already bound outside plugin settings`));
   const dashboard = before + settings.map(name => `    (name = "${name}", fromEnvironment = "${name}"),\n`).join('') + after;
-  return new Map([['module/src/plugin-meta.generated.ts', content], ['module/src/plugin-parts.generated.ts', parts], ['web/src/lib/server/plugins.generated.ts', server], ['web/src/lib/plugins.generated.ts', web], [configFile, dashboard]]);
+  return new Map([['module/src/plugin-meta.generated.ts', content], ['module/src/plugin-parts.generated.ts', parts], ['web/src/lib/server/plugins.generated.ts', server], ['web/src/lib/plugins.generated.ts', web], ['client/src/plugins.generated.ts', canvas], [configFile, dashboard]]);
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1])).href) {
@@ -372,7 +390,7 @@ if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1]
       if (failing.length) throw new Error(failing.join('\n'));
       process.exit();
     }
-    if (args.some(arg => !['--check', '--api'].includes(arg))) throw new Error(rule('usage: node scripts/plugin-build.mjs [--check] [--api] | --api-types module|web'));
+    if (args.some(arg => !['--check', '--api'].includes(arg))) throw new Error(rule('usage: node scripts/plugin-build.mjs [--check] [--api] | --api-types module|web|client'));
     const plugins = readPlugins(root), errors = importProblems(root, plugins);
     const outputs = generate(root, plugins);
     if (process.argv.includes('--check')) {

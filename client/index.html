@@ -461,6 +461,19 @@
 
       <aside id="inspector" hidden tabindex="0" aria-label="Inspector"></aside>
 
+      <!-- Canvas plugin panels (plugin-mounts.ts): a labeled button per plugin, one dock on the right. -->
+      <div id="plugin-launcher" hidden></div>
+      <aside id="plugin-dock" hidden aria-labelledby="plugin-dock-title">
+        <div id="plugin-dock-resize" role="separator" aria-orientation="vertical" aria-label="Resize the panel" tabindex="0"></div>
+        <div class="plugin-dock-head">
+          <h2 id="plugin-dock-title"></h2>
+          <button id="plugin-dock-close" class="icon-btn" type="button" aria-label="Close">
+            <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M4 4l8 8M12 4l-8 8" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" /></svg>
+          </button>
+        </div>
+        <div id="plugin-dock-body"></div>
+      </aside>
+
       <!-- Chat with a hosted agent (agent-panel.ts); shown only when the build sets VITE_AGENT_URL. -->
       <button id="agent-orb" class="agent-orb" hidden aria-label="Ask the agent" aria-expanded="false" aria-controls="agent-panel">
         <!-- Logo swap point: replace this span's contents with the agent logo. -->

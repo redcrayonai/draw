@@ -20,6 +20,7 @@ plugins/example/
   module/index.ts  # optional database part
   server/index.ts  # optional dashboard server part
   web/index.ts     # optional dashboard UI part
+  client/index.ts  # optional canvas part
 ```
 
 Every part is optional. Every part folder that exists must contain `index.ts`.
@@ -31,6 +32,7 @@ Keep each part's helpers inside that part.
   "name": "Example",
   "description": "An optional board feature.",
   "settings": ["EXAMPLE_ENDPOINT"],
+  "canvasSettings": ["EXAMPLE_PANEL_URL"],
   "tables": {
     "exampleRecord": { "why": "the example index", "board": "outlives" }
   }
@@ -46,6 +48,7 @@ The manifest accepts only these fields:
 | `description` | Required string, 1–200 characters. |
 | `draw` | Optional here; required for a plugin outside this repo. Caret ranges of draw versions it supports, such as `"^0.3.0"` or `"^0.3.0 \|\| ^0.4.0"`. |
 | `settings` | Optional array, defaults to `[]`. Each name matches `/^[A-Z][A-Z0-9_]*$/`. Names are unique within and across plugins. |
+| `canvasSettings` | Optional array, defaults to `[]`. Values the canvas part reads; **public**, the canvas sends them to every browser. Same name rules, unique with `settings` too, and none of the canvas's own settings (`SPACETIME_URI`, `MCP_URL`, …). |
 | `tables` | Optional object, defaults to `{}`. Each key matches `/^[a-z][A-Za-z0-9]*$/` and is unique across plugins. |
 | `tables.<key>.why` | Required string, 1–80 characters. Explains why the bundle leaves this table out. |
 | `tables.<key>.board` | Optional. The only accepted value is `"outlives"`. |
@@ -65,6 +68,7 @@ Each part has one public alias. The linked files define the exact exports.
 | `module/` | `@draw/module` | [module/src/plugin-api.ts](../module/src/plugin-api.ts): schema primitives, bundle helpers, hashes, workspace access, plugin switch, `ModuleApi`, `ModulePart`. |
 | `server/` | `@draw/server` | [web/src/lib/server/plugin-api.ts](../web/src/lib/server/plugin-api.ts): environment, HTTP responses, database calls, logs, `PluginRequest`, `ServerPart`. |
 | `web/` | `@draw/client` | [web/src/lib/plugin-api.ts](../web/src/lib/plugin-api.ts): stores, links, session token, `Button`, connection and version types, `BoardPanelProps`, `WebPart`. |
+| `client/` | `@draw/canvas` | [client/src/plugin-api.ts](../client/src/plugin-api.ts): `Canvas`, `CanvasBoard`, `CanvasNode`, `CanvasPanel`, `CanvasPart`. Types only. |
 
 Non-test code imports only its own alias or relative files within its own part.
 This rule also covers re-exports, `require()`, and dynamic imports. Import paths
@@ -132,6 +136,56 @@ Use local stores for state. Clear them in `reset`. Each panel has an error
 boundary. An `attach` or `reset` error does not stop other plugins. These
 boundaries do not contain slow code or prevent privileged writes.
 
+## Canvas part
+
+Export `panel` from `client/index.ts`:
+
+```ts
+import type { CanvasPanel } from '@draw/canvas';
+
+export const panel: CanvasPanel = {
+  label: 'Example',           // the launcher button's text and the panel's title
+  mount(el, canvas) {         // fills el on the first open
+    const off = canvas.onSelectionChange(() => { /* canvas.selectedNodes() */ });
+    return () => off();       // cleanup: on a board switch, or when the plugin turns off
+  },
+};
+```
+
+The canvas has one mount point. A labeled button per plugin sits on the board's
+corner and opens one dock on the right. The core owns the button and the dock's
+frame: its title, Close, Escape, the resize edge and the remembered width.
+`mount` fills only the dock's body. Closing hides the panel and keeps it
+mounted; on open the core focuses the first `[autofocus]` element in it.
+
+`canvas` holds:
+
+- `board`: `id`, `workspaceId`, and `link`, the address bar's link. On a
+  share-link visit the link carries the share token: treat it as a secret.
+- `selectedNodes()` and `onSelectionChange(listener)`.
+- `token()`: the person's bearer token for the board database, or null.
+- `settings`: the manifest's `canvasSettings`, each `''` when unset.
+
+The panel shows only on a workspace board whose workspace turned the plugin on,
+with every canvas setting set. Personal boards and share-link guests never see
+it. The canvas has no helpers that write to the board: a plugin writes through
+its own database or server part.
+
+Each panel has an error boundary. An error thrown by `mount` or by a selection
+listener replaces that panel with an error card and leaves the board and other
+panels working; one thrown by the cleanup is logged. Errors in the panel's own
+event handlers reach the browser console and touch nothing else.
+
+Style the panel with a CSS file imported from the part (`import './panel.css'`)
+and draw's theme variables (`--ink`, `--muted`, `--panel`, `--panel-2`,
+`--panel-hi`, `--border`, `--hairline`, `--sel`, `--sans`, `--space-*`,
+`--r-*`), so it follows every theme. Prefix class names with the plugin id.
+
+Canvas settings reach the canvas as `VITE_<NAME>`. In development, set them in
+`client/.env`. A deployment sets `<NAME>`, or puts it in `plugins.env`: the
+canvas container fills it in when it starts, and the dashboard reads the same
+value to decide whether to offer the plugin. Values may hold URL characters only.
+
 ## Generate and check
 
 After a manifest change, run the generator from the repository root:
@@ -142,6 +196,7 @@ node scripts/plugin-build.mjs --check
 node scripts/plugin-build.mjs --check --api
 node scripts/plugin-build.mjs --api-types module   # after pnpm -C module install
 node scripts/plugin-build.mjs --api-types web      # after pnpm -C web and -C shared install
+node scripts/plugin-build.mjs --api-types client   # after pnpm -C client install
 ```
 
 The first command checks manifests and imports, then writes the registries and
@@ -149,7 +204,7 @@ setting bindings. `--check` refuses stale generated files without writing.
 `--api` also compares public export names with `origin/main`. `--api-types`
 compares the interface's types with `origin/main`: every value must still fit
 its old uses, types draw hands to plugins may only grow, and the types plugins
-hand to draw (`ModulePart`, `ServerPart`, `WebPart`) must still accept what
+hand to draw (`ModulePart`, `ServerPart`, `WebPart`, `CanvasPart`) must still accept what
 plugins wrote for the old ones. CI runs all three. A breaking change needs a
 breaking core release: a PR labelled `release:core` with `minor` while draw is
 0.x, or `major` from 1.0 on, sets `PLUGIN_API_MAJOR=true` and the checks report
@@ -157,7 +212,8 @@ without failing.
 
 Do not hand-edit `module/src/plugin-meta.generated.ts`,
 `module/src/plugin-parts.generated.ts`, `web/src/lib/server/plugins.generated.ts`,
-`web/src/lib/plugins.generated.ts`, or the generated Cap'n Proto section.
+`web/src/lib/plugins.generated.ts`, `client/src/plugins.generated.ts`, or the
+generated Cap'n Proto section.
 
 ## Tests
 
@@ -167,10 +223,12 @@ Run checks for the parts that changed:
 node --test scripts/plugin-build.test.mjs
 pnpm -C module test
 pnpm -C web test
+pnpm -C client test
 scripts/stdb-test.sh run
 ```
 
-The web runner discovers `../plugins/*/{server,web}/**/*.test.ts`. The module
+The web runner discovers `../plugins/*/{server,web}/**/*.test.ts`; the canvas
+runner discovers `../plugins/*/client/**/*.test.ts`. The module
 unit runner still discovers only `module/src/*.test.mjs`. It does not discover
 plugin module tests automatically. Add database integration checks to the
 existing harness for new database behavior.

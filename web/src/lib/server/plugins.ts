@@ -1,11 +1,13 @@
 // Deployment availability is separate from each workspace's plugin switch.
 import { PLUGIN_LIST } from './plugins.generated';
-import { fail, log, type PluginRequest } from './plugin-api';
+import { env, fail, log, type PluginRequest } from './plugin-api';
 
 export const PLUGINS = PLUGIN_LIST;
 export function available(id: string): boolean {
   const plugin = PLUGINS.find((p) => p.id === id);
   if (!plugin) return false;
+  // The canvas shows a plugin's panel only with every canvas setting set, so the dashboard offers it only then too.
+  if (plugin.canvasSettings.some((name) => !env[name]?.trim())) return false;
   try { return plugin.server?.configured?.() ?? true; }
   catch (error) {
     log('error', 'plugin.config_failed', { plugin: id }, error);
