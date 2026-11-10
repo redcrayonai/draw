@@ -4,6 +4,8 @@ export default {
   envDir: false,
   resolve: { alias: {
     $auth: fileURLToPath(new URL('./auth-provider.mjs', import.meta.url)),
+    // As client/vite.config.ts: VITE_CANVAS_EXTRA is a path from client/ (or absolute), else the empty seam.
+    $extra: fileURLToPath(new URL(process.env.VITE_CANVAS_EXTRA || './src/extra.ts', new URL('../client/', import.meta.url))),
     ...(process.env.E2E_BINDINGS ? { './module_bindings/index': `${process.env.E2E_BINDINGS}/index.ts` } : {}),
   } },
   // A redeploy builds into the dir vite preview serves; emptying it would 404 a page

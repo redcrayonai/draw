@@ -90,6 +90,7 @@ import { buildRouteModel, type RouteModel } from './route';
 import { syncEmptyState } from './empty-state';
 import { mountThinkingOrb } from './thinking-orb';
 import { finishBoardLoading } from './board-loading';
+import extra from '$extra';
 import { readEditorScheme, cycleEditorScheme } from './editor-link';
 import { comparisonBoard, diffScene, reconciliationSnapshot } from './architecture';
 import { mountArchitectureRail } from './architecture-rail';
@@ -189,6 +190,9 @@ const demoFlow = new URLSearchParams(location.search).get('demo') === 'flow';
 let edgeMotions = new Map<bigint, EdgeMotion>();
 const flow = edgeFlow(world, id => edgeMotions.get(id));
 const dbParam = new URLSearchParams(location.search).get('db');
+// How the visitor arrived, before boot rewrites a bare visit to its #b= link (for the build's extra, see extra.ts).
+const BARE_VISIT = !hasBoardLink(location.search, location.hash);
+
 // A link names its database, except this build's own, which setDb leaves out.
 const linkedDb = dbParam || config.defaultDb;
 if (linkedDb !== config.db) {
@@ -408,6 +412,14 @@ async function boot(conn: DbConnection, identityHex: string, signedIn: boolean):
         : { signedIn: false },
     signIn,
   });
+  // The build's extra hears about the first drawn board (the view below is set up once per page, a board
+  // switch reuses it); its failure never takes the board down.
+  const tellExtra = (): void => {
+    // Through a promise: a throw and an async extra's rejection are logged alike.
+    void Promise.resolve()
+      .then(() => extra.boardReady?.({ bareVisit: BARE_VISIT, openConnectGuide: config.mcpUrl === undefined ? undefined : connectDialog.openGuide }))
+      .catch(error => console.error('canvas extra failed', error));
+  };
   for (const table of [conn.db.myAgentLinks, conn.db.visibleSelection, conn.db.visibleParticipant, conn.db.visibleBoard]) {
     table.onInsert(connectDialog.refresh);
     table.onUpdate(connectDialog.refresh);
@@ -2540,6 +2552,7 @@ async function boot(conn: DbConnection, identityHex: string, signedIn: boolean):
       enter = true;
       rerenderParticipants();
       requestAnimationFrame(finishBoardLoading);
+      requestAnimationFrame(tellExtra);
       if (demoFlow) {
         const feedDemo = () => {
           setActivity(demoActivity(getEdges().map(e => e.id), Date.now()));
