@@ -35,7 +35,7 @@ test('the build\'s extra hears once per page when the first board is drawn, know
   // openConnectGuide shows the guide to a guest; the header button would ask for an account first.
   await g.evaluate(() => ((window as any).__canvasExtra[0].openConnectGuide as () => void)());
   await expect(g.locator('#connect')).toBeVisible();
-  await expect(g.locator('#connect-pane-claude')).toContainText('claude mcp add --transport http --scope user draw https://mcp.e2e.invalid/mcp');
+  await expect(g.locator('#connect-pane-claude')).toContainText("REDCRAYON_MCP_URL='https://mcp.e2e.invalid/mcp' claude");
   expect(uncaught).toEqual([]);
   expect(logged.some(text => text.includes('canvas extra failed'))).toBe(true);
 });
