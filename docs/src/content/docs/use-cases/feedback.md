@@ -36,11 +36,17 @@ a new agent session.
 ## Mark and send
 
 1. Sign in with edit access to the board.
-2. Press **C**, or choose the red crayon in the toolbar.
+2. If chat is open, click the pencil **Draw** button to reveal the toolbar.
+   Press **C**, or choose the red crayon.
 3. Click a node to circle it and open its note.
 4. Write specific feedback, such as “Add a timeout and explain the failure path.”
 5. Mark any other nodes you want reviewed.
 6. Press **Send** to send the batch as one review round.
+
+Sending from the temporary drawing view returns to connected chat and adds a
+receipt, preserving your unfinished message. If a watcher is already listening,
+chat does not send a second request; otherwise it asks your connected agent to
+fetch the saved marks. Marks still save when chat is closed or disconnected.
 
 An empty note is allowed. A written question gives the agent a clearer task.
 Draft marks stay in your browser until you press **Send**. Other editors and
@@ -63,7 +69,8 @@ If the answer or change needs more work, send another round.
 
 ## If no agent is listening
 
-The board shows **No agent listening**. Open the board and tell your agent:
+If no watcher or chat connection can reach your agent, the board shows
+**No agent listening**. Open the board and tell your agent:
 
 ```text
 Review my marks on this board: <board link>. Keep listening after you answer this round.

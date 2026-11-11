@@ -58,12 +58,12 @@ import { withBoard } from '../../agent/src/results';
 import { CaptureRejection, type ClaimBoard, type ClaimedCapture } from '../../shared/capture';
 import { captureDeps } from './capture-deps';
 import { citedPaths, claim, type CaptureStub } from './captures';
-import { DEFAULT_DASHBOARD_URL, dashboardLinkUrl, newLinkCode } from './dashboard-link';
+import { newLinkCode } from './dashboard-link';
 import { guardSecrets } from '../../agent/src/session';
 import { DbError, identityArg } from '../../shared/db-http';
 import { identityFromClaims } from '../../shared/identity';
 import { sha256, type Principal, type UserInfo } from './auth';
-import { principalSubject, mintMarks, mintTap } from './issuer';
+import { principalSubject, mintChat, mintMarks, mintTap } from './issuer';
 import { boardText, readBoard } from './board';
 import { groupByFiles, newSeat } from './marks';
 import {
@@ -908,9 +908,9 @@ export const TOOLS: Record<string, ToolDef> = {
     description:
       "Open this task's board and return its id; pass that id as board on every other tool. " +
       'Pass name (use the git branch unless told otherwise) to open your own board of that name, created on first call; or link (a board link the user gave you) to draw on that board. ' +
-      'Returns JSON { board, id, url, seat, session, checkpoint?, repoRoot?, baseSha?, note?, dashboard?, dashboardNote? }: relay url to the user once, verbatim, before any other tool call, and relay dashboard with dashboardNote whenever they are there. ' +
+      'Returns JSON { board, id, url, seat, session, checkpoint?, repoRoot?, baseSha?, note?, chat? }: relay url to the user once, verbatim, before any other tool call. If the board asks to link the agent, confirm that once on the board. ' +
       'session is true when code refs and checkpoints work on the board (a capture of your checkout is needed for that); note says why when they do not. ' +
-      'seat is your name for wait_for_marks and reply_to_mark.',
+      'seat is your name for wait_for_marks and reply_to_mark. chat contains private connection metadata for the local conversation runtime; the plugin connects it automatically.',
     input: z
       .object({
         name: z
@@ -994,7 +994,19 @@ export const TOOLS: Record<string, ToolDef> = {
       await showPresence(t, boardId);
       if (start && session.session === true) await recordRemote(t, boardId, start);
       if (!boardRow) [boardRow] = await db.read<Row>(sql`SELECT * FROM visible_board WHERE id = ${boardId}`, t.signal);
-      return okResult(jsonText({ board: boardName, id: Number(boardId), url: o.boardUrl(String(boardRow?.slug ?? '')), seat: newSeat(), ...session, ...(devCaller(t.ctx) ? await devLinkOffer(t) : {}) }));
+      let chat: { board: string; token: string; origin: string } | undefined;
+      let chatNote: string | undefined;
+      if (!t.ctx.principal.machine) {
+        try {
+          await assertWriter(t, { id: boardId, name: boardName }, 'start a chat on it');
+          chat = { board: String(boardId), token: await mintChat(t.ctx.env, principalSubject(t.ctx.principal), boardId), origin: o.mcp };
+        } catch (error) {
+          // The board is already open; optional chat setup must not turn it into a failed tool call.
+          if (!(error instanceof Refusal)) chatNote = 'UNAVAILABLE: conversation connection could not start. Retry with start_chat.';
+        }
+      }
+      const url = o.boardUrl(String(boardRow?.slug ?? ''));
+      return okResult(jsonText({ board: boardName, id: Number(boardId), url: devCaller(t.ctx) ? await devLinkOffer(t, url) : url, seat: newSeat(), ...session, ...(chat ? { chat } : {}), ...(chatNote ? { chatNote } : {}) }));
     },
   },
 
@@ -1281,6 +1293,24 @@ export const TOOLS: Record<string, ToolDef> = {
       await assertWriter(t, b, 'watch for marks on it');
       const token = await mintMarks(t.ctx.env, principalSubject(t.ctx.principal), b.id, seat);
       return okResult(JSON.stringify({ board: String(b.id), token, command: `npx -y @redcrayonai/draw@1 marks --token ${token}`, expires_in_hours: 12 }, null, 1));
+    },
+  },
+
+  start_chat: {
+    title: 'Start board chat',
+    scope: 'board:write',
+    description:
+      'Connect this conversation to the board so the person running you can talk to it there. start_session already returns connection metadata for automatic plugin setup; use this to reconnect or refresh it. ' +
+      'Returns JSON { board, token, origin, command, expires_in_hours }. Pass the metadata to the local conversation runtime. ' +
+      'The command is a fallback for integrations that stream a long-running command: each "Board chat:" line is a message from the person running you. Your runtime carries replies back automatically.' +
+      BOARD_SUFFIX,
+    input: z.object({ board: boardArg }).strict(),
+    async run({ board }, t) {
+      if (t.ctx.principal.machine) throw new Refusal('REJECTED: service accounts cannot start a board chat: they have no person to talk to. Nothing was written.');
+      const b = await boardOf(t, board);
+      await assertWriter(t, b, 'start a chat on it');
+      const token = await mintChat(t.ctx.env, principalSubject(t.ctx.principal), b.id);
+      return okResult(JSON.stringify({ board: String(b.id), token, origin: t.ctx.o.mcp, command: `npx -y @redcrayonai/draw@1 chat --token ${token}`, expires_in_hours: 12 }, null, 1));
     },
   },
 
@@ -1624,21 +1654,21 @@ const hostedPair = ({ o, principal }: CallContext) => ({
 /** Only auth.ts's devAuth branch makes this principal (DEV_AUTH=1 and a localhost request). */
 const devCaller = ({ env, principal }: CallContext) => env.DEV_AUTH === '1' && principal.userId === 'user_dev' && principal.clientId === 'dev';
 
-const DEV_LINK_NOTE =
-  'If a board link shows as unavailable, open this once in the browser you use for the canvas and press "Link this agent to your dashboard". A newer start_session replaces this link.';
-
-/**
- * Local stack only: the dev agent's owner identity is one no browser can present, so offer the
- * person a one-time code (as the stdio agent does) to link the agent to their own browser. Offered on
- * every call: the first browser to redeem a code consumes it, and a new browser must be able to link again. Best effort.
- */
-async function devLinkOffer(t: T): Promise<Record<string, string>> {
+/** Local agents pair on the exact board; the fragment keeps the one-time code out of server requests. */
+async function devLinkOffer(t: T, boardUrl: string): Promise<string> {
   try {
+    const links = await t.ctx.db.read<Row>(sql`SELECT * FROM my_agent_links`, t.signal);
+    const agent = identityFromClaims(t.ctx.o.issuer, principalSubject(t.ctx.principal));
+    if (links.some(link => link.agent === agent)) return boardUrl;
     const code = newLinkCode();
     await t.ctx.db.call('offer_agent_link', { code }, t.signal);
-    return { dashboard: dashboardLinkUrl(DEFAULT_DASHBOARD_URL, t.ctx.env.DB_NAME, code), dashboardNote: DEV_LINK_NOTE };
+    const url = new URL(boardUrl);
+    const fragment = new URLSearchParams(url.hash.slice(1));
+    fragment.set('pair', code);
+    url.hash = fragment.toString();
+    return url.toString();
   } catch {
-    return {};
+    return boardUrl;
   }
 }
 

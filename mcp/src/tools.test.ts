@@ -7,7 +7,7 @@ import { TEXT_DENYLIST } from './copy';
 import { layoutUnits, planLayout } from './layout-apply';
 import { shareHref } from '../../shared/share-link';
 import { INSTRUCTIONS, TOOLS, TOOL_NAMES, boardInLink } from './tools';
-import { verifyMarks, verifyTap } from './issuer';
+import { verifyChat, verifyMarks, verifyTap } from './issuer';
 import { testEnv } from './test/env';
 import { ICON_IDS } from '../../module/src/node-icons';
 import { CODE_CONSENT_RULE, boardStoresCode, markCheckpointFlow, prepareSourceEvidence, startSessionFlow } from '../../agent/src/session';
@@ -42,7 +42,7 @@ const HOSTED = [
   'mark_checkpoint', 'plan_route', 'arrive', 'reroute', 'remove_code_ref', 'set_node_doc', 'set_selection', 'layout_board',
   'add_change_note', 'update_change_note', 'remove_change_note',
   'add_threat', 'update_threat', 'remove_threat',
-  'wait_for_marks', 'watch_marks', 'reply_to_mark', 'list_marks',
+  'wait_for_marks', 'watch_marks', 'start_chat', 'reply_to_mark', 'list_marks',
   'pin_chart', 'set_time_window', 'open_incident',
 ];
 const keysOf = (schema: z.ZodType): string[] => {
@@ -963,6 +963,7 @@ describe('start_session board reads', () => {
       read: async (q: { text: string }) => {
         reads.push(q.text);
         if (q.text.includes('my_board_creations')) return [{ boardId: 1n }];
+        if (q.text.includes('my_boards')) return [];
         if (q.text.includes('visible_board')) return [{ id: 1n, name: 'main', slug: 'abc123' }];
         if (q.text.includes('visible_selection')) return [];
         throw new Error(`unexpected read ${q.text}`);
@@ -1065,5 +1066,53 @@ describe('the repo remote on the hosted server (RC-690)', () => {
       expect(remote).toEqual([]);
       expect(JSON.parse(out)).toMatchObject({ board: 'main', id: 1, session: true });
     });
+  });
+});
+
+
+describe('automatic conversation connection', () => {
+  async function start(options: { machine?: boolean; writer?: boolean; signingFails?: boolean } = {}) {
+    const env = await testEnv(options.signingFails ? { AGENT_JWK: 'invalid' } : {});
+    const db = {
+      read: async (q: { text: string }) => {
+        if (q.text.includes('my_board_creations')) return [{ boardId: 1n }];
+        if (q.text.includes('visible_board')) return [{ id: 1n, name: 'main', slug: 'main-slug' }];
+        if (q.text.includes('my_boards')) return options.writer === false ? [] : [{ boardId: 1n, access: 'owner' }];
+        return [];
+      },
+      call: async () => {},
+    };
+    const ctx = {
+      db, env, principal: { userId: 'chat_person', machine: options.machine },
+      o: { issuer: 'https://mcp.example.com', mcp: env.MCP_ORIGIN, boardUrl: (slug: string) => `https://draw.example.com/#b=${slug}` },
+    };
+    const t = { ctx, signal: new AbortController().signal, named: () => {} } as never;
+    const result = JSON.parse(text(await TOOLS.start_session.run({ name: 'main' }, t)));
+    return { result, env, t };
+  }
+
+  it('returns a scoped token and origin without a second model tool call', async () => {
+    const { result, env } = await start();
+    expect(result.chat).toMatchObject({ board: '1', origin: env.MCP_ORIGIN });
+    expect(await verifyChat(env, result.chat.token)).toEqual({ sub: 'agent:chat_person', board: 1n });
+  });
+
+  it.each([{ machine: true }, { writer: false }])('omits private chat for a machine or read-only caller (%j)', async options => {
+    const { result } = await start(options);
+    expect(result).not.toHaveProperty('chat');
+    expect(result).not.toHaveProperty('chatNote');
+  });
+
+  it('preserves the opened board and explains a signing failure', async () => {
+    const { result } = await start({ signingFails: true });
+    expect(result).toMatchObject({ id: 1, board: 'main', chatNote: expect.stringMatching(/^UNAVAILABLE:/) });
+    expect(result).not.toHaveProperty('chat');
+  });
+
+  it('start_chat retains the explicit fallback and returns its server origin', async () => {
+    const { env, t } = await start();
+    const result = JSON.parse(text(await TOOLS.start_chat.run({ board: '1' }, t)));
+    expect(result).toMatchObject({ board: '1', origin: env.MCP_ORIGIN, command: expect.stringContaining('chat --token ') });
+    expect(await verifyChat(env, result.token)).toEqual({ sub: 'agent:chat_person', board: 1n });
   });
 });

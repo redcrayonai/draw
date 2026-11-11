@@ -9,6 +9,7 @@
  *   redcrayon doctor    one line per check: node, git, repo, network
  *   redcrayon tap --token <t>   live traffic: OTLP/HTTP on 127.0.0.1:4318 to the board's Live view
  *   redcrayon marks --token <t> wait for red crayon marks; prints them and exits once they are claimed
+ *   redcrayon chat --token <t>  the person running this agent talks to it from the board; each line on stdout wakes the agent
  *
  * A capture prints exactly one line on stdout, `cap_<22 base62>`; everything
  * else goes to stderr. A refusal is one stderr line and exit 1.
@@ -32,12 +33,14 @@ import {
   writeCited,
   type CaptureOpts,
 } from './capture';
+import { runChat } from './chat';
+import { hookResult as resultJson } from './hook-result';
 import { runMarks } from './marks';
 import { runTap } from './tap';
 
 
 const USAGE =
-  'redcrayon: usage: redcrayon capture start | capture ref <path> [--board <id>] | capture cite <path> [--board <id>] | capture checkpoint --board <id> --base <sha> [--also <path>…] | hook | doctor | tap --token <t> | marks --token <t>';
+  'redcrayon: usage: redcrayon capture start | capture ref <path> [--board <id>] | capture cite <path> [--board <id>] | capture checkpoint --board <id> --base <sha> [--also <path>…] | hook | doctor | tap --token <t> | marks --token <t> | chat --token <t>';
 
 const firstLine = (s: string) => s.split('\n')[0].replace(/[\x00-\x1f\x7f]/g, '').slice(0, 200);
 const BATCH_CAPTURE_TIMEOUT = 'redcrayon: source captures took too long for one batch. Split apply_board into smaller batches or create_edge calls.';
@@ -132,19 +135,6 @@ async function doctor(cwd: string): Promise<number> {
 
 type Json = Record<string, unknown>;
 const isObject = (v: unknown): v is Json => typeof v === 'object' && v !== null && !Array.isArray(v);
-
-// Claude Code hands an MCP result over as its content blocks, the result, or its text.
-function resultJson(response: unknown): Json | undefined {
-  const blocks = Array.isArray(response) ? response : isObject(response) && Array.isArray(response.content) ? response.content : undefined;
-  const text = typeof response === 'string' ? response : blocks?.find(b => isObject(b) && b.type === 'text')?.text;
-  if (typeof text !== 'string') return blocks === undefined && isObject(response) ? response : undefined;
-  try {
-    const value: unknown = JSON.parse(text);
-    return isObject(value) ? value : undefined;
-  } catch {
-    return undefined;
-  }
-}
 
 /** source:<path>:<line> → path (only the final colon separates the line), else undefined. */
 function sourcePath(evidence: unknown): string | undefined {
@@ -281,6 +271,7 @@ async function main(argv: string[]): Promise<{ code: number; out: string[]; err:
       process.once('SIGTERM', () => stop.abort());
       return { code: await runMarks(argv.slice(1), origin(), { out, err, signal: stop.signal }), out, err };
     }
+    if (argv[0] === 'chat') return { code: await runChat(argv.slice(1), origin(), process.cwd(), line => process.stderr.write(`${line}\n`), line => process.stdout.write(`${line}\n`)), out, err };
     return { code: 1, out, err: [USAGE] };
   } catch (e) {
     return { code: 1, out: [], err: [e instanceof HelperError ? e.message : `redcrayon: ${firstLine(e instanceof Error ? e.message : String(e))}`] };

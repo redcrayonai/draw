@@ -9,8 +9,11 @@ import { createWorker } from './app';
 import type { Env } from './env';
 import { UserLedger } from './user';
 import { CAPTURE_TTL_MS, CaptureVault } from './captures';
-import { verifyTap } from './issuer';
+import { verifyChat, verifyTap } from './issuer';
 import { AUTH_MS, LiveHub, type Attachment, type LiveSocket } from './live';
+import { CHAT_AUTH_MS, ChatHub, identityHex, type ChatAttachment, type ChatSocket } from './chat';
+import { origins } from './env';
+import { identityFromClaims } from '../../shared/identity';
 import { dbHttp } from '../../shared/db-http';
 
 export class User extends DurableObject<Env> {
@@ -82,6 +85,28 @@ async function canReadBoard(env: Env, token: string, board: bigint): Promise<boo
   }
 }
 
+/** A hibernatable WebSocket as the hubs' plain socket; its attachment survives the Object sleeping. */
+function adaptSocket<A>(ws: WebSocket) {
+  return {
+    send(data: string): void {
+      try {
+        ws.send(data);
+      } catch {
+        // closing: the close handler tidies up
+      }
+    },
+    close(code: number, reason: string): void {
+      try {
+        ws.close(code, reason);
+      } catch {
+        // already closed
+      }
+    },
+    attachment: () => (ws.deserializeAttachment() as A | null) ?? null,
+    setAttachment: (a: A) => ws.serializeAttachment(a),
+  };
+}
+
 /**
  * One board's live tap channel: hibernatable WebSockets adapted to LiveHub
  * (live.ts). Nothing is stored; attachments carry each socket's role.
@@ -100,24 +125,7 @@ export class Live extends DurableObject<Env> {
   private wrap(ws: WebSocket): LiveSocket {
     let w = this.wrappers.get(ws);
     if (!w) {
-      w = {
-        send: data => {
-          try {
-            ws.send(data);
-          } catch {
-            // closing: the close handler tidies up
-          }
-        },
-        close: (code, reason) => {
-          try {
-            ws.close(code, reason);
-          } catch {
-            // already closed
-          }
-        },
-        attachment: () => (ws.deserializeAttachment() as Attachment | null) ?? null,
-        setAttachment: a => ws.serializeAttachment(a),
-      };
+      w = adaptSocket<Attachment>(ws);
       this.wrappers.set(ws, w);
     }
     return w;
@@ -148,6 +156,71 @@ export class Live extends DurableObject<Env> {
 
   async alarm(): Promise<void> {
     if (this.hub.sweep()) await this.ctx.storage.setAlarm(Date.now() + AUTH_MS);
+  }
+}
+
+/** The agents this canvas token linked (its own my_agent_links), or null when it cannot read the board. */
+async function linkedAgents(env: Env, token: string, board: bigint): Promise<string[] | null> {
+  if (!(await canReadBoard(env, token, board))) return null;
+  try {
+    const rows = await dbHttp(env.DB_URL, env.DB_NAME).sqlAs(token, 'SELECT * FROM my_agent_links', AbortSignal.timeout(10_000));
+    return rows.map(r => identityHex(r.agent)).filter((a): a is string => a !== undefined);
+  } catch {
+    return null;
+  }
+}
+
+/** One board's agent chat: hibernatable WebSockets adapted to ChatHub (chat.ts). Nothing is stored. */
+export class Chat extends DurableObject<Env> {
+  private readonly wrappers = new WeakMap<WebSocket, ChatSocket>();
+  private readonly hub = new ChatHub(
+    {
+      verifyAgent: async token => {
+        const claims = await verifyChat(this.env, token);
+        // A workspace key has no person to chat with.
+        if (!claims || !claims.sub.startsWith('agent:')) return null;
+        return { agent: identityFromClaims(origins(this.env).issuer, claims.sub), board: claims.board };
+      },
+      linkedAgents: (token, board) => linkedAgents(this.env, token, board),
+      now: () => Date.now(),
+    },
+    () => this.ctx.getWebSockets().map(ws => this.wrap(ws))
+  );
+
+  private wrap(ws: WebSocket): ChatSocket {
+    let w = this.wrappers.get(ws);
+    if (!w) {
+      w = adaptSocket<ChatAttachment>(ws);
+      this.wrappers.set(ws, w);
+    }
+    return w;
+  }
+
+  async fetch(request: Request): Promise<Response> {
+    const board = request.headers.get('x-chat-board');
+    if (request.headers.get('upgrade')?.toLowerCase() !== 'websocket' || !board) return new Response(null, { status: 426 });
+    const [client, server] = Object.values(new WebSocketPair());
+    this.ctx.acceptWebSocket(server);
+    server.serializeAttachment({ role: 'pending', board, at: Date.now() } satisfies ChatAttachment);
+    if ((await this.ctx.storage.getAlarm()) === null) await this.ctx.storage.setAlarm(Date.now() + CHAT_AUTH_MS);
+    return new Response(null, { status: 101, webSocket: client });
+  }
+
+  async webSocketMessage(ws: WebSocket, message: string | ArrayBuffer): Promise<void> {
+    await this.hub.message(this.wrap(ws), typeof message === 'string' ? message : new TextDecoder().decode(message));
+  }
+
+  async webSocketClose(ws: WebSocket, code: number, reason: string): Promise<void> {
+    this.hub.closed(this.wrap(ws));
+    this.wrap(ws).close(code === 1005 ? 1000 : code, reason);
+  }
+
+  async webSocketError(ws: WebSocket): Promise<void> {
+    this.hub.closed(this.wrap(ws));
+  }
+
+  async alarm(): Promise<void> {
+    if (this.hub.sweep()) await this.ctx.storage.setAlarm(Date.now() + CHAT_AUTH_MS);
   }
 }
 

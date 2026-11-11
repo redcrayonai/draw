@@ -164,6 +164,19 @@ async function live(request: Request, env: Env, url: URL): Promise<Response> {
   return env.LIVE.get(env.LIVE.idFromName(board)).fetch(url.toString(), { headers });
 }
 
+const CHAT_PATH = /^\/chat\/(\d{1,20})$/;
+
+/** /chat/<board>: the agent chat relay, authenticated by its first message like /live. */
+async function chat(request: Request, env: Env, url: URL): Promise<Response> {
+  if (request.headers.get('upgrade')?.toLowerCase() !== 'websocket') return json(426, { error: 'upgrade_required' }, { upgrade: 'websocket' });
+  if (!env.CHAT) return json(503, { error: 'chat_unavailable' });
+  if (await ipLimited(env, request)) return TOO_MANY();
+  const board = CHAT_PATH.exec(url.pathname)![1];
+  const headers = new Headers(request.headers);
+  headers.set('x-chat-board', board);
+  return env.CHAT.get(env.CHAT.idFromName(board)).fetch(url.toString(), { headers });
+}
+
 // One /marks/wait request claims for at most ~25 s: each DB request has its own 5 s cap, and the helper simply asks again.
 export const MARKS_WAIT_MS = 25_000;
 export const MARKS_RETRY_MS = 10_000;
@@ -407,6 +420,7 @@ export function createApp(deps: Deps) {
         // A WebSocket upgrade answers 101 with the socket: withCors would rebuild the response and drop it.
         const url = new URL(request.url);
         if (url.host === origins(env).host && LIVE_PATH.test(url.pathname)) return await live(request, env, url);
+        if (url.host === origins(env).host && CHAT_PATH.test(url.pathname)) return await chat(request, env, url);
         return withCors(await route(request, env, cold));
       } catch (err) {
         const ref = newRef();

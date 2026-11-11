@@ -46,7 +46,7 @@
       {#if config.privacyUrl}<p><a href={config.privacyUrl} target="_blank" rel="noopener noreferrer">Privacy policy</a></p>{/if}
     </div>
   {:else}
-    <p class="intro">Hosted agents are not available yet.</p>
+    <p class="intro">Agent connections are not configured for this server.</p>
   {/if}
 </div>
 

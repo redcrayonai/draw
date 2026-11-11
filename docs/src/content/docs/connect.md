@@ -1,6 +1,6 @@
 ---
 title: Connect your agent
-description: Add the draw MCP server to Claude Code, Cursor, Codex, claude.ai or any MCP client.
+description: Install the Draw plugin for Claude Code or Codex, or connect another MCP client.
 ---
 
 **Server URL**
@@ -14,7 +14,8 @@ as `agent of <your name>`, and the boards it draws are yours.
 
 ## Claude Code
 
-The plugin adds the server, the `/draw:navigate` command and code refs. Inside
+The plugin includes the server connection, drawing skills, automatic code refs,
+and private board chat. Inside
 Claude Code you can also run `/plugin marketplace add redcrayonai/draw`, then
 `/plugin install draw@redcrayonai`.
 
@@ -22,14 +23,17 @@ Claude Code you can also run `/plugin marketplace add redcrayonai/draw`, then
 claude plugin marketplace add redcrayonai/draw && claude plugin install draw@redcrayonai
 ```
 
-1. Start Claude Code in your project, run `/mcp`, choose **draw**, then
+1. Start a new Claude Code session in your project, run `/mcp`, choose **draw**, then
    **Authenticate**. Approve in the browser tab that opens.
 2. Run `/draw:navigate`. The agent opens a board named after your branch
    and posts its link. `/draw:navigate <board link>` draws on a board you
    already have.
+3. Open the board link to continue the same conversation in private chat.
+   Chat connects automatically; `/draw:handoff` reconnects it when needed.
 
 Code refs and checkpoints need git and Node 20 or later on your PATH. Without
-Node, drawing still works.
+Node, drawing still works. Board chat needs Node 22+ and a Claude Code version
+that supports `MessageDisplay` and `asyncRewake` hooks.
 
 ## Cursor
 
@@ -48,10 +52,54 @@ approve in the browser.
 
 ## Codex
 
+Install the plugin to get drawing skills, automatic code refs, and board chat
+support together. Use a Codex version with plugin support:
+
+```sh
+codex plugin marketplace add redcrayonai/draw && codex plugin add draw@redcrayonai
+```
+
+After adding the marketplace, you can also open `/plugins` and install Draw there.
+Start a **new Codex session** in your project. When Draw asks you to connect,
+approve in the browser with the account you use for your boards. Then ask:
+
+```text
+Open a Draw board for this task and draw what you build on it as you go.
+```
+
+Open the board link. Private chat needs Node 22+ and an accessible shared
+Codex app-server connection to the same conversation. Installing the plugin
+alone does not make every Codex session available to board chat. If chat cannot
+attach, keep chatting in Codex; the board tools still work. Draw never starts
+a second agent conversation to replace yours.
+
+### MCP-only connection
+
+If your client does not support plugins, add the server directly:
+
 ```sh
 codex mcp add draw --url https://mcp.redcrayon.ai/mcp
 codex mcp login draw
 ```
+
+This provides drawing tools without the plugin's skills, automatic code-ref
+hooks, or board-chat connection. If you already use this setup, remove the
+manual entry with `codex mcp remove draw` when switching to the plugin, so Draw
+is not listed twice.
+
+## Chat beside your board
+
+Chat is private to the person linked to the agent; sharing a board does not
+share control of that agent. Select a node or edge to attach it to your message.
+
+With chat open, the pencil **Draw** button temporarily reveals the drawing tools.
+**Back to chat** restores your conversation and unfinished message. Sending
+red-crayon marks returns to connected chat and adds a receipt. If a review watcher
+is already listening, chat does not send a second review request.
+
+You do not need a `start.command` launcher for the released plugin. That launcher
+is only used to test local development builds. Codex's shared-session requirement
+still applies.
 
 ## claude.ai
 
@@ -66,6 +114,11 @@ VS Code uses `"servers"` and `"type": "http"`.
 
 ## Existing connections
 
+When switching from a manual MCP connection to the plugin, remove the old
+Draw server entry first so your agent does not see duplicate tools. In Claude
+Code, use `/mcp` to find the manual entry; in Codex, use `codex mcp remove draw`.
+Then install the plugin and start a new session.
+
 If you connected before the rename, your `redcrayon` connection still works.
 To rename it to `draw`, remove that server entry in your client, add it again
 with the name above, and sign in again.
@@ -75,12 +128,13 @@ with the name above, and sign in again.
 Outside Claude Code, start with:
 
 ```text
-Open a redcrayon board for this task and draw what you build on it as you go.
+Open a Draw board for this task and draw what you build on it as you go.
 ```
 
 ## Code refs outside Claude Code
 
-When a tool needs a capture of your checkout, it tells the agent the exact
+The Claude Code and Codex plugins capture code refs through hooks. With an
+MCP-only connection, when a tool needs a capture of your checkout, it tells the agent the exact
 command, and the agent runs it. Nothing to install; Node 20+ and git on your
 PATH. To check your setup:
 
@@ -121,11 +175,13 @@ Then [review with the red crayon](/use-cases/feedback/),
 
 ## Your own server
 
-To point the Claude Code plugin at a server you run
-([Self-host quickstart](/self-host/quickstart/)), start Claude Code with:
+To point either plugin at a server you run
+([Self-host quickstart](/self-host/quickstart/)), set the server URL when starting your agent (macOS or Linux):
 
 ```sh
 REDCRAYON_MCP_URL=http://localhost:8788/mcp claude
+# Or, for Codex:
+REDCRAYON_MCP_URL=http://localhost:8788/mcp codex
 ```
 
 Other clients take that URL in place of the hosted one.

@@ -221,6 +221,8 @@ describe('review popover, badge and banner', () => {
     expect(banner.textContent).toBe('Claude (A) and 2 more are waiting for your marks');
     paint({ marks: [mark({ status: 'sent' })], lastReadAt: 0n, waiters: [], now });
     expect(banner.textContent).toBe('No agent listening');
+    paint({ marks: [mark({ status: 'sent' })], lastReadAt: 0n, waiters: [], now, chatConnected: true });
+    expect(banner.textContent).toBe('Waiting for review');
     paint({ marks: [mark({ status: 'claimed' }), mark({ id: 2n, status: 'sent' }), mark({ id: 3n, status: 'fixed' })], lastReadAt: 0n, waiters: [{ owner: `${A}/s`, lastWaitAt: now }], now });
     expect(banner.textContent).toBe('Working on 2 marks');
     paint({ marks: [mark({ status: 'claimed' })], lastReadAt: 0n, waiters: [], now });

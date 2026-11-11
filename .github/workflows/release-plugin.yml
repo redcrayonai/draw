@@ -106,6 +106,8 @@ jobs:
           pnpm -C helper run build
           test -f helper/dist/redcrayon.mjs || { echo "::error::the helper build wrote no helper/dist/redcrayon.mjs"; exit 1; }
           cp helper/dist/redcrayon.mjs plugin/bin/redcrayon.mjs
+          test -f helper/dist/chat-hook.mjs || { echo "::error::the helper build wrote no helper/dist/chat-hook.mjs"; exit 1; }
+          cp helper/dist/chat-hook.mjs plugin/bin/chat-hook.mjs
           rm -f plugin/bin/.gitkeep
 
       - name: Pack the plugin
@@ -113,6 +115,7 @@ jobs:
           mkdir -p "$RUNNER_TEMP/pack"
           (cd plugin && npm pack --pack-destination "$RUNNER_TEMP/pack")
           tar -xzf "$RUNNER_TEMP"/pack/*.tgz -C "$RUNNER_TEMP/pack"
+          test -f "$RUNNER_TEMP/pack/package/bin/chat-hook.mjs" || { echo "::error::the packed plugin has no bin/chat-hook.mjs: every chat hook would fail"; exit 1; }
           test -x "$RUNNER_TEMP/pack/package/bin/redcrayon.mjs" || { echo "::error::the packed plugin has no executable bin/redcrayon.mjs"; exit 1; }
 
       # The npm package and the marketplace file, with the text rules (vendor and internals words).

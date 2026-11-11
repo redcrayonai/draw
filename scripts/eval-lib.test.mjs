@@ -727,7 +727,7 @@ test('SKILL.md (G30): input-validation, budget and citability texts are explaine
   assert.ok(flat.includes('Nothing was written. Fix the argument'));
   // every hosted input is strict, so an unknown argument (a retired one such as force) is refused
   const tools = hosted.slice(hosted.indexOf('export const TOOLS'), hosted.indexOf('export const TOOL_NAMES')).split(/^ {2}(?=\w+: \{$)/m).slice(1);
-  assert.equal(tools.length, 43);
+  assert.equal(tools.length, 44);
   for (const t of tools) {
     if (t.startsWith('apply_board:')) {
       assert.match(t, /get input\(\) \{ return applyBoardInput\(TOOLS.create_node.input, TOOLS.create_edge.input\); \}/);
@@ -769,7 +769,7 @@ test('SKILL.md (G39): node sizing follows the server label-fit estimate', () => 
 });
 
 test('start_session (G40): the tool text names the result shape', () => {
-  assert.ok(hosted.includes('Returns JSON { board, id, url, seat, session, checkpoint?, repoRoot?, baseSha?, note?, dashboard?, dashboardNote? }'));
+  assert.ok(hosted.includes('Returns JSON { board, id, url, seat, session, checkpoint?, repoRoot?, baseSha?, note?, chat? }'));
 });
 
 // ---- e2b10ff: add_code_ref and create_edge answer within 15 s ------------------

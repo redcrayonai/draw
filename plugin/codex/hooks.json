@@ -1,0 +1,39 @@
+{
+  "description": "Captures code references and connects board chat to this terminal conversation after a board session starts.",
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "^mcp__(plugin_draw_)?(?:draw|redcrayon)(-dev)?__(start_session|add_code_ref|mark_checkpoint|create_edge|arrive|apply_board)$",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "sh -c 'command -v node >/dev/null || exit 0; exec node \"${PLUGIN_ROOT}/bin/redcrayon.mjs\" hook'",
+            "timeout": 45
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "^mcp__(plugin_draw_)?(?:draw|redcrayon)(-dev)?__(start_session|add_code_ref|mark_checkpoint|create_edge|arrive|apply_board)$",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "sh -c 'command -v node >/dev/null || exit 0; exec node \"${PLUGIN_ROOT}/bin/redcrayon.mjs\" hook'",
+            "timeout": 45
+          }
+        ]
+      },
+      {
+        "matcher": "^mcp__(plugin_draw_)?(?:draw|redcrayon)(-dev)?__(start_session|start_chat)$",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "sh -c 'command -v node >/dev/null || exit 0; exec node \"${PLUGIN_ROOT}/bin/chat-hook.mjs\" --start --codex'",
+            "timeout": 5
+          }
+        ]
+      }
+    ]
+  }
+}
