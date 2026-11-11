@@ -7,13 +7,15 @@
     "redcrayon": "dist/redcrayon.mjs"
   },
   "files": [
-    "dist/redcrayon.mjs"
+    "dist/redcrayon.mjs",
+    "dist/local-assets"
   ],
   "engines": {
     "node": ">=20"
   },
   "scripts": {
     "build": "node build.mjs",
+    "build:local": "node build-local.mjs",
     "typecheck": "tsc --noEmit",
     "test": "vitest run"
   },

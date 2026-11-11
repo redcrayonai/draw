@@ -1,0 +1,19 @@
+.local-mode { height: 100vh; display: flex; flex-direction: column; overflow: hidden; }
+#local-header { display: flex; gap: 16px; align-items: center; padding: 16px 24px; border-bottom: 1px solid var(--line, #333); }
+#local-header strong { font-size: 20px; } #status { margin-left: auto; font-size: 12px; }
+#local-main { display: flex; flex: 1; min-height: 0; }
+#local-canvas { flex: 1; min-width: 0; position: relative; }
+#local-tools { position: absolute; z-index: 1; top: 16px; left: 16px; display: flex; gap: 8px; }
+#canvas { width: 100%; height: 100%; touch-action: none; }
+#local-panel { width: 320px; padding: 20px; overflow: auto; border-left: 1px solid var(--line, #333); }
+.local-mode button, .local-mode input, .local-mode select, .local-mode textarea { font: inherit; color: inherit; background: var(--surface, #202124); border: 1px solid var(--line, #454545); border-radius: 6px; padding: 8px; }
+.local-mode button { cursor: pointer; } .local-mode button:hover { border-color: #999; }
+.local-mode label { display: flex; flex-direction: column; gap: 6px; margin: 12px 0; font-size: 12px; }
+.local-mode textarea { min-height: 64px; resize: vertical; }
+.local-mode h2 { font-size: 14px; margin: 24px 0 10px; }
+.local-mode p { font-size: 12px; line-height: 1.6; white-space: pre-wrap; }
+#geometry { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; } #geometry input { width: 100%; box-sizing: border-box; }
+.local-note { border-top: 1px solid #444; padding: 12px 0; }
+.local-mode pre { overflow: auto; font-size: 12px; max-height: 300px; }
+.local-mode :focus-visible { outline: 2px solid #77b7ff; outline-offset: 3px; }
+@media(max-width: 700px) { #local-panel { width: 230px; padding: 12px; } #local-header { gap: 8px; padding: 8px; } }

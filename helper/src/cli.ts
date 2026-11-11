@@ -37,10 +37,13 @@ import { runChat } from './chat';
 import { hookResult as resultJson } from './hook-result';
 import { runMarks } from './marks';
 import { runTap } from './tap';
+import { runLocal } from './local-cli';
+import { runLocalMcp } from './local-mcp';
+import { runLocalLive } from './local-live';
 
 
 const USAGE =
-  'redcrayon: usage: redcrayon capture start | capture ref <path> [--board <id>] | capture cite <path> [--board <id>] | capture checkpoint --board <id> --base <sha> [--also <path>…] | hook | doctor | tap --token <t> | marks --token <t> | chat --token <t>';
+  'redcrayon: usage: redcrayon local [--repo path] | local-mcp [--repo path] | live --board slug --map mapping.json [--repo path] | capture start | capture ref <path> [--board <id>] | capture cite <path> [--board <id>] | capture checkpoint --board <id> --base <sha> [--also <path>…] | hook | doctor | tap --token <t> | marks --token <t> | chat --token <t>';
 
 const firstLine = (s: string) => s.split('\n')[0].replace(/[\x00-\x1f\x7f]/g, '').slice(0, 200);
 const BATCH_CAPTURE_TIMEOUT = 'redcrayon: source captures took too long for one batch. Split apply_board into smaller batches or create_edge calls.';
@@ -271,6 +274,9 @@ async function main(argv: string[]): Promise<{ code: number; out: string[]; err:
       process.once('SIGTERM', () => stop.abort());
       return { code: await runMarks(argv.slice(1), origin(), { out, err, signal: stop.signal }), out, err };
     }
+    if (argv[0] === 'local') return { code: await runLocal(argv.slice(1)), out, err };
+    if (argv[0] === 'local-mcp') return { code: await runLocalMcp(argv.slice(1)), out, err };
+    if (argv[0] === 'live') return { code: await runLocalLive(argv.slice(1)), out, err };
     if (argv[0] === 'chat') return { code: await runChat(argv.slice(1), origin(), process.cwd(), line => process.stderr.write(`${line}\n`), line => process.stdout.write(`${line}\n`)), out, err };
     return { code: 1, out, err: [USAGE] };
   } catch (e) {
