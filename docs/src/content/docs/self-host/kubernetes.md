@@ -4,7 +4,7 @@ description: Run the production stack on a Kubernetes cluster with the Helm char
 ---
 
 The Helm chart runs the same images and settings as `compose.prod.yml`: the
-canvas, dashboard, MCP server, import runner, SpacetimeDB and Postgres. Each
+canvas, dashboard, MCP server, import runner, the board database and Postgres. Each
 release publishes the chart next to its images:
 
 ```
@@ -94,9 +94,9 @@ The dashboard and MCP server reach other services only on the networks they
 are allowed. On Kubernetes, the services are on the cluster's Service range,
 so set it in `workerNetworks`.
 
-On Kubernetes 1.33 or later, the chart reads the range from the cluster when
-`workerNetworks` is empty. Otherwise, this command prints it in its error
-message (`The range of valid IPs is ...`):
+On Kubernetes 1.33 or later, `kubectl get servicecidr` lists it. On any
+version, this command prints it in its error message
+(`The range of valid IPs is ...`):
 
 ```sh
 kubectl create service clusterip probe --tcp=80 --clusterip=1.1.1.1 --dry-run=server

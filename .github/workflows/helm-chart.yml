@@ -1,13 +1,11 @@
-# The Helm chart (charts/draw), on PRs that change it: lint, render with the
-# common settings, check the manifests against the Kubernetes API schemas, and
-# package it as release-images.yml does. Its own workflow, apart from ci.yml.
+# The Helm chart (charts/draw): lint, render with the common settings, check the
+# manifests against the Kubernetes API schemas, and package it as
+# release-images.yml does. ci.yml calls it; ci-ready requires it.
 
 name: helm-chart
 
 on:
-  pull_request:
-    paths: ['charts/**', '.github/workflows/helm-chart.yml']
-  workflow_dispatch:
+  workflow_call:
 
 permissions:
   contents: read

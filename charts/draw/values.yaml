@@ -5,8 +5,7 @@
 # https://dash.DOMAIN and the MCP server at https://mcp.DOMAIN.
 domain: ""
 
-# Required unless the cluster lists its Service range (kubectl get servicecidr).
-# The dashboard and MCP server reach other services only on networks listed
+# Required. The dashboard and MCP server reach other services only on networks listed
 # here, so set the cluster's Service range, e.g. ["10.96.0.0/12"]. Add the
 # address of an OIDC issuer that runs inside the cluster.
 workerNetworks: []

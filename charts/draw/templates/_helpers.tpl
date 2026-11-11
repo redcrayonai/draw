@@ -24,12 +24,9 @@ app.kubernetes.io/component: {{ index . 1 }}
 {{- required "set domain: the canvas is https://DOMAIN, the dashboard https://dash.DOMAIN, the MCP server https://mcp.DOMAIN" .Values.domain -}}
 {{- end }}
 
-{{/* The Workers' extra outbound networks: workerNetworks, else the cluster's ServiceCIDRs. */}}
+{{/* The Workers' extra outbound networks. */}}
 {{- define "draw.workerNetworks" -}}
 {{- $cidrs := .Values.workerNetworks -}}
-{{- if not $cidrs -}}
-{{- with lookup "networking.k8s.io/v1" "ServiceCIDR" "" "kubernetes" -}}{{- $cidrs = .spec.cidrs -}}{{- end -}}
-{{- end -}}
 {{- if not $cidrs -}}
 {{- fail "set workerNetworks to the cluster's Service range, e.g. --set 'workerNetworks={10.96.0.0/12}'. kubectl create service clusterip probe --tcp=80 --clusterip=1.1.1.1 --dry-run=server prints it." -}}
 {{- end -}}

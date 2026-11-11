@@ -4,23 +4,22 @@ import { pathToFileURL } from 'node:url';
 export const requiredJobs = [
   'workflow-checks', 'bindings-check', 'test-node', 'session-flows',
   'build-client', 'build-web', 'module-tests', 'secret-scan', 'security-scan', 'e2e',
-  'compose-smoke',
+  'compose-smoke', 'helm-chart',
 ];
 
 /** The jobs a docs, GitHub config or scripts-only PR skips; workflow-checks and secret-scan always run, main runs everything. */
 export const fullJobs = [
   'bindings-check', 'test-node', 'session-flows', 'build-client', 'build-web',
-  'module-tests', 'security-scan', 'e2e', 'compose-smoke',
+  'module-tests', 'security-scan', 'e2e', 'compose-smoke', 'helm-chart',
 ];
 
 // Markdown (plugin/ ships its skill texts, so not there), .github and workflow YAML (not
 // .github/actions: composite steps the jobs run), and any scripts/ directory (scripts/ tests
-// run in workflow-checks; mcp/scripts/ is covered on main only), and charts/ (helm-chart.yml
-// checks the chart; nothing else reads it).
-const light = file => /(?:^|\/)scripts\/|^charts\/|^\.github\/(?:workflows\/|ISSUE_TEMPLATE\/)?[^/]+\.ya?ml$/.test(file)
+// run in workflow-checks; mcp/scripts/ is covered on main only).
+const light = file => /(?:^|\/)scripts\/|^\.github\/(?:workflows\/|ISSUE_TEMPLATE\/)?[^/]+\.ya?ml$/.test(file)
   || (file.endsWith('.md') && !file.startsWith('plugin/'));
 
-/** False when every changed file is markdown, GitHub YAML, a script or the Helm chart. */
+/** False when every changed file is markdown, GitHub YAML or a script. */
 export const needsFull = files => !files.length || !files.every(light);
 
 export const failedJobs = results => {

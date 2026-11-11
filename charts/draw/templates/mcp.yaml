@@ -60,6 +60,8 @@ spec:
             - { name: WORKER_NETWORKS, value: {{ include "draw.workerNetworks" . | quote }} }
             {{- include "draw.secretEnv" (list . "MCP_API_KEYS" "mcp-api-keys") | nindent 12 }}
             {{- include "draw.stateEnv" (list . "AGENT_JWK" "agent-jwk.json") | nindent 12 }}
+          readinessProbe:
+            tcpSocket: { port: 8788 }
           volumeMounts: [{ name: data, mountPath: /data }]
           resources: {{- toYaml .Values.mcp.resources | nindent 12 }}
         - name: proxy
@@ -70,7 +72,7 @@ spec:
             - { name: XDG_CONFIG_HOME, value: /tmp/caddy-config }
           ports: [{ name: http, containerPort: 8080 }]
           readinessProbe:
-            tcpSocket: { port: 8788 }
+            tcpSocket: { port: 8080 }
           volumeMounts: [{ name: proxy, mountPath: /etc/caddy }]
       volumes:
         - name: data

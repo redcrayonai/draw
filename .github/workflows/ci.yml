@@ -102,10 +102,14 @@ jobs:
     needs: changes
     if: needs.changes.outputs.full == 'true'
     uses: ./.github/workflows/compose-smoke.yml
+  helm-chart:
+    needs: changes
+    if: needs.changes.outputs.full == 'true'
+    uses: ./.github/workflows/helm-chart.yml
 
   ci-ready:
     name: ci-ready
-    needs: [workflow-checks, changes, bindings-check, test-node, session-flows, build-client, build-web, module-tests, secret-scan, security-scan, e2e, compose-smoke]
+    needs: [workflow-checks, changes, bindings-check, test-node, session-flows, build-client, build-web, module-tests, secret-scan, security-scan, e2e, compose-smoke, helm-chart]
     if: ${{ always() }}
     runs-on: ubuntu-latest
     steps:

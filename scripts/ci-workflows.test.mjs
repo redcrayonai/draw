@@ -31,8 +31,8 @@ test('ci-ready requires every prerequisite, including missing and skipped result
   assert.equal(status(results), 1);
 });
 
-test('a PR touching only markdown, GitHub YAML, scripts or the chart runs the light jobs; anything else, or main, runs everything', () => {
-  for (const files of [['.github/workflows/release-labels.yml', 'scripts/release-labels.mjs'], ['README.md', 'docs/src/content/docs/index.md'], ['.github/dependabot.yml'], ['scripts/stdb-test.sh'], ['helper/scripts/x.mjs', 'mcp/scripts/smoke.mjs'], ['charts/draw/values.yaml']]) {
+test('a PR touching only markdown, GitHub YAML or scripts runs the light jobs; anything else, or main, runs everything', () => {
+  for (const files of [['.github/workflows/release-labels.yml', 'scripts/release-labels.mjs'], ['README.md', 'docs/src/content/docs/index.md'], ['.github/dependabot.yml'], ['scripts/stdb-test.sh'], ['helper/scripts/x.mjs', 'mcp/scripts/smoke.mjs']]) {
     assert.equal(needsFull(files), false, files.join(', '));
   }
   for (const files of [[], ['client/src/main.ts'], ['scripts/x.mjs', 'client/src/main.ts'], ['plugin/skills/draw/SKILL.md'], ['.github/actions/spacetime/action.yml'], ['docker/compose.yml'], ['pnpm-lock.yaml']]) {

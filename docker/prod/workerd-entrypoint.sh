@@ -8,6 +8,7 @@ set -eu
 . /app/runtime-config.sh
 guard_dev_auth
 app=${1:-}
+extra_networks >/dev/null # refuses a bad value here; in the pipeline below its exit would be lost
 networks="$({ own_networks; extra_networks; } | sed 's/.*/"&"/' | paste -sd, -)"
 [ -n "$networks" ] || die "this container is on no network."
 state() {
