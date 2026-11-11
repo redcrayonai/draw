@@ -34,6 +34,13 @@ own_networks() {
   done <"${1:-/proc/net/route}"
 }
 
+# extra_networks: WORKER_NETWORKS (comma- or space-separated CIDRs), one per line. For networks
+# the routing table does not show, such as a Kubernetes cluster's Service range (charts/draw).
+extra_networks() {
+  case "${WORKER_NETWORKS:-}" in *[!0-9A-Fa-f.:/,\ ]*) die "WORKER_NETWORKS may only hold CIDRs, e.g. 10.96.0.0/12." ;; esac
+  for cidr in $(echo "${WORKER_NETWORKS:-}" | tr , ' '); do echo "$cidr"; done
+}
+
 # role_networks: the link-local endpoints a Versions setup without keys gets its machine role from
 # (EC2 instance metadata, the ECS task role), one CIDR per line; nothing unless Versions is offered and
 # signs with the role (versionsConfigured in plugins/versions/server/versions.ts: blank is unset).

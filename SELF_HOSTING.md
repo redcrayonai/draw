@@ -84,6 +84,13 @@ This sets the server and the code-ref helper to the same local endpoint.
 Other MCP clients use the URL directly. For their code refs, run
 `REDCRAYON_MCP_URL=http://localhost:8788/mcp npx -y @redcrayonai/draw@1 capture`.
 
+## Kubernetes
+
+The Helm chart in [charts/draw](charts/draw/README.md) runs the production
+images on a cluster. Each release pushes it to
+`oci://ghcr.io/redcrayonai/charts/draw`. The docs site has the guide:
+[Kubernetes](https://docs.redcrayon.ai/self-host/kubernetes/).
+
 ## Upgrade and roll back
 
 For the prebuilt production stack, see

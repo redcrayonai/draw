@@ -7,7 +7,7 @@ name: compose-prod-smoke
 
 on:
   pull_request:
-    paths-ignore: ['docs/**', '**/*.md']
+    paths-ignore: ['docs/**', '**/*.md', 'charts/**']
   workflow_dispatch:
 
 permissions:

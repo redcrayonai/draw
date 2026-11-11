@@ -1,0 +1,36 @@
+{{- $name := include "draw.name" . -}}
+{{ include "draw.service" (list . "importer" 8788) }}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ $name }}-importer
+  labels: {{- include "draw.labels" . | nindent 4 }}
+spec:
+  replicas: 1
+  selector:
+    matchLabels: {{- include "draw.selector" (list . "importer") | nindent 6 }}
+  template:
+    metadata:
+      labels: {{- include "draw.selector" (list . "importer") | nindent 8 }}
+    spec:
+      {{- include "draw.podSpec" . | nindent 6 }}
+      containers:
+        - name: importer
+          image: {{ include "draw.image" (list . "importer") }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          env:
+            - { name: PORT, value: "8788" }
+            - { name: IMPORT_CALLBACK_URL, value: "http://{{ $name }}-dashboard:5174/api/imports/complete" }
+            - { name: REDCRAYON_LIMITS, value: {{ .Values.limits | quote }} }
+            - { name: IMPORT_MAX_REPO_MB, value: {{ .Values.importMaxRepoMb | quote }} }
+            {{- include "draw.secretEnv" (list . "IMPORT_RUNNER_SECRET" "import-runner-secret") | nindent 12 }}
+          ports: [{ name: http, containerPort: 8788 }]
+          readinessProbe:
+            tcpSocket: { port: 8788 }
+          volumeMounts: [{ name: tmp, mountPath: /tmp }]
+          resources: {{- toYaml .Values.importer.resources | nindent 12 }}
+      volumes:
+        # counts toward the memory limit, as the tmpfs in compose.prod.yml
+        - name: tmp
+          emptyDir: { medium: Memory, sizeLimit: {{ .Values.importer.tmpSize }} }

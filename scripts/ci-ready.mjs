@@ -15,11 +15,12 @@ export const fullJobs = [
 
 // Markdown (plugin/ ships its skill texts, so not there), .github and workflow YAML (not
 // .github/actions: composite steps the jobs run), and any scripts/ directory (scripts/ tests
-// run in workflow-checks; mcp/scripts/ is covered on main only).
-const light = file => /(?:^|\/)scripts\/|^\.github\/(?:workflows\/|ISSUE_TEMPLATE\/)?[^/]+\.ya?ml$/.test(file)
+// run in workflow-checks; mcp/scripts/ is covered on main only), and charts/ (helm-chart.yml
+// checks the chart; nothing else reads it).
+const light = file => /(?:^|\/)scripts\/|^charts\/|^\.github\/(?:workflows\/|ISSUE_TEMPLATE\/)?[^/]+\.ya?ml$/.test(file)
   || (file.endsWith('.md') && !file.startsWith('plugin/'));
 
-/** False when every changed file is markdown, GitHub YAML or a script. */
+/** False when every changed file is markdown, GitHub YAML, a script or the Helm chart. */
 export const needsFull = files => !files.length || !files.every(light);
 
 export const failedJobs = results => {

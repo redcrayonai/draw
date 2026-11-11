@@ -76,8 +76,9 @@ The Workers run unchanged on workerd (RC-607). The hosted-only parts:
   Content-Type, and a no-op cache, without which every dashboard request fails.
 - **The drain cron**: the `drain` service in `compose.prod.yml`.
 - **Network**: each Worker may reach the networks its container is on (read from
-  its routing table at start) and the public internet (the OIDC issuer), not
-  loopback or other private ranges.
+  its routing table at start), the networks in `WORKER_NETWORKS` (the Helm
+  chart sets the cluster's Service range) and the public internet (the OIDC
+  issuer), not loopback or other private ranges.
 - **Host**: the mcp Worker answers only when the Host header is `MCP_ORIGIN`'s
   host. Caddy passes it through.
 

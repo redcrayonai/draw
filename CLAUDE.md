@@ -21,6 +21,7 @@ server-side rules in the database module.
 | `e2e/` | Playwright browser journeys |
 | `scripts/` | Repo checks, module test harness, release helpers |
 | `docker/`, `docker-compose.yml`, `compose.prod.yml` | Self-host stack ([SELF_HOSTING.md](SELF_HOSTING.md)) |
+| `charts/draw/` | Helm chart for the self-host stack on Kubernetes, pushed to GHCR on `v*` tags |
 | `docs/` | Docs site only. Do not add design specs, plans or decision records here |
 
 Each package has its own `package.json` and lockfile; there is no workspace root.

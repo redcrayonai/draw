@@ -207,4 +207,5 @@ newer images. Other publish failures still stop setup.
 ## Next
 
 A full guide to the production stack, with TLS and real hostnames, is coming to
-these docs. Until then, start from `compose.prod.yml` and `.env.example`.
+these docs. Until then, start from `compose.prod.yml` and `.env.example`, or
+run the same stack on a cluster with the [Helm chart](/self-host/kubernetes/).

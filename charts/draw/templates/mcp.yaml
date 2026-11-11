@@ -1,0 +1,79 @@
+{{- $d := include "draw.domain" . -}}
+{{- include "draw.pvc" (list . "mcp" .Values.mcp.storage .Values.mcp.storageClass) }}
+---
+{{ include "draw.service" (list . "mcp" 8080) }}
+---
+# The MCP server keys its per-IP limits on Cf-Connecting-Ip (compose.prod.yml's
+# Caddy sets it). This proxy sets it from the ingress's X-Forwarded-For.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "draw.name" . }}-mcp-proxy
+  labels: {{- include "draw.labels" . | nindent 4 }}
+data:
+  Caddyfile: |
+    {
+      admin off
+      auto_https off
+      persist_config off
+      servers {
+        trusted_proxies static private_ranges
+        trusted_proxies_strict
+        client_ip_headers X-Forwarded-For
+      }
+    }
+    :8080 {
+      reverse_proxy 127.0.0.1:8788 {
+        header_up Cf-Connecting-Ip {client_ip}
+      }
+    }
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "draw.name" . }}-mcp
+  labels: {{- include "draw.labels" . | nindent 4 }}
+spec:
+  # One replica: rate limits are counted in the process, Durable Objects on its volume.
+  replicas: 1
+  strategy: { type: Recreate }
+  selector:
+    matchLabels: {{- include "draw.selector" (list . "mcp") | nindent 6 }}
+  template:
+    metadata:
+      labels: {{- include "draw.selector" (list . "mcp") | nindent 8 }}
+    spec:
+      {{- include "draw.podSpec" . | nindent 6 }}
+      securityContext: { fsGroup: 10001 }
+      containers:
+        - name: mcp
+          image: {{ include "draw.image" (list . "mcp") }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          env:
+            - { name: MCP_ORIGIN, value: "https://mcp.{{ $d }}" }
+            - { name: APP_ORIGIN, value: "https://{{ $d }}" }
+            # agents sign in where the browser does
+            - { name: OIDC_ISSUER, value: {{ ternary .Values.auth.oidcIssuer "" (eq .Values.auth.provider "oidc") | quote }} }
+            - { name: DB_URL, value: "http://{{ include "draw.name" . }}-database:3000" }
+            - { name: DB_NAME, value: redcrayon }
+            - { name: VERSION, value: {{ .Values.image.tag | default .Chart.AppVersion | quote }} }
+            - { name: WORKER_NETWORKS, value: {{ include "draw.workerNetworks" . | quote }} }
+            {{- include "draw.secretEnv" (list . "MCP_API_KEYS" "mcp-api-keys") | nindent 12 }}
+            {{- include "draw.stateEnv" (list . "AGENT_JWK" "agent-jwk.json") | nindent 12 }}
+          volumeMounts: [{ name: data, mountPath: /data }]
+          resources: {{- toYaml .Values.mcp.resources | nindent 12 }}
+        - name: proxy
+          image: {{ .Values.mcp.proxyImage }}
+          securityContext: { runAsUser: 65534, runAsGroup: 65534 }
+          env:
+            - { name: XDG_DATA_HOME, value: /tmp/caddy-data }
+            - { name: XDG_CONFIG_HOME, value: /tmp/caddy-config }
+          ports: [{ name: http, containerPort: 8080 }]
+          readinessProbe:
+            tcpSocket: { port: 8788 }
+          volumeMounts: [{ name: proxy, mountPath: /etc/caddy }]
+      volumes:
+        - name: data
+          persistentVolumeClaim: { claimName: {{ include "draw.name" . }}-mcp }
+        - name: proxy
+          configMap: { name: {{ include "draw.name" . }}-mcp-proxy }
