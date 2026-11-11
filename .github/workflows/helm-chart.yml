@@ -1,0 +1,45 @@
+# The Helm chart (charts/draw): lint, render with the common settings, check the
+# manifests against the Kubernetes API schemas, and package it as
+# release-images.yml does. ci.yml calls it; ci-ready requires it.
+
+name: helm-chart
+
+on:
+  workflow_call:
+
+permissions:
+  contents: read
+
+jobs:
+  helm-chart:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Lint
+        run: helm lint --strict charts/draw --set domain=draw.example.com --set 'workerNetworks={10.96.0.0/12}'
+
+      - name: Render and validate
+        run: |
+          set -- --set domain=draw.example.com --set 'workerNetworks={10.96.0.0/12}'
+          out="$RUNNER_TEMP/manifests"
+          mkdir -p "$out"
+          helm template draw charts/draw "$@" >"$out/anonymous.yaml"
+          helm template draw charts/draw "$@" --set auth.provider=oidc --set auth.oidcIssuer=https://id.example.com \
+            --set auth.oidcClientId=draw --set auth.requireAuth=true --set pluginSettings.EXAMPLE=1 \
+            --set versions.endpoint=https://s3.example.com --set versions.bucket=b --set versions.region=r \
+            --set 'imagePullSecrets[0].name=registry' >"$out/oidc.yaml"
+          docker run --rm -v "$out:/m:ro" ghcr.io/yannh/kubeconform:v0.7.0 -strict -summary /m
+
+      - name: Refuses incomplete settings
+        run: |
+          refuses() {
+            if out="$(helm template draw charts/draw "$@" 2>&1)"; then echo "rendered with: $*" >&2; exit 1; fi
+            echo "ok: refused $* ($(echo "$out" | grep -m1 Error))"
+          }
+          refuses --set 'workerNetworks={10.96.0.0/12}'
+          refuses --set domain=draw.example.com
+
+      - name: Package
+        run: helm package charts/draw --version 0.0.0-ci --app-version 0.0.0-ci -d "$RUNNER_TEMP/chart"

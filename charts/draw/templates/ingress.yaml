@@ -1,0 +1,44 @@
+{{- $d := include "draw.domain" . -}}
+{{- $name := include "draw.name" . -}}
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: {{ $name }}
+  labels: {{- include "draw.labels" . | nindent 4 }}
+  {{- with .Values.ingress.annotations }}
+  annotations: {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  {{- with .Values.ingress.className }}
+  ingressClassName: {{ . }}
+  {{- end }}
+  tls:
+    - hosts: [{{ $d | quote }}, "dash.{{ $d }}", "mcp.{{ $d }}"]
+      secretName: {{ .Values.ingress.tlsSecretName }}
+  rules:
+    - host: {{ $d | quote }}
+      http:
+        paths:
+          # The realtime socket: only the two routes browsers use. Publishing,
+          # SQL and other database calls over HTTP stay inside the cluster.
+          - path: /v1/database/redcrayon/subscribe
+            pathType: Exact
+            backend: { service: { name: {{ $name }}-database, port: { number: 3000 } } }
+          - path: /v1/identity/websocket-token
+            pathType: Exact
+            backend: { service: { name: {{ $name }}-database, port: { number: 3000 } } }
+          - path: /
+            pathType: Prefix
+            backend: { service: { name: {{ $name }}-canvas, port: { number: 8080 } } }
+    - host: "dash.{{ $d }}"
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend: { service: { name: {{ $name }}-dashboard, port: { number: 5174 } } }
+    - host: "mcp.{{ $d }}"
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend: { service: { name: {{ $name }}-mcp, port: { number: 8080 } } }

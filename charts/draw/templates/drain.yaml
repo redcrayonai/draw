@@ -1,0 +1,28 @@
+# Drains the dashboard's activity outbox into Postgres (the drain service in compose.prod.yml).
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: {{ include "draw.name" . }}-drain
+  labels: {{- include "draw.labels" . | nindent 4 }}
+spec:
+  schedule: {{ .Values.drain.schedule | quote }}
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 1
+  failedJobsHistoryLimit: 1
+  jobTemplate:
+    spec:
+      backoffLimit: 0
+      template:
+        spec:
+          automountServiceAccountToken: false
+          restartPolicy: Never
+          securityContext: { runAsUser: 10001 }
+          containers:
+            - name: drain
+              image: {{ .Values.drain.image }}
+              env:
+                {{- include "draw.stateEnv" (list . "TOKEN" "service-token") | nindent 16 }}
+              command: [sh, -c]
+              args:
+                - |
+                  curl -fsS -o /dev/null -X POST -H "authorization: Bearer $TOKEN" http://{{ include "draw.name" . }}-dashboard:5174/api/activity/drain

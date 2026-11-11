@@ -1,0 +1,106 @@
+# Settings for the draw chart (charts/draw/README.md). The same settings as
+# compose.prod.yml's .env (.env.example), under Kubernetes names.
+
+# Required. The canvas is served at https://DOMAIN, the dashboard at
+# https://dash.DOMAIN and the MCP server at https://mcp.DOMAIN.
+domain: ""
+
+# Required. The dashboard and MCP server reach other services only on networks listed
+# here, so set the cluster's Service range, e.g. ["10.96.0.0/12"]. Add the
+# address of an OIDC issuer that runs inside the cluster.
+workerNetworks: []
+
+image:
+  registry: ghcr.io/redcrayonai
+  # Defaults to the chart's appVersion. Builds with outside plugins: your tag.
+  tag: ""
+  pullPolicy: IfNotPresent
+imagePullSecrets: []
+
+# Sign-in. anonymous: no accounts. oidc: your OpenID Connect provider, with a
+# public client (PKCE, no secret) whose redirect URIs are https://DOMAIN/ and
+# https://dash.DOMAIN/.
+auth:
+  provider: anonymous
+  oidcIssuer: ""
+  oidcClientId: ""
+  # every page asks for sign-in first (oidc only)
+  requireAuth: false
+
+# Agent keys, comma-separated <sha256 hex of the key>:<user id> (.env.example).
+mcpApiKeys: ""
+# anonymous only: anyone who reaches the dashboard may import public repositories.
+importsAnonymous: false
+# REDCRAYON_LIMITS and IMPORT_MAX_REPO_MB (.env.example). Empty = none.
+limits: ""
+importMaxRepoMb: ""
+
+# Generated on install and kept on upgrade when empty. Letters, digits, - and _ only.
+secrets:
+  postgresPassword: ""
+  importRunnerSecret: ""
+
+# Versions plugin (optional, SELF_HOSTING.md). Set endpoint, bucket and region to offer it.
+versions:
+  endpoint: ""
+  bucket: ""
+  region: ""
+  accessKeyId: ""
+  secretAccessKey: ""
+
+# Settings of outside plugins (plugins.env in compose.prod.yml), NAME: value.
+# The canvas sends its plugin settings to every browser.
+pluginSettings: {}
+
+ingress:
+  className: ""
+  # e.g. cert-manager.io/cluster-issuer: letsencrypt. The database's realtime
+  # socket goes through it: give WebSockets a long read timeout.
+  annotations: {}
+  # The TLS secret for all three hosts; cert-manager fills it when annotated.
+  tlsSecretName: draw-tls
+
+database:
+  image: clockworklabs/spacetime:v2.8.1
+  storage: 10Gi
+  storageClass: ""
+  resources: {}
+
+postgres:
+  image: postgres:17
+  storage: 5Gi
+  storageClass: ""
+  resources: {}
+
+mcp:
+  # Durable Objects (usage counters, pending captures)
+  storage: 1Gi
+  storageClass: ""
+  resources: {}
+  # Sets the client address header the MCP server's per-IP limits read, from
+  # the ingress's X-Forwarded-For.
+  proxyImage: caddy:2.11.7-alpine
+
+dashboard:
+  resources: {}
+
+canvas:
+  resources: {}
+
+importer:
+  # Untrusted repositories are checked out under /tmp, a memory-backed volume:
+  # keep the memory limit a few GB above it.
+  tmpSize: 2Gi
+  resources:
+    requests:
+      memory: 512Mi
+    limits:
+      memory: 6Gi
+
+drain:
+  schedule: "*/5 * * * *"
+  image: curlimages/curl:8.23.0
+
+setup:
+  # The setup Job runs after install and before every upgrade.
+  activeDeadlineSeconds: 900

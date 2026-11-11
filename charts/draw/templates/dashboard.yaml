@@ -1,0 +1,44 @@
+{{- $name := include "draw.name" . -}}
+{{ include "draw.service" (list . "dashboard" 5174) }}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ $name }}-dashboard
+  labels: {{- include "draw.labels" . | nindent 4 }}
+spec:
+  replicas: 1
+  selector:
+    matchLabels: {{- include "draw.selector" (list . "dashboard") | nindent 6 }}
+  template:
+    metadata:
+      labels: {{- include "draw.selector" (list . "dashboard") | nindent 8 }}
+    spec:
+      {{- include "draw.podSpec" . | nindent 6 }}
+      containers:
+        - name: dashboard
+          image: {{ include "draw.image" (list . "dashboard") }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          env:
+            {{- include "draw.pluginEnv" . | nindent 12 }}
+            {{- include "draw.authEnv" . | nindent 12 }}
+            {{- include "draw.browserEnv" . | nindent 12 }}
+            - { name: SPACETIMEDB_URL, value: "http://{{ $name }}-database:3000" }
+            - { name: SPACETIMEDB_DB, value: redcrayon }
+            - { name: POSTGRES_HOST, value: "{{ $name }}-postgres" }
+            - { name: IMPORT_RUNNER_URL, value: "http://{{ $name }}-importer:8788" }
+            - { name: IMPORT_CALLBACK_URL, value: "http://{{ $name }}-dashboard:5174/api/imports/complete" }
+            - { name: IMPORTS_ANONYMOUS, value: {{ ternary "1" "" .Values.importsAnonymous | quote }} }
+            - { name: WORKER_NETWORKS, value: {{ include "draw.workerNetworks" . | quote }} }
+            - { name: VERSIONS_S3_ENDPOINT, value: {{ .Values.versions.endpoint | quote }} }
+            - { name: VERSIONS_S3_BUCKET, value: {{ .Values.versions.bucket | quote }} }
+            - { name: VERSIONS_S3_REGION, value: {{ .Values.versions.region | quote }} }
+            {{- include "draw.secretEnv" (list . "VERSIONS_S3_ACCESS_KEY_ID" "versions-access-key-id") | nindent 12 }}
+            {{- include "draw.secretEnv" (list . "VERSIONS_S3_SECRET_ACCESS_KEY" "versions-secret-access-key") | nindent 12 }}
+            {{- include "draw.secretEnv" (list . "POSTGRES_PASSWORD" "postgres-password") | nindent 12 }}
+            {{- include "draw.secretEnv" (list . "IMPORT_RUNNER_SECRET" "import-runner-secret") | nindent 12 }}
+            {{- include "draw.stateEnv" (list . "SPACETIMEDB_SERVICE_TOKEN" "service-token") | nindent 12 }}
+          ports: [{ name: http, containerPort: 5174 }]
+          readinessProbe:
+            tcpSocket: { port: 5174 }
+          resources: {{- toYaml .Values.dashboard.resources | nindent 12 }}

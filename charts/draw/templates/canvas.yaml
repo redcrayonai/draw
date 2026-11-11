@@ -1,0 +1,28 @@
+{{ include "draw.service" (list . "canvas" 8080) }}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "draw.name" . }}-canvas
+  labels: {{- include "draw.labels" . | nindent 4 }}
+spec:
+  replicas: 1
+  selector:
+    matchLabels: {{- include "draw.selector" (list . "canvas") | nindent 6 }}
+  template:
+    metadata:
+      labels: {{- include "draw.selector" (list . "canvas") | nindent 8 }}
+    spec:
+      {{- include "draw.podSpec" . | nindent 6 }}
+      containers:
+        - name: canvas
+          image: {{ include "draw.image" (list . "canvas") }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          env:
+            {{- include "draw.pluginEnv" . | nindent 12 }}
+            {{- include "draw.authEnv" . | nindent 12 }}
+            {{- include "draw.browserEnv" . | nindent 12 }}
+          ports: [{ name: http, containerPort: 8080 }]
+          readinessProbe:
+            httpGet: { path: /, port: 8080 }
+          resources: {{- toYaml .Values.canvas.resources | nindent 12 }}

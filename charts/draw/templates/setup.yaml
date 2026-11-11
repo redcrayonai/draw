@@ -1,0 +1,106 @@
+{{- $name := include "draw.name" . -}}
+# The setup Job (compose.prod.yml's module-setup): Postgres migrations, the
+# module published as an update, service identities, the Demo board. It runs
+# after install and before every upgrade, so a new module is live before the
+# apps that read it. What it generates - the agent signing key, the dashboard's
+# service token and the identity that owns the database - it keeps in the
+# Secret <release>-state, which uninstall leaves in place: back it up.
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: {{ $name }}-setup
+  labels: {{- include "draw.labels" . | nindent 4 }}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: {{ $name }}-setup
+  labels: {{- include "draw.labels" . | nindent 4 }}
+rules:
+  - apiGroups: [""]
+    resources: [secrets]
+    resourceNames: [{{ $name }}-state]
+    verbs: [get, update]
+  # create cannot be limited to one name
+  - apiGroups: [""]
+    resources: [secrets]
+    verbs: [create]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: {{ $name }}-setup
+  labels: {{- include "draw.labels" . | nindent 4 }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: {{ $name }}-setup
+subjects:
+  - kind: ServiceAccount
+    name: {{ $name }}-setup
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: {{ $name }}-setup
+  labels: {{- include "draw.labels" . | nindent 4 }}
+  annotations:
+    helm.sh/hook: post-install,pre-upgrade
+    helm.sh/hook-delete-policy: before-hook-creation
+spec:
+  backoffLimit: 3
+  activeDeadlineSeconds: {{ .Values.setup.activeDeadlineSeconds }}
+  template:
+    metadata:
+      labels: {{- include "draw.selector" (list . "setup") | nindent 8 }}
+    spec:
+      serviceAccountName: {{ $name }}-setup
+      restartPolicy: Never
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets: {{- toYaml . | nindent 8 }}
+      {{- end }}
+      containers:
+        - name: setup
+          image: {{ include "draw.image" (list . "module-setup") }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          env:
+            {{- include "draw.authEnv" . | nindent 12 }}
+            - { name: DOMAIN, value: {{ include "draw.domain" . | quote }} }
+            - { name: SPACETIME_DB, value: redcrayon }
+            - { name: SPACETIMEDB_URL, value: "http://{{ $name }}-database:3000" }
+            - { name: POSTGRES_HOST, value: "{{ $name }}-postgres" }
+            - { name: REDCRAYON_LIMITS, value: {{ .Values.limits | quote }} }
+            - { name: STATE_SECRET, value: "{{ $name }}-state" }
+            {{- include "draw.secretEnv" (list . "POSTGRES_PASSWORD" "postgres-password") | nindent 12 }}
+          command: [bash, -c]
+          args:
+            - |
+              set -euo pipefail
+              until curl -sf -o /dev/null "$SPACETIMEDB_URL/v1/ping"; do echo "setup: waiting for the database"; sleep 2; done
+              # what an earlier run kept
+              mkdir -p /root/.config/spacetime
+              [ ! -s /prev/cli.toml ] || cp /prev/cli.toml /root/.config/spacetime/cli.toml
+              for f in agent-jwk.json service-token; do
+                [ ! -s "/prev/$f" ] || install -m 0400 -o 10001 -g 10001 "/prev/$f" "/state/$f"
+              done
+              /app/docker/prod/module-setup.sh
+              sa=/var/run/secrets/kubernetes.io/serviceaccount
+              body="$(node -e '
+                const fs = require("fs");
+                const files = { "agent-jwk.json": "/state/agent-jwk.json", "service-token": "/state/service-token", "cli.toml": "/root/.config/spacetime/cli.toml" };
+                const data = Object.fromEntries(Object.entries(files).map(([k, f]) => [k, fs.readFileSync(f).toString("base64")]));
+                console.log(JSON.stringify({ apiVersion: "v1", kind: "Secret", type: "Opaque", metadata: { name: process.env.STATE_SECRET }, data }));
+              ')"
+              api="https://kubernetes.default.svc/api/v1/namespaces/$(cat $sa/namespace)/secrets"
+              k() { curl -sS -o /dev/null -w '%{http_code}' --cacert $sa/ca.crt -H "Authorization: Bearer $(cat $sa/token)" -H 'Content-Type: application/json' -d "$body" "$@"; }
+              code="$(k -X PUT "$api/$STATE_SECRET")"
+              [ "$code" != 404 ] || code="$(k -X POST "$api")"
+              case "$code" in 200 | 201) echo "setup: kept generated state in Secret $STATE_SECRET" ;; *) echo "setup: saving Secret $STATE_SECRET answered $code" >&2; exit 1 ;; esac
+          volumeMounts:
+            - { name: state, mountPath: /state }
+            - { name: prev, mountPath: /prev, readOnly: true }
+      volumes:
+        - name: state
+          emptyDir: {}
+        - name: prev
+          secret: { secretName: {{ $name }}-state, optional: true }

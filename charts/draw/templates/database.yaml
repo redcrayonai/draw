@@ -1,0 +1,33 @@
+{{- include "draw.pvc" (list . "database" .Values.database.storage .Values.database.storageClass) }}
+---
+{{ include "draw.service" (list . "database" 3000) }}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "draw.name" . }}-database
+  labels: {{- include "draw.labels" . | nindent 4 }}
+spec:
+  replicas: 1
+  strategy: { type: Recreate }
+  selector:
+    matchLabels: {{- include "draw.selector" (list . "database") | nindent 6 }}
+  template:
+    metadata:
+      labels: {{- include "draw.selector" (list . "database") | nindent 8 }}
+    spec:
+      automountServiceAccountToken: false
+      # the image's user; the volume must be theirs
+      securityContext: { runAsUser: 1000, runAsGroup: 1000, fsGroup: 1000 }
+      containers:
+        - name: database
+          image: {{ .Values.database.image }}
+          args: [start, --listen-addr, "0.0.0.0:3000", --non-interactive]
+          ports: [{ name: http, containerPort: 3000 }]
+          readinessProbe:
+            httpGet: { path: /v1/ping, port: 3000 }
+          volumeMounts: [{ name: data, mountPath: /home/spacetime }]
+          resources: {{- toYaml .Values.database.resources | nindent 12 }}
+      volumes:
+        - name: data
+          persistentVolumeClaim: { claimName: {{ include "draw.name" . }}-database }

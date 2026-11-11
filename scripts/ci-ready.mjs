@@ -4,13 +4,13 @@ import { pathToFileURL } from 'node:url';
 export const requiredJobs = [
   'workflow-checks', 'bindings-check', 'test-node', 'session-flows',
   'build-client', 'build-web', 'module-tests', 'secret-scan', 'security-scan', 'e2e',
-  'compose-smoke',
+  'compose-smoke', 'helm-chart',
 ];
 
 /** The jobs a docs, GitHub config or scripts-only PR skips; workflow-checks and secret-scan always run, main runs everything. */
 export const fullJobs = [
   'bindings-check', 'test-node', 'session-flows', 'build-client', 'build-web',
-  'module-tests', 'security-scan', 'e2e', 'compose-smoke',
+  'module-tests', 'security-scan', 'e2e', 'compose-smoke', 'helm-chart',
 ];
 
 // Markdown (plugin/ ships its skill texts, so not there), .github and workflow YAML (not

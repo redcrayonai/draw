@@ -1,0 +1,35 @@
+{{- include "draw.pvc" (list . "postgres" .Values.postgres.storage .Values.postgres.storageClass) }}
+---
+{{ include "draw.service" (list . "postgres" 5432) }}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "draw.name" . }}-postgres
+  labels: {{- include "draw.labels" . | nindent 4 }}
+spec:
+  replicas: 1
+  strategy: { type: Recreate }
+  selector:
+    matchLabels: {{- include "draw.selector" (list . "postgres") | nindent 6 }}
+  template:
+    metadata:
+      labels: {{- include "draw.selector" (list . "postgres") | nindent 8 }}
+    spec:
+      automountServiceAccountToken: false
+      containers:
+        - name: postgres
+          image: {{ .Values.postgres.image }}
+          env:
+            {{- include "draw.secretEnv" (list . "POSTGRES_PASSWORD" "postgres-password") | nindent 12 }}
+            - { name: POSTGRES_DB, value: redcrayon }
+            # a subdirectory: a fresh volume's root may hold lost+found
+            - { name: PGDATA, value: /var/lib/postgresql/data/pgdata }
+          ports: [{ name: http, containerPort: 5432 }]
+          readinessProbe:
+            exec: { command: [pg_isready, -U, postgres, -d, redcrayon] }
+          volumeMounts: [{ name: data, mountPath: /var/lib/postgresql/data }]
+          resources: {{- toYaml .Values.postgres.resources | nindent 12 }}
+      volumes:
+        - name: data
+          persistentVolumeClaim: { claimName: {{ include "draw.name" . }}-postgres }

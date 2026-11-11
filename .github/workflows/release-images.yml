@@ -6,7 +6,9 @@
 #   2. pushes ghcr.io/redcrayonai/redcrayon-{canvas,dashboard,mcp,module-setup,importer}:<version>
 #      for both platforms, and ghcr.io/redcrayonai/draw-builder:<version> (outside plugins)
 #      for linux/amd64. The JavaScript builds run once, on the runner's
-#      platform; arm64 only adds binaries and copies files (under QEMU).
+#      platform; arm64 only adds binaries and copies files (under QEMU);
+#   3. pushes the Helm chart (charts/draw) as oci://ghcr.io/redcrayonai/charts/draw:<version>,
+#      chart and app version both <version>.
 #
 # Packages pushed from a private repo start private: make each public once.
 
@@ -90,3 +92,12 @@ jobs:
           set: |
             builder.platform=linux/amd64
             *.cache-from=type=gha
+
+      - name: Push the Helm chart
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          ACTOR: ${{ github.actor }}
+        run: |
+          helm package charts/draw --version "$TAG" --app-version "$TAG" -d "$RUNNER_TEMP/chart"
+          printf %s "$GH_TOKEN" | helm registry login ghcr.io -u "$ACTOR" --password-stdin
+          helm push "$RUNNER_TEMP/chart/draw-$TAG.tgz" oci://ghcr.io/redcrayonai/charts

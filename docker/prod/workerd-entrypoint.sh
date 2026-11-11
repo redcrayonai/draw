@@ -8,7 +8,8 @@ set -eu
 . /app/runtime-config.sh
 guard_dev_auth
 app=${1:-}
-networks="$(own_networks | sed 's/.*/"&"/' | paste -sd, -)"
+extra_networks >/dev/null # refuses a bad value here; in the pipeline below its exit would be lost
+networks="$({ own_networks; extra_networks; } | sed 's/.*/"&"/' | paste -sd, -)"
 [ -n "$networks" ] || die "this container is on no network."
 state() {
   [ -r "/state/$1" ] || die "/state/$1 is missing: module-setup writes it (compose.prod.yml runs it first)."

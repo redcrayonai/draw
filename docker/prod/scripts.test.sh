@@ -46,6 +46,12 @@ printf 'Iface\tDestination\tGateway\tFlags\tRefCnt\tUse\tMetric\tMask\tMTU\tWind
 [ "$(sh -c '. ./runtime-config.sh; own_networks "$1"' _ "$tmp/route" | paste -sd, -)" = '172.17.0.0/16,192.168.8.0/20' ] &&
   ok 'own_networks reads the routing table' || bad 'own_networks reads the routing table'
 
+extras() { env -i "$@" sh -c '. ./guard.sh; . ./runtime-config.sh; extra_networks' | paste -sd, -; }
+[ "$(extras 'WORKER_NETWORKS=10.96.0.0/12, fd00:10:96::/108')" = '10.96.0.0/12,fd00:10:96::/108' ] &&
+  ok 'extra_networks reads WORKER_NETWORKS' || bad 'extra_networks reads WORKER_NETWORKS'
+[ -z "$(extras)" ] && ok 'extra_networks: none by default' || bad 'extra_networks: none by default'
+if env -i 'WORKER_NETWORKS=10.0.0.0/8"]);' sh -c '. ./guard.sh; . ./runtime-config.sh; extra_networks' >/dev/null 2>&1; then bad 'extra_networks refuses a quote'; else ok 'extra_networks refuses a quote'; fi
+
 roles() { env -i "$@" sh -c '. ./runtime-config.sh; role_networks' | paste -sd, -; }
 storage='VERSIONS_S3_ENDPOINT=https://s3.example.com VERSIONS_S3_BUCKET=b VERSIONS_S3_REGION=r'
 [ "$(roles $storage)" = '169.254.169.254/32,169.254.170.2/32' ] &&

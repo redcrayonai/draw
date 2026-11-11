@@ -1,0 +1,9 @@
+apiVersion: v2
+name: draw
+description: Self-host draw on Kubernetes - canvas, dashboard, MCP server, database and import runner.
+type: application
+# The release workflow (release-images.yml) sets both to the release, e.g. 0.4.0.
+version: 0.0.0-dev
+appVersion: dev
+home: https://github.com/redcrayonai/draw
+sources: [https://github.com/redcrayonai/draw]
