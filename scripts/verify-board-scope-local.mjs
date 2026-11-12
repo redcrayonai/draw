@@ -109,7 +109,7 @@ const settle = () => new Promise(resolve => setTimeout(resolve, 300));
 // disconnected ones) still run, and those of a sender that opened no board read
 // every public board. The viewers subscribe to the board tables RC-605 scoped;
 // the board list (visible_board, my_boards) still reads every public board.
-test('update_cursor does not read every public board: 10,000 public_board rows cost it nothing', async t => {
+test('update_cursor does not read every public board: 50,000 public_board rows cost it nothing', async t => {
   const mover = await mint();
   const B = await board(mover, { isPublic: true });
   const viewers = [];
@@ -128,13 +128,20 @@ test('update_cursor does not read every public board: 10,000 public_board rows c
   try {
     await median(); // warm up
     const before = await median();
-    for (let start = 0; start < 10_000; start += 500) {
+    // Enough rows to expose a scan even when the runner's network/scheduling overhead is several ms.
+    for (let start = 0; start < 50_000; start += 500) {
       await sql(operator, `INSERT INTO public_board (board_id) VALUES ${Array.from({ length: 500 }, (_, i) => `(${FAKE + start + i})`).join(', ')}`);
     }
+    await median(); // warm the populated case after the fixture writes, just like the baseline
     const after = await median();
-    t.diagnostic(`update_cursor median with 5 viewers: ${before.toFixed(2)} ms, then ${after.toFixed(2)} ms at 10,000 public boards`);
-    // Before RC-605 the reducer and every viewer's views read all of public_board: about 16 ms here.
-    assert.ok(after < before * 2 + 4, `update_cursor slowed from ${before.toFixed(2)} ms to ${after.toFixed(2)} ms`);
+    await sql(operator, `DELETE FROM public_board WHERE board_id >= ${FAKE}`);
+    await median();
+    const recovered = await median();
+    // Bracket the loaded sample so a change in runner speed is not attributed to the extra boards.
+    const baseline = (before + recovered) / 2;
+    t.diagnostic(`update_cursor median with 5 viewers: ${before.toFixed(2)} ms before, ${after.toFixed(2)} ms at 50,000 public boards, ${recovered.toFixed(2)} ms after cleanup`);
+    // Before RC-605 the reducer and every viewer's views read all of public_board.
+    assert.ok(after < baseline * 2 + 4, `update_cursor slowed from ${baseline.toFixed(2)} ms to ${after.toFixed(2)} ms`);
   } finally {
     await sql(operator, `DELETE FROM public_board WHERE board_id >= ${FAKE}`);
     for (const conn of [...viewers, tab]) conn.disconnect();
