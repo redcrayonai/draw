@@ -3,7 +3,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { renderTellingBar, type TellingBarModel } from './telling-bar';
 
 const model = (over: Partial<TellingBarModel> = {}): TellingBarModel => ({
-  audiences: ['Everyone'], active: 0, at: 3, count: 5,
+  audiences: ['Everyone'], active: 0, at: 2, count: 5,
   title: 'Request arrives', body: 'The gateway checks the token.', source: 'CLAUDE.md',
   playing: false, reduced: false,
   onPlay: vi.fn(), onPause: vi.fn(), onReplay: vi.fn(), onNext: vi.fn(), onBack: vi.fn(), onAudience: vi.fn(), onExit: vi.fn(),
@@ -74,7 +74,7 @@ describe('renderTellingBar', () => {
   });
 
   it('disables Back at step 1 and Play when motion is reduced', () => {
-    renderTellingBar(el, model({ at: 1, reduced: true }));
+    renderTellingBar(el, model({ at: 0, reduced: true }));
     expect(btn(el, 'Back')!.disabled).toBe(true);
     const play = btn(el, 'Play')!;
     expect(play.disabled).toBe(true);
@@ -89,23 +89,23 @@ describe('renderTellingBar', () => {
   });
 
   it('moves focus to Replay when Next is disabled by reaching the ending', () => {
-    renderTellingBar(el, model({ at: 4 }));
+    renderTellingBar(el, model({ at: 3 }));
     btn(el, 'Next')!.focus();
     renderTellingBar(el, model({ at: 5 }));
     expect(document.activeElement).toBe(btn(el, 'Replay'));
   });
 
   it('moves focus to the main button when Back is disabled at step 1', () => {
-    renderTellingBar(el, model({ at: 2 }));
-    btn(el, 'Back')!.focus();
     renderTellingBar(el, model({ at: 1 }));
+    btn(el, 'Back')!.focus();
+    renderTellingBar(el, model({ at: 0 }));
     expect(document.activeElement).toBe(btn(el, 'Play'));
   });
 
   it('moves focus to Exit when the main button is disabled too', () => {
-    renderTellingBar(el, model({ at: 2, reduced: true }));
-    btn(el, 'Back')!.focus();
     renderTellingBar(el, model({ at: 1, reduced: true }));
+    btn(el, 'Back')!.focus();
+    renderTellingBar(el, model({ at: 0, reduced: true }));
     expect(document.activeElement).toBe(btn(el, 'Exit'));
   });
 
@@ -114,6 +114,15 @@ describe('renderTellingBar', () => {
     btn(el, 'Pause')!.focus();
     renderTellingBar(el, model({ playing: false, reduced: true }));
     expect(document.activeElement).toBe(btn(el, 'Exit'));
+  });
+
+  it('counts steps from zero: the first and last steps', () => {
+    renderTellingBar(el, model({ at: 0 }));
+    expect(el.querySelector('.telling-count')!.textContent).toBe('1 of 5');
+    renderTellingBar(el, model({ at: 4, count: 5 }));
+    expect(el.querySelector('.telling-count')!.textContent).toBe('5 of 5');
+    expect(btn(el, 'Next')!.disabled).toBe(false);
+    expect(btn(el, 'Replay')).toBeUndefined();
   });
 
   it('fills progress through at', () => {
@@ -128,7 +137,7 @@ describe('renderTellingBar', () => {
     renderTellingBar(el, m);
     const live = el.querySelector('[aria-live]');
     renderTellingBar(el, m);
-    renderTellingBar(el, model({ title: '<b>x</b>', at: 4 }));
+    renderTellingBar(el, model({ title: '<b>x</b>', at: 3 }));
     expect(el.querySelector('[aria-live]')).toBe(live);
     expect(live!.querySelector('b')).toBeNull();
   });

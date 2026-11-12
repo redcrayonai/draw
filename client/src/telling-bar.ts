@@ -2,7 +2,7 @@
 // and calls its handlers. Repaints only what changed so the live region does not re-announce.
 export interface TellingBarModel {
   audiences: string[]; active: number;       // the switch; hidden when there is one audience
-  at: number; count: number;                 // at === count is the ending
+  at: number; count: number;                 // zero-based: 0..count-1 is a step, at === count is the ending
   title: string; body: string; source: string;
   playing: boolean; reduced: boolean;
   onPlay(): void; onPause(): void; onReplay(): void; onNext(): void; onBack(): void; onAudience(i: number): void; onExit(): void;
@@ -78,9 +78,9 @@ export function renderTellingBar(root: HTMLElement, m: TellingBarModel | null): 
   const heldMain = focused === p.main;
 
   const ending = m.at >= m.count;
-  p.back.disabled = m.at <= 1;
+  p.back.disabled = m.at <= 0;
   p.next.disabled = ending;
-  set(p.count, 'textContent', ending ? '' : `${m.at} of ${m.count}`);
+  set(p.count, 'textContent', ending ? '' : `${m.at + 1} of ${m.count}`);
 
   // Exactly one of Play / Pause / Replay; focus follows a swapped control.
   const want: Act = ending ? 'replay' : m.playing ? 'pause' : 'play';
@@ -129,7 +129,7 @@ export function renderTellingBar(root: HTMLElement, m: TellingBarModel | null): 
     p.segments = m.count;
     p.progress.replaceChildren(...Array.from({ length: m.count }, () => el('span', '')));
   }
-  [...p.progress.children].forEach((s, i) => s.classList.toggle('done', i < m.at));
+  [...p.progress.children].forEach((s, i) => s.classList.toggle('done', i <= m.at));
 
   // One focus rule, after every disabled flag is set: a control that held focus and is now detached or
   // disabled hands it to the main button, else Exit, so keyboard users never drop to <body>.
