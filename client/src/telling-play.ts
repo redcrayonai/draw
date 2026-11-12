@@ -54,12 +54,12 @@ export function createTellingPlayer(deps: TellingPlayerDeps): TellingPlayer {
     at = i;
     const view = stepView(t!, i, deps.liveNodes());
     deps.setView(view);
+    paintBar(); // before fly: the camera frames the step clear of the bar
     if (view.frame.length > 0) deps.fly(view.frame);
     const on = new Set([...view.lit, ...view.seen]);
     const fresh = deps.edges().filter(e => !shown.has(e.id) && on.has(e.fromNode) && on.has(e.toNode)).map(e => e.id);
     for (const id of fresh) shown.add(id);
     if (fresh.length > 0) deps.drawIn(fresh);
-    paintBar();
   };
 
   const start = (i: number, autoplay: boolean) => {
@@ -142,6 +142,21 @@ export function createTellingPlayer(deps: TellingPlayerDeps): TellingPlayer {
     setBlocked(blocked) { clock?.setBlocked(blocked); },
     get isOpen() { return t !== null; },
   };
+}
+
+/**
+ * Where a keydown goes while the canvas is up: 'player' tries player.key, 'stop' keeps Space/Enter
+ * on a walk-through bar button (its own click, and the editor never sees it), 'pass' leaves it alone.
+ */
+export function tellingKeyRoute(
+  e: Pick<KeyboardEvent, 'key' | 'metaKey' | 'ctrlKey' | 'altKey' | 'target'>,
+  open: boolean,
+): 'player' | 'stop' | 'pass' {
+  if (!open || e.metaKey || e.ctrlKey || e.altKey) return 'pass';
+  const target = e.target instanceof Element ? e.target : null;
+  if (target?.closest('input, textarea, select, [contenteditable="true"]')) return 'pass';
+  if ((e.key === ' ' || e.key === 'Enter') && target?.closest('button')) return target.closest('#telling-bar') ? 'stop' : 'pass';
+  return 'player';
 }
 
 /** Stroke draw-on for newly shown edges, like the crayon's draw-in; leaves no inline style behind. */

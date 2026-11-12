@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { createTellingPlayer, type TellingPlayerDeps } from './telling-play';
+import { createTellingPlayer, tellingKeyRoute, type TellingPlayerDeps } from './telling-play';
 import { stepMs, tellingMs, type StepView, type Telling } from './telling';
 import type { TellingBarModel } from './telling-bar';
 
@@ -16,20 +16,21 @@ function setup(over: Partial<TellingPlayerDeps> = {}) {
   const bars: (TellingBarModel | null)[] = [];
   const flown: bigint[][] = [];
   const drawn: bigint[][] = [];
+  const log: string[] = [];
   const state = { tellings: [devs, ops], reduced: false };
   const player = createTellingPlayer({
     tellings: () => state.tellings,
     liveNodes: () => new Set([1n, 2n, 3n, 4n]),
-    setView: v => views.push(v),
-    fly: ids => flown.push(ids),
-    drawIn: ids => drawn.push(ids),
-    paintBar: m => bars.push(m),
+    setView: v => { log.push('setView'); views.push(v); },
+    fly: ids => { log.push('fly'); flown.push(ids); },
+    drawIn: ids => { log.push('drawIn'); drawn.push(ids); },
+    paintBar: m => { log.push('paintBar'); bars.push(m); },
     edges: () => [{ id: 10n, fromNode: 1n, toNode: 2n }, { id: 11n, fromNode: 2n, toNode: 3n }, { id: 12n, fromNode: 1n, toNode: 4n }],
     reduced: () => state.reduced,
     ...over,
   });
   const bar = () => bars[bars.length - 1];
-  return { player, views, bars, flown, drawn, state, bar };
+  return { player, views, bars, flown, drawn, state, bar, log };
 }
 
 const key = (k: string) => ({ key: k }) as KeyboardEvent;
@@ -55,11 +56,14 @@ describe('telling player', () => {
   });
 
   it('advances on the clock and draws in exactly the edges whose ends are now shown', () => {
-    const { player, drawn, bar } = setup();
+    const { player, drawn, bar, log } = setup();
     player.open();
+    expect(log.indexOf('paintBar')).toBeLessThan(log.indexOf('fly')); // the bar is up before the camera frames step 1
+    log.length = 0;
     tick(stepMs(devs.steps[0]));
     expect(bar()).toMatchObject({ at: 1, title: 'Service' });
     expect(drawn).toEqual([[10n]]);
+    expect(log).toEqual(['setView', 'paintBar', 'fly', 'drawIn']);
   });
 
   it('goes back without drawing again, and forward again without redrawing', () => {
@@ -157,5 +161,26 @@ describe('telling player', () => {
     expect(bar()).toMatchObject({ at: 0, playing: true });
     tick(stepMs(devs.steps[0]));
     expect(drawn).toEqual([[10n]]); // replay draws edges in again
+  });
+});
+
+describe('walk-through key routing', () => {
+  const ev = (target: Element, key = ' ') => ({ key, metaKey: false, ctrlKey: false, altKey: false, target });
+  beforeEach(() => {
+    document.body.innerHTML = '<div id="telling-bar"><button id="bar-btn">Pause</button></div><button id="other">Export</button><input id="field"><div id="canvas"></div>';
+  });
+  const $ = (id: string) => document.getElementById(id)!;
+
+  it('leaves typing alone', () => expect(tellingKeyRoute(ev($('field')), true)).toBe('pass'));
+  it('keeps Space and Enter on a bar button, but routes its arrows', () => {
+    expect(tellingKeyRoute(ev($('bar-btn')), true)).toBe('stop');
+    expect(tellingKeyRoute(ev($('bar-btn'), 'Enter'), true)).toBe('stop');
+    expect(tellingKeyRoute(ev($('bar-btn'), 'ArrowRight'), true)).toBe('player');
+  });
+  it('does not touch Space on a button outside the bar', () => expect(tellingKeyRoute(ev($('other')), true)).toBe('pass'));
+  it('routes Space elsewhere to the player, only while open and without modifiers', () => {
+    expect(tellingKeyRoute(ev($('canvas')), true)).toBe('player');
+    expect(tellingKeyRoute(ev($('canvas')), false)).toBe('pass');
+    expect(tellingKeyRoute({ ...ev($('canvas'), 'k'), metaKey: true }, true)).toBe('pass');
   });
 });

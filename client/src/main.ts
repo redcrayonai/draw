@@ -103,7 +103,7 @@ import { ACTION_LABELS, openBranchCreate, openBranchReview, type ChangeRow } fro
 import { playRoute, reducedMotion, routeLegs } from './route-play';
 import { readTellings, type StepView, type Telling } from './telling';
 import { renderTellingBar } from './telling-bar';
-import { createTellingPlayer, drawEdgesIn } from './telling-play';
+import { createTellingPlayer, drawEdgesIn, tellingKeyRoute } from './telling-play';
 import { mountCrayon } from './crayon';
 import { listening, setupReview } from './review-panel';
 import { playTrace } from './trace-play';
@@ -736,14 +736,11 @@ async function boot(conn: DbConnection, identityHex: string, signedIn: boolean):
       });
       tellButton.addEventListener('click', () => player.open());
       document.addEventListener('visibilitychange', () => player.setBlocked(document.hidden));
-      // Capture phase, ahead of the editor's Space-pan and Esc; only while open, never with a modifier
-      // or while typing. A focused button keeps Space and Enter for its own click.
+      // Capture phase, ahead of the editor's Space-pan and Esc (tellingKeyRoute decides).
       document.addEventListener('keydown', evt => {
-        if (!player.isOpen || evt.metaKey || evt.ctrlKey || evt.altKey) return;
-        const target = evt.target instanceof Element ? evt.target : null;
-        if (target?.closest('input, textarea, select, [contenteditable="true"]')) return;
-        if (target?.closest('button') && (evt.key === ' ' || evt.key === 'Enter')) return;
-        if (player.key(evt)) {
+        const route = tellingKeyRoute(evt, player.isOpen);
+        if (route === 'stop') evt.stopPropagation(); // the bar button's native activation still fires
+        else if (route === 'player' && player.key(evt)) {
           evt.preventDefault();
           evt.stopPropagation();
         }
