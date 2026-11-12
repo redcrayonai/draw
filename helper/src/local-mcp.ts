@@ -1,7 +1,7 @@
 import { readFileSync, realpathSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { once } from 'node:events';
-import { localDirectory } from './local-cli';
+import { localDirectory } from './local-path';
 import { localLines } from './local-lines';
 
 const str = { type: 'string' };
@@ -28,8 +28,8 @@ export function localEndpoint(args: string[]) {
   if (url.protocol !== 'http:' || url.hostname !== '127.0.0.1' || url.origin !== endpoint.origin || !/^[a-f0-9]{64}$/.test(endpoint.token) || endpoint.repo !== repo) throw new Error('REJECTED: invalid local endpoint; restart the board server');
   return endpoint as { origin: string; token: string };
 }
-export async function localCall(endpoint: { origin: string; token: string }, input: unknown) {
-  const response = await fetch(`${endpoint.origin}/api/call`, { method: 'POST', headers: { Authorization: `Bearer ${endpoint.token}`, 'Content-Type': 'application/json' }, body: JSON.stringify(input), signal: AbortSignal.timeout(30000), redirect: 'error' });
+export async function localCall(endpoint: { origin: string; token: string }, input: unknown, signal = AbortSignal.timeout(30000)) {
+  const response = await fetch(`${endpoint.origin}/api/call`, { method: 'POST', headers: { Authorization: `Bearer ${endpoint.token}`, 'Content-Type': 'application/json' }, body: JSON.stringify(input), signal, redirect: 'error' });
   const result = await response.json() as any;
   if (!response.ok) throw new Error(result.error ?? 'UNAVAILABLE: local request failed');
   return result;

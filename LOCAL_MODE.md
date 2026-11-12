@@ -2,7 +2,7 @@
 
 Local mode serves a repository's architecture boards from one process on loopback. Boards and review state live on disk; no account, database server, container, or hosted Draw service is required. Browser and MCP edits use the same validated operations.
 
-**Handoff compatibility:** the adapter attaches an existing, already loaded conversation through a shared app-server control socket. A desktop conversation running behind private stdio cannot be attached by this adapter. Drawing, references, notes, and traffic remain usable; feedback is saved until a supported conversation connects. The real same-conversation handoff acceptance check has not passed in this checkout's desktop environment. Mock adapter tests are not proof of real handoff.
+**Agent compatibility:** standalone Codex 0.166.0, Claude Code 2.1.322, and pi 1.4.0 passed real same-session browser feedback, diagram updates, and review reply/resolution tests. Codex uses its shared app-server socket; Claude Code uses session hooks; pi uses an extension inside the current session. Conductor integration is out of scope.
 
 ## Build and launch
 
@@ -68,15 +68,55 @@ Attach code references through the inspector and click a reference to inspect lo
 
 ## Existing-conversation feedback
 
-The existing attachment adapter is `helper/src/chat-codex.ts`; compatibility was inspected with CLI 0.166.0. It invokes `app-server proxy`, then reads and attaches the given loaded thread, checking its working directory. It does not start a daemon, create a thread, or spawn another execution session.
+### Codex
 
-In a supported environment, the current agent calls `attach_conversation` with `board`, its existing `threadId`, and optional absolute `socketPath`. The browser's connection form exposes the same operation. The thread must already be loaded in that shared server and use the exact board repository directory. The default socket is managed by the agent's shared app-server setup.
+Configure the local MCP server in Codex's config, using the equivalent TOML shape:
 
-This checkout's desktop-managed servers use `--listen stdio://`, and the default shared control socket is absent. There is no socket path to copy from that setup. Changing this requires host support for attaching to its existing conversation; starting another conversation is not an equivalent workaround.
+```toml
+[mcp_servers.draw-local]
+command = "node"
+args = ["/absolute/path/to/dist/redcrayon.mjs", "local-mcp", "--repo", "/absolute/path/to/repository"]
+```
+
+The thread must already be loaded in a shared app server and use the exact board repository directory. For a standalone setup, start a shared server and connect your terminal to it before working:
+
+```sh
+codex app-server --listen unix:///absolute/private/path/draw-codex.sock
+# In another terminal:
+codex --remote unix:///absolute/private/path/draw-codex.sock -C /absolute/path/to/repository
+```
+
+In that conversation, ask the agent to call `attach_conversation` with the board slug, its current thread ID, and the absolute socket path. The browser's Codex connection form accepts the same values. A terminal already using the default shared daemon can omit the socket path. The adapter reads and resumes that loaded thread after checking its working directory; it never creates a replacement conversation. A private stdio server cannot be attached through this socket adapter.
+
+### Claude Code
+
+Create a board first. Generate a settings file for that board, then load it into Claude Code from the repository directory:
+
+```sh
+node /absolute/path/to/dist/redcrayon.mjs local-claude-settings \
+  --repo /absolute/path/to/repository --board <slug> > /private/path/draw-hooks.json
+claude --settings /private/path/draw-hooks.json --mcp-config /private/path/draw-mcp.json
+```
+
+`draw-mcp.json` contains the `mcpServers` JSON from **Connect agent tools**. To connect an existing saved conversation, add `--resume <session-id>`; this keeps its identity. The generated settings add session hooks only and do not change permissions or global configuration. The hooks bind to Claude's actual session ID and repository, deliver idle feedback through `asyncRewake`, and return replies through `Stop`. Claude approvals stay in its terminal. Board Stop takes effect at the next tool boundary; it does not kill a command already running.
+
+Wake notifications bypass `UserPromptSubmit` in the tested Claude version. The hook therefore confirms receipt by finding its delivery ID in that same session's transcript, reading at most its last 1 MiB. A missing or late receipt stays uncertain; it is never automatically resent.
+
+### pi
+
+The packaged extension connects chat and registers the local MCP tools inside the current pi session:
+
+```sh
+DRAW_LOCAL_BOARD=<slug> pi -e /absolute/path/to/dist/local-pi-extension.mjs
+```
+
+Run from the board's repository. Add `--resume <session-id>` to reconnect a saved conversation. If using a custom store, also set `DRAW_LOCAL_STORE=/absolute/path/to/store`. The extension requires pi's built-in MCP support. If you use `--no-extensions`, explicitly add `-e builtin:mcp` alongside the Draw extension. It uses `sendUserMessage` and `abort` on the current session; it never launches a second agent. Normal pi tool policy remains in effect.
+
+For Claude and pi, pass the custom store to every setup command, and restart/resume the same conversation with its hooks/extension after restarting Draw. Disconnected hooks expire after 45 seconds. These integrations are opt-in for the named board; they do not discover or attach unrelated terminal sessions.
 
 Feedback is saved before delivery, with a message ID, board identity/revision, selected element context/code refs, and open review notes. Explicit user instructions are separated from untrusted diagram context. States are **saved**, **pending**, **delivered**, **uncertain**, and **answered**. A saved message can be sent after connection; uncertain messages are never automatically replayed. Check the terminal before issuing an uncertain instruction again. Reusing a message ID cannot submit it twice. This is not an exactly-once guarantee across crashes.
 
-Stop and one-time approval/decline controls use the existing adapter. No blanket approvals are granted. Replies persist locally. Model inference still uses the attached agent's provider; local mode does not imply offline model inference.
+Codex command/file approvals can be accepted or declined once from the board. MCP elicitations and other terminal input remain in Codex; the board shows that input is needed. No blanket approvals are granted. Replies persist locally. Model inference still uses the attached agent's provider; local mode does not imply offline model inference.
 
 ## Pipe observed interactions
 
@@ -120,4 +160,12 @@ pnpm -C e2e exec playwright install chromium
 pnpm -C e2e exec playwright test --config local.config.ts
 ```
 
-The local browser journey uses a relocated packaged distribution, no database server, and covers stdio MCP, browser/tool updates, two tabs, dragging, undo/redo, references, review replies, NDJSON traffic with malformed input, and restart recovery. It rejects unexpected external browser requests. Deterministic adapter tests cover delivery failures and approvals. A real existing-thread handoff must be verified separately before claiming the entire local-mode acceptance contract is complete.
+The local browser journey uses a relocated packaged distribution, no database server, and covers stdio MCP, browser/tool updates, two tabs, dragging, undo/redo, references, review replies, NDJSON traffic with malformed input, and restart recovery. It rejects unexpected external browser requests. Deterministic adapter tests cover delivery failures and approvals. Real agent tests are separate and opt-in because they require your installed, authenticated CLI and make model calls:
+
+```sh
+node scripts/local-agent-smoke.mjs codex
+node scripts/local-agent-smoke.mjs claude-code
+node scripts/local-agent-smoke.mjs pi
+```
+
+Each test establishes a standalone test conversation, records its ID, then sends feedback from a real browser to that same conversation. The agent must recall an earlier marker, update the selected node through local MCP, preserve its position and note anchor, reply to and resolve the note, and update the open browser without reloading. JSON evidence and screenshots are saved under `.context/<agent>-handoff-evidence.json` and `.context/<agent>-handoff.png`. The test owns and stops its server/agent processes; it does not modify global agent configuration. The Codex test terminal grants individual approvals only for that test board's read/apply tools; the Claude test enables only those two MCP tools. All three passed on the versions above.

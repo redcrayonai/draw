@@ -62,6 +62,12 @@ beforeEach(() => {
 });
 
 type Run = { code: number; stdout: string; stderr: string };
+it('prints valid local Claude settings without changing global configuration or contacting a service', async () => {
+  const result = await run(['local-claude-settings', '--board', 'test-board', '--repo', dir], { cwd: dir });
+  expect(result.code).toBe(0);
+  expect(JSON.parse(result.stdout).hooks.Stop[0].hooks[1].asyncRewake).toBe(true);
+  expect(requests).toHaveLength(0);
+});
 function run(args: string[], opts: { cwd: string; input?: string; env?: Record<string, string>; node?: string[] }): Promise<Run> {
   return new Promise(done => {
     const child = execFile(

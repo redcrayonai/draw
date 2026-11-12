@@ -72,6 +72,14 @@ export async function startLocal(options: { repo: string; directory: string; ass
           case 'read_board': result = store.read(input.board); break;
           case 'apply_board': result = store.mutate(input.board, input.revision, input.operations); broadcast(input.board); break;
           case 'attach_conversation': result = await chat.attach(input.board, input.threadId, input.socketPath); break;
+          case 'connect_local_agent':
+            if (!['claude-code', 'pi'].includes(input.agent)) throw new Error('REJECTED: unsupported local agent');
+            result = await chat.attach(input.board, input.threadId, undefined, input.agent, input.cwd); break;
+          case 'disconnect_local_agent': chat.hook(input.board, input.session).disconnect(); result = {}; break;
+          case 'poll_local_agent': result = await chat.hook(input.board, input.session).poll(); break;
+          case 'ack_local_agent': chat.hook(input.board, input.session).acknowledge(input.id); result = {}; break;
+          case 'local_agent_event': chat.hook(input.board, input.session).event(input.event); result = {}; break;
+          case 'claude_local_hook': result = chat.hook(input.board, input.session).claudeHook(input.hook); break;
           case 'send_feedback': result = await chat.send(input.board, input.id, input.text, input.selected ?? []); break;
           case 'chat_status': store.read(input.board); result = chat.status(input.board); break;
           case 'stop_agent': await chat.stop(input.board); result = {}; break;

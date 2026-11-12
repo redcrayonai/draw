@@ -8,7 +8,8 @@
   },
   "files": [
     "dist/redcrayon.mjs",
-    "dist/local-assets"
+    "dist/local-assets",
+    "dist/local-pi-extension.mjs"
   ],
   "engines": {
     "node": ">=20"

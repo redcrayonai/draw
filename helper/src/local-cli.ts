@@ -1,13 +1,8 @@
-import { createHash } from 'node:crypto';
-import { homedir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { existsSync, realpathSync } from 'node:fs';
 import { startLocal } from './local-server';
-
-export function localDirectory(repo: string) {
-  return join(homedir(), '.redcrayon', 'local', createHash('sha256').update(realpathSync(repo)).digest('hex').slice(0, 24));
-}
+import { localDirectory } from './local-path';
 export async function runLocal(args: string[]) {
   const options = new Map<string, string>();
   for (let i = 0; i < args.length; i += 2) {

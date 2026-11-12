@@ -4,7 +4,7 @@ export type LocalNode = { id: string; label: string; description: string; x: num
 export type LocalEdge = { id: string; from: string; to: string; label: string; description: string; direction: 'forward' | 'both' | 'none'; refs: LocalRef[] };
 export type LocalNote = { id: string; target: string; text: string; resolved: boolean; replies: { id: string; text: string }[] };
 export type LocalFeedback = { id: string; text: string; context: string; state: 'saved' | 'pending' | 'delivered' | 'uncertain' | 'answered'; reply: string };
-export type LocalBoard = { slug: string; name: string; repo: string; revision: number; nextId: number; nodes: LocalNode[]; edges: LocalEdge[]; notes: LocalNote[]; feedback: LocalFeedback[]; conversation?: { threadId: string; socketPath?: string } };
+export type LocalBoard = { slug: string; name: string; repo: string; revision: number; nextId: number; nodes: LocalNode[]; edges: LocalEdge[]; notes: LocalNote[]; feedback: LocalFeedback[]; conversation?: { threadId: string; socketPath?: string; agent?: 'codex' | 'claude-code' | 'pi' } };
 export type LocalOperation =
   | { type: 'graph.restore'; nodes: LocalNode[]; edges: LocalEdge[] }
   | { type: 'node.put'; id?: string; patch: Partial<Omit<LocalNode, 'id'>> }

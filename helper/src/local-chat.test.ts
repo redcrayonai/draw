@@ -58,8 +58,47 @@ it('recovers interrupted pending delivery as uncertain after restart', async () 
 });
 it('preserves stop and explicit approval behavior', async () => {
   const { board, chat, stop, approve, emit } = setup(); await chat.attach(board.slug, 'thread');
+  emit({ type: 'state', state: 'working' });
   emit({ type: 'approval', id: 'approval', summary: 'Allow command?', status: 'pending' });
   expect(chat.status(board.slug).approvals).toHaveLength(1); expect(approve).not.toHaveBeenCalled();
   await chat.approve(board.slug, 'approval', 'decline'); expect(approve).toHaveBeenCalledWith('approval', 'decline');
   await chat.stop(board.slug); expect(stop).toHaveBeenCalledOnce();
+});
+it('binds hook agents to the repository/session and saves a late reply after an uncertain delivery', async () => {
+  const { store, board, chat } = setup();
+  await expect(chat.attach(board.slug, 'thread', undefined, 'pi', '/')).rejects.toThrow('another repository');
+  await chat.attach(board.slug, 'thread', undefined, 'pi', board.repo);
+  expect(() => chat.hook(board.slug, 'pi:other')).toThrow('UNAVAILABLE');
+  const hook = chat.hook(board.slug, 'pi:thread');
+  vi.useFakeTimers();
+  try {
+    const sent = expect(chat.send(board.slug, 'late', 'Do work', [])).rejects.toThrow('UNCONFIRMED');
+    await hook.poll();
+    await vi.advanceTimersByTimeAsync(25000); await sent;
+    expect(store.read(board.slug).feedback[0].state).toBe('uncertain');
+    hook.event({ type: 'text', message: 'answer', delta: 'Done', final: false });
+    hook.event({ type: 'state', state: 'idle' });
+    expect(store.read(board.slug).feedback[0]).toMatchObject({ state: 'answered', reply: 'Done' });
+    hook.disconnect(); expect(chat.status(board.slug).connected).toBe(false);
+  } finally { vi.useRealTimers(); }
+});
+it('does not claim a stopped or empty hook turn answered its feedback', async () => {
+  const { store, board, chat } = setup();
+  await chat.attach(board.slug, 'thread', undefined, 'pi', board.repo);
+  const hook = chat.hook(board.slug, 'pi:thread');
+  const sent = chat.send(board.slug, 'stop', 'Do work', []), delivery = await hook.poll() as { id: string };
+  hook.acknowledge(delivery.id); await sent;
+  hook.event({ type: 'state', state: 'stopped' });
+  expect(store.read(board.slug).feedback[0].state).toBe('uncertain');
+});
+it('allows a new board instruction after stopping the previous turn', async () => {
+  const { store, board, chat } = setup();
+  await chat.attach(board.slug, 'thread', undefined, 'pi', board.repo);
+  const hook = chat.hook(board.slug, 'pi:thread');
+  hook.event({ type: 'state', state: 'stopped' });
+  const sent = chat.send(board.slug, 'after-stop', 'New instruction', []);
+  sent.catch(() => {});
+  const delivery = await hook.poll() as { id: string };
+  hook.acknowledge(delivery.id); await sent;
+  expect(store.read(board.slug).feedback[0].state).toBe('delivered');
 });

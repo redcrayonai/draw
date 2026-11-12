@@ -40,6 +40,7 @@ import { runTap } from './tap';
 import { runLocal } from './local-cli';
 import { runLocalMcp } from './local-mcp';
 import { runLocalLive } from './local-live';
+import { localClaudeSettings, runLocalClaudeHook } from './local-claude-hook';
 
 
 const USAGE =
@@ -277,6 +278,8 @@ async function main(argv: string[]): Promise<{ code: number; out: string[]; err:
     if (argv[0] === 'local') return { code: await runLocal(argv.slice(1)), out, err };
     if (argv[0] === 'local-mcp') return { code: await runLocalMcp(argv.slice(1)), out, err };
     if (argv[0] === 'live') return { code: await runLocalLive(argv.slice(1)), out, err };
+    if (argv[0] === 'local-claude-hook') return { code: await runLocalClaudeHook(argv.slice(1)), out, err };
+    if (argv[0] === 'local-claude-settings') return { code: 0, out: [JSON.stringify(localClaudeSettings(argv.slice(1)), null, 2)], err };
     if (argv[0] === 'chat') return { code: await runChat(argv.slice(1), origin(), process.cwd(), line => process.stderr.write(`${line}\n`), line => process.stdout.write(`${line}\n`)), out, err };
     return { code: 1, out, err: [USAGE] };
   } catch (e) {
