@@ -24,6 +24,18 @@ describe('diagram playback clock', () => {
     expect(paint).toHaveBeenLastCalledWith(450);
     clock.destroy(); expect(frame).toBeUndefined();
   });
+  it('seeks: paints once, clamps, and keeps playing from the new time', () => {
+    const paint = vi.fn(), clock = new EmbedClock(1000, paint, vi.fn());
+    clock.play(); tick(100); paint.mockClear();
+    clock.seek(500);
+    expect(paint).toHaveBeenCalledTimes(1); expect(paint).toHaveBeenCalledWith(500);
+    expect(clock.playing).toBe(true);
+    tick(50); expect(clock.elapsed).toBe(550);
+    clock.seek(5000); expect(clock.elapsed).toBe(1000);
+    clock.seek(-5); expect(clock.elapsed).toBe(0);
+    clock.pause(); clock.seek(300);
+    expect(clock.elapsed).toBe(300); expect(clock.playing).toBe(false); expect(frame).toBeUndefined();
+  });
   it('finishes once, replays from zero, and loops only when selected', () => {
     const clock = new EmbedClock(1000, vi.fn(), vi.fn());
     clock.play(); tick(1200); expect(clock.elapsed).toBe(1000); expect(clock.playing).toBe(false);

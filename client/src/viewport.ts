@@ -55,6 +55,14 @@ export function chromeInsets(wrap: HTMLElement): Insets {
   if (shown(trail)) {
     insets.top = Math.max(insets.top, trail.getBoundingClientRect().bottom - w.top);
   }
+  // The walk-through bar replaces the dock while it plays; count its height.
+  const bar = document.getElementById('telling-bar');
+  if (bar !== null && !bar.hidden) {
+    const h = bar.getBoundingClientRect().height;
+    if (h > 0) {
+      insets.bottom = Math.max(insets.bottom, h + PANEL_GAP);
+    }
+  }
   const inspector = document.getElementById('inspector');
   if (shown(inspector)) {
     const r = inspector.getBoundingClientRect();
@@ -216,6 +224,15 @@ export class Viewport {
    * With `ms`, the view zooms there over that time (stepping into a frame and out).
    */
   fit(bounds: Bounds | null, insets: Insets = NO_INSETS, ms = 0): void {
+    this.frame(bounds, insets, ms, MAX_SCALE);
+  }
+
+  /** fit over `ms` that never zooms past `maxScale`: a walk-through step stays in its surroundings. */
+  flyTo(bounds: Bounds | null, insets: Insets, ms: number, maxScale = 1.5): void {
+    this.frame(bounds, insets, ms, maxScale);
+  }
+
+  private frame(bounds: Bounds | null, insets: Insets, ms: number, maxScale: number): void {
     if (!bounds) {
       // Nothing to frame: a zoom still on its way to bounds that are gone stops where it is.
       this.stopAnimation();
@@ -242,7 +259,7 @@ export class Viewport {
       bottom = rect.height - FIT_MARGIN;
     }
     const scale = Math.min(
-      MAX_SCALE,
+      maxScale,
       Math.max(MIN_SCALE, Math.min((right - left) / w, (bottom - top) / h))
     );
     const tx = left + (right - left - w * scale) / 2 - bounds.minX * scale;
