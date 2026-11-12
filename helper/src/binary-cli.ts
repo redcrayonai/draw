@@ -1,4 +1,4 @@
-import { notifyUpdate, runUpdate } from './update';
+import { runUpdate } from './update';
 import { runNativeInstall } from './native-install';
 
 declare const __DRAW_VERSION__: string;
@@ -21,9 +21,6 @@ else if (args[0] === 'install') {
 }
 else if (args[0] === 'update') process.exitCode = await runUpdate(args.slice(1), __DRAW_VERSION__);
 else {
-  if (!args.length || args[0].startsWith('--') || args[0] === 'local') {
-    const timer = setTimeout(() => { void notifyUpdate(__DRAW_VERSION__); }, 0); timer.unref();
-  }
   if (!args.length || args[0].startsWith('--')) {
     process.argv.splice(2, process.argv.length - 2, 'local', ...(args.includes('--no-open') ? [] : ['--open']), ...args.filter(arg => arg !== '--no-open'));
   }

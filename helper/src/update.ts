@@ -51,8 +51,6 @@ export async function checkUpdate(channel: Channel, force = false, cache = cache
     if (valid(cached) && cached.checkedAt <= now && now - cached.checkedAt < DAY) return cached;
   } catch {}
   let result: Result = { checkedAt: now, state: 'unavailable' };
-  // Cache attempts too: offline launches should not repeatedly contact the registry.
-  save(cache, result);
   try {
     const response = await fetch(`https://registry.npmjs.org/@redcrayonai%2fdraw/${channel === 'stable' ? 'latest' : 'next'}`, { signal: AbortSignal.timeout(3000), redirect: 'error' });
     if (response.status === 404) result.state = 'unpublished';

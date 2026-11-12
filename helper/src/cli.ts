@@ -43,6 +43,7 @@ import { runLocalInstall } from './local-install';
 import { runLocalMcp } from './local-mcp';
 import { runLocalLive } from './local-live';
 import { localClaudeSettings, runLocalClaudeHook } from './local-claude-hook';
+import { notifyUpdate } from './update';
 
 
 const USAGE =
@@ -292,7 +293,12 @@ async function main(argv: string[]): Promise<{ code: number; out: string[]; err:
   }
 }
 
+declare const __DRAW_VERSION__: string;
+// Only native local launches check; opening the board proceeds while the request is in flight.
+const update = typeof __DRAW_VERSION__ !== 'undefined' && process.argv[2] === 'local'
+  ? notifyUpdate(__DRAW_VERSION__) : undefined;
 const { code, out, err } = await main(process.argv.slice(2));
+await update;
 // Exit once both streams are flushed: an idle keep-alive socket must not hold the process.
 const flush = (stream: NodeJS.WriteStream, lines: string[]) =>
   new Promise<void>(done => stream.write(lines.map(l => `${l}\n`).join(''), () => done()));

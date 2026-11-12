@@ -149,7 +149,7 @@ describe('the bundle', () => {
     expect(imports.length).toBeGreaterThan(0);
     expect(imports.filter(p => !p.startsWith('node:'))).toEqual([]);
     expect(JSON.parse(readFileSync(join(HELPER, 'package.json'), 'utf8')).version).toBe(HELPER_VERSION);
-    const [a, b] = [HELPER_VERSION, MIN_HELPER_VERSION].map(v => v.split('.').map(Number));
+    const [a, b] = [HELPER_VERSION, MIN_HELPER_VERSION].map(v => v.split(/[-+]/)[0].split('.').map(Number));
     expect(a[0] * 1e6 + a[1] * 1e3 + a[2]).toBeGreaterThanOrEqual(b[0] * 1e6 + b[1] * 1e3 + b[2]);
   });
 });
@@ -161,7 +161,7 @@ describe('capture commands', () => {
     expect(first.code).toBe(0);
     expect(first.stdout).toMatch(/^cap_[A-Za-z0-9]{22}\n$/);
     expect(first.stderr).toBe(`${PRIVACY}\n`);
-    expect(bodies()).toEqual([{ v: 1, helper: HELPER_VERSION, kind: 'start', toplevel: root, objectFormat: 'sha1', head: sh(root, 'rev-parse', 'HEAD') }]);
+    expect(bodies()).toEqual([{ v: 1, helper: HELPER_VERSION.split(/[-+]/)[0], kind: 'start', toplevel: root, objectFormat: 'sha1', head: sh(root, 'rev-parse', 'HEAD') }]);
     expect(requests[0]).toMatchObject({ method: 'POST', url: '/facts', headers: { 'content-type': 'application/json' } });
     expect(requests[0].headers.origin).toBeUndefined();
     const second = await run(['capture', 'start'], { cwd: root });

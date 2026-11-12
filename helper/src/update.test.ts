@@ -1,4 +1,4 @@
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { afterEach, expect, it, vi } from 'vitest';
@@ -45,6 +45,15 @@ it('silently caches failures and recovers from corrupt or future-dated cache dat
   writeFileSync(path, JSON.stringify({ checkedAt: Date.now() + 86_400_000, state: 'available', version: '999.0.0' }));
   await checkUpdate('stable', false, path); expect(request).toHaveBeenCalledTimes(2);
   expect(JSON.parse(readFileSync(path, 'utf8')).state).toBe('unavailable');
+});
+it('does not cache an unfinished request as a failed check', async () => {
+  let finish!: (response: Response) => void;
+  vi.stubGlobal('fetch', vi.fn(() => new Promise<Response>(resolve => { finish = resolve; })));
+  const path = cache(), pending = checkUpdate('stable', false, path);
+  expect(existsSync(path)).toBe(false);
+  finish(Response.json(metadata()));
+  await pending;
+  expect(JSON.parse(readFileSync(path, 'utf8')).state).toBe('available');
 });
 it('bounds metadata and rejects control characters before showing a notice', async () => {
   vi.stubGlobal('fetch', vi.fn().mockResolvedValueOnce(new Response('x'.repeat(128 * 1024 + 1)))
