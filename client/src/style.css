@@ -6920,6 +6920,7 @@ svg:not(.armed) #crayon .mark-chip { pointer-events: all; cursor: pointer; }
 #telling-bar button:disabled { opacity: 0.45; cursor: default; }
 #telling-bar button:disabled:hover { background: var(--panel-hi); }
 #telling-bar .telling-aud[aria-pressed='true'] { border-color: var(--accent); background: var(--accent); color: var(--on-accent); }
+#telling-bar .telling-caption { min-width: 0; overflow-wrap: anywhere; } /* a long unbroken word wraps inside the bar */
 #telling-bar .telling-title { font: 600 14px/1.3 var(--sans); }
 #telling-bar .telling-body { margin: 0; max-width: 62ch; font: 450 20px/1.42 var(--sans); }
 #telling-bar .telling-source { font: 400 12px/1.4 var(--mono); color: var(--muted); overflow-wrap: anywhere; }
