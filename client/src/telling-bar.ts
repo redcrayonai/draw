@@ -74,6 +74,8 @@ export function renderTellingBar(root: HTMLElement, m: TellingBarModel | null): 
   p.model = m;
   root.hidden = false;
   const focused = document.activeElement;
+  const inside = root.contains(focused);
+  const heldMain = focused === p.main;
 
   const ending = m.at >= m.count;
   p.back.disabled = m.at <= 1;
@@ -87,19 +89,12 @@ export function renderTellingBar(root: HTMLElement, m: TellingBarModel | null): 
     fresh.dataset.act = want;
     const fn = { replay: 'onReplay', pause: 'onPause', play: 'onPlay' }[want] as 'onReplay' | 'onPause' | 'onPlay';
     fresh.addEventListener('click', () => p.model[fn]());
-    const had = document.activeElement === p.main;
     p.main.replaceWith(fresh);
     p.main = fresh;
-    if (had) fresh.focus();
   }
   p.main.disabled = want === 'play' && m.reduced;
   set(p.main, 'title', p.main.disabled ? 'Motion is reduced on this device. Use Next.' : '');
   if (!p.main.title) p.main.removeAttribute('title');
-
-  // A focused control that a repaint disables would drop focus to <body>: hand it to the main button, else Exit.
-  if (focused instanceof HTMLButtonElement && root.contains(focused) && (focused.disabled || (focused === p.main && p.main.disabled))) {
-    (p.main.disabled ? p.controls.querySelector<HTMLElement>('[data-act="exit"]')! : p.main).focus();
-  }
 
   const names = m.audiences.length > 1 ? JSON.stringify(m.audiences) : '';
   if (names !== p.names) {
@@ -135,4 +130,13 @@ export function renderTellingBar(root: HTMLElement, m: TellingBarModel | null): 
     p.progress.replaceChildren(...Array.from({ length: m.count }, () => el('span', '')));
   }
   [...p.progress.children].forEach((s, i) => s.classList.toggle('done', i < m.at));
+
+  // One focus rule, after every disabled flag is set: a control that held focus and is now detached or
+  // disabled hands it to the main button, else Exit, so keyboard users never drop to <body>.
+  if (inside) {
+    const held = heldMain ? p.main : (focused as HTMLElement);
+    const ok = held.isConnected && !(held as HTMLButtonElement).disabled;
+    const target = ok ? held : p.main.disabled ? p.controls.querySelector<HTMLElement>('[data-act="exit"]')! : p.main;
+    if (document.activeElement !== target) target.focus();
+  }
 }

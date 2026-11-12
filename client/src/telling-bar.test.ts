@@ -109,6 +109,13 @@ describe('renderTellingBar', () => {
     expect(document.activeElement).toBe(btn(el, 'Exit'));
   });
 
+  it('moves focus to Exit when a focused Pause swaps to a disabled Play', () => {
+    renderTellingBar(el, model({ playing: true }));
+    btn(el, 'Pause')!.focus();
+    renderTellingBar(el, model({ playing: false, reduced: true }));
+    expect(document.activeElement).toBe(btn(el, 'Exit'));
+  });
+
   it('fills progress through at', () => {
     renderTellingBar(el, model());
     const segs = el.querySelectorAll('.telling-progress > span');
