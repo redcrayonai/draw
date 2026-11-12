@@ -147,6 +147,7 @@
           <p id="embed-error" class="share-error" role="alert" hidden></p>
         </div>
         <button id="act-export" class="btn-primary">Export SVG</button>
+        <button id="act-tell" class="btn-primary" type="button" hidden>Play walk-through</button>
       </div>
 
       <div id="presence-pop" hidden></div>
@@ -382,6 +383,7 @@
       <div id="library-popover" role="dialog" aria-label="Library" hidden></div>
 
       <!-- crayon.ts: shown while red crayon drafts exist; one reducer call sends them all. -->
+      <div id="telling-bar" role="region" aria-label="Walk-through" hidden></div>
       <div id="mark-banner" class="mark-banner" role="status" hidden></div>
       <button id="mark-send" class="mark-send" hidden><span class="mark-send-label">Send 0 marks</span><svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 8h10M9 4l4 4-4 4" /></svg></button>
 

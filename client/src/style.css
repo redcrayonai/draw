@@ -6575,7 +6575,7 @@ svg:not(.armed) #crayon .mark-chip { pointer-events: all; cursor: pointer; }
   .mark-banner[data-state='working'] .mb-dot { animation: mark-pulse 1.2s ease-in-out infinite; }
 }
 @keyframes mark-pulse { 50% { opacity: 0.35; } }
-:root[data-theme='brutal'] :is(#review-pop, .mark-banner) { border: 2px solid var(--ink); border-radius: 0; box-shadow: 4px 4px 0 var(--ink); }
+:root[data-theme='brutal'] :is(#review-pop, .mark-banner, #telling-bar) { border: 2px solid var(--ink); border-radius: 0; box-shadow: 4px 4px 0 var(--ink); }
 
 /* ---------- agent chat (agent-chat.ts): the person's own agent, docked beside the board ---------- */
 
@@ -6887,4 +6887,41 @@ svg:not(.armed) #crayon .mark-chip { pointer-events: all; cursor: pointer; }
   .ac-panel { top: auto; left: 0; width: auto; height: 62%; border-left: 0; border-top: 1px solid var(--hairline); border-radius: var(--r-xl) var(--r-xl) 0 0; box-shadow: var(--shadow-lg); }
   .ac-resize { display: none; }
   :root[data-agent-chat] :is(#dock, .zoom-cluster, #shortcuts-toggle) { visibility: hidden; }
+}
+
+/* Walk-through caption bar (telling-bar.ts): bottom centre of the canvas, same layer as the mark banner. */
+#telling-bar {
+  position: absolute;
+  bottom: var(--space-5);
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 15;
+  width: min(820px, calc(100% - 32px));
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding: var(--space-3) var(--space-4);
+  border: 1px solid var(--border);
+  border-radius: var(--r-lg);
+  background: var(--panel);
+  box-shadow: var(--shadow-lg);
+  color: var(--ink);
+}
+#telling-bar[hidden] { display: none; }
+#telling-bar .telling-controls { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); }
+#telling-bar .telling-count { font: 500 12px/1 var(--mono); color: var(--muted); min-width: 5ch; }
+#telling-bar .telling-switch-slot { display: contents; }
+#telling-bar .telling-switch { display: inline-flex; flex-wrap: wrap; gap: var(--space-1); margin-left: var(--space-2); }
+#telling-bar .telling-exit { margin-left: auto; }
+#telling-bar .telling-btn { transition: background var(--dur) var(--ease), border-color var(--dur) var(--ease); }
+#telling-bar .telling-aud[aria-pressed='true'] { border-color: var(--accent); background: var(--accent); color: var(--on-accent); }
+#telling-bar .telling-title { font: 600 14px/1.3 var(--sans); }
+#telling-bar .telling-body { margin: 0; max-width: 62ch; font: 450 20px/1.42 var(--sans); }
+#telling-bar .telling-source { font: 400 12px/1.4 var(--mono); color: var(--muted); overflow-wrap: anywhere; }
+#telling-bar .telling-progress { display: flex; gap: var(--space-1); }
+#telling-bar .telling-progress > span { flex: 1; height: 4px; border-radius: 2px; background: var(--panel-hi); }
+#telling-bar .telling-progress > span.done { background: var(--accent); }
+@media (prefers-reduced-motion: reduce) {
+  #telling-bar, #telling-bar .telling-btn { transition: none; }
 }
