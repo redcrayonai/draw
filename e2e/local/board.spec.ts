@@ -63,6 +63,18 @@ test('packaged local board: tool edits, browser drag, review, concurrent tab and
     expect(JSON.parse(frames[2].result.content[0].text).nodes).toHaveLength(2);
     const node = page.locator('[data-id="1"]');
     await expect(node).toBeVisible();
+    const edgeHit = page.locator('.edge-hit[data-edge-id="3"]');
+    await edgeHit.focus(); await edgeHit.press('Enter');
+    for (const direction of ['both', 'none', 'forward']) {
+      await page.locator('#edit select[name="direction"]').selectOption(direction);
+      await page.getByRole('button', { name: 'Save', exact: true }).click();
+      await expect(page.locator('#status')).toHaveText('Saved');
+      const line = page.locator('.edge-line').first();
+      if (direction === 'both') await expect(line).toHaveAttribute('marker-start', /url/);
+      else await expect(line).not.toHaveAttribute('marker-start');
+      if (direction === 'none') await expect(line).not.toHaveAttribute('marker-end');
+      else await expect(line).toHaveAttribute('marker-end', /url/);
+    }
     const second = await context.newPage(); await second.goto(`${endpoint.origin}/#b=${board.slug}`);
     await expect(second.locator('[data-id="1"]')).toBeVisible();
     const box = (await node.boundingBox())!;
@@ -84,6 +96,27 @@ test('packaged local board: tool edits, browser drag, review, concurrent tab and
     await call({ action: 'apply_board', board: board.slug, revision: saved.revision, operations: [{ type: 'node.put', id: '1', patch: { label: 'Gateway' } }, { type: 'note.reply', id: saved.notes[0].id, text: 'Timeout documented.' }] });
     await expect(node).toContainText('Gateway');
     await expect(page.locator('#notes')).toContainText('Timeout documented.');
+    const label = page.locator('#edit input[name="label"]');
+    await label.fill('Unsaved draft');
+    await page.locator('#note textarea').focus();
+    const concurrent = await call({ action: 'read_board', board: board.slug });
+    await call({ action: 'apply_board', board: board.slug, revision: concurrent.revision, operations: [{ type: 'node.put', id: '1', patch: { label: 'Agent changed' } }] });
+    await expect(node).toContainText('Agent changed');
+    await expect(label).toHaveValue('Unsaved draft');
+    await page.getByRole('button', { name: 'Save', exact: true }).click();
+    await expect(page.locator('#status')).toContainText('board changed');
+    await expect(label).toHaveValue('Unsaved draft');
+    expect((await call({ action: 'read_board', board: board.slug })).nodes[0].label).toBe('Agent changed');
+    await page.getByRole('button', { name: 'Reload fields', exact: true }).click();
+    await expect(label).toHaveValue('Agent changed');
+    await label.fill('Gateway');
+    await page.getByRole('button', { name: 'Save', exact: true }).click();
+    await expect(node).toContainText('Gateway');
+    await context.setOffline(true);
+    const disconnected = await call({ action: 'read_board', board: board.slug });
+    await call({ action: 'apply_board', board: board.slug, revision: disconnected.revision, operations: [{ type: 'node.put', id: '1', patch: { description: 'Updated while browsers were offline' } }] });
+    await context.setOffline(false);
+    await expect(page.locator('#edit textarea[name="description"]')).toHaveValue('Updated while browsers were offline');
     await page.getByRole('button', { name: 'Resolve', exact: true }).click();
     await expect(second.locator('#notes')).toContainText('Resolved');
     writeFileSync(join(directory, 'mapping.json'), JSON.stringify({ api: '1', database: '2' }));
@@ -101,5 +134,6 @@ test('packaged local board: tool edits, browser drag, review, concurrent tab and
     expect(restored.notes[0].replies[0].text).toBe('Timeout documented.');
     expect(restored.notes[0].resolved).toBe(true);
     expect(restored.nodes[0].refs).toHaveLength(1);
+    expect(restored.nodes[0].description).toBe('Updated while browsers were offline');
   } finally { await context.close(); if (child! && child.exitCode === null) await stop(); rmSync(directory, { recursive: true, force: true }); }
 });

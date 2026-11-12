@@ -21,6 +21,10 @@ let board: LocalBoard | undefined;
 let events: EventSource | undefined;
 let busy = false;
 let editorRevision = -1;
+let editorId = '';
+let editorDirty = false;
+let editorInput = 0;
+edit.oninput = () => { editorDirty = true; editorInput++; };
 type Graph = Pick<LocalBoard, 'nodes' | 'edges'>;
 const undo: { before: Graph; after: Graph }[] = [], redo: { before: Graph; after: Graph }[] = [];
 const graph = (value: LocalBoard): Graph => structuredClone({ nodes: value.nodes, edges: value.edges });
@@ -33,7 +37,7 @@ const directionLabel = document.createElement('label'); directionLabel.textConte
 const direction = document.createElement('select'); direction.name = 'direction';
 direction.append(new Option('Forward', 'forward'), new Option('Both ways', 'both'), new Option('No arrows', 'none')); directionLabel.append(direction); edit.prepend(directionLabel);
 const reloadFields = document.createElement('button'); reloadFields.type = 'button'; reloadFields.textContent = 'Reload fields';
-reloadFields.onclick = () => { reloadFields.blur(); (document.activeElement as HTMLElement)?.blur(); inspector(); }; edit.append(reloadFields);
+reloadFields.onclick = () => { editorDirty = false; inspector(); }; edit.append(reloadFields);
 async function call<T>(input: unknown): Promise<T> {
   const response = await fetch('/api/call', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(input) });
   const value = await response.json();
@@ -53,6 +57,11 @@ function render() {
     item.setAttribute('tabindex', '0'); item.setAttribute('role', 'button');
     item.setAttribute('aria-label', board.nodes.find(n => n.id === item.dataset.id)?.label || 'Unnamed node');
   }
+  for (const item of world.querySelectorAll<SVGPathElement>('.edge-hit[data-edge-id]')) {
+    item.setAttribute('tabindex', '0'); item.setAttribute('role', 'button');
+    const edge = board.edges.find(e => e.id === item.dataset.edgeId);
+    item.setAttribute('aria-label', edge?.label || `Connection ${edge?.from} to ${edge?.to}`);
+  }
 }
 function selected() {
   if (!board) return;
@@ -62,10 +71,14 @@ function inspector() {
   chat.render();
   renderRefs();
   const item = selected(); edit.hidden = !item;
-  if (item && !edit.contains(document.activeElement)) {
+  const identity = item ? `${board!.slug}:${item.id}` : '';
+  if (identity !== editorId) { editorId = identity; editorDirty = false; }
+  if (item && !editorDirty) {
     editorRevision = board!.revision;
     for (const key of ['label', 'description', 'x', 'y', 'w', 'h']) {
-      (edit.elements.namedItem(key) as HTMLInputElement).value = key in item ? String(item[key as keyof typeof item]) : '';
+      const input = edit.elements.namedItem(key) as HTMLInputElement;
+      const value = key in item ? String(item[key as keyof typeof item]) : '';
+      if (input.value !== value) input.value = value;
     }
     element('geometry').hidden = !('x' in item);
     directionLabel.hidden = 'x' in item;
@@ -85,7 +98,7 @@ function inspector() {
   }
 }
 async function mutate(operations: LocalOperation[], expected = board?.revision, record = true) {
-  if (!board || busy) return;
+  if (!board || busy) throw new Error('UNAVAILABLE: wait for the current save before editing again');
   const before = graph(board), slug = board.slug;
   busy = true; say('Saving…');
   try {
@@ -134,8 +147,10 @@ async function restore(backwards: boolean) {
 }
 element('undo').onclick = () => run(() => restore(true));
 element('redo').onclick = () => run(() => restore(false));
-edit.onsubmit = event => { event.preventDefault(); run(async () => { const item = selected(); if (!item) return; const values = new FormData(edit); const patch = { label: String(values.get('label')), description: String(values.get('description')) }; await mutate(['x' in item ? { type: 'node.put', id: item.id, patch: { ...patch, x: Number(values.get('x')), y: Number(values.get('y')), w: Number(values.get('w')), h: Number(values.get('h')) } } : { type: 'edge.put', id: item.id, patch: { ...patch, direction: direction.value as 'forward' | 'both' | 'none' } }], editorRevision); }); };
-element<HTMLFormElement>('note').onsubmit = event => { event.preventDefault(); const form = event.currentTarget as HTMLFormElement; run(async () => { const item = selected(); if (!item) { say('Select an element for the note'); return; } await mutate([{ type: 'note.add', target: item.id, text: String(new FormData(form).get('text')) }]); form.reset(); }); };
+edit.onsubmit = event => { event.preventDefault(); run(async () => { const item = selected(); if (!item) return; const inputVersion = editorInput, identity = editorId; const values = new FormData(edit); const patch = { label: String(values.get('label')), description: String(values.get('description')) }; await mutate(['x' in item ? { type: 'node.put', id: item.id, patch: { ...patch, x: Number(values.get('x')), y: Number(values.get('y')), w: Number(values.get('w')), h: Number(values.get('h')) } } : { type: 'edge.put', id: item.id, patch: { ...patch, direction: direction.value as 'forward' | 'both' | 'none' } }], editorRevision); if (editorInput === inputVersion && editorId === identity) { editorDirty = false; inspector(); } }); };
+let noteInput = 0;
+element<HTMLFormElement>('note').oninput = () => { noteInput++; };
+element<HTMLFormElement>('note').onsubmit = event => { event.preventDefault(); const form = event.currentTarget as HTMLFormElement, submitted = noteInput; run(async () => { const item = selected(); if (!item) { say('Select an element for the note'); return; } await mutate([{ type: 'note.add', target: item.id, text: String(new FormData(form).get('text')) }]); if (noteInput === submitted) form.reset(); }); };
 let drag: { x: number; y: number; id?: string; ox: number; oy: number; revision: number } | undefined;
 svg.onpointerdown = event => {
   if (!board || busy) return;
@@ -160,7 +175,9 @@ svg.onpointerup = () => {
 svg.onpointercancel = () => { drag = undefined; overrides.clear(); render(); };
 svg.onkeydown = event => {
   const node = (event.target as Element).closest<SVGGElement>('.node[data-id]');
+  const edge = (event.target as Element).closest<SVGPathElement>('.edge-hit[data-edge-id]');
   if (node && (event.key === 'Enter' || event.key === ' ')) { event.preventDefault(); if (!event.shiftKey) selection.clear(); selectedEdges.clear(); selection.add(BigInt(node.dataset.id!)); render(); inspector(); }
+  if (edge && (event.key === 'Enter' || event.key === ' ')) { event.preventDefault(); selection.clear(); selectedEdges.clear(); selectedEdges.add(BigInt(edge.dataset.edgeId!)); render(); inspector(); }
   if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'z') { event.preventDefault(); run(() => restore(!event.shiftKey)); }
   const delta = ({ ArrowLeft: [-16, 0], ArrowRight: [16, 0], ArrowUp: [0, -16], ArrowDown: [0, 16] } as Record<string, number[]>)[event.key];
   if (delta) { event.preventDefault(); const item = selected(); if (item && 'x' in item) run(() => mutate([{ type: 'node.put', id: item.id, patch: { x: item.x + delta[0], y: item.y + delta[1] } }])); else viewport.panBy(delta[0], delta[1]); }

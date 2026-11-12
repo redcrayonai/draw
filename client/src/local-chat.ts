@@ -20,9 +20,10 @@ export function mountLocalChat(container: HTMLElement, read: () => LocalBoard | 
   send.onsubmit = event => {
     event.preventDefault(); const board = read(); if (!board || sending) return;
     const text = String(new FormData(send).get('text')); draftId ??= crypto.randomUUID();
+    const id = draftId;
     sending = true;
     run(async () => {
-      try { await call({ action: 'send_feedback', board: board.slug, id: draftId, text, selected: selected() }); send.reset(); draftId = undefined; }
+      try { await call({ action: 'send_feedback', board: board.slug, id, text, selected: selected() }); if (draftId === id) { send.reset(); draftId = undefined; } }
       finally { sending = false; }
     });
   };

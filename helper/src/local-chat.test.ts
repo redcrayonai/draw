@@ -40,6 +40,7 @@ it('keeps uncertain delivery visible and never automatically replays it', async 
   send.mockRejectedValueOnce(new Error('connection lost'));
   await expect(chat.send(board.slug, 'message', 'Do work', [])).rejects.toThrow('connection lost');
   expect(store.read(board.slug).feedback[0].state).toBe('uncertain');
+  await chat.attach(board.slug, 'thread');
   await chat.send(board.slug, 'message', 'Do work', []); expect(send).toHaveBeenCalledTimes(1);
 });
 it('never sends when saving the pending state fails', async () => {
