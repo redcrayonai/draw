@@ -2010,7 +2010,7 @@ describe('telling: lit, seen and hidden', () => {
     expect(state(edgeG(world, 11))).toBe('');
     expect([...world.querySelectorAll('.layer-edge-labels .edge-labels')].map(state).sort()).toEqual(['', 'lit']);
     const badge = node(world, 2).querySelector('.node-step')!;
-    expect(badge.textContent).toBe('Step 22');
+    expect(badge.querySelector('text')!.textContent).toBe('2');
     expect(badge.querySelector('title')!.textContent).toBe('Step 2');
     expect(badge.getAttribute('role')).toBe('img');
     expect(node(world, 1).querySelector('.node-step text')!.textContent).toBe('1');
@@ -2022,7 +2022,8 @@ describe('telling: lit, seen and hidden', () => {
     // a new number updates the badge in place
     renderBoard(world, nodes, edges, mkState({ telling: { ...telling, stepOf: new Map([[1n, 1], [2n, 3]]) } }));
     expect(node(world, 2).querySelector('.node-step')).toBe(badge);
-    expect(badge.textContent).toBe('Step 33');
+    expect(badge.querySelector('text')!.textContent).toBe('3');
+    expect(badge.querySelector('title')!.textContent).toBe('Step 3');
 
     // a node that leaves the telling loses its badge
     renderBoard(world, nodes, edges, mkState({ telling: { ...telling, seen: new Set<bigint>() } }));

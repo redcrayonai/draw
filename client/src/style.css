@@ -6284,14 +6284,17 @@ button.depth-crumb:hover {
 #world.telling-on .edge.telling-seen,
 #world.telling-on .edge-labels.telling-seen { opacity: 0.4; }
 /* The transparent zero shadow gives the lit shadow a start value to grow from. */
-#world.telling-on .node .node-rect { filter: drop-shadow(0 0 0 transparent); transition: filter var(--dur) var(--ease); }
-#world.telling-on .node.telling-lit .node-rect { filter: drop-shadow(0 4px 10px color-mix(in srgb, var(--accent) 45%, transparent)); }
+/* A trace replay's glow and transitions win: the telling shadow steps aside for trace nodes and replays. */
+#world.telling-on:not(.trace-playing) .node:not(.trace-active):not(.trace-error) .node-rect { filter: drop-shadow(0 0 0 transparent); transition: filter var(--dur) var(--ease); }
+#world.telling-on .node.telling-lit:not(.trace-active):not(.trace-error) .node-rect { filter: drop-shadow(0 4px 10px color-mix(in srgb, var(--accent) 45%, transparent)); }
 @media (prefers-reduced-motion: reduce) {
   #world.telling-on .node,
   #world.telling-on .edge,
   #world.telling-on .edge-labels,
-  #world.telling-on .node .node-rect { transition: none; }
+  #world.telling-on:not(.trace-playing) .node:not(.trace-active):not(.trace-error) .node-rect { transition: none; }
 }
+/* The telling owns the overlays: its step badge takes the corner a waypoint marker uses. */
+#world.telling-on .node-route { display: none; }
 .node-step { pointer-events: none; }
 .node-step-circle { fill: var(--accent); }
 .node-step-number { font: 600 12px var(--mono); fill: var(--on-accent); }
