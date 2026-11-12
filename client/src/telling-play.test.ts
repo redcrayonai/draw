@@ -66,6 +66,14 @@ describe('telling player', () => {
     expect(log).toEqual(['setView', 'paintBar', 'fly', 'drawIn']);
   });
 
+  it('a step whose nodes are all gone leaves the view where it was', () => {
+    const { player, flown, bar } = setup({ liveNodes: () => new Set([1n, 3n, 4n]) });
+    player.open();
+    expect(player.key(key('ArrowRight'))).toBe(true);
+    expect(bar()).toMatchObject({ at: 1, title: 'Service' });
+    expect(flown).toEqual([[1n]]);
+  });
+
   it('goes back without drawing again, and forward again without redrawing', () => {
     const { player, drawn, bar } = setup();
     player.open();

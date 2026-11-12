@@ -12,11 +12,13 @@ type Act = 'back' | 'play' | 'pause' | 'replay' | 'next' | 'exit';
 
 interface Parts {
   model: TellingBarModel;
-  controls: HTMLElement; back: HTMLButtonElement; main: HTMLButtonElement; next: HTMLButtonElement;
+  controls: HTMLElement; hint: HTMLElement; back: HTMLButtonElement; main: HTMLButtonElement; next: HTMLButtonElement;
   count: HTMLElement; switchSlot: HTMLElement; title: HTMLElement; body: HTMLElement; source: HTMLElement | null;
   sourceSlot: HTMLElement; progress: HTMLElement;
   names: string; segments: number;
 }
+
+const REDUCED = 'Motion is reduced on this device. Use Next.';
 
 const parts = new WeakMap<HTMLElement, Parts>();
 
@@ -54,6 +56,8 @@ function build(root: HTMLElement): Parts {
   const switchSlot = el('span', 'telling-switch-slot');
   const controls = el('div', 'telling-controls');
   controls.append(back, main, next, count, switchSlot, exit);
+  const hint = el('p', 'telling-hint', REDUCED);
+  hint.hidden = true;
   const title = el('div', 'telling-title');
   const body = el('p', 'telling-body');
   const caption = el('div', 'telling-caption');
@@ -62,8 +66,8 @@ function build(root: HTMLElement): Parts {
   const sourceSlot = el('div', 'telling-source-slot');
   const progress = el('div', 'telling-progress');
   progress.setAttribute('aria-hidden', 'true');
-  root.replaceChildren(controls, caption, sourceSlot, progress);
-  const p = { controls, back, main, next, count, switchSlot, title, body, source: null, sourceSlot, progress, names: '', segments: -1 } as unknown as Parts;
+  root.replaceChildren(controls, hint, caption, sourceSlot, progress);
+  const p = { controls, hint, back, main, next, count, switchSlot, title, body, source: null, sourceSlot, progress, names: '', segments: -1 } as unknown as Parts;
   return p;
 }
 
@@ -94,8 +98,9 @@ export function renderTellingBar(root: HTMLElement, m: TellingBarModel | null): 
     p.main = fresh;
   }
   p.main.disabled = want === 'play' && m.reduced;
-  set(p.main, 'title', p.main.disabled ? 'Motion is reduced on this device. Use Next.' : '');
+  set(p.main, 'title', p.main.disabled ? REDUCED : '');
   if (!p.main.title) p.main.removeAttribute('title');
+  if (p.hint.hidden === m.reduced) p.hint.hidden = !m.reduced; // visible, not hover-only
 
   const names = m.audiences.length > 1 ? JSON.stringify(m.audiences) : '';
   if (names !== p.names) {

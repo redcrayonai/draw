@@ -81,6 +81,19 @@ describe('renderTellingBar', () => {
     expect(play.title).toBe('Motion is reduced on this device. Use Next.');
   });
 
+  it('shows the reduced-motion hint under the controls only when motion is reduced', () => {
+    renderTellingBar(el, model({ at: 0 }));
+    const hint = el.querySelector<HTMLElement>('.telling-hint')!;
+    expect(hint.hidden).toBe(true);
+    expect(hint.previousElementSibling!.classList.contains('telling-controls')).toBe(true);
+    renderTellingBar(el, model({ at: 0, reduced: true }));
+    expect(hint.hidden).toBe(false);
+    expect(hint.textContent).toBe('Motion is reduced on this device. Use Next.');
+    renderTellingBar(el, model({ at: 1 }));
+    expect(el.querySelector('.telling-hint')).toBe(hint);
+    expect(hint.hidden).toBe(true);
+  });
+
   it('takes focus into the bar on opening: the main button, or Next when Play is disabled', () => {
     document.body.insertAdjacentHTML('afterbegin', '<button id="opener">Play walk-through</button>');
     document.getElementById('opener')!.focus();

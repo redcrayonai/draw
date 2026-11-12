@@ -736,7 +736,14 @@ async function boot(conn: DbConnection, identityHex: string, signedIn: boolean):
         reduced: reducedMotion,
       });
       // Opening in an already hidden tab starts blocked, like a later visibilitychange.
-      const openTelling = () => { player.setBlocked(document.visibilityState === 'hidden'); player.open(); };
+      // Clears the selection first, as Esc does: Delete during a walk-through must not remove a hidden box.
+      // editor is declared further down; openTelling only runs after it exists.
+      const openTelling = () => {
+        editor.selectedEdges.clear();
+        editor.selectNodes([]);
+        player.setBlocked(document.visibilityState === 'hidden');
+        player.open();
+      };
       tellButton.addEventListener('click', openTelling);
       document.addEventListener('visibilitychange', () => player.setBlocked(document.hidden));
       // Capture phase, ahead of the editor's Space-pan and Esc (tellingKeyRoute decides).
