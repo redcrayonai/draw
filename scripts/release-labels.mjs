@@ -66,9 +66,14 @@ export function apiBreak(labels, tags) {
 
 /** release-plugin.yml checks these four agree with the tag. */
 function stampPlugin(version) {
-  if (!SEMVER.test(version)) throw new Error(`not a version: ${version}`);
+  if (!/^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?$/.test(version) || version.slice(version.indexOf('-') + 1).split('.').some(part => /^0\d+$/.test(part))) throw new Error(`not a version: ${version}`);
   for (const file of ['plugin/package.json', 'plugin/.claude-plugin/plugin.json', 'plugin/.codex-plugin/plugin.json', 'helper/package.json']) {
     const json = JSON.parse(readFileSync(file, 'utf8'));
+    if (file === 'plugin/package.json') {
+      for (const name of Object.keys(json.optionalDependencies ?? {})) {
+        if (name.startsWith('@redcrayonai/draw-')) json.optionalDependencies[name] = version;
+      }
+    }
     writeFileSync(file, `${JSON.stringify({ ...json, version }, null, 2)}\n`);
   }
   const capture = 'helper/src/capture.ts';

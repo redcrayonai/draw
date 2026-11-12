@@ -17,7 +17,7 @@ const read = rel => readFileSync(join(root, rel), 'utf8');
 const json = rel => JSON.parse(read(rel));
 
 const MATCHER = '^mcp__(plugin_draw_)?(?:draw|redcrayon)(-dev)?__(start_session|add_code_ref|mark_checkpoint|create_edge|arrive|apply_board)$';
-const COMMAND = `sh -c 'command -v node >/dev/null || exit 0; exec node "\${CLAUDE_PLUGIN_ROOT}/bin/redcrayon.mjs" hook'`;
+const COMMAND = `sh -c 'exec "\${CLAUDE_PLUGIN_ROOT}/bin/draw" hook'`;
 const DISCLOSURE = 'To check code refs, redcrayon uploads each file your agent cites and deletes it within 10 minutes. It keeps paths, line numbers, git hashes, hashes of the cited lines and the GitHub repo address. It keeps the cited lines themselves only if you turn on storing code.';
 const PREFLIGHT = 'The draw server is not connected. Run /mcp, choose draw, and sign in.';
 
@@ -38,7 +38,7 @@ test('tools.ts parses into the hosted tool list', () => {
 test('plugin.json: name draw, a semver version, Apache-2.0', () => {
   const p = json('plugin/.claude-plugin/plugin.json');
   assert.equal(p.name, 'draw');
-  assert.match(p.version, /^\d+\.\d+\.\d+$/);
+  assert.match(p.version, /^\d+\.\d+\.\d+(?:-[\w.-]+)?$/);
   assert.equal(p.license, 'Apache-2.0');
 });
 
@@ -46,7 +46,11 @@ test('package.json: @redcrayonai/draw ships the plugin and runs the helper as bi
   const p = json('plugin/package.json');
   assert.equal(p.name, '@redcrayonai/draw');
   assert.equal(p.license, 'Apache-2.0');
-  assert.deepEqual(p.bin, { redcrayon: 'bin/redcrayon.mjs' });
+  assert.deepEqual(p.bin, { draw: 'bin/draw', redcrayon: 'bin/draw' });
+  assert.equal(p.drawRuntime.protocol, 1);
+  assert.deepEqual(p.pi, { extensions: ['./pi/extension.mjs'], skills: ['./skills'] });
+  assert.equal(Object.keys(p.optionalDependencies).length, 4);
+  assert(Object.values(p.optionalDependencies).every(version => version === p.version));
   for (const f of ['.claude-plugin', '.mcp.json', 'hooks', 'skills', 'references', 'bin/redcrayon.mjs', 'README.md', 'LICENSE']) assert.ok(p.files.includes(f), f);
   assert.equal(p.publishConfig?.access, 'public');
   assert.equal(p.private, undefined);
@@ -90,7 +94,7 @@ test('chat hooks connect boards automatically and wake only their own session', 
   assert.ok(start.matcher.includes('start_session'));
   assert.ok(start.hooks.some(h => h.asyncRewake && h.command.includes('--wait')));
   assert.ok(hooks.Stop.flatMap(e => e.hooks).some(h => h.asyncRewake));
-  assert.ok(hooks.Stop.flatMap(e => e.hooks).find(h => h.asyncRewake).command.includes('chat/*.sock'), 'no background Node process when no chat exists');
+  assert.ok(hooks.Stop.flatMap(e => e.hooks).find(h => h.asyncRewake).command.includes('chat/*.sock'), 'no background process when no chat exists');
   assert.ok(hooks.PreToolUse.flatMap(e => e.hooks).some(h => h.asyncRewake), 'a tool halted by Stop may never reach the Stop hook');
   for (const event of ['MessageDisplay', 'UserPromptSubmit', 'Notification']) {
     const hook = hooks[event][0].hooks[0];
@@ -217,7 +221,8 @@ test('skill: captures — the plugin fills them; otherwise the command the text 
   assert.ok(copy.includes('`REJECTED: ${tool} needs a capture of your local ${'));
   assert.ok(flat.includes('`REJECTED: <tool> needs a capture of your local file. …`'));
   assert.ok(flat.includes('Leave `capture` empty: the redcrayon plugin fills it in'));
-  assert.ok(flat.includes('Run the `npx -y @redcrayonai/draw@1 capture …` command the text names'));
+  assert.ok(flat.includes('If `draw` is installed, run the named `capture …` arguments with `draw` in the project'));
+  assert.ok(flat.includes('Otherwise use the `npx -y @redcrayonai/draw@1 capture …` command the text names'));
 });
 
 // ---- the triage skill ----
@@ -393,6 +398,8 @@ test('hosted plugin release configures and scans the packed plugin and marketpla
     run(process.execPath, ['build.mjs'], join(dir, 'helper'));
     cpSync(join(dir, 'helper/dist/redcrayon.mjs'), join(dir, 'plugin/bin/redcrayon.mjs'));
     cpSync(join(dir, 'helper/dist/chat-hook.mjs'), join(dir, 'plugin/bin/chat-hook.mjs'));
+    mkdirSync(join(dir, 'plugin/pi'), { recursive: true });
+    cpSync(join(dir, 'helper/dist/pi-extension.mjs'), join(dir, 'plugin/pi/extension.mjs'));
     const pack = join(dir, 'pack');
     mkdirSync(pack);
     const [{ filename }] = JSON.parse(run('npm', ['pack', '--ignore-scripts', '--json', '--pack-destination', pack], join(dir, 'plugin')));
@@ -404,8 +411,8 @@ test('hosted plugin release configures and scans the packed plugin and marketpla
     const targets = join(dir, 'release.targets');
     writeFileSync(targets, `tree ${join(pack, 'package')}\ntree .claude-plugin\n`);
     const strict = scan(targets, dir);
-    assert.equal(strict.length, 3, strict.join('\n'));
-    for (const file of ['pack/package/.mcp.json', 'pack/package/README.md', 'pack/package/bin/redcrayon.mjs']) {
+    assert.equal(strict.length, 4, strict.join('\n'));
+    for (const file of ['pack/package/.mcp.json', 'pack/package/README.md', 'pack/package/bin/redcrayon.mjs', 'pack/package/pi/extension.mjs']) {
       assert.ok(strict.some(hit => hit.startsWith(`${join(dir, file)}:`) && hit.includes(': private word: ')), file);
     }
     assert.deepEqual(scan(targets, dir, { hostedPlugin: true }), []);

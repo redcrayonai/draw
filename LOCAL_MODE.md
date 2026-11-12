@@ -6,27 +6,65 @@ Local mode serves a repository's architecture boards from one process on loopbac
 
 ## Install the standalone executable
 
-Download the `draw-local` artifact for your operating system and architecture from this PR's **session-flows → local-binary** CI job, then extract the artifact ZIP. The `.tgz` inside is installable with Bun; it contains a native executable, its runtime, the UI, and licenses, with no dependencies or install scripts:
+The shared executable supports local and hosted boards with Codex, Claude Code, and pi. Its canonical npm package is `@redcrayonai/draw`; `draw` and the existing `redcrayon` command run the same executable. macOS and Linux with glibc are supported on arm64 and x64.
+
+**Release status:** the native npm packages and public release archives have not been published yet. The currently published package is the earlier Node helper. These registry commands apply after the native release:
 
 ```sh
-bun install -g ./draw-darwin-arm64.tgz  # use the filename for your platform
-# Ensure Bun's global bin directory is on PATH.
-draw install codex
-cd /path/to/your-project
-codex
+npm install -g @redcrayonai/draw
+# Or use Bun:
+bun install -g @redcrayonai/draw
 ```
 
-Ask Codex: **Use `$draw-local:local` to open a board for this repository.** The skill starts the local server and connects this conversation. You can also run `draw` directly in your repository to open the browser; `draw --no-open` only prints the URL. Running `draw` again opens the existing server. Keep the terminal serving the board open; Ctrl-C stops it without deleting boards.
+Both installers select the matching platform package. Keep optional dependencies enabled; no install scripts are needed. After installation, Draw itself runs without Node, Bun, pnpm, or a source checkout. Git and your chosen coding agent are still required. The agent may have its own runtime requirements.
 
-Bun is only needed for this install command. The installed executable runs without Node, Bun, pnpm, or a source checkout; git and your chosen coding agent remain prerequisites. Keep the executable in place after `draw install codex`, or rerun that command if you move it. Existing boards use the same storage as the source distribution.
+For the current build, download the `draw-native-<platform>-<architecture>` artifact from this PR's native CI job, then extract the artifact ZIP. Extract its `draw-<platform>-<architecture>.tgz` into a permanent directory, keeping the licenses alongside the executable:
 
-To install without Bun, extract the `.tgz` with `tar -xzf`, put `package/draw` on PATH, and retain its accompanying licenses. There is no published registry package or public release download yet; CI artifacts are the current distribution. macOS artifacts are not notarized.
+```sh
+mkdir -p "$HOME/.local/share/draw"
+tar -xzf ./draw-darwin-arm64.tgz -C "$HOME/.local/share/draw" --strip-components=1
+export PATH="$HOME/.local/share/draw:$PATH"
+```
 
-For maintainers, use Bun 1.4.4 and the build dependencies below, then run `pnpm -C helper build:binary` (or `bun helper/build-binary.mjs` from the repository root). Outputs are `helper/dist/binary/draw`, a platform-specific `.tgz`, and `SHA256SUMS`. CI builds and runs the packaged browser journey on macOS and Linux. The source/Node distribution remains supported.
+Use your platform's filename. The `.tgz` is the platform package; the canonical package and its optional dependencies are tested together through npm and Bun. macOS artifacts are not notarized.
+
+Install the integration for your agent, then start it in your repository:
+
+```sh
+draw install codex --mode local
+# Or:
+draw install claude-code --mode local
+draw install pi --mode local
+```
+
+`--mode local` is the default. Ask the agent to use the local Draw skill to open a board for this repository. In Codex, the skill is `$draw-local:local`. The integration connects the current conversation. Restart the agent after installing or refreshing its integration.
+
+You can also run `draw` directly in your repository to open the browser; `draw --no-open` only prints the URL. Running `draw` again opens the existing server. Keep the terminal serving the board open; Ctrl-C stops it without deleting boards. Keep the executable in place after installing an integration, or rerun the install command if you move it. Existing boards retain their storage.
+
+For hosted boards, use the same command with `--mode hosted`, then connect the hosted MCP server and authenticate in your agent. Existing marketplace installations remain supported; choose one hosted installation method to avoid duplicate tools. Hosted behavior has been exercised against a controlled relay/capture fixture with real agents; production authentication was not verified in this change.
+
+## Updates
+
+```sh
+draw update --check
+draw update
+# Preview releases use npm's next channel:
+draw update --channel preview
+# Select the package manager explicitly if automatic detection cannot find it:
+draw update --installer bun
+```
+
+Stable updates use npm's `latest` channel. The updater checks that a release contains the shared runtime and a matching platform package before installing that exact version through npm or Bun with lifecycle scripts disabled. It will not replace Draw with the older hosted-only package. Direct archive installations can use a new archive or explicitly choose a package manager.
+
+An update does not restart running boards or agents. Start the new executable for subsequent sessions. Draw records which integration version you installed and tells you when to rerun `draw install <agent> --mode <mode>`; this refreshes the agent's cached skills and launchers.
+
+Interactive local launches check for updates at most daily using a cache. Set `DRAW_NO_UPDATE_CHECK=1` to disable those checks. MCP and hook output stays free of update notices. Checks do not install updates automatically.
+
+For maintainers, use Bun 1.4.4 and the build dependencies below, then run `pnpm -C helper build:binary` (or `bun helper/build-binary.mjs` from the repository root). `BUN_BINARY=/absolute/path/to/bun` selects a build executable outside PATH. Outputs are `helper/dist/binary/draw`, a platform `.tgz`, the canonical npm `.tgz`, and `SHA256SUMS`. CI builds natively on all four supported OS/architecture combinations, installs with npm and Bun in isolated directories, and runs the packaged browser journey. The release workflow publishes the platform packages first, then the canonical package, and attaches standalone archives and checksums to the versioned GitHub release. Prerelease tags publish to `next`; stable tags publish to `latest`.
 
 ## Build and launch from source
 
-Use Node 24 and pnpm 10 for building with the repository's current tooling. The packaged runtime uses Node 20 or later and git for protected code reads. The relocated distribution/browser journey was tested with Node 20.20.2 and 24.21.0. Install each package separately:
+Use Node 24 and pnpm 10 for building with the repository's current tooling. The source runtime uses Node 20 or later and git for protected code reads. The relocated distribution/browser journey was tested with Node 20.20.2 and 24.21.0. Install each package separately:
 
 ```sh
 pnpm -C agent install --frozen-lockfile
@@ -54,7 +92,7 @@ codex
 
 In Codex, ask: **Use `$draw-local:local` to open a board for this repository.** The skill starts the local server if needed, reuses or creates a named board, shares its private browser link, and attaches the current thread using `CODEX_THREAD_ID`. Approve the requested local server/tool operations in Codex as usual. You do not need to copy a thread ID or configure MCP manually. Start Codex from the repository you want to draw. Do not use `--no-daemon`, which removes the shared connection needed by board chat.
 
-This development marketplace is named `draw-local-dev`; it installs `draw-local` alongside any existing hosted Draw plugin. It does not replace the hosted plugin or its account connection. The build fingerprints the packaged code and skill to avoid stale installed copies. After changing/rebuilding the local plugin, reinstall with `draw install codex` (or `node helper/dist/redcrayon.mjs install codex` for the source distribution) and start a new Codex session to load the update. The plugin is built for standalone Codex; Claude and pi setup is documented below.
+This development marketplace is named `draw-local-dev`; it installs `draw-local` alongside any existing hosted Draw plugin. It does not replace the hosted plugin or its account connection. The build fingerprints the packaged code and skill to avoid stale installed copies. After changing/rebuilding the local plugin, reinstall with `draw install codex` (or `node helper/dist/redcrayon.mjs install codex` for the source distribution) and start a new Codex session to load the update. This source installer targets standalone Codex; native installers support all three agents, and manual source setup for Claude and pi is documented below.
 
 To remove this development install: `codex plugin remove draw-local@draw-local-dev`, then `codex plugin marketplace remove draw-local-dev`. Existing local boards remain in the storage directory.
 
@@ -146,13 +184,13 @@ Wake notifications bypass `UserPromptSubmit` in the tested Claude version. The h
 
 ### pi
 
-The tarball includes `local-pi-extension.mjs` alongside the executable; source builds put it in `helper/dist/`. The packaged extension connects chat and registers the local MCP tools inside the current pi session:
+For the native executable, `draw install pi --mode local` extracts and installs the bundled extension. Source builds put `local-pi-extension.mjs` in `helper/dist/`; use it directly for a specific board:
 
 ```sh
 DRAW_LOCAL_BOARD=<slug> pi -e /absolute/path/to/dist/local-pi-extension.mjs
 ```
 
-Run from the board's repository. Add `--resume <session-id>` to reconnect a saved conversation. If using a custom store, also set `DRAW_LOCAL_STORE=/absolute/path/to/store`. The extension requires pi's built-in MCP support. If you use `--no-extensions`, explicitly add `-e builtin:mcp` alongside the Draw extension. It uses `sendUserMessage` and `abort` on the current session; it never launches a second agent. Normal pi tool policy remains in effect.
+Run from the board's repository. Add `--resume <session-id>` to reconnect a saved conversation. If using a custom store, also set `DRAW_LOCAL_STORE=/absolute/path/to/store`. The extension requires pi's built-in MCP support; pi 1.4.0 was verified. If you use `--no-extensions`, explicitly add `-e builtin:mcp` alongside the Draw extension. It uses `sendUserMessage` and `abort` on the current session; it never launches a second agent. Normal pi tool policy remains in effect.
 
 For Claude and pi, pass the custom store to every setup command, and restart/resume the same conversation with its hooks/extension after restarting Draw. Disconnected hooks expire after 45 seconds. These integrations are opt-in for the named board; they do not discover or attach unrelated terminal sessions.
 
@@ -195,6 +233,7 @@ The CLI streams with backpressure in batches of 250 and flushes the final partia
 ```sh
 pnpm -C helper test
 pnpm -C helper typecheck
+node --test scripts/native-packages.test.mjs
 pnpm -C client test
 pnpm -C helper build:local
 pnpm -C e2e install --frozen-lockfile

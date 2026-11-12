@@ -47,17 +47,23 @@ export function runLocalInstall(args: string[]) {
   return 0;
 }
 
-export function installLocalCodex(plugin: string) {
+export function installLocalCodex(plugin: string, marketplace = 'draw-local-dev', name = 'draw-local') {
   const { marketplaces } = JSON.parse(execFileSync('codex', ['plugin', 'marketplace', 'list', '--json'], { encoding: 'utf8' }));
-  const existing = marketplaces.find((market: { name: string }) => market.name === 'draw-local-dev');
-  if (existing?.root !== plugin) {
-    if (existing && existing.marketplaceSource?.sourceType !== 'local') throw new Error('REJECTED: draw-local-dev is not a local marketplace');
-    if (existing) execFileSync('codex', ['plugin', 'marketplace', 'remove', 'draw-local-dev'], { stdio: 'inherit' });
-    try { execFileSync('codex', ['plugin', 'marketplace', 'add', plugin], { stdio: 'inherit' }); }
-    catch (error) {
-      if (existing) execFileSync('codex', ['plugin', 'marketplace', 'add', existing.root], { stdio: 'inherit' });
-      throw error;
+  const existing = marketplaces.find((market: { name: string }) => market.name === marketplace);
+  const replacing = existing?.root !== plugin;
+  if (replacing && existing && existing.marketplaceSource?.sourceType !== 'local') throw new Error(`REJECTED: ${marketplace} is not a local marketplace`);
+  let changed = false, registered = false;
+  try {
+    if (replacing) {
+      if (existing) { execFileSync('codex', ['plugin', 'marketplace', 'remove', marketplace], { stdio: 'inherit' }); changed = true; }
+      execFileSync('codex', ['plugin', 'marketplace', 'add', plugin], { stdio: 'inherit' }); changed = registered = true;
     }
+    execFileSync('codex', ['plugin', 'add', `${name}@${marketplace}`], { stdio: 'inherit' });
+  } catch (error) {
+    if (changed) {
+      if (registered) execFileSync('codex', ['plugin', 'marketplace', 'remove', marketplace], { stdio: 'inherit' });
+      if (existing) execFileSync('codex', ['plugin', 'marketplace', 'add', existing.root], { stdio: 'inherit' });
+    }
+    throw error;
   }
-  execFileSync('codex', ['plugin', 'add', 'draw-local@draw-local-dev'], { stdio: 'inherit' });
 }

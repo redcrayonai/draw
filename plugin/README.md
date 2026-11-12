@@ -11,13 +11,50 @@ when they open a board. Other agents can draw through the same server URL.
 
 **Server URL:** `http://localhost:8788/mcp`
 
-## Local boards without a server account
+## Shared executable and local boards
 
-The hosted plugin below uses the hosted tool and sign-in flow. For standalone
-repository boards, build and install the separate `draw-local` package described
-in [Local Draw](../LOCAL_MODE.md#try-it-with-codex). It includes a local MCP bridge
-and `$draw-local:local` skill, which starts Draw and connects the current Codex
-conversation. The local and hosted packages can be installed alongside each other.
+The next native release uses one `@redcrayonai/draw` package for local and hosted
+boards. The executable embeds its runtime and UI and supports macOS and Linux
+with glibc, on arm64 and x64. Both `draw` and `redcrayon` remain available.
+
+**The native release is not published yet.** The registry currently serves the
+earlier Node helper. After the native release, install with either package manager:
+
+```sh
+npm install -g @redcrayonai/draw
+# Or:
+bun install -g @redcrayonai/draw
+```
+
+Keep optional dependencies enabled. Draw needs no Node or Bun after installation;
+git and your chosen agent remain prerequisites. Install that agent's integration:
+
+```sh
+draw install codex --mode hosted
+# Or:
+draw install claude-code --mode hosted
+draw install pi --mode hosted
+```
+
+Restart the agent, connect Draw, and sign in through its MCP controls. pi 1.4.0
+was verified. Use `--mode local` for repository boards without a server account;
+local is the default when `--mode` is omitted. Local and hosted integrations can
+coexist. Choose one hosted installation method to avoid duplicate tools.
+
+[Local Draw](../LOCAL_MODE.md#install-the-standalone-executable) describes current
+CI artifact downloads, source builds, local storage, and agent setup. Existing
+marketplace installs and Node helper entry points remain supported.
+
+Check for a native release with `draw update --check`; `draw update` installs its
+exact version through the detected npm or Bun installation. Use
+`--installer npm` or `--installer bun` to choose explicitly, or `--channel preview`
+for the `next` channel. Updates never restart running boards or conversations.
+If Draw reports stale integration files, rerun the appropriate `draw install`
+command, then restart the agent. Interactive local launches check at most daily;
+`DRAW_NO_UPDATE_CHECK=1` disables the checks. MCP and hook output stays silent.
+
+Native hosted flows were tested with real agents against a controlled relay and
+capture service. Production sign-in was not verified in this change.
 
 ## Install
 
@@ -43,8 +80,9 @@ conversation. The local and hosted packages can be installed alongside each othe
    opened: it charts measured evidence beside the hops it describes and leaves
    the suspects to you.
 
-Code refs and checkpoints need git and Node 20 or later on your PATH. Board chat
-needs Node 22 or later. Without Node, drawing still works. Automatic Claude Code
+The existing Node-based plugin needs git and Node 20+ for code refs and
+checkpoints, and Node 22+ for board chat. Its drawing tools work without Node.
+The native executable supplies its own runtime for these helper operations. Automatic Claude Code
 chat requires a version supporting `MessageDisplay` and `asyncRewake` hooks.
 
 ### Cursor
@@ -97,8 +135,9 @@ manual entry with `codex mcp remove draw` to avoid duplicate tools.
 ### Connected conversation
 
 The Claude Code and Codex plugins connect board chat when `start_session` opens
-a board. Open its link to continue the conversation. Board chat needs Node 22+.
-MCP-only installation provides drawing, without automatic chat.
+a board. Open its link to continue the conversation. The Node helper needs
+Node 22+ for chat; the native executable supplies its runtime. MCP-only
+installation provides drawing, without automatic chat.
 Codex chat attaches to the exact thread already loaded on its shared local
 app server. Standalone sessions and host-managed sessions without that connection
 remain available in their original interface; chat never starts a second agent.
@@ -255,9 +294,14 @@ so your agent draws boards without code refs or checkpoints.
 - For a plugin release, set the GitHub repository variable `PLUGIN_MCP_ORIGIN`
   to `https://mcp.<domain>`. The tag workflow configures the plugin and helper
   together; keep the committed defaults local.
-- `bin/redcrayon.mjs` is the helper, built and copied in by each release. The
-  plugin and the helper ship as one npm package, `@redcrayonai/draw`, so the
-  plugin pins its helper.
+- `bin/draw` launches the matching optional native package. The canonical
+  package pins all four platform packages to its exact version.
+- `bin/redcrayon.mjs` and `bin/chat-hook.mjs` remain for older plugin installers
+  and source checkouts; the launcher uses them when the native package is absent.
+- Release `plugin-v<version>` only after configuring npm trusted publishing for
+  the canonical package and all four `@redcrayonai/draw-<platform>-<architecture>`
+  packages. The workflow builds and tests each architecture before publishing.
+  Prereleases use `next` and GitHub prereleases; stable releases use `latest`.
 - Load a checkout of this plugin for one session with
   `claude --plugin-dir <path to this folder>`.
 - `REDCRAYON_MCP_URL` points the plugin's server and the helper at a server you

@@ -85,40 +85,4 @@ jobs:
         run: scripts/stdb-test.sh mcp
 
   local-binary:
-    name: local-binary (${{ matrix.os }})
-    strategy:
-      fail-fast: false
-      matrix:
-        os: [ubuntu-latest, macos-14]
-    runs-on: ${{ matrix.os }}
-    timeout-minutes: 20
-    steps:
-      - uses: actions/checkout@v7
-      - uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115 # v6.1.1
-        with:
-          package_json_file: helper/package.json
-      - uses: actions/setup-node@v7
-        with:
-          node-version: 24
-      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
-        with:
-          bun-version: 1.4.4
-      - name: Install build and browser test dependencies
-        run: for p in agent client helper e2e; do pnpm -C "$p" install --frozen-lockfile; done
-      - name: Build standalone executable and Bun-installable tarball
-        run: pnpm -C helper build:binary
-      - name: Install with Bun and verify no runtime dependencies
-        run: node scripts/local-binary-smoke.mjs helper/dist/binary/draw-*.tgz
-      - name: Install Chromium
-        run: pnpm -C e2e exec playwright install --with-deps chromium
-      - name: Browser and MCP journey using only the relocated executable
-        env:
-          DRAW_LOCAL_BINARY: ${{ github.workspace }}/helper/dist/binary/draw
-        run: pnpm -C e2e exec playwright test --config local.config.ts
-      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
-        with:
-          name: draw-local-${{ runner.os }}-${{ runner.arch }}
-          path: |
-            helper/dist/binary/draw-*.tgz
-            helper/dist/binary/SHA256SUMS
-          if-no-files-found: error
+    uses: ./.github/workflows/native-packages.yml

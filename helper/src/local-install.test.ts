@@ -55,3 +55,13 @@ it('installs fresh, reuses the same source, and refuses to replace a remote mark
   expect(() => installLocalCodex('/new')).toThrow('REJECTED');
   expect(run).toHaveBeenCalledTimes(1);
 });
+
+it('restores the previous Codex marketplace when plugin installation fails after registration', () => {
+  const run = vi.mocked(execFileSync);
+  run.mockReset().mockReturnValueOnce(JSON.stringify({ marketplaces: [{ name: 'draw-local-dev', root: '/old', marketplaceSource: { sourceType: 'local' } }] }))
+    .mockReturnValueOnce('').mockReturnValueOnce('').mockImplementationOnce(() => { throw new Error('plugin rejected'); });
+  expect(() => installLocalCodex('/new')).toThrow('plugin rejected');
+  expect(run.mock.calls.slice(-2).map(call => call[1])).toEqual([
+    ['plugin', 'marketplace', 'remove', 'draw-local-dev'], ['plugin', 'marketplace', 'add', '/old'],
+  ]);
+});
