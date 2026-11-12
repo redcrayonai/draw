@@ -1,6 +1,6 @@
 ---
 name: local
-description: Use when the user asks to open a local Draw architecture board, draw their repository locally, or continue work from local board feedback in Codex.
+description: Use when the user asks to open a local Draw architecture board, draw their repository locally, or continue work from local board feedback in Codex, Claude Code, or pi.
 argument-hint: [board name or local board link] [task]
 ---
 
@@ -46,7 +46,16 @@ explicit scope instead of guessing from its own working directory. Do not omit
    the user's browser when requested. Its credential fragment is private; do
    not commit it, send it to other services, or place it in a diagram.
 
-## Connect the same Codex conversation
+## Connect the same conversation
+
+For **Claude Code and pi**, the installed hooks/extension attach this session
+after a successful `open_board` or `read_board`. Read the board again and verify
+`connection.connected` and `connection.session.agent` match the current agent.
+Do not call the Codex-only `attach_conversation` tool from Claude Code or pi.
+If chat is disconnected, report it and check that the local integration was
+installed and loaded; never create another agent session to simulate connection.
+
+For **Codex**, use the following shared-socket attachment:
 
 Read only `CODEX_THREAD_ID` (and optional `DRAW_CODEX_SOCKET`) from the current
 terminal environment. Call `attach_conversation` with the board slug and that

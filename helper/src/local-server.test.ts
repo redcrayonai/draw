@@ -72,6 +72,10 @@ it('returns a usable private board link without storing its capability in the bo
   const url = new URL(board.url);
   expect(url.origin).toBe(app.origin);
   expect(url.hash).toBe(`#b=${board.slug}&key=${app.token}`);
-  expect((await call({ action: 'read_board', board: board.slug })).value.url).toBe(board.url);
+  const read = (await call({ action: 'read_board', board: board.slug })).value;
+  expect(read.url).toBe(board.url);
+  expect(read.connection.connected).toBe(false);
+  await call({ action: 'connect_local_agent', board: board.slug, agent: 'pi', threadId: 'current-pi', cwd: board.repo });
+  expect((await call({ action: 'read_board', board: board.slug })).value.connection.session.id).toBe('pi:current-pi');
   expect(JSON.stringify(app.store.read(board.slug))).not.toContain(app.token);
 });

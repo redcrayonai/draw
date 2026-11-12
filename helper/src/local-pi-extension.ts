@@ -1,17 +1,18 @@
-import { fileURLToPath } from 'node:url';
+import { piHelperCommand } from './pi-runtime';
 import { localCall, localEndpoint } from './local-mcp';
+import { hookResult } from './hook-result';
 
 type Context = { cwd: string; isIdle(): boolean; abort(): void; sessionManager: { getSessionId(): string }; ui: { notify(message: string, tone: string): void } };
 type Pi = { on(event: string, handler: (event: any, context: Context) => unknown): void; sendUserMessage(text: string): void; registerMcpServer(name: string, config: { command: string; args: string[]; exposure: 'direct' }): void };
 /** Runs inside pi's existing session; it never starts or resumes another agent process. */
-export default function localPi(pi: Pi) {
-  const board = process.env.DRAW_LOCAL_BOARD;
-  if (!board) return;
+export default function localPi(pi: Pi, helper = piHelperCommand()) {
+  const configuredBoard = process.env.DRAW_LOCAL_BOARD;
   const storeArgs = process.env.DRAW_LOCAL_STORE ? ['--store', process.env.DRAW_LOCAL_STORE] : [];
-  pi.registerMcpServer('draw-local', { command: process.execPath, args: [fileURLToPath(new URL('./redcrayon.mjs', import.meta.url)), 'local-mcp', '--repo', process.cwd(), ...storeArgs], exposure: 'direct' });
-  let active: { event(value: object): Promise<void>; close(): Promise<void> } | undefined;
+  const [command, ...args] = helper;
+  pi.registerMcpServer('draw-local', { command, args: [...args, 'local-mcp', '--repo', process.cwd(), ...storeArgs], exposure: 'direct' });
+  let active: { board: string; event(value: object): Promise<void>; close(): Promise<void> } | undefined;
   let sequence = 0;
-  pi.on('session_start', async (_event, context) => {
+  const attach = async (board: string, context: Context) => {
     await active?.close(); active = undefined;
     const endpoint = localEndpoint(['--repo', context.cwd, ...storeArgs]);
     const session = `pi:${context.sessionManager.getSessionId()}`, cancel = new AbortController();
@@ -20,6 +21,7 @@ export default function localPi(pi: Pi) {
     const close = async () => {
       if (cancel.signal.aborted) return;
       cancel.abort();
+      if (active?.close === close) active = undefined;
       try { await call({ action: 'disconnect_local_agent' }); } catch { /* The server also expires missing clients. */ }
     };
     const fail = async (error: Error) => { context.ui.notify(`Board chat: ${error.message}`, 'error'); await close(); };
@@ -28,7 +30,8 @@ export default function localPi(pi: Pi) {
       events = events.then(async () => { if (!cancel.signal.aborted) await call({ action: 'local_agent_event', event: value }); }).catch(fail);
       return events;
     };
-    active = { event, close };
+    active = { board, event, close };
+    await event({ type: 'state', state: context.isIdle() ? 'idle' : 'working' });
     void (async () => {
       while (!cancel.signal.aborted) {
         const delivery = await call({ action: 'poll_local_agent' }, cancel.signal);
@@ -45,6 +48,15 @@ export default function localPi(pi: Pi) {
         }
       }
     })().catch(error => { if (!cancel.signal.aborted) return fail(error); });
+  };
+  pi.on('session_start', async (_event, context) => {
+    await active?.close(); active = undefined;
+    if (configuredBoard) await attach(configuredBoard, context);
+  });
+  pi.on('tool_result', async (event, context) => {
+    if (configuredBoard || event.isError || !/^mcp__draw_local__(open_board|read_board)$/.test(event.toolName)) return;
+    const board = hookResult(event.structuredContent ?? { content: event.content });
+    if (typeof board?.slug === 'string' && board.slug !== active?.board && /^[A-Za-z0-9_-]{1,200}$/.test(board.slug)) await attach(board.slug, context);
   });
   pi.on('agent_start', () => active?.event({ type: 'state', state: 'working' }));
   pi.on('message_end', message => {

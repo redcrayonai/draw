@@ -13,10 +13,10 @@ cpSync(new URL('../plugin/local/', import.meta.url), new URL('./dist/', import.m
 await build({ absWorkingDir: fileURLToPath(new URL('./', import.meta.url)), entryPoints: ['src/local-pi-extension.ts'], bundle: true, platform: 'node', format: 'esm', target: 'node20', outfile: 'dist/local-pi-extension.mjs' });
 // Codex caches installed plugin versions; rebuilding must produce a fresh cache key.
 const hash = createHash('sha256');
-for (const file of ['redcrayon.mjs', 'local-pi-extension.mjs', 'local-assets/local.html', 'skills/local/SKILL.md', 'mcp.json', 'plugin.json', '.codex-plugin/plugin.json']) hash.update(readFileSync(new URL(`./dist/${file}`, import.meta.url)));
+for (const file of ['redcrayon.mjs', 'local-pi-extension.mjs', 'pi-extension.mjs', 'local-assets/local.html', 'skills/local/SKILL.md', 'mcp.json', 'plugin.json', '.codex-plugin/plugin.json']) hash.update(readFileSync(new URL(`./dist/${file}`, import.meta.url)));
 const fingerprint = hash.digest('hex').slice(0, 12);
 for (const file of ['plugin.json', '.codex-plugin/plugin.json']) {
   const path = new URL(`./dist/${file}`, import.meta.url), manifest = JSON.parse(readFileSync(path, 'utf8'));
-  manifest.version += `+local.${fingerprint}`;
+  manifest.version = `${JSON.parse(readFileSync(new URL('./package.json', import.meta.url), 'utf8')).version}+local.${fingerprint}`;
   writeFileSync(path, JSON.stringify(manifest, null, 2) + '\n');
 }

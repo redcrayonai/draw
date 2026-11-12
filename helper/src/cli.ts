@@ -38,6 +38,7 @@ import { hookResult as resultJson } from './hook-result';
 import { runMarks } from './marks';
 import { runTap } from './tap';
 import { runLocal } from './local-cli';
+import { standalone } from './local-runtime';
 import { runLocalInstall } from './local-install';
 import { runLocalMcp } from './local-mcp';
 import { runLocalLive } from './local-live';
@@ -115,7 +116,8 @@ async function doctor(cwd: string): Promise<number> {
     ok &&= good;
   };
   const major = Number(process.versions.node.split('.')[0]);
-  check('node', major >= 20, major >= 20 ? `v${process.versions.node}` : `v${process.versions.node}; redcrayon needs Node 20 or later`);
+  if (standalone) check('runtime', true, `bundled Bun ${process.versions.bun}`);
+  else check('node', major >= 20, major >= 20 ? `v${process.versions.node}` : `v${process.versions.node}; redcrayon needs Node 20 or later`);
   try {
     check('git', true, execFileSync('git', ['--version'], { encoding: 'utf8' }).trim());
   } catch {
@@ -259,6 +261,7 @@ async function hook(out: string[], err: string[]): Promise<number> {
 async function main(argv: string[]): Promise<{ code: number; out: string[]; err: string[] }> {
   const out: string[] = [];
   const err: string[] = [];
+  if (argv[0] === 'chat-hook') { await import('./chat-hook'); return { code: 0, out, err }; }
   if (argv[0] === 'hook') return { code: await hook(out, err), out, err };
   if (process.platform === 'win32') return { code: 1, out, err: [say.windows] };
   try {

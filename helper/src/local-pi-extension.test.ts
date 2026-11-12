@@ -28,9 +28,19 @@ it('keeps deliveries inside the current pi session and aborts its poll before sw
   expect(notify).not.toHaveBeenCalled();
   expect(registerMcpServer).toHaveBeenCalledWith('draw-local', expect.objectContaining({ exposure: 'direct' }));
 });
-it('does nothing unless explicitly configured for a board', () => {
+it('registers local tools without a selected board and attaches when the session opens one', async () => {
   vi.stubEnv('DRAW_LOCAL_BOARD', '');
-  const on = vi.fn(), registerMcpServer = vi.fn();
-  localPi({ on, registerMcpServer, sendUserMessage: vi.fn() });
-  expect(on).not.toHaveBeenCalled(); expect(registerMcpServer).not.toHaveBeenCalled();
+  const handlers = new Map<string, Function>(), registerMcpServer = vi.fn();
+  vi.mocked(localCall).mockImplementation(async (_endpoint, value, signal) => {
+    if ((value as any).action !== 'poll_local_agent') return {};
+    return new Promise((_resolve, reject) => signal!.addEventListener('abort', () => reject(new Error('aborted')), { once: true }));
+  });
+  localPi({ on: (name, fn) => { handlers.set(name, fn); }, registerMcpServer, sendUserMessage: vi.fn() });
+  const context = { cwd: process.cwd(), isIdle: () => false, abort: vi.fn(), sessionManager: { getSessionId: () => 'auto' }, ui: { notify: vi.fn() } };
+  await handlers.get('session_start')!({}, context);
+  expect(localCall).not.toHaveBeenCalled();
+  await handlers.get('tool_result')!({ toolName: 'mcp__draw_local__open_board', content: [{ type: 'text', text: JSON.stringify({ slug: 'new-board' }) }] }, context);
+  expect(localCall).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({ action: 'connect_local_agent', board: 'new-board', session: 'pi:auto' }), undefined);
+  expect(registerMcpServer).toHaveBeenCalledOnce();
+  await handlers.get('session_shutdown')!();
 });

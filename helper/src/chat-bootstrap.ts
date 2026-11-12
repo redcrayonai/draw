@@ -5,6 +5,7 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { chatDir, chatSocketPath } from './chat-path';
 import { hookResult } from './hook-result';
+import { localCommand } from './local-runtime';
 
 export interface ChatConnection { session: string; agent: 'claude-code' | 'codex'; token: string; board: string; origin: string; at: number }
 
@@ -77,7 +78,7 @@ export async function startChatConnection(cwd: string, connection: ChatConnectio
       }
     }
     writeFileSync(`${path}.connection.json`, JSON.stringify(connection), { mode: 0o600 });
-    const helper = join(dirname(fileURLToPath(import.meta.url)), 'redcrayon.mjs');
+    const [executable, ...args] = localCommand(join(dirname(fileURLToPath(import.meta.url)), 'redcrayon.mjs'));
     let owner: string | undefined;
     if (connection.agent === 'claude-code') {
       try {
@@ -95,7 +96,7 @@ export async function startChatConnection(cwd: string, connection: ChatConnectio
         }
       } catch { /* Stop still works at the next hook if the harness cannot be identified. */ }
     }
-    const child = spawn(process.execPath, [helper, 'chat', '--token', connection.token, '--session', connection.session, '--agent', connection.agent, ...(owner ? ['--owner', owner] : [])], {
+    const child = spawn(executable, [...args, 'chat', '--token', connection.token, '--session', connection.session, '--agent', connection.agent, ...(owner ? ['--owner', owner] : [])], {
       cwd, detached: true, stdio: 'ignore', env: { ...process.env, REDCRAYON_ORIGIN: connection.origin },
     });
     child.on('error', () => {});

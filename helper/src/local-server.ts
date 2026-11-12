@@ -25,7 +25,7 @@ export async function startLocal(options: { repo: string; directory: string; ass
   const viewers = new Map<ServerResponse, string>();
   const activities = new Map<string, LocalActivity>();
   let origin = '';
-  const withLink = (board: ReturnType<LocalStore['read']>) => ({ ...board, url: `${boardHref({ app: origin, slug: board.slug, db: 'local', home: 'local' })}&key=${token}` });
+  const withLink = (board: ReturnType<LocalStore['read']>) => ({ ...board, connection: chat.status(board.slug), url: `${boardHref({ app: origin, slug: board.slug, db: 'local', home: 'local' })}&key=${token}` });
   function broadcast(slug: string) {
     const frame = `data: ${JSON.stringify(store.read(slug))}\n\nevent: chat\ndata: ${JSON.stringify(chat.status(slug))}\n\n`;
     for (const [response, board] of viewers) {

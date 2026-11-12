@@ -31,3 +31,5 @@ if (foreign.length > 0) {
 chmodSync(outfile, 0o755);
 // The plugin's chat hook runs on every batch of terminal text, so it stays small and starts fast.
 await build({ absWorkingDir: here, entryPoints: ['src/chat-hook.ts'], bundle: true, platform: 'node', format: 'esm', target: 'node20', outfile: resolve(dirname(outfile), 'chat-hook.mjs'), logLevel: 'warning' });
+// pi loads the same integration bundle from npm, source builds, or extracted native assets.
+await build({ absWorkingDir: here, entryPoints: ['src/pi-extension.ts'], bundle: true, platform: 'node', format: 'esm', target: 'node20', outfile: resolve(dirname(outfile), 'pi-extension.mjs'), banner: { js: `/*! ws (MIT)\n${wsLicense}*/\nimport { createRequire as __createRequire } from "node:module"; const require = __createRequire(import.meta.url);` }, define: { 'process.env.WS_NO_BUFFER_UTIL': '"1"', 'process.env.WS_NO_UTF_8_VALIDATE': '"1"' }, logLevel: 'warning' });
