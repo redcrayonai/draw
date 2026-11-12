@@ -6295,6 +6295,8 @@ button.depth-crumb:hover {
 }
 /* The telling owns the overlays: its step badge takes the corner a waypoint marker uses. */
 #world.telling-on .node-route { display: none; }
+/* A walk-through owns the canvas: the editing chrome steps out while it plays. */
+#canvas-wrap.telling-open :is(#rail, #dock, #inspector, .zoom-cluster, #shortcuts-toggle) { display: none; }
 .node-step { pointer-events: none; }
 .node-step-circle { fill: var(--accent); }
 .node-step-number { font: 600 12px var(--mono); fill: var(--on-accent); }
