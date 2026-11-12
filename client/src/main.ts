@@ -734,7 +734,9 @@ async function boot(conn: DbConnection, identityHex: string, signedIn: boolean):
         edges: () => getEdges(), // declared further down
         reduced: reducedMotion,
       });
-      tellButton.addEventListener('click', () => player.open());
+      // Opening in an already hidden tab starts blocked, like a later visibilitychange.
+      const openTelling = () => { player.setBlocked(document.visibilityState === 'hidden'); player.open(); };
+      tellButton.addEventListener('click', openTelling);
       document.addEventListener('visibilitychange', () => player.setBlocked(document.hidden));
       // Capture phase, ahead of the editor's Space-pan and Esc (tellingKeyRoute decides).
       document.addEventListener('keydown', evt => {
@@ -2238,7 +2240,7 @@ async function boot(conn: DbConnection, identityHex: string, signedIn: boolean):
             { id: 'threat-collapse', group: 'View', title: 'Close threat', keys: 'Esc', run: closeThreat },
           ]),
           { id: 'replay-trace', group: 'View', title: 'Replay trace', keywords: ['latency', 'request', 'flow'], run: replayTrace },
-          ...(tellings.length === 0 ? [] : [{ id: 'play-telling', group: 'View', title: 'Play walk-through', keywords: ['telling', 'tour', 'explain'], run: () => player.open() }]),
+          ...(tellings.length === 0 ? [] : [{ id: 'play-telling', group: 'View', title: 'Play walk-through', keywords: ['telling', 'tour', 'explain'], run: openTelling }]),
           ...(canRename() ? [
             { id: 'rename-board', group: 'General', title: 'Rename board', keywords: ['title', 'name'], run: renameBoard },
             { id: 'delete-board', group: 'General', title: 'Delete this board', keywords: ['remove', 'trash'], run: deleteThisBoard },

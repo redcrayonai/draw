@@ -34,6 +34,7 @@ export function createTellingPlayer(deps: TellingPlayerDeps): TellingPlayer {
   let idx = 0;
   let at = -1; // 0..steps.length-1 a step, steps.length the ending
   let shown = new Set<bigint>(); // edges already drawn in during this run
+  let blocked = false; // a hidden tab: every clock the player makes starts blocked
 
   const paintBar = () => {
     if (!t || !clock) return;
@@ -79,6 +80,7 @@ export function createTellingPlayer(deps: TellingPlayerDeps): TellingPlayer {
       () => { if (clock === c) paintBar(); },
     );
     clock = c;
+    c.setBlocked(blocked);
     c.seek(0);
     if (autoplay && !deps.reduced()) c.play();
   };
@@ -139,7 +141,7 @@ export function createTellingPlayer(deps: TellingPlayerDeps): TellingPlayer {
       }
       return false;
     },
-    setBlocked(blocked) { clock?.setBlocked(blocked); },
+    setBlocked(b) { blocked = b; clock?.setBlocked(b); },
     get isOpen() { return t !== null; },
   };
 }

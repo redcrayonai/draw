@@ -118,6 +118,27 @@ describe('telling player', () => {
     expect(bar()).toMatchObject({ at: 0, count: 4, title: 'New first' });
   });
 
+  it('restarts at step 1 when only the title changes', () => {
+    const { player, state, bar } = setup();
+    player.open();
+    tick(stepMs(devs.steps[0]));
+    state.tellings = [{ ...devs, title: 'A request, retold' }, ops];
+    player.refresh();
+    expect(bar()).toMatchObject({ at: 0, title: 'Gateway' });
+  });
+
+  it('a restart in a hidden tab stays blocked until the tab shows again', () => {
+    const { player, state, bar } = setup();
+    player.open();
+    player.setBlocked(true);
+    state.tellings = [{ ...devs, steps: [step(['2'], 'New first'), ...devs.steps] }, ops];
+    player.refresh();
+    now += 60000; // hidden: no frames run
+    player.setBlocked(false);
+    tick(10);
+    expect(bar()).toMatchObject({ at: 0, title: 'New first', playing: true });
+  });
+
   it('keeps the step on an unrelated refresh', () => {
     const { player, bar } = setup();
     player.open();
