@@ -621,6 +621,22 @@ test('edge motion: stored as one row for an animated edge, read by every reader,
   assert.deepEqual(await sql(operator, `SELECT * FROM edge_motion WHERE board_id = ${C}`), []);
 });
 
+test('tellings are read by every reader of the board, refused to view-link visitors and strangers to write', async () => {
+  const owner = await mint(), viewer = await mint(), stranger = await mint();
+  const B = await create(owner), [a] = await nodes(owner, B);
+  const save = ['product', 'Checkout', JSON.stringify([{ nodes: [String(a.id)], title: 'Start', body: 'Requests start here.' }]), 'agent'];
+  await ok(owner, 'save_telling', [B, ...save]);
+  const tellings = who => sql(who, `SELECT * FROM visible_telling WHERE board_id = ${B}`);
+  assert.equal((await tellings(owner)).length, 1);
+  const token = randomBytes(16).toString('hex');
+  await ok(owner, 'set_link_share', [B, 'view', token]);
+  await ok(viewer, 'open_shared_link', [token]);
+  assert.deepEqual((await tellings(viewer)).map(r => r.audience), ['product']);
+  assert.deepEqual(await tellings(stranger), []);
+  await denied(viewer, 'save_telling', [B, ...save], 'not authorized');
+  await denied(stranger, 'save_telling', [B, ...save], 'not authorized');
+});
+
 test('text the app itself stored can always be stored again, so undo can restore any existing row', async () => {
   const owner = await mint();
   const B = await create(owner);

@@ -63,6 +63,7 @@ import { workspaceTables, workspaceFeatures, humanBoardRole, humanBoardIds, nati
 import { workspaceServiceAccountTables, workspaceApiKeyExpiry, workspaceServiceAccountFeatures, isWorkspaceMachine, workspaceMachineBoardRole, workspaceMachineBoardIds, registerWorkspaceMachine } from './workspace-service-accounts';
 import { roleRank, strongestRole } from './workspace-policy';
 import { parseTraceSpans } from './trace';
+import { MAX_TELLINGS_PER_BOARD, audienceKey, tellingHeadError, parseTellingSteps } from './tellings';
 import { backfillSlugs, newSlug } from './slug';
 import { FEED_SIZE, KEEP_PER_BOARD, activityLayer, beyondKeep, newestFirst } from './activity-feed';
 import {
@@ -332,6 +333,20 @@ const tables = {
       title: t.string(),
       seq: t.u32(),
       playedAt: t.timestamp(),
+    }
+  ),
+  // New table (additive): ordered walk-throughs of a board, one per audience (save_telling).
+  // steps is normalised JSON (tellings.ts). Read through the generic visible_telling view.
+  telling: table(
+    {},
+    {
+      id: t.u64().primaryKey().autoInc(),
+      boardId: t.u64().index('btree'),
+      audience: t.string(),
+      title: t.string(),
+      steps: t.string(),
+      author: t.string(),
+      updatedAt: t.timestamp(),
     }
   ),
   routeEvent: table(
@@ -961,7 +976,7 @@ export const embeddedBoard = spacetimedb.view({ name: 'embedded_board', public: 
 // readable board (the switcher, ⌘K, the history rail); the rest return the
 // boards the caller has open (viewBoardIds, RC-605).
 export const visibleRows = spacetimedb.exportGroup({
-  ...Object.fromEntries(['board', 'architectureVersion', 'node', 'edge', 'edgeWeight', 'edgeMotion', 'hideSet', 'sessionRoute', 'routeEvent', 'chart', 'tracePlayback', 'changeNote', 'nodeIcon', 'chartAnchor', 'boardWindow', 'boardLifetime', 'incident'].map(key => [
+  ...Object.fromEntries(['board', 'architectureVersion', 'node', 'edge', 'edgeWeight', 'edgeMotion', 'hideSet', 'sessionRoute', 'routeEvent', 'chart', 'tracePlayback', 'changeNote', 'nodeIcon', 'chartAnchor', 'boardWindow', 'boardLifetime', 'incident', 'telling'].map(key => [
     `visible${key[0].toUpperCase()}${key.slice(1)}`,
     spacetimedb.view({ name: `visible_${key.replace(/[A-Z]/g, c => `_${c.toLowerCase()}`)}`, public: true }, t.array((tables as any)[key].rowType) as any, ctx => {
       const ids = key === 'board' || key === 'architectureVersion' ? readableBoardIds(ctx) : viewBoardIds(ctx);
@@ -1975,7 +1990,7 @@ function clearBoardContent(ctx: any, boardId: bigint): void {
     for (const member of [...ctx.db.hideSetMember.setId.filter(set.id)]) ctx.db.hideSetMember.id.delete(member.id);
     ctx.db.hideSet.id.delete(set.id);
   }
-  for (const key of ['node', 'edge', 'repoFile', 'routeEvent', 'codeRef', 'changeNote', 'threat', 'mark', 'markRead'] as const) {
+  for (const key of ['node', 'edge', 'repoFile', 'routeEvent', 'codeRef', 'changeNote', 'threat', 'mark', 'markRead', 'telling'] as const) {
     for (const row of [...ctx.db[key].boardId.filter(boardId)]) ctx.db[key].id.delete(row.id);
   }
   for (const row of [...ctx.db.chart.boardId.filter(boardId)]) ctx.db.chart.nodeId.delete(row.nodeId);
@@ -2801,6 +2816,39 @@ export const playTrace = reducer(
     const row = { boardId, spans: normal, source, title, seq: (prev?.seq ?? 0) + 1, playedAt: ctx.timestamp };
     if (prev) ctx.db.tracePlayback.boardId.update(row);
     else ctx.db.tracePlayback.insert(row);
+    touch(ctx, boardId);
+  }
+);
+
+const tellingFor = (ctx: any, boardId: bigint, audience: string) =>
+  [...ctx.db.telling.boardId.filter(boardId)].find((row: any) => audienceKey(row.audience) === audienceKey(audience));
+
+/** Store a walk-through of the board for one audience; saving the same audience again replaces it. */
+export const saveTelling = reducer(
+  { boardId: t.u64(), audience: t.string(), title: t.string(), steps: t.string(), author: t.string() },
+  (ctx, { boardId, audience, title, steps, author }) => {
+    assertBoardWrite(ctx, boardId);
+    const head = tellingHeadError(audience, title);
+    if (head) throw new SenderError(`telling rule: ${head}`);
+    if (author.trim().length > 80) throw new SenderError('telling rule: author must be at most 80 characters');
+    const parsed = parseTellingSteps(steps, id => ctx.db.node.id.find(id)?.boardId === boardId);
+    if (!parsed.ok) throw new SenderError(`telling rule: ${parsed.error}`);
+    const row = { boardId, audience: audience.trim(), title: title.trim(), steps: parsed.json, author: author.trim(), updatedAt: ctx.timestamp };
+    const prev = tellingFor(ctx, boardId, audience);
+    if (prev) ctx.db.telling.id.update({ ...row, id: prev.id });
+    else if ([...ctx.db.telling.boardId.filter(boardId)].length >= MAX_TELLINGS_PER_BOARD) throw new SenderError(`telling rule: at most ${MAX_TELLINGS_PER_BOARD} tellings on a board`);
+    else ctx.db.telling.insert({ ...row, id: 0n });
+    touch(ctx, boardId);
+  }
+);
+
+export const removeTelling = reducer(
+  { boardId: t.u64(), audience: t.string() },
+  (ctx, { boardId, audience }) => {
+    assertBoardWrite(ctx, boardId);
+    const row = tellingFor(ctx, boardId, audience);
+    if (!row) throw new SenderError('telling rule: no telling for that audience on this board');
+    ctx.db.telling.id.delete(row.id);
     touch(ctx, boardId);
   }
 );

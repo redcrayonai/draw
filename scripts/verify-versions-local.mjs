@@ -215,6 +215,7 @@ before(async () => {
   await ok(O, 'set_node_hidden', [c, true, some('scratch')]);
   await ok(O, 'set_edge_hidden', [edge.id, true, some('scratch')]);
   await ok(O, 'plan_route', [B, [a, b]]);
+  await ok(O, 'save_telling', [B, 'product', 'Checkout', JSON.stringify([{ nodes: [String(a), String(b)], frame: [String(c)], title: 'Start', body: 'Requests start here.' }]), 'agent']);
   await ok(O, 'play_trace', [B, JSON.stringify([{ id: 's1', node: String(a), startMs: 0, durationMs: 5 }]), 'local', 'checkout']);
   await ok(O, 'mark_checkpoint', [B, SHA, '{"changed":[],"onBoard":[],"excluded":[],"uncovered":[],"deleted":[]}']);
   await ok(O, 'send_marks', [B, [b], ['why does b read c?']]);
@@ -293,6 +294,9 @@ test('save, list and restore a complete board into a new private board; the orig
   assert.deepEqual(route.nodeIds, [byLabel.a.id, byLabel.b.id]);
   const [trace] = await sql(OWNER, `SELECT * FROM trace_playback WHERE board_id = ${R}`);
   assert.equal(JSON.parse(trace.spans)[0].node, String(byLabel.a.id));
+  const [telling] = await sql(OWNER, `SELECT * FROM telling WHERE board_id = ${R}`);
+  const [step] = JSON.parse(telling.steps);
+  assert.deepEqual([telling.audience, step.nodes, step.frame], ['product', [String(byLabel.a.id), String(byLabel.b.id)], [String(byLabel.c.id)]], 'steps name only nodes of the restored board');
   assert.deepEqual((await hideMembers(R)).map(m => m.targetId).sort(), [byLabel.c.id, calls.id].sort());
   // Private: in W, default none, the restorer the only grant; no link, embed or agent grant came back.
   assert.deepEqual((await sql(OWNER, `SELECT * FROM board_workspace WHERE board_id = ${R}`)).map(s => [s.workspaceId, s.defaultRole]), [[W, 'none']]);

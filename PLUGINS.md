@@ -421,10 +421,10 @@ none of these. The rules use the access people have now, so removing a member or
 lowering a role takes effect on the next action. A restore lands in the
 version's own workspace; other workspaces never see its versions.
 
-### Board bundle format, version 1
+### Board bundle format, version 2
 
 ```json
-{"format":"draw.board-bundle","version":1,"sha256":"<hex>","board":{ … }}
+{"format":"draw.board-bundle","version":2,"sha256":"<hex>","board":{ … }}
 ```
 
 - `sha256` is the SHA-256 of `JSON.stringify(board)`; a reader re-serializes the parsed
@@ -441,9 +441,10 @@ version's own workspace; other workspaces never see its versions.
   `implementedBoardId`) and its history's `repository`. Provenance only.
 - Rows are ordered by their original id. Size limit: 16 MiB (`MAX_BUNDLE_BYTES`).
 
-Compatibility: never change v1. A schema change that a bundle must carry adds a
-v2 and a decoder from v1 into it. A server refuses a bundle with a newer version
-(`the bundle is format N; this server reads formats up to 1`).
+Compatibility: never change a format. A schema change that a bundle must carry adds
+the next version and a decoder from the older ones into it. Version 1 had no
+`tellings` and decodes as version 2 with none. A server refuses a bundle with a
+newer version (`the bundle is format N; this server reads formats up to 2`).
 
 A restore validates, before any write: size, JSON, format, version, checksum,
 every field's type, unique ids and keys, and these relationships, which the live
@@ -478,6 +479,7 @@ In the bundle (`SECTIONS` in `module/src/board-bundle.ts`):
 | `routeEvents`, `sessionRoute` | `route_event`, `session_route` | Waypoints remapped. |
 | `session`, `sessionRemote` | `session`, `session_remote` | Checkpoint, coverage, remote, dirty paths. |
 | `tracePlayback` | `trace_playback` | Span nodes remapped. |
+| `tellings` | `telling` | Step nodes remapped; a node not in the bundle is dropped from its step. |
 
 Left out (`LEFT_OUT`; `scripts/verify-versions-local.mjs` fails on a published
 table in neither list):

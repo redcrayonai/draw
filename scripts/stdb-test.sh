@@ -115,7 +115,7 @@ suite() {
     node --test --test-name-pattern="$DRAINS_OUTBOX" "$REPO/scripts/verify-dashboard-local.mjs"
   STDB_URL="$URL" STDB_DB="$DB" STDB_OWNER_TOKEN="$(cat "$ROOT/owner-token")" \
     node --test --test-skip-pattern="$DRAINS_OUTBOX" "$@" "$REPO/scripts/verify-dashboard-local.mjs" "$REPO/scripts/verify-access-local.mjs" "$REPO/scripts/verify-issuers-local.mjs" \
-      "$REPO/scripts/verify-change-notes-local.mjs" "$REPO/scripts/verify-threats-local.mjs" "$REPO/scripts/verify-icons-local.mjs" \
+      "$REPO/scripts/verify-change-notes-local.mjs" "$REPO/scripts/verify-threats-local.mjs" "$REPO/scripts/verify-tellings-local.mjs" "$REPO/scripts/verify-icons-local.mjs" \
       "$REPO/scripts/verify-code-consent-local.mjs" "$REPO/scripts/verify-deletion-local.mjs" "$REPO/scripts/verify-incidents-local.mjs"
   # After, and alone: it serves the test issuer on the port verify-issuers-local.mjs serves it on.
   STDB_URL="$URL" STDB_DB="$DB" STDB_OWNER_TOKEN="$(cat "$ROOT/owner-token")" \
