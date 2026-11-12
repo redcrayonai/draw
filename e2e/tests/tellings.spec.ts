@@ -70,8 +70,13 @@ test('the owner plays a walk-through step by step, switches audience, reaches th
   await twoTellings(stack, token, B, id);
   await expect(page.locator('#act-tell')).toHaveText('Play walk-through');
   await expect(page.locator('#dock')).toBeVisible();
+  // D is selected before opening; it is hidden at step 1, so Delete there must not remove it.
+  await node(page, id.D).locator('.node-rect').click({ position: { x: 12, y: 12 } });
 
   await page.locator('#act-tell').click();
+  // Held still from here, before any step assertion: the next steps come from the keys alone.
+  await page.keyboard.press(' ');
+  await expect(button(page, 'play')).toHaveText('Play');
   await expect(page.locator('#world')).toHaveClass(/telling-on/);
   await expect(page.locator('#canvas-wrap')).toHaveClass(/telling-open/);
   await expect(count(page)).toHaveText('1 of 3');
@@ -79,10 +84,8 @@ test('the owner plays a walk-through step by step, switches audience, reaches th
   expect(await litIds(page)).toEqual([id.A]);
   expect(await seenIds(page)).toEqual([]);
   await expect(node(page, id.A).locator('.node-step-number')).toHaveText('1');
-  // Held still from here: the next steps come from the keys alone.
-  await page.keyboard.press(' ');
-  await expect(button(page, 'play')).toHaveText('Play');
   await expect(page.locator('#dock')).toBeHidden();
+  await page.keyboard.press('Delete');
 
   await page.keyboard.press('ArrowRight');
   await expect(count(page)).toHaveText('2 of 3');
@@ -91,6 +94,8 @@ test('the owner plays a walk-through step by step, switches audience, reaches th
   expect(await seenIds(page)).toEqual([id.A]);
   await expect(node(page, id.B).locator('.node-step-number')).toHaveText('2');
   await expect(node(page, id.C)).not.toHaveClass(/telling-(lit|seen)/);
+  await expect(node(page, id.C)).toHaveCSS('opacity', '0');
+  await expect(node(page, id.B)).toHaveCSS('opacity', '1');
 
   await page.keyboard.press('ArrowRight');
   await expect(count(page)).toHaveText('3 of 3');
@@ -106,11 +111,14 @@ test('the owner plays a walk-through step by step, switches audience, reaches th
   const audiences = bar(page).getByRole('group', { name: 'Told for' }).getByRole('button');
   await expect(audiences).toHaveText(['Product', 'Engineers']);
   await audiences.nth(1).click();
+  await button(page, 'pause').click(); // hold step 1 for its assertions, then play on
+  await expect(button(page, 'play')).toHaveText('Play');
   await expect(audiences.nth(1)).toHaveAttribute('aria-pressed', 'true');
   await expect(audiences.nth(0)).toHaveAttribute('aria-pressed', 'false');
   await expect(count(page)).toHaveText('1 of 2');
   await expect(body(page)).toHaveText('D stores.');
   await expect.poll(() => litIds(page)).toEqual([id.D]);
+  await button(page, 'play').click();
   await expect(button(page, 'replay')).toHaveText('Replay', { timeout: 15_000 });
   await expect(count(page)).toHaveText('');
   await expect(bar(page).locator('.telling-title')).toHaveText('Where it ends');
@@ -124,6 +132,8 @@ test('the owner plays a walk-through step by step, switches audience, reaches th
   await expect(page.locator('#dock')).toBeVisible();
   await expect(page.locator('#world g.node.telling-lit, #world g.node.telling-seen')).toHaveCount(0);
   await expect(page.locator('#act-tell')).toBeFocused();
+  await expect(nodes(page)).toHaveCount(4);
+  expect(await stack.sql(`SELECT id FROM node WHERE board_id = ${B}`)).toHaveLength(4);
 });
 
 test('a view-link visitor sees the walk-through and plays it to step 2', async ({ account, guest, stack }) => {
@@ -134,6 +144,8 @@ test('a view-link visitor sees the walk-through and plays it to step 2', async (
   await openBoard(visitor, link);
   await expect(visitor.locator('#act-tell')).toBeVisible();
   await visitor.locator('#act-tell').click();
+  await visitor.keyboard.press(' ');
+  await expect(button(visitor, 'play')).toHaveText('Play');
   await expect(count(visitor)).toHaveText('1 of 3');
   await button(visitor, 'next').click();
   await expect(count(visitor)).toHaveText('2 of 3');
@@ -148,6 +160,8 @@ test('with reduced motion Play is disabled and Next still steps', async ({ accou
   await expect(count(page)).toHaveText('1 of 3');
   await expect(button(page, 'play')).toBeDisabled();
   await expect(button(page, 'play')).toHaveAttribute('title', 'Motion is reduced on this device. Use Next.');
+  await expect(bar(page).locator('.telling-hint')).toBeVisible();
+  await expect(bar(page).locator('.telling-hint')).toHaveText('Motion is reduced on this device. Use Next.');
   await button(page, 'next').click();
   await expect(count(page)).toHaveText('2 of 3');
   await expect.poll(() => litIds(page)).toEqual([id.B]);
@@ -192,6 +206,10 @@ test('on a phone six long audiences and a full body fit without sideways scroll'
   expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(390);
   // The long word wraps inside the bar rather than running past its edge (clipped, so the page width misses it).
   expect(await body(page).evaluate(el => el.scrollWidth - el.clientWidth)).toBeLessThanOrEqual(0);
+  // The bar scrolls past 60% of the canvas instead of covering the board.
+  const barHeight = await bar(page).evaluate(el => el.getBoundingClientRect().height);
+  const wrapHeight = await page.locator('#canvas-wrap').evaluate(el => el.getBoundingClientRect().height);
+  expect(barHeight).toBeLessThanOrEqual(wrapHeight * 0.6 + 1);
   const exit = button(page, 'exit');
   await expect(exit).toBeVisible();
   await expect(exit).toBeInViewport({ ratio: 1 });
@@ -206,8 +224,9 @@ test('after a click on Next, Space presses Next again and neither pans nor toggl
   const { token, page, B, id } = await seededBoard(stack, account);
   await twoTellings(stack, token, B, id);
   await page.locator('#act-tell').click();
-  await button(page, 'pause').click();
+  await page.keyboard.press(' ');
   await expect(button(page, 'play')).toBeVisible();
+  await expect(count(page)).toHaveText('1 of 3');
   await button(page, 'next').click();
   await expect(count(page)).toHaveText('2 of 3');
 
