@@ -37,6 +37,7 @@ import {
   threatUpdateInput,
   updateThreatArgs,
 } from '../../agent/src/threats';
+import { REMOVE_TELLING_DESCRIPTION, SAVE_TELLING_DESCRIPTION, saveTellingArgs, tellingInput, type TellingInput } from '../../agent/src/tellings';
 import { describeCommit, ownNewIds } from '../../agent/src/ids';
 import { labelFitHint } from '../../agent/src/results';
 import { arriveFlow, routeSnapshot } from '../../agent/src/routes';
@@ -681,6 +682,35 @@ export const TOOLS: Record<string, ToolDef> = {
       const b = await boardOf(t, board);
       await absolute(() => t.ctx.db.call('play_trace', { boardId: b.id, spans: JSON.stringify(spans), source, title: title ?? '' }, t.signal));
       return okResult(`committed trace: ${spans.length} spans, ${traceMs(spans)}ms board=${b.name}`);
+    },
+  },
+
+  save_telling: {
+    title: 'Save telling',
+    scope: 'board:write',
+    annotations: { idempotentHint: true },
+    description: SAVE_TELLING_DESCRIPTION + BOARD_SUFFIX,
+    input: z.object({ board: boardArg, ...tellingInput }).strict(),
+    async run({ board, author, ...input }, t) {
+      const b = await boardOf(t, board);
+      const every: string[] = input.steps.flatMap((s: TellingInput['steps'][number]) => [...s.nodes, ...(s.frame ?? [])]);
+      const ids = [...new Set(every)].map(u64);
+      await nodesOnBoard(t, b, ids);
+      await absolute(() => t.ctx.db.call('save_telling', saveTellingArgs(b.id, input, author ?? ''), t.signal));
+      return okResult(`committed telling: ${input.audience}, ${input.steps.length} steps board=${b.name}`);
+    },
+  },
+
+  remove_telling: {
+    title: 'Remove telling',
+    scope: 'board:write',
+    annotations: { destructiveHint: true },
+    description: REMOVE_TELLING_DESCRIPTION + BOARD_SUFFIX,
+    input: z.object({ board: boardArg, audience: tellingInput.audience }).strict(),
+    async run({ board, audience }, t) {
+      const b = await boardOf(t, board);
+      await removal(() => t.ctx.db.call('remove_telling', { boardId: b.id, audience }, t.signal));
+      return okResult(`removed telling: ${audience} board=${b.name}`);
     },
   },
 
