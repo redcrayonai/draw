@@ -66,3 +66,12 @@ it('reads in-repo code and refuses traversal, secrets, missing files and escapin
   expect((await read('code.ts')).value.text).toBe('export const value = 1;');
   for (const path of ['../outside.ts', '.env', 'missing.ts', 'escape.ts']) expect((await read(path)).status).toBe(400);
 });
+it('returns a usable private board link without storing its capability in the board', async () => {
+  const { app, call } = await setup();
+  const { value: board } = await call({ action: 'open_board', name: 'Local link' });
+  const url = new URL(board.url);
+  expect(url.origin).toBe(app.origin);
+  expect(url.hash).toBe(`#b=${board.slug}&key=${app.token}`);
+  expect((await call({ action: 'read_board', board: board.slug })).value.url).toBe(board.url);
+  expect(JSON.stringify(app.store.read(board.slug))).not.toContain(app.token);
+});

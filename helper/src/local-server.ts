@@ -24,6 +24,7 @@ export async function startLocal(options: { repo: string; directory: string; ass
   const viewers = new Map<ServerResponse, string>();
   const activities = new Map<string, LocalActivity>();
   let origin = '';
+  const withLink = (board: ReturnType<LocalStore['read']>) => ({ ...board, url: `${boardHref({ app: origin, slug: board.slug, db: 'local', home: 'local' })}&key=${token}` });
   function broadcast(slug: string) {
     const frame = `data: ${JSON.stringify(store.read(slug))}\n\nevent: chat\ndata: ${JSON.stringify(chat.status(slug))}\n\n`;
     for (const [response, board] of viewers) {
@@ -68,8 +69,8 @@ export async function startLocal(options: { repo: string; directory: string; ass
         let result: unknown;
         switch (input.action) {
           case 'list_boards': result = store.list(); break;
-          case 'open_board': result = store.create(input.name, repo); break;
-          case 'read_board': result = store.read(input.board); break;
+          case 'open_board': result = withLink(store.create(input.name, repo)); break;
+          case 'read_board': result = withLink(store.read(input.board)); break;
           case 'apply_board': result = store.mutate(input.board, input.revision, input.operations); broadcast(input.board); break;
           case 'attach_conversation': result = await chat.attach(input.board, input.threadId, input.socketPath); break;
           case 'connect_local_agent':

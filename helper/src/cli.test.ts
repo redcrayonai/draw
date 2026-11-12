@@ -10,6 +10,8 @@ import { dirname, join } from 'node:path';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { CAPTURE_ID_RE, MB, MIN_HELPER_VERSION, claimCapture, newCaptureId, type CaptureBody, type CheckpointBody, type FileBody } from '../../shared/capture';
 import { HELPER_VERSION, HOOK_MATCHER, PRIVACY, buildCapture, githubRemote } from './capture';
+import { startLocal } from './local-server';
+import { localDirectory } from './local-path';
 
 const HELPER = join(dirname(new URL(import.meta.url).pathname), '..');
 let dir: string;
@@ -67,6 +69,28 @@ it('prints valid local Claude settings without changing global configuration or 
   expect(result.code).toBe(0);
   expect(JSON.parse(result.stdout).hooks.Stop[0].hooks[1].asyncRewake).toBe(true);
   expect(requests).toHaveLength(0);
+});
+it('routes plugin MCP calls by explicit repository regardless of the plugin process directory', async () => {
+  const other = join(dir, 'other-repository'); mkdirSync(other);
+  const repositories = [dir, other];
+  const apps = await Promise.all(repositories.map(repo => startLocal({ repo, directory: localDirectory(repo), assets: dir })));
+  try {
+    apps[0].store.create('First repository', dir); apps[1].store.create('Second repository', other);
+    const input = [
+      { jsonrpc: '2.0', id: 1, method: 'tools/list' },
+      ...[dir, other, '.', undefined].map((repo, i) => ({ jsonrpc: '2.0', id: i + 2, method: 'tools/call', params: { name: 'list_boards', arguments: { repo } } })),
+    ].map(value => JSON.stringify(value)).join('\n');
+    const result = await run(['local-mcp', '--per-repo'], { cwd: HELPER, input });
+    expect(result.code).toBe(0);
+    const frames = result.stdout.trim().split('\n').map(line => JSON.parse(line));
+    expect(frames[0].result.tools.every((tool: any) => tool.inputSchema.required.includes('repo'))).toBe(true);
+    expect(JSON.parse(frames[1].result.content[0].text).map((board: any) => board.name)).toEqual(['First repository']);
+    expect(JSON.parse(frames[2].result.content[0].text).map((board: any) => board.name)).toEqual(['Second repository']);
+    for (const frame of frames.slice(3)) expect(frame.result).toMatchObject({ isError: true, content: [{ type: 'text', text: expect.stringContaining('REJECTED:') }] });
+  } finally {
+    await Promise.all(apps.map(app => app.close()));
+    for (const repo of repositories) rmSync(localDirectory(repo), { recursive: true, force: true });
+  }
 });
 function run(args: string[], opts: { cwd: string; input?: string; env?: Record<string, string>; node?: string[] }): Promise<Run> {
   return new Promise(done => {

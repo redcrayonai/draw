@@ -1,5 +1,5 @@
 import { readFileSync, realpathSync } from 'node:fs';
-import { join, resolve } from 'node:path';
+import { isAbsolute, join, resolve } from 'node:path';
 import { once } from 'node:events';
 import { localDirectory } from './local-path';
 import { localLines } from './local-lines';
@@ -35,6 +35,9 @@ export async function localCall(endpoint: { origin: string; token: string }, inp
   return result;
 }
 export async function runLocalMcp(args: string[]) {
+  // Plugin MCP processes start in the plugin directory, not the user's checkout.
+  const perRepo = args.length === 1 && args[0] === '--per-repo';
+  const tools = perRepo ? localTools.map(tool => ({ ...tool, inputSchema: schema({ ...tool.inputSchema.properties, repo: { type: 'string', description: 'Absolute path of the current repository. Pass it on every call.' } }, [...tool.inputSchema.required, 'repo']) })) : localTools;
   for await (const line of localLines(process.stdin, 1024 * 1024, message => process.stderr.write(`${message}\n`))) {
     let request: any;
     let answer: object;
@@ -47,11 +50,14 @@ export async function runLocalMcp(args: string[]) {
       switch (request.method) {
         case 'initialize': result = { protocolVersion: '2024-11-05', capabilities: { tools: {} }, serverInfo: { name: 'draw-local', version: '1.0.0' } }; break;
         case 'ping': result = {}; break;
-        case 'tools/list': result = { tools: localTools }; break;
+        case 'tools/list': result = { tools }; break;
         case 'tools/call': {
           const { name, arguments: input } = request.params ?? {};
           if (!localTools.some(t => t.name === name) || !input || typeof input !== 'object' || Array.isArray(input)) throw new Error('REJECTED: unsupported tool or invalid arguments');
-          try { result = { content: [{ type: 'text', text: JSON.stringify(await localCall(localEndpoint(args), { ...input, action: name })) }] }; }
+          try {
+            if (perRepo && (typeof input.repo !== 'string' || !isAbsolute(input.repo))) throw new Error('REJECTED: pass the absolute current repository path as repo');
+            result = { content: [{ type: 'text', text: JSON.stringify(await localCall(localEndpoint(perRepo ? ['--repo', input.repo] : args), { ...input, action: name })) }] };
+          }
           catch (error) { result = { isError: true, content: [{ type: 'text', text: error instanceof Error ? error.message : 'UNAVAILABLE: local server is unavailable' }] }; }
           break;
         }

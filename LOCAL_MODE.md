@@ -22,6 +22,23 @@ The server prints its storage directory and URL. By default storage is `~/.redcr
 
 To move the distribution, copy the entire `helper/dist/` directory, including `local-assets/`. Run its `redcrayon.mjs` from any working directory with an explicit `--repo`. There is no runtime package install. Hosted mode continues using its existing entry point and build.
 
+## Try it with Codex
+
+The local build is also a self-contained Codex plugin, with a local-only skill and MCP bridge. Install this checkout once:
+
+```sh
+pnpm -C helper build:local
+codex plugin marketplace add ./helper/dist
+codex plugin add draw-local@draw-local-dev
+codex
+```
+
+In Codex, ask: **Use `$draw-local:local` to open a board for this repository.** The skill starts the local server if needed, reuses or creates a named board, shares its private browser link, and attaches the current thread using `CODEX_THREAD_ID`. Approve the requested local server/tool operations in Codex as usual. You do not need to copy a thread ID or configure MCP manually. Start Codex from the repository you want to draw. Do not use `--no-daemon`, which removes the shared connection needed by board chat.
+
+This development marketplace is named `draw-local-dev`; it installs `draw-local` alongside any existing hosted Draw plugin. It does not replace the hosted plugin or its account connection. The build fingerprints the packaged code and skill to avoid stale installed copies. After changing/rebuilding the local plugin, reinstall with `codex plugin add draw-local@draw-local-dev` and start a new Codex session to load the update. The plugin is built for standalone Codex; Claude and pi setup is documented below.
+
+To remove this development install: `codex plugin remove draw-local@draw-local-dev`, then `codex plugin marketplace remove draw-local-dev`. Existing local boards remain in the storage directory.
+
 ## Connect agent tools
 
 Configure your agent's MCP client with this stdio server (replace both absolute paths):

@@ -9,7 +9,12 @@
   "files": [
     "dist/redcrayon.mjs",
     "dist/local-assets",
-    "dist/local-pi-extension.mjs"
+    "dist/local-pi-extension.mjs",
+    "dist/plugin.json",
+    "dist/mcp.json",
+    "dist/skills",
+    "dist/.codex-plugin",
+    "dist/.claude-plugin"
   ],
   "engines": {
     "node": ">=20"

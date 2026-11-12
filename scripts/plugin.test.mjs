@@ -417,3 +417,22 @@ test('hosted plugin release configures and scans the packed plugin and marketpla
     rmSync(dir, { recursive: true, force: true });
   }
 });
+
+test('local plugin has its own identity and only the bundled local MCP bridge', () => {
+  const manifest = json('plugin/local/plugin.json'), compatibility = json('plugin/local/.codex-plugin/plugin.json');
+  assert.equal(manifest.name, 'draw-local');
+  assert.equal(compatibility.name, manifest.name); assert.equal(compatibility.version, manifest.version);
+  assert.equal(compatibility.mcpServers, './mcp.json');
+  assert.equal(compatibility.hooks, undefined);
+  const servers = json('plugin/local/mcp.json').mcpServers;
+  assert.deepEqual(Object.keys(servers), ['draw-local']);
+  assert.deepEqual(servers['draw-local'], { type: 'stdio', command: 'node', args: ['${PLUGIN_ROOT}/redcrayon.mjs', 'local-mcp', '--per-repo'] });
+  assert.equal(json('plugin/local/.claude-plugin/marketplace.json').plugins[0].source.path, '.');
+});
+test('local skill uses current thread identity and stable local review operations', () => {
+  const skill = read('plugin/local/skills/local/SKILL.md');
+  assert.match(skill, /^name: local$/m);
+  for (const contract of ['CODEX_THREAD_ID', 'DRAW_CODEX_SOCKET', 'attach_conversation', 'read_board', 'note.reply', 'note.resolve', 'uncertain', 'Never invent an ID']) assert(skill.includes(contract));
+  assert.match(skill, /Do not use hosted/);
+  assert.match(read('helper/build-local.mjs'), /plugin\/local\//);
+});

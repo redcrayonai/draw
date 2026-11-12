@@ -11,6 +11,14 @@ when they open a board. Other agents can draw through the same server URL.
 
 **Server URL:** `http://localhost:8788/mcp`
 
+## Local boards without a server account
+
+The hosted plugin below uses the hosted tool and sign-in flow. For standalone
+repository boards, build and install the separate `draw-local` package described
+in [Local Draw](../LOCAL_MODE.md#try-it-with-codex). It includes a local MCP bridge
+and `$draw-local:local` skill, which starts Draw and connects the current Codex
+conversation. The local and hosted packages can be installed alongside each other.
+
 ## Install
 
 ### Claude Code
