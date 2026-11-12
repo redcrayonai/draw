@@ -15,6 +15,7 @@ import { mergedSchema, type NoteIndex, type NoteView } from './change-notes-view
 import { makeHopBadge, makeMarker, markerKey, type MarkerSpec } from './board-marker';
 import type { Blast } from './blast';
 import { blastEdgeIds } from './blast-play';
+import type { StepView } from './telling';
 
 const SVG_NS = 'http://www.w3.org/2000/svg';
 
@@ -256,6 +257,17 @@ function makeRouteMarker(marker: RouteMarker): SVGGElement {
   return g;
 }
 
+/** A telling's step number, centred on the node's top-left corner. */
+function makeStepBadge(step: number): SVGGElement {
+  const g = el('g', { class: 'node-step', role: 'img' });
+  const title = el('title', {});
+  title.textContent = `Step ${step}`;
+  const number = el('text', { class: 'node-step-number', x: '0', y: '4', 'text-anchor': 'middle' });
+  number.textContent = String(step);
+  g.append(title, el('circle', { class: 'node-step-circle', cx: '0', cy: '0', r: '11' }), number);
+  return g;
+}
+
 // --- change notes (spec 2026-10-16) ---------------------------------------------
 
 const SCHEMA_PAD = 16;
@@ -473,6 +485,8 @@ export interface RenderState {
   blast?: Blast | null;
   /** Live tap summaries by edge id (the canvas resolves the tap's node pairs to edges). */
   live?: ReadonlyMap<bigint, LiveEdge>;
+  /** A playing telling: only lit and seen nodes show, each with its step number; it owns the dimming. */
+  telling?: Pick<StepView, 'lit' | 'seen' | 'stepOf'> | null;
   scale: number;
   /** Fade in the nodes and edges this render adds: live arrivals, never a board's first paint. */
   enter?: boolean;
@@ -770,6 +784,9 @@ interface NodeEntry {
   refs: SVGGElement | null;
   route: SVGGElement | null;
   routeKey: string;
+  /** Telling step number, top left ('' key = none). */
+  step: SVGGElement | null;
+  stepKey: string;
   /** The RefBadge.key the current badge was built from ('' = no badge). */
   refsKey: string;
   /** The shape the current badge was anchored for. */
@@ -860,6 +877,8 @@ interface EdgeEntry {
   near: boolean;
   /** Last-written depth-out state of g and labels. */
   depthOut: boolean;
+  /** Last-written telling class of g and labels ('' = hidden or no telling). */
+  telling: string;
   /** Last-written path data, and the route it came from. */
   d: string;
   route: Route | null;
@@ -992,6 +1011,8 @@ function makeNodeEntry(n: Node): NodeEntry {
     refs: null,
     route: null,
     routeKey: '',
+    step: null,
+    stepKey: '',
     noteTag: null,
     noteTagKey: '',
     marker: null,
@@ -1086,6 +1107,8 @@ function buildInner(e: NodeEntry, kind: string): void {
   e.refsKey = '';
   e.route = null;
   e.routeKey = '';
+  e.step = null;
+  e.stepKey = '';
   e.noteTag = null;
   e.noteTagKey = '';
   e.marker = null;
@@ -1497,7 +1520,9 @@ export function renderBoard(
   // Neighbour focus: the focused node, every node a drawn edge joins it to,
   // and those edges. A focus id that is not drawn focuses nothing; nor does a
   // container (hovering its interior would otherwise dim its own members).
-  const focusId = state.focus && rects.has(state.focus.id) && !containerIds.has(state.focus.id) ? state.focus.id : null;
+  const telling = state.telling ?? null;
+  const tellingCls = (id: bigint) => (telling === null ? '' : telling.lit.has(id) ? 'telling-lit' : telling.seen.has(id) ? 'telling-seen' : '');
+  const focusId = telling === null && state.focus && rects.has(state.focus.id) && !containerIds.has(state.focus.id) ? state.focus.id : null;
   const nearNodes = new Set<bigint>();
   const nearEdges = new Set<bigint>();
   if (focusId !== null) {
@@ -1510,12 +1535,13 @@ export function renderBoard(
       }
     }
   }
-  const blast = state.blast ?? null;
+  const blast = telling === null ? state.blast ?? null : null;
   const blastMoving = blast === null ? null : blastEdgeIds(blast, edges);
   world.classList.toggle('blast-on', blast !== null);
   world.classList.toggle('focus-dim', focusId !== null && blast === null);
   const depth = state.depth ?? null;
   world.classList.toggle('focus-flow', focusId !== null && state.focus!.flow && blast === null);
+  world.classList.toggle('telling-on', telling !== null);
 
   // --- nodes ---
   const seen = new Set<bigint>();
@@ -1608,6 +1634,7 @@ export function renderBoard(
       (nearNodes.has(n.id) ? ' focus-near' : '') +
       (!depth ? '' : n.id === depth.frame ? ' depth-frame' : depth.inside.has(n.id) ? '' : ' depth-out') +
       (blastHop === undefined ? '' : blastHop === 0 ? ' blast-src' : blastHop === -1 ? ' blast-clear' : blastHop === 1 ? ' blast-hop1' : ' blast-hopn') +
+      (tellingCls(n.id) ? ` ${tellingCls(n.id)}` : '') +
       (anchorNotes ? ` note-${anchorNotes[0].severity}` : '') +
       (schema ? ' schema-card' : '');
     if (cls !== e.cls) {
@@ -1731,6 +1758,22 @@ export function renderBoard(
         e.g.append(e.route);
       }
       e.routeKey = routeKey;
+    }
+
+    const step = tellingCls(n.id) ? telling!.stepOf.get(n.id) : undefined;
+    const stepKey = step === undefined ? '' : String(step);
+    if (stepKey !== e.stepKey) {
+      if (step === undefined) {
+        e.step!.remove();
+        e.step = null;
+      } else if (e.step === null) {
+        e.step = makeStepBadge(step);
+        e.g.append(e.step);
+      } else {
+        e.step.querySelector('title')!.textContent = `Step ${step}`;
+        e.step.querySelector('text')!.textContent = stepKey;
+      }
+      e.stepKey = stepKey;
     }
 
     // Change note tag (top right, astride the outline) and reader pip, keyed.
@@ -1935,6 +1978,7 @@ export function renderBoard(
         selected: false,
         near: false,
         depthOut: false,
+        telling: '',
         d: '',
         route: null,
         anchor: null,
@@ -1953,6 +1997,16 @@ export function renderBoard(
       e.g.classList.toggle('depth-out', out);
       e.labels.classList.toggle('depth-out', out);
       e.depthOut = out;
+    }
+    // Shown only when both ends are: lit when either end is lit.
+    const ends = [tellingCls(edge.fromNode), tellingCls(edge.toNode)];
+    const edgeTelling = ends.includes('') ? '' : ends.includes('telling-lit') ? 'telling-lit' : 'telling-seen';
+    if (edgeTelling !== e.telling) {
+      for (const t of [e.g, e.labels]) {
+        if (e.telling !== '') t.classList.remove(e.telling);
+        if (edgeTelling !== '') t.classList.add(edgeTelling);
+      }
+      e.telling = edgeTelling;
     }
     // Past the dot cap an edge keeps its static dash: blast-still stops the flow.
     const blastCls = blast === null ? '' : blast.edges.has(edge.id) ? `blast-${blast.edges.get(edge.id)! >= 2 ? 'warm' : 'hot'}${blastMoving!.has(edge.id) ? '' : ' blast-still'}` : 'blast-clear';

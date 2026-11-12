@@ -6272,6 +6272,29 @@ button.depth-crumb:hover {
 #world .route-comet:has(.blast-dot) .route-tail { fill: var(--c-red); }
 #world .route-dot.blast-dot.warm { fill: var(--c-amber); filter: drop-shadow(0 0 4px var(--c-amber)); }
 #world .route-comet:has(.blast-dot.warm) .route-tail { fill: var(--c-amber); }
+/* Telling: only the nodes named so far show; the current step's are lit, earlier ones step back.
+   It owns the dimming (no focus-dim or blast-on while telling-on). Hidden rows take no pointer. */
+#world.telling-on .node:not(.telling-lit):not(.telling-seen),
+#world.telling-on .edge:not(.telling-lit):not(.telling-seen),
+#world.telling-on .edge-labels:not(.telling-lit):not(.telling-seen) { opacity: 0; pointer-events: none; }
+#world.telling-on .node:not(.telling-lit):not(.telling-seen) *,
+#world.telling-on .edge:not(.telling-lit):not(.telling-seen) *,
+#world.telling-on .edge-labels:not(.telling-lit):not(.telling-seen) * { pointer-events: none; }
+#world.telling-on .node.telling-seen { opacity: 0.55; }
+#world.telling-on .edge.telling-seen,
+#world.telling-on .edge-labels.telling-seen { opacity: 0.4; }
+/* The transparent zero shadow gives the lit shadow a start value to grow from. */
+#world.telling-on .node .node-rect { filter: drop-shadow(0 0 0 transparent); transition: filter var(--dur) var(--ease); }
+#world.telling-on .node.telling-lit .node-rect { filter: drop-shadow(0 4px 10px color-mix(in srgb, var(--accent) 45%, transparent)); }
+@media (prefers-reduced-motion: reduce) {
+  #world.telling-on .node,
+  #world.telling-on .edge,
+  #world.telling-on .edge-labels,
+  #world.telling-on .node .node-rect { transition: none; }
+}
+.node-step { pointer-events: none; }
+.node-step-circle { fill: var(--accent); }
+.node-step-number { font: 600 12px var(--mono); fill: var(--on-accent); }
 /* The card's hovered row lights its node. */
 #world .node.tc-lit .node-rect { stroke: var(--sel); stroke-width: 2; stroke-dasharray: none; }
 
