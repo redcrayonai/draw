@@ -8,6 +8,7 @@ import { readSource } from '../../agent/src/local-deps';
 import { gitIsCitable } from '../../agent/src/git';
 import { boardHref } from '../../shared/board-link';
 import { LocalChat } from './local-chat';
+import { standalone } from './local-runtime';
 import { LocalActivity } from './local-activity';
 
 const unavailable = (message: string): never => { throw new Error(`UNAVAILABLE: ${message}`); };
@@ -123,8 +124,10 @@ export async function startLocal(options: { repo: string; directory: string; ass
       if (request.method !== 'GET') { response.writeHead(405); response.end(); return; }
       const asset = url.pathname === '/' ? 'local.html' : decodeURIComponent(url.pathname.slice(1));
       if (asset !== 'local.html' && !asset.startsWith('assets/')) { response.writeHead(404); response.end(); return; }
-      const root = realpathSync(options.assets);
-      const file = realpathSync(resolve(root, asset));
+      // Embedded assets are immutable and contain no symlinks; Bun has no realpath for its virtual directories.
+      const canonical = standalone && options.assets.startsWith('/$bunfs/') ? resolve : realpathSync;
+      const root = canonical(options.assets);
+      const file = canonical(resolve(root, asset));
       const rel = relative(root, file);
       if (rel.startsWith(`..${sep}`) || rel === '..' || !statSync(file).isFile()) unavailable('asset does not exist');
       const mime = file.endsWith('.js') ? 'text/javascript' : file.endsWith('.css') ? 'text/css' : file.endsWith('.woff2') ? 'font/woff2' : file.endsWith('.html') ? 'text/html' : 'application/octet-stream';

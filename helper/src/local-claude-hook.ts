@@ -1,12 +1,13 @@
 import { realpathSync, openSync, fstatSync, readSync, closeSync } from 'node:fs';
 import { resolve } from 'node:path';
+import { localCommand } from './local-runtime';
 import { localCall, localEndpoint } from './local-mcp';
 
 export function localClaudeSettings(args: string[]) {
   if (!args.includes('--board') || args.length % 2 || args.some((arg, i) => i % 2 === 0 && !['--board', '--repo', '--store'].includes(arg)) || args.some((arg, i) => i % 2 === 1 && !arg)) throw new Error('REJECTED: use --board slug [--repo path] [--store path]');
   const absolute = args.map((arg, i) => i && ['--repo', '--store'].includes(args[i - 1]) ? resolve(arg) : arg);
   const quote = (value: string) => `'${value.replaceAll("'", "'\\''")}'`;
-  const command = [process.execPath, resolve(process.argv[1]), 'local-claude-hook', ...absolute].map(quote).join(' ');
+  const command = [...localCommand(), 'local-claude-hook', ...absolute].map(quote).join(' ');
   const hook = { type: 'command', command, timeout: 5 };
   const wake = { ...hook, command: `${command} --wait`, asyncRewake: true, timeout: 43200 };
   return { hooks: {

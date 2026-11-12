@@ -1,19 +1,34 @@
 import { test, expect } from '@playwright/test';
-import { spawn, type ChildProcess } from 'node:child_process';
-import { cpSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { execFileSync, spawn, type ChildProcess } from 'node:child_process';
+import { copyFileSync, cpSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 
 test('packaged local board: tool edits, browser drag, review, concurrent tab and restart', async ({ browser }) => {
   const root = resolve(import.meta.dirname, '../..');
   const directory = mkdtempSync(join(tmpdir(), 'draw-browser-'));
-  cpSync(join(root, 'helper/dist'), join(directory, 'package'), { recursive: true });
-  const executable = join(directory, 'package/redcrayon.mjs');
+  const native = process.env.DRAW_LOCAL_BINARY;
+  if (native) {
+    mkdirSync(join(directory, 'package'));
+    copyFileSync(native, join(directory, 'package/draw'));
+  } else cpSync(join(root, 'helper/dist'), join(directory, 'package'), { recursive: true, filter: path => path !== join(root, 'helper/dist/binary') });
+  const executable = join(directory, native ? 'package/draw' : 'package/redcrayon.mjs');
   const runtime = process.env.DRAW_LOCAL_NODE ?? process.execPath;
+  const launch = native ? executable : runtime;
+  const prefix = native ? [] : [executable];
+  const environment = { ...process.env };
+  if (native) {
+    // A single-file install must work without Node or Bun anywhere on PATH.
+    mkdirSync(join(directory, 'path'));
+    symlinkSync(execFileSync('which', ['git'], { encoding: 'utf8' }).trim(), join(directory, 'path/git'));
+    environment.PATH = join(directory, 'path');
+    environment.DRAW_OPEN_URL_FILE = join(directory, 'opened-url');
+    writeFileSync(join(directory, 'path', process.platform === 'darwin' ? 'open' : 'xdg-open'), '#!/bin/sh\nprintf %s "$1" > "$DRAW_OPEN_URL_FILE"\n', { mode: 0o755 });
+  }
   let child: ChildProcess;
   let endpoint: { origin: string; token: string };
   async function start() {
-    child = spawn(runtime, [executable, 'local', '--repo', root, '--store', directory], { cwd: directory, stdio: ['ignore', 'ignore', 'pipe'] });
+    child = spawn(launch, [...prefix, 'local', '--repo', root, '--store', directory], { cwd: directory, env: environment, stdio: ['ignore', 'ignore', 'pipe'] });
     await new Promise<void>((resolve, reject) => {
       child.once('error', reject); child.once('exit', code => reject(new Error(`server exited ${code}`)));
       child.stderr!.on('data', data => { if (data.toString().includes('Draw:')) resolve(); });
@@ -29,7 +44,7 @@ test('packaged local board: tool edits, browser drag, review, concurrent tab and
   };
   const context = await browser.newContext();
   async function cli(command: string[], input: string) {
-    const child = spawn(runtime, [executable, ...command, '--repo', root, '--store', directory], { cwd: directory, stdio: 'pipe' });
+    const child = spawn(launch, [...prefix, ...command, '--repo', root, '--store', directory], { cwd: directory, env: environment, stdio: 'pipe' });
     let stdout = '', stderr = '';
     child.stdout.on('data', data => { stdout += data; }); child.stderr.on('data', data => { stderr += data; });
     const done = new Promise<number | null>((resolve, reject) => { child.once('error', reject); child.once('exit', resolve); });
@@ -37,6 +52,11 @@ test('packaged local board: tool edits, browser drag, review, concurrent tab and
   }
   try {
     await start();
+    if (native) {
+      const reopened = await cli([], '');
+      expect(reopened.code).toBe(0);
+      await expect.poll(() => { try { return readFileSync(environment.DRAW_OPEN_URL_FILE!, 'utf8'); } catch { return ''; } }).toContain(endpoint.origin);
+    }
     const page = await context.newPage();
     const errors: string[] = [], external: string[] = [];
     page.on('pageerror', error => errors.push(error.message));

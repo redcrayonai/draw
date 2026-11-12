@@ -4,7 +4,27 @@ Local mode serves a repository's architecture boards from one process on loopbac
 
 **Agent compatibility:** standalone Codex 0.166.0, Claude Code 2.1.322, and pi 1.4.0 passed real same-session browser feedback, diagram updates, and review reply/resolution tests. Codex uses its shared app-server socket; Claude Code uses session hooks; pi uses an extension inside the current session. Conductor integration is out of scope.
 
-## Build and launch
+## Install the standalone executable
+
+Download the `draw-local` artifact for your operating system and architecture from this PR's **session-flows → local-binary** CI job, then extract the artifact ZIP. The `.tgz` inside is installable with Bun; it contains a native executable, its runtime, the UI, and licenses, with no dependencies or install scripts:
+
+```sh
+bun install -g ./draw-darwin-arm64.tgz  # use the filename for your platform
+# Ensure Bun's global bin directory is on PATH.
+draw install codex
+cd /path/to/your-project
+codex
+```
+
+Ask Codex: **Use `$draw-local:local` to open a board for this repository.** The skill starts the local server and connects this conversation. You can also run `draw` directly in your repository to open the browser; `draw --no-open` only prints the URL. Running `draw` again opens the existing server. Keep the terminal serving the board open; Ctrl-C stops it without deleting boards.
+
+Bun is only needed for this install command. The installed executable runs without Node, Bun, pnpm, or a source checkout; git and your chosen coding agent remain prerequisites. Keep the executable in place after `draw install codex`, or rerun that command if you move it. Existing boards use the same storage as the source distribution.
+
+To install without Bun, extract the `.tgz` with `tar -xzf`, put `package/draw` on PATH, and retain its accompanying licenses. There is no published registry package or public release download yet; CI artifacts are the current distribution. macOS artifacts are not notarized.
+
+For maintainers, use Bun 1.4.4 and the build dependencies below, then run `pnpm -C helper build:binary` (or `bun helper/build-binary.mjs` from the repository root). Outputs are `helper/dist/binary/draw`, a platform-specific `.tgz`, and `SHA256SUMS`. CI builds and runs the packaged browser journey on macOS and Linux. The source/Node distribution remains supported.
+
+## Build and launch from source
 
 Use Node 24 and pnpm 10 for building with the repository's current tooling. The packaged runtime uses Node 20 or later and git for protected code reads. The relocated distribution/browser journey was tested with Node 20.20.2 and 24.21.0. Install each package separately:
 
@@ -22,24 +42,25 @@ The server prints its storage directory and URL. By default storage is `~/.redcr
 
 To move the distribution, copy the entire `helper/dist/` directory, including `local-assets/`. Run its `redcrayon.mjs` from any working directory with an explicit `--repo`. There is no runtime package install. Hosted mode continues using its existing entry point and build.
 
-## Try it with Codex
+## Try the source distribution with Codex
 
 The local build is also a self-contained Codex plugin, with a local-only skill and MCP bridge. Install this checkout once:
 
 ```sh
 pnpm -C helper build:local
-codex plugin marketplace add ./helper/dist
-codex plugin add draw-local@draw-local-dev
+node helper/dist/redcrayon.mjs install codex
 codex
 ```
 
 In Codex, ask: **Use `$draw-local:local` to open a board for this repository.** The skill starts the local server if needed, reuses or creates a named board, shares its private browser link, and attaches the current thread using `CODEX_THREAD_ID`. Approve the requested local server/tool operations in Codex as usual. You do not need to copy a thread ID or configure MCP manually. Start Codex from the repository you want to draw. Do not use `--no-daemon`, which removes the shared connection needed by board chat.
 
-This development marketplace is named `draw-local-dev`; it installs `draw-local` alongside any existing hosted Draw plugin. It does not replace the hosted plugin or its account connection. The build fingerprints the packaged code and skill to avoid stale installed copies. After changing/rebuilding the local plugin, reinstall with `codex plugin add draw-local@draw-local-dev` and start a new Codex session to load the update. The plugin is built for standalone Codex; Claude and pi setup is documented below.
+This development marketplace is named `draw-local-dev`; it installs `draw-local` alongside any existing hosted Draw plugin. It does not replace the hosted plugin or its account connection. The build fingerprints the packaged code and skill to avoid stale installed copies. After changing/rebuilding the local plugin, reinstall with `draw install codex` (or `node helper/dist/redcrayon.mjs install codex` for the source distribution) and start a new Codex session to load the update. The plugin is built for standalone Codex; Claude and pi setup is documented below.
 
 To remove this development install: `codex plugin remove draw-local@draw-local-dev`, then `codex plugin marketplace remove draw-local-dev`. Existing local boards remain in the storage directory.
 
 ## Connect agent tools
+
+For a standalone install, use the absolute `draw` executable as `command` and omit the `redcrayon.mjs` argument below. Likewise, replace `node /absolute/path/to/dist/redcrayon.mjs` with `draw` in the Claude and activity commands.
 
 Configure your agent's MCP client with this stdio server (replace both absolute paths):
 
@@ -125,7 +146,7 @@ Wake notifications bypass `UserPromptSubmit` in the tested Claude version. The h
 
 ### pi
 
-The packaged extension connects chat and registers the local MCP tools inside the current pi session:
+The tarball includes `local-pi-extension.mjs` alongside the executable; source builds put it in `helper/dist/`. The packaged extension connects chat and registers the local MCP tools inside the current pi session:
 
 ```sh
 DRAW_LOCAL_BOARD=<slug> pi -e /absolute/path/to/dist/local-pi-extension.mjs

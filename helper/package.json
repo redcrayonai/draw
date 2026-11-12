@@ -23,7 +23,8 @@
     "build": "node build.mjs",
     "build:local": "node build-local.mjs",
     "typecheck": "tsc --noEmit",
-    "test": "vitest run"
+    "test": "vitest run",
+    "build:binary": "node build-binary.mjs"
   },
   "devDependencies": {
     "@types/node": "^26.6.4",

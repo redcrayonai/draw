@@ -20,13 +20,16 @@ explicit scope instead of guessing from its own working directory. Do not omit
 ## Open the board
 
 1. Determine the current repository directory. Resolve the bundled helper from
-   this skill's actual file location: `../../redcrayon.mjs` relative to the
-   directory containing this `SKILL.md`. Use an absolute path in shell commands.
+   this skill's actual file location: read `../../mcp.json` relative to the
+   directory containing this `SKILL.md`. In `mcpServers.draw-local`, use its
+   `command` and any arguments before `local-mcp` as the launcher, substituting
+   the actual plugin root for `${PLUGIN_ROOT}`. This may be a standalone `draw`
+   executable or Node plus `redcrayon.mjs`; do not assume Node is installed.
 2. Call `list_boards`. If the local server is unavailable, run this command in a
    background terminal process and keep it running:
 
    ```sh
-   node /absolute/path/to/redcrayon.mjs local --repo /absolute/path/to/repository
+   <configured launcher> local --repo /absolute/path/to/repository
    ```
 
    Wait for its `Draw:` startup line, then retry `list_boards`. Do not launch a

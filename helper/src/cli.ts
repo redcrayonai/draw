@@ -38,6 +38,7 @@ import { hookResult as resultJson } from './hook-result';
 import { runMarks } from './marks';
 import { runTap } from './tap';
 import { runLocal } from './local-cli';
+import { runLocalInstall } from './local-install';
 import { runLocalMcp } from './local-mcp';
 import { runLocalLive } from './local-live';
 import { localClaudeSettings, runLocalClaudeHook } from './local-claude-hook';
@@ -275,6 +276,7 @@ async function main(argv: string[]): Promise<{ code: number; out: string[]; err:
       process.once('SIGTERM', () => stop.abort());
       return { code: await runMarks(argv.slice(1), origin(), { out, err, signal: stop.signal }), out, err };
     }
+    if (argv[0] === 'install') return { code: runLocalInstall(argv.slice(1)), out, err };
     if (argv[0] === 'local') return { code: await runLocal(argv.slice(1)), out, err };
     if (argv[0] === 'local-mcp') return { code: await runLocalMcp(argv.slice(1)), out, err };
     if (argv[0] === 'live') return { code: await runLocalLive(argv.slice(1)), out, err };
