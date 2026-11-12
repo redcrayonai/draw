@@ -6,6 +6,8 @@ import { fileURLToPath } from 'node:url';
 import { homedir } from 'node:os';
 import { installLocalCodex } from './local-install';
 import { localClaudeSettings } from './local-claude-hook';
+import { choosePermissions, permissionPath, savePermissions } from './permissions';
+import { configureCodexPermissions } from './codex-permissions';
 
 type Agent = 'codex' | 'claude-code' | 'pi';
 type Mode = 'local' | 'hosted';
@@ -23,7 +25,8 @@ export function prepareNativePlugin(root: string, destination: string, executabl
   const source = mode === 'hosted' ? join(root, 'hosted-plugin') : root;
   const paths = mode === 'hosted' ? files(source) : ['plugin.json', '.codex-plugin/plugin.json', 'mcp.json', 'skills/local/SKILL.md'];
   const contents = new Map(paths.map(file => [file, readFileSync(join(source, file))]));
-  const hash = createHash('sha256').update(JSON.stringify({ executable, version, agent, mode }));
+  const permissionEnv = agent === 'codex' ? { DRAW_PERMISSION_FILE: permissionPath(mode), DRAW_PERMISSION_MODE: mode } : undefined;
+  const hash = createHash('sha256').update(JSON.stringify({ executable, version, agent, mode, ...(permissionEnv ? { permissionEnv, enforcement: 1 } : {}) }));
   for (const [file, data] of contents) hash.update(file).update(data);
   if (agent === 'pi') hash.update(readFileSync(join(root, 'pi-extension.mjs')));
   const id = hash.digest('hex').slice(0, 16), target = join(destination, id);
@@ -45,11 +48,19 @@ export function prepareNativePlugin(root: string, destination: string, executabl
     }
     // The marketplace source stays local and uses each agent's supported schema.
     json('.claude-plugin/marketplace.json', { name: marketplace, owner: { name: 'Red Crayon' }, plugins: [{ name, source: agent === 'claude-code' ? './' : { source: 'local', path: '.' } }] });
-    write('bin/draw', `#!/bin/sh\nexec ${quote(executable)} "$@"\n`, true);
+    const environment = permissionEnv ? `export DRAW_PERMISSION_FILE=${quote(permissionEnv.DRAW_PERMISSION_FILE)} DRAW_PERMISSION_MODE=${quote(mode)}\n` : '';
+    write('bin/draw', `#!/bin/sh\n${environment}exec ${quote(executable)} "$@"\n`, true);
     if (mode === 'local') {
-      const config = { mcpServers: { 'draw-local': { type: 'stdio', command: executable, args: ['local-mcp', '--per-repo'] } } };
+      const config = { mcpServers: { 'draw-local': { type: 'stdio', command: executable, args: ['local-mcp', '--per-repo'], ...(permissionEnv ? { env: permissionEnv } : {}) } } };
       json('mcp.json', config); json('.mcp.json', config);
       if (agent === 'claude-code') json('hooks/hooks.json', localClaudeSettings(['--auto'], [executable]));
+    }
+    if (mode === 'hosted' && agent === 'codex') {
+      const hooks = JSON.parse(readFileSync(join(temp, 'codex/hooks.json'), 'utf8'));
+      // Guard every Draw call, including tools added after this release.
+      hooks.hooks.PreToolUse[0].matcher = '^mcp__(plugin_draw_)?(?:draw|redcrayon)(-dev)?__.+$';
+      hooks.hooks.PreToolUse[0].hooks[0].timeout = 180;
+      json('codex/hooks.json', hooks);
     }
     if (agent === 'pi') {
       write('pi/pi-extension.mjs', readFileSync(join(root, 'pi-extension.mjs')));
@@ -79,12 +90,38 @@ export function activateNativePlugin(source: string, target: string, install: ()
   } finally { rmSync(staging, { recursive: true, force: true }); if (committed) rmSync(backup, { recursive: true, force: true }); }
 }
 
-export function runNativeInstall(args: string[], version: string) {
+function parseOptions(args: string[], permissionsOnly = false) {
   const [agent, ...rest] = args;
-  if (!['codex', 'claude-code', 'pi'].includes(agent) || (rest.length && (rest.length !== 2 || rest[0] !== '--mode' || !['local', 'hosted'].includes(rest[1])))) throw new Error('REJECTED: usage: draw install <codex|claude-code|pi> [--mode local|hosted]');
-  const mode = (rest[1] ?? 'local') as Mode, root = dirname(fileURLToPath(import.meta.url));
+  const usage = `REJECTED: usage: draw ${permissionsOnly ? 'permissions codex' : 'install <codex|claude-code|pi>'} [--mode local|hosted] [--permissions-defaults] (permissions are Codex only)`;
+  if (!(permissionsOnly ? ['codex'] : ['codex', 'claude-code', 'pi']).includes(agent)) throw new Error(usage);
+  let mode: Mode = 'local', defaults = false, explicitMode = false;
+  for (let i = 0; i < rest.length; i++) {
+    if (rest[i] === '--mode' && !explicitMode && ['local', 'hosted'].includes(rest[i + 1])) { mode = rest[++i] as Mode; explicitMode = true; }
+    else if (rest[i] === '--permissions-defaults' && agent === 'codex' && !defaults) defaults = true;
+    else throw new Error(usage);
+  }
+  return { agent: agent as Agent, mode, defaults };
+}
+
+async function setCodexPermissions(mode: Mode, defaults: boolean, reconfigure = false) {
+  const record = await choosePermissions(mode, { defaults, reconfigure });
+  const managedDisabledTools = await configureCodexPermissions(mode, record.permissions, record.managedDisabledTools);
+  savePermissions(mode, { ...record, managedDisabledTools });
+}
+
+export async function runNativePermissions(args: string[]) {
+  const { mode, defaults } = parseOptions(args, true);
+  await setCodexPermissions(mode, defaults, true);
+  process.stderr.write(`Draw ${mode} permissions saved for Codex. Restart Codex to load updated tool approval settings.\n`);
+  return 0;
+}
+
+export async function runNativeInstall(args: string[], version: string) {
+  const { agent, mode, defaults } = parseOptions(args);
+  if (agent === 'codex') await setCodexPermissions(mode, defaults);
+  const root = dirname(fileURLToPath(import.meta.url));
   const directory = join(homedir(), '.redcrayon', 'plugins');
-  const prepared = prepareNativePlugin(root, directory, process.execPath, version, agent as Agent, mode);
+  const prepared = prepareNativePlugin(root, directory, process.execPath, version, agent, mode);
   const active = join(directory, 'installed', `${agent}-${mode}`);
   if (agent === 'claude-code') {
     const marketplaces = JSON.parse(execFileSync('claude', ['plugin', 'marketplace', 'list', '--json'], { encoding: 'utf8' }));

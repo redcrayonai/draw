@@ -56,6 +56,41 @@ command, then restart the agent. Interactive local launches check at most daily;
 Native hosted flows were tested with real agents against a controlled relay and
 capture service. Production sign-in was not verified in this change.
 
+### Codex permissions in the native integration
+
+`draw install codex --mode local` and `draw install codex --mode hosted` ask you
+to choose **Ask** or **Deny** for board access, conversation attachment, and
+source-code access. Hosted setup also asks about source uploads. The suggested
+choices are Ask for boards/chat and Deny for source code/uploads. Ask uses
+Codex tool approval; Deny blocks the operation without prompting. Hosted source
+uploads set to Ask additionally open a browser approval page before reading or
+uploading files. Only you may choose **Allow once** there. Uploads can include
+whole cited files, not just the lines displayed on a board.
+
+Choices are separate for local and hosted mode. Reinstalling preserves them.
+Local is the default, so `draw install codex` needs no mode flag.
+To review or change them without reinstalling:
+
+```sh
+draw permissions codex --mode local
+draw permissions codex --mode hosted
+```
+
+Restart Codex after installing or changing tool permissions. Connect board chat
+explicitly through `attach_conversation` locally or `start_chat` when hosted;
+opening a hosted board alone does not authorize conversation attachment.
+
+First setup without an interactive terminal stops unless you explicitly select
+the suggested choices with `draw install codex --mode local --permissions-defaults`
+(or `--mode hosted`). The same flag is available on `draw permissions codex`;
+saved choices are preserved, so it does not reset an existing policy.
+
+These settings cover the installed Draw integration. They do not restrict
+Codex's general terminal/file access or arbitrary text copied into board labels
+and notes. They do not erase code already stored on a board. Dashboard snippet
+storage consent remains a separate setting. Existing marketplace and source
+installers do not gain these native setup prompts automatically.
+
 ## Install
 
 ### Claude Code

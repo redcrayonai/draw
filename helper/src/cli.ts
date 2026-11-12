@@ -44,6 +44,8 @@ import { runLocalMcp } from './local-mcp';
 import { runLocalLive } from './local-live';
 import { localClaudeSettings, runLocalClaudeHook } from './local-claude-hook';
 import { notifyUpdate } from './update';
+import { requireCapturePermission } from './capture-permission';
+import { enforceToolPermissions, PermissionError, runtimePermissions } from './permissions';
 
 
 const USAGE =
@@ -77,6 +79,7 @@ async function upload(body: CaptureBody, parent?: AbortSignal): Promise<string> 
 
 /** Upload one capture; the privacy line goes out once, after the first upload that worked. */
 async function capture(kind: CaptureKind, opts: CaptureOpts, notice: (line: string) => void, signal?: AbortSignal, deadline?: number): Promise<string> {
+  await requireCapturePermission(kind, opts, signal);
   signal?.throwIfAborted();
   if (deadline !== undefined && Date.now() >= deadline) throw new HelperError(BATCH_CAPTURE_TIMEOUT);
   const body = buildCapture(kind, opts, deadline);
@@ -170,9 +173,10 @@ async function preToolUse(tool: string, args: Json, cwd: string, out: string[], 
       if (count < 1 || count > 16) return 0;
       const edges = [...args.edges];
       let changed = false;
-      // Leave ten seconds for startup and cleanup inside the plugin hook's 45 s limit.
-      const deadline = Date.now() + 35_000;
-      const budget = AbortSignal.timeout(35_000);
+      // Managed Codex hooks leave time for the separate source approval form.
+      const duration = runtimePermissions('hosted') ? 125_000 : 35_000;
+      const deadline = Date.now() + duration;
+      const budget = AbortSignal.timeout(duration);
       const stop = new AbortController();
       const signal = AbortSignal.any([budget, stop.signal]);
       try {
@@ -201,6 +205,7 @@ async function preToolUse(tool: string, args: Json, cwd: string, out: string[], 
     out.push(JSON.stringify({ hookSpecificOutput: { hookEventName: 'PreToolUse', updatedInput: { ...args, capture: id } } }));
     return 0;
   } catch (e) {
+    if (e instanceof PermissionError) { err.push(e.message); return 2; }
     // start_session outside a checkout opens a drawing-only board
     if (!(e instanceof HelperError) || tool === 'start_session') return 0;
     err.push(e.message);
@@ -244,6 +249,11 @@ async function hook(out: string[], err: string[]): Promise<number> {
     for await (const chunk of process.stdin) chunks.push(chunk as Buffer);
     const input: unknown = JSON.parse(Buffer.concat(chunks).toString('utf8'));
     if (!isObject(input) || !isObject(input.tool_input)) return 0;
+    const guarded = /^mcp__(plugin_draw_)?(?:draw|redcrayon)(-dev)?__(.+)$/.exec(String(input.tool_name))?.[3];
+    if (guarded && input.hook_event_name === 'PreToolUse') {
+      try { enforceToolPermissions(guarded, 'hosted', input.tool_input); }
+      catch (error) { err.push(error instanceof Error ? error.message : 'REJECTED: Draw permissions could not be checked.'); return 2; }
+    }
     const tool = new RegExp(HOOK_MATCHER).exec(String(input.tool_name))?.[3];
     if (!tool) return 0;
     const cwd = typeof input.cwd === 'string' ? input.cwd : process.cwd();
@@ -299,6 +309,9 @@ const update = typeof __DRAW_VERSION__ !== 'undefined' && process.argv[2] === 'l
   ? notifyUpdate(__DRAW_VERSION__) : undefined;
 const { code, out, err } = await main(process.argv.slice(2));
 await update;
+if (typeof __DRAW_VERSION__ !== 'undefined') {
+  for (let i = 0; i < err.length; i++) err[i] = err[i].replace(/^redcrayon:/, 'draw:');
+}
 // Exit once both streams are flushed: an idle keep-alive socket must not hold the process.
 const flush = (stream: NodeJS.WriteStream, lines: string[]) =>
   new Promise<void>(done => stream.write(lines.map(l => `${l}\n`).join(''), () => done()));

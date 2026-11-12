@@ -1,5 +1,5 @@
 import { runUpdate } from './update';
-import { runNativeInstall } from './native-install';
+import { runNativeInstall, runNativePermissions } from './native-install';
 
 declare const __DRAW_VERSION__: string;
 const args = process.argv.slice(2);
@@ -8,16 +8,24 @@ else if (args[0] === '--executable-path') console.log(process.execPath);
 else if (args[0] === '--help' || args[0] === '-h') console.log(
   'Draw — architecture boards for your coding agent\n\n' +
   '  draw [--repo path] [--port number] [--no-open]   Open a local board\n' +
-  '  draw install <codex|claude-code|pi> [--mode local|hosted]\n' +
+  '  draw install <codex|claude-code|pi> [--mode local|hosted] [--permissions-defaults]\n' +
+  '  draw permissions codex [--mode local|hosted] [--permissions-defaults]\n' +
   '  draw update [--check] [--channel stable|preview] [--installer npm|bun]\n' +
   '  draw local-mcp --per-repo                       Local MCP bridge\n' +
   '  draw capture | chat | tap | marks | doctor      Hosted helper commands\n' +
   '  draw live --board slug --map mapping.json       Local piped activity\n\n' +
+  'Mode defaults to local. Use --mode hosted for hosted integrations.\n' +
+  'Codex --permissions-defaults: Ask for boards/chat; Deny for source code.\n' +
+  'Hosted source uploads set to Ask require browser approval before reading files.\n' +
   'Set DRAW_NO_UPDATE_CHECK=1 to disable automatic update checks.'
 );
 else if (args[0] === 'install') {
-  try { process.exitCode = runNativeInstall(args.slice(1), __DRAW_VERSION__); }
+  try { process.exitCode = await runNativeInstall(args.slice(1), __DRAW_VERSION__); }
   catch (error) { console.error(error instanceof Error ? error.message : 'UNAVAILABLE: install failed'); process.exitCode = 1; }
+}
+else if (args[0] === 'permissions') {
+  try { process.exitCode = await runNativePermissions(args.slice(1)); }
+  catch (error) { console.error(error instanceof Error ? error.message : 'UNAVAILABLE: permission configuration failed'); process.exitCode = 1; }
 }
 else if (args[0] === 'update') process.exitCode = await runUpdate(args.slice(1), __DRAW_VERSION__);
 else {

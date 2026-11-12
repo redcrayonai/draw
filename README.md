@@ -77,6 +77,10 @@ Board chat needs Node 22+ and access to the same conversation through a shared
 Codex app server. If chat cannot attach, continue in Codex; drawing still works.
 [Setup, existing connections, and MCP-only fallback](https://docs.redcrayon.ai/connect/#codex).
 
+The upcoming native executable supports separate Ask/Deny choices for local and
+hosted Codex integrations with `draw install codex --mode local|hosted`.
+[Native setup, defaults, and permission changes](plugin/README.md#codex-permissions-in-the-native-integration).
+
 </details>
 
 <details>

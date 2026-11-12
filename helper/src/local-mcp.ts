@@ -3,6 +3,7 @@ import { isAbsolute, join, resolve } from 'node:path';
 import { once } from 'node:events';
 import { localDirectory } from './local-path';
 import { localLines } from './local-lines';
+import { enforceToolPermissions } from './permissions';
 
 const str = { type: 'string' };
 const board = { board: str };
@@ -55,6 +56,7 @@ export async function runLocalMcp(args: string[]) {
           const { name, arguments: input } = request.params ?? {};
           if (!localTools.some(t => t.name === name) || !input || typeof input !== 'object' || Array.isArray(input)) throw new Error('REJECTED: unsupported tool or invalid arguments');
           try {
+            enforceToolPermissions(name, 'local');
             if (perRepo && (typeof input.repo !== 'string' || !isAbsolute(input.repo))) throw new Error('REJECTED: pass the absolute current repository path as repo');
             result = { content: [{ type: 'text', text: JSON.stringify(await localCall(localEndpoint(perRepo ? ['--repo', input.repo] : args), { ...input, action: name })) }] };
           }

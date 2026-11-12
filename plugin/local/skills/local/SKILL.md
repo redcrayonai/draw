@@ -12,6 +12,13 @@ may include the plugin name. Do not use hosted `start_session`, captures,
 checkpoints, or sign-in for this workflow. Local board slugs are strings, and
 node, edge, and note IDs are stable strings, not hosted board IDs.
 
+Native Codex installs have Ask/Deny choices for boards, conversation attachment,
+and source reads. Respect denied tools; do not bypass a denial with the terminal
+or another connection. The user can review choices with
+`draw permissions codex --mode local`, then restart Codex. Do not change those
+choices for them. If Draw displays a browser approval page, never submit its
+form programmatically: only the human may choose **Allow once**.
+
 Pass `repo` with the absolute current repository path on **every local tool call**.
 Plugin processes start in their installed directory, so the bridge requires this
 explicit scope instead of guessing from its own working directory. Do not omit
@@ -25,6 +32,8 @@ explicit scope instead of guessing from its own working directory. Do not omit
    `command` and any arguments before `local-mcp` as the launcher, substituting
    the actual plugin root for `${PLUGIN_ROOT}`. This may be a standalone `draw`
    executable or Node plus `redcrayon.mjs`; do not assume Node is installed.
+   Preserve any `env` fields from that server entry when launching the helper;
+   native Codex installs use them to locate the saved Draw permissions.
 2. Call `list_boards`. If the local server is unavailable, run this command in a
    background terminal process and keep it running:
 

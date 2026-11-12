@@ -90,3 +90,12 @@ it('reopening a board completes and caches the update check before exiting', asy
   expect(stderr).toContain('Draw 2.0.0 is available');
   expect(JSON.parse(readFileSync(join(directory, '.redcrayon/updates', `${process.platform}-${process.arch}-stable.json`), 'utf8'))).toMatchObject({ state: 'available', version: '2.0.0' });
 });
+
+it('names draw in native CLI errors, including a locked local store', async () => {
+  const store = join(directory, 'locked-store'); mkdirSync(store);
+  mkdirSync(join(directory, 'local-assets'));
+  writeFileSync(join(directory, 'local-assets/local.html'), '<!doctype html>');
+  writeFileSync(join(store, 'writer.lock'), 'existing writer');
+  await expect(run(['--repo', directory, '--store', store, '--no-open'])).rejects.toThrow('draw: UNAVAILABLE: local store is locked.');
+  expect(readFileSync(join(store, 'writer.lock'), 'utf8')).toBe('existing writer');
+});

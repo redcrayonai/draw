@@ -6,21 +6,59 @@ import { LocalStore } from './local-store';
 import { LocalChat } from './local-chat';
 import type { connectCodex } from './chat-codex';
 import type { ChatEvent } from '../../shared/chat';
+import { readPermissions } from './permissions';
+
+vi.mock('./permissions', async importOriginal => ({ ...await importOriginal<typeof import('./permissions')>(), readPermissions: vi.fn(() => undefined) }));
 
 const cleanup: (() => void)[] = [];
-afterEach(() => { cleanup.splice(0).forEach(fn => fn()); });
+afterEach(() => { cleanup.splice(0).forEach(fn => fn()); vi.mocked(readPermissions).mockReset(); vi.unstubAllEnvs(); });
 function setup() {
   const dir = mkdtempSync(join(tmpdir(), 'local-chat-')); const store = new LocalStore(dir); const board = store.create('Review', dir);
   let emit: (event: ChatEvent) => void = () => {};
-  const send = vi.fn(async (_text: string) => {}), stop = vi.fn(async () => {}), approve = vi.fn(async () => {});
+  const send = vi.fn(async (_text: string) => {}), stop = vi.fn(async () => {}), approve = vi.fn(async () => {}), close = vi.fn();
   const connect = vi.fn<typeof connectCodex>(async options => {
     emit = options.emit; emit({ type: 'state', state: 'idle' });
-    return { session: { id: `codex:${options.threadId}`, agent: 'codex', name: 'Codex', capabilities: { stop: 'interrupt', approvals: true } }, send, stop, approve, close() {} };
+    return { session: { id: `codex:${options.threadId}`, agent: 'codex', name: 'Codex', capabilities: { stop: 'interrupt', approvals: true } }, send, stop, approve, close };
   });
   const chat = new LocalChat(store, () => {}, connect);
   cleanup.push(() => { chat.close(); store.close(); rmSync(dir, { recursive: true, force: true }); });
-  return { dir, store, board, chat, send, stop, approve, connect, emit: (event: ChatEvent) => emit(event) };
+  return { dir, store, board, chat, send, stop, approve, close, connect, emit: (event: ChatEvent) => emit(event) };
 }
+
+const chatPolicy = { boards: 'ask', conversation: 'ask', snippets: 'deny', uploads: 'deny' } as const;
+it('refuses an initial attachment when an explicit local policy file is missing', async () => {
+  const { chat, board, connect, dir } = setup();
+  vi.stubEnv('DRAW_PERMISSION_MODE', 'local');
+  vi.stubEnv('DRAW_PERMISSION_FILE', join(dir, 'missing-policy.json'));
+  await expect(chat.attach(board.slug, 'thread')).rejects.toThrow('missing');
+  expect(connect).not.toHaveBeenCalled();
+});
+it('refuses a new Codex connection when saved conversation access is denied', async () => {
+  const { chat, board, connect } = setup();
+  vi.mocked(readPermissions).mockReturnValue({ permissions: { ...chatPolicy, conversation: 'deny' } });
+  await expect(chat.attach(board.slug, 'thread')).rejects.toThrow('denied');
+  expect(connect).not.toHaveBeenCalled();
+});
+it('disconnects and drops reply text when permission is revoked during a turn', async () => {
+  const { chat, board, store, emit, close } = setup();
+  vi.mocked(readPermissions).mockReturnValue({ permissions: chatPolicy });
+  await chat.attach(board.slug, 'thread');
+  await chat.send(board.slug, 'message', 'Do work', []);
+  vi.mocked(readPermissions).mockReturnValue({ permissions: { ...chatPolicy, conversation: 'deny' } });
+  emit({ type: 'text', message: 'reply', delta: 'Must not reach the board', final: true });
+  expect(store.read(board.slug).feedback[0]).toMatchObject({ reply: '', state: 'uncertain' });
+  expect(chat.status(board.slug).connected).toBe(false);
+  expect(close).toHaveBeenCalledOnce();
+});
+it('does not send another message or approval after saved permissions disappear', async () => {
+  const { chat, board, send, approve, close } = setup();
+  vi.mocked(readPermissions).mockReturnValue({ permissions: chatPolicy });
+  await chat.attach(board.slug, 'thread');
+  vi.mocked(readPermissions).mockReturnValue(undefined);
+  await expect(chat.send(board.slug, 'message', 'Do work', [])).rejects.toThrow('denied');
+  await expect(chat.approve(board.slug, 'approval', 'accept')).rejects.toThrow('denied');
+  expect(send).not.toHaveBeenCalled(); expect(approve).not.toHaveBeenCalled(); expect(close).toHaveBeenCalledOnce();
+});
 it('persists feedback before delivery, separates context and deduplicates retries', async () => {
   const { store, board, chat, send, emit, connect } = setup();
   await expect(chat.send(board.slug, 'message-1', 'Check timeout', [])).rejects.toThrow('saved');
