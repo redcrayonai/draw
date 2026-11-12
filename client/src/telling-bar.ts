@@ -73,6 +73,7 @@ export function renderTellingBar(root: HTMLElement, m: TellingBarModel | null): 
   if (!p) { p = build(root); parts.set(root, p); }
   p.model = m;
   root.hidden = false;
+  const focused = document.activeElement;
 
   const ending = m.at >= m.count;
   p.back.disabled = m.at <= 1;
@@ -94,6 +95,11 @@ export function renderTellingBar(root: HTMLElement, m: TellingBarModel | null): 
   p.main.disabled = want === 'play' && m.reduced;
   set(p.main, 'title', p.main.disabled ? 'Motion is reduced on this device. Use Next.' : '');
   if (!p.main.title) p.main.removeAttribute('title');
+
+  // A focused control that a repaint disables would drop focus to <body>: hand it to the main button, else Exit.
+  if (focused instanceof HTMLButtonElement && root.contains(focused) && (focused.disabled || (focused === p.main && p.main.disabled))) {
+    (p.main.disabled ? p.controls.querySelector<HTMLElement>('[data-act="exit"]')! : p.main).focus();
+  }
 
   const names = m.audiences.length > 1 ? JSON.stringify(m.audiences) : '';
   if (names !== p.names) {

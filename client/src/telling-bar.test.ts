@@ -88,6 +88,27 @@ describe('renderTellingBar', () => {
     expect(document.activeElement).toBe(btn(el, 'Pause'));
   });
 
+  it('moves focus to Replay when Next is disabled by reaching the ending', () => {
+    renderTellingBar(el, model({ at: 4 }));
+    btn(el, 'Next')!.focus();
+    renderTellingBar(el, model({ at: 5 }));
+    expect(document.activeElement).toBe(btn(el, 'Replay'));
+  });
+
+  it('moves focus to the main button when Back is disabled at step 1', () => {
+    renderTellingBar(el, model({ at: 2 }));
+    btn(el, 'Back')!.focus();
+    renderTellingBar(el, model({ at: 1 }));
+    expect(document.activeElement).toBe(btn(el, 'Play'));
+  });
+
+  it('moves focus to Exit when the main button is disabled too', () => {
+    renderTellingBar(el, model({ at: 2, reduced: true }));
+    btn(el, 'Back')!.focus();
+    renderTellingBar(el, model({ at: 1, reduced: true }));
+    expect(document.activeElement).toBe(btn(el, 'Exit'));
+  });
+
   it('fills progress through at', () => {
     renderTellingBar(el, model());
     const segs = el.querySelectorAll('.telling-progress > span');
