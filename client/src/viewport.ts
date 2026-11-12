@@ -23,9 +23,12 @@ export interface Insets {
 
 const NO_INSETS: Insets = { left: 0, right: 0, top: 0, bottom: 0 };
 
-/** True when a floating panel is on screen (not hidden, not dismissed). */
+/** True when a floating panel is on screen (not hidden, not dismissed, takes space). */
 function shown(el: HTMLElement | null): el is HTMLElement {
-  return el !== null && !el.hidden && !el.classList.contains('collapsed');
+  if (el === null || el.hidden || el.classList.contains('collapsed')) return false;
+  // A display: none panel (the walk-through hides side panels so) has an all-zero rect.
+  const r = el.getBoundingClientRect();
+  return r.width > 0 || r.height > 0;
 }
 
 /**
@@ -55,13 +58,10 @@ export function chromeInsets(wrap: HTMLElement): Insets {
   if (shown(trail)) {
     insets.top = Math.max(insets.top, trail.getBoundingClientRect().bottom - w.top);
   }
-  // The walk-through bar replaces the dock while it plays; count its height.
+  // The walk-through bar replaces the dock while it plays; reserve from its top edge down.
   const bar = document.getElementById('telling-bar');
-  if (bar !== null && !bar.hidden) {
-    const h = bar.getBoundingClientRect().height;
-    if (h > 0) {
-      insets.bottom = Math.max(insets.bottom, h + PANEL_GAP);
-    }
+  if (shown(bar)) {
+    insets.bottom = Math.max(insets.bottom, w.bottom - bar.getBoundingClientRect().top + PANEL_GAP);
   }
   const inspector = document.getElementById('inspector');
   if (shown(inspector)) {

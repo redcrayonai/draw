@@ -269,10 +269,40 @@ describe('chromeInsets (G6/G7)', () => {
     const bar = document.createElement('div');
     bar.id = 'telling-bar';
     wrap.append(bar);
-    bar.getBoundingClientRect = rect(0, 720, 1440, 180);
-    expect(chromeInsets(wrap).bottom).toBeGreaterThanOrEqual(180 + 16);
+    // The bar floats 24px above the canvas bottom; it covers from its top edge down.
+    bar.getBoundingClientRect = rect(0, 760, 1440, 116);
+    expect(chromeInsets(wrap).bottom).toBe(900 - 760 + 16);
     bar.hidden = true;
     expect(chromeInsets(wrap).bottom).toBe(900 - 818 + 16);
+  });
+
+  // The walk-through hides side panels with display: none, which leaves them
+  // un-hidden but with an all-zero rect.
+  const zeroRects = () => {
+    for (const id of ['rail', 'dock', 'inspector']) {
+      const el = document.getElementById(id)!;
+      el.hidden = false;
+      el.getBoundingClientRect = rect(0, 0, 0, 0);
+    }
+  };
+
+  it('panels that take no space on screen reserve nothing', () => {
+    const wrap = document.getElementById('canvas-wrap')!;
+    zeroRects();
+    const withZero = chromeInsets(wrap);
+    for (const id of ['rail', 'dock', 'inspector']) document.getElementById(id)!.remove();
+    expect(withZero).toEqual(chromeInsets(wrap));
+    expect(withZero).toEqual({ left: 0, right: 0, top: 0, bottom: 0 });
+  });
+
+  it('with zero-size panels, the bottom inset is the strip the bar covers', () => {
+    const wrap = document.getElementById('canvas-wrap')!;
+    zeroRects();
+    const bar = document.createElement('div');
+    bar.id = 'telling-bar';
+    wrap.append(bar);
+    bar.getBoundingClientRect = rect(80, 745, 1280, 131);
+    expect(chromeInsets(wrap)).toEqual({ left: 0, right: 0, top: 0, bottom: 900 - 745 + 16 });
   });
 
   it('a dismissed rail reserves nothing', () => {

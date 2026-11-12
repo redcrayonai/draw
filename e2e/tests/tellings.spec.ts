@@ -250,3 +250,38 @@ test('the first step frames its node clear of the bar', async ({ account, stack 
   const overlaps = lit.x < box.x + box.width && box.x < lit.x + lit.width && lit.y < box.y + box.height && box.y < lit.y + lit.height;
   expect(overlaps, `node ${JSON.stringify(lit)} under bar ${JSON.stringify(box)}`).toBe(false);
 });
+
+test('a tall step frames every lit node above the bar', async ({ account, stack }) => {
+  test.setTimeout(60_000);
+  const { token, page, B, id } = await seededBoard(stack, account);
+  // Four nodes stacked 128 apart plus one to their left: a frame 468 tall, enough to reach under the bar unframed.
+  const tall: number[] = [];
+  for (const [i, [x, y]] of [[1400, 200], [1400, 328], [1400, 456], [1400, 584], [1100, 392]].entries()) {
+    const label = `T${i}`;
+    await stack.callReducer(token, 'create_node', [B, label, '', x, y, 232, 84, 'ink', false, NONE, NONE, NONE, NONE, NONE, NONE, NONE]);
+    const [row] = await stack.sql(`SELECT id FROM node WHERE board_id = ${B} AND label = '${label}'`);
+    tall.push(Number(row.id));
+  }
+  await expect(nodes(page)).toHaveCount(9);
+  await tell(stack, token, B, 'Product', 'A tall step', [{ nodes: [id.A], body: 'A begins.' }, { nodes: tall, body: 'All five.' }]);
+
+  await page.locator('#act-tell').click();
+  await page.keyboard.press(' '); // hold still: the step changes from the keys alone
+  await expect(button(page, 'play')).toHaveText('Play');
+  await page.keyboard.press('ArrowRight');
+  await expect(count(page)).toHaveText('2 of 2');
+  await expect.poll(() => litIds(page)).toEqual(sorted(...tall));
+  let last = '';
+  await expect.poll(async () => {
+    const t = await page.locator('#world').getAttribute('transform') ?? '';
+    const same = t === last && t !== '';
+    last = t;
+    return same;
+  }, { intervals: [250], message: 'the view keeps moving' }).toBe(true);
+
+  const barTop = (await bar(page).boundingBox())!.y;
+  for (const n of tall) {
+    const box = (await node(page, n).locator('.node-rect').boundingBox())!;
+    expect(box.y + box.height, `node ${n} ${JSON.stringify(box)} reaches under the bar at ${barTop}`).toBeLessThanOrEqual(barTop);
+  }
+});
