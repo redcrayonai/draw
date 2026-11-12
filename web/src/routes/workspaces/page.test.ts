@@ -43,6 +43,12 @@ describe('native workspace management', () => {
     expect(screen.queryByRole('button', { name: 'rename workspace' })).toBeNull();
     expect(screen.queryByRole('link', { name: /Pending invitations/ })).toBeNull();
   });
+  it('links a personal workspace owner to service accounts, not to members', () => {
+    myWorkspaces.set([{ id: 1n, name: 'Personal', personal: true, role: 'owner', createdAt: new Timestamp(1n) }]);
+    render(Page);
+    expect(screen.getByRole('link', { name: /Service accounts/ })).toHaveAttribute('href', '/workspaces/keys?workspace=1');
+    expect(screen.queryByRole('link', { name: /Members/ })).toBeNull();
+  });
   it('renames the workspace its link names', async () => {
     myWorkspaces.set([
       { id: 1n, name: 'Personal', personal: true, role: 'owner', createdAt: new Timestamp(1n) },

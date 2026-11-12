@@ -96,9 +96,9 @@
           <a href={appHref(`/workspaces/members?workspace=${id}&tab=teams`)}><span>Teams</span><b class="num">{teams}</b></a>
           {#if managesWorkspace(workspace)}
             <a href={appHref(`/workspaces/members?workspace=${id}&tab=invitations`)}><span>Pending invitations</span><b class="num">{invites}</b></a>
-            <a href={appHref(`/workspaces/keys?workspace=${id}`)}><span>Service accounts</span><b class="num">{plural(accounts, 'account')}</b></a>
           {/if}
         {/if}
+        {#if managesWorkspace(workspace)}<a href={appHref(`/workspaces/keys?workspace=${id}`)}><span>Service accounts</span><b class="num">{plural(accounts, 'account')}</b></a>{/if}
       </aside>
     </div>
   {:else if chosen}

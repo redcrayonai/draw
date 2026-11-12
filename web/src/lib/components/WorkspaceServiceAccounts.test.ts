@@ -61,11 +61,11 @@ describe('workspace service accounts', () => {
     expect(h.reducers.createWorkspaceServiceAccount).toHaveBeenCalledWith({ workspaceId: 3n, name: 'Release bot', role: 'viewer', allBoards: false, boardIds: [12n] });
   });
 
-  it('keeps service account administration private to shared workspace admins', async () => {
+  it('keeps service account administration private to workspace admins, personal owners included', async () => {
     const view = render(WorkspaceServiceAccounts, { props: { workspace: { ...workspace, role: 'member' } } });
     expect(screen.queryByRole('heading', { name: 'Service accounts' })).toBeNull();
     await view.rerender({ workspace: { ...workspace, personal: true } });
-    expect(screen.queryByRole('heading', { name: 'Service accounts' })).toBeNull();
+    expect(screen.getByRole('heading', { name: 'Service accounts' })).toBeInTheDocument();
   });
 
   it('reveals a key only after creation, sends only its hash, and forgets it when dismissed', async () => {

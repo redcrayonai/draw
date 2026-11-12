@@ -32,6 +32,9 @@ export function registerWorkspaceMachine(ctx: any, keyId: string): void {
   if (!old) ctx.db.workspaceMachineIdentity.insert({ identity: ctx.sender, keyId });
 }
 
+// A personal workspace is its owner's alone: deactivating that person stops its keys too.
+const serves = (ctx: any, workspace: any): boolean => Boolean(workspace) && !(workspace.personal && ctx.db.workspaceAccount.identity.find(workspace.owner)?.disabled);
+
 function machinePolicy(ctx: any, identity: any): any {
   const classified = ctx.db.workspaceMachineIdentity.identity.find(identity);
   if (!classified) return undefined;
@@ -41,7 +44,7 @@ function machinePolicy(ctx: any, identity: any): any {
   if (!apiKeyIsActive(key, now)) return undefined;
   const account = ctx.db.workspaceServiceAccount.id.find(key.serviceAccountId);
   const workspace = account && ctx.db.workspace.id.find(account.workspaceId);
-  return account && !account.disabled && workspace && !workspace.personal ? { account, key } : undefined;
+  return account && !account.disabled && serves(ctx, workspace) ? { account, key } : undefined;
 }
 
 export function workspaceMachineBoardRole(ctx: any, boardId: bigint, identity = ctx.sender): string {
@@ -64,7 +67,6 @@ export function workspaceServiceAccountFeatures(db: any, hooks: any): any {
     if (!hooks.isHuman(ctx)) throw new SenderError('service account rule: sign in with a human account');
     const workspace = ctx.db.workspace.id.find(workspaceId);
     if (!workspace || !['owner', 'admin'].includes(membership(ctx, workspaceId)?.role)) throw new SenderError('service account rule: only a workspace administrator can manage service accounts');
-    if (workspace.personal) throw new SenderError('service account rule: create service accounts in a shared workspace');
     return workspace;
   };
   const account = (ctx: any, id: bigint) => {
@@ -134,7 +136,7 @@ export function workspaceServiceAccountFeatures(db: any, hooks: any): any {
       try { hooks.assertService(ctx); } catch { return []; }
       return [...ctx.db.workspaceApiKey.iter()].filter((key: any) => apiKeyIsActive(key)).flatMap((key: any) => {
         const account = ctx.db.workspaceServiceAccount.id.find(key.serviceAccountId), workspace = account && ctx.db.workspace.id.find(account.workspaceId);
-        if (!account || account.disabled || !workspace || workspace.personal) return [];
+        if (!account || account.disabled || !serves(ctx, workspace)) return [];
         return [{ keyId: key.id, keyHash: key.keyHash, workspaceId: account.workspaceId, serviceAccountId: account.id, name: account.name, role: account.role === 'viewer' || key.role === 'viewer' ? 'viewer' : 'editor', expiresAt: key.expiresAt }];
       });
     }),

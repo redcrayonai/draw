@@ -47,11 +47,11 @@ Expand a workspace and its **Settings** group:
 | Control | Where it takes you |
 |---|---|
 | Members & access | Members, Teams and Invitations tabs for a shared workspace |
-| Service accounts & keys | Automation accounts and keys, for shared-workspace owners and admins |
+| Service accounts & keys | Automation accounts and keys, for workspace owners and admins |
 | General | Workspace name, type and your role |
 
 The **+** beside **Workspaces** creates a workspace. Personal workspaces do not
-show shared membership or service-account controls.
+show shared membership controls.
 
 At the bottom of the sidebar, **Connect an agent** opens the agent setup guide.
 **Account settings** holds appearance, linked agents, sign-out and the **Code**

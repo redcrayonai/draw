@@ -36,8 +36,8 @@ The rail shows `Incident · firing` or `Incident · resolved` beside the window.
 
 ## Connect an alert
 
-You need a shared workspace and a service account API key with **Edit** access
-to the board the alert should copy. See
+You need a service account API key with **Edit** access to the board the alert
+should copy. See
 [Give automation a scoped key](/capabilities/workspaces/#give-automation-a-scoped-key).
 
 The endpoint takes the Alertmanager webhook format. Use the board's link id,

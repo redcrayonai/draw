@@ -149,9 +149,59 @@ test('only workspace owners and admins manage machine accounts and hashes remain
   const privateKey = (await rows(service, 'service_workspace_api_keys')).find(row => row.keyId === k.keyId);
   assert.equal(privateKey.keyHash, k.hash);
   await denied(full, 'revoke_workspace_api_key', [k.keyId], 'administrator');
+});
+
+test('a personal workspace key reaches that workspace\'s boards and no others', async () => {
+  const owner = person(), stranger = person();
   await ok(owner, 'ensure_personal_workspace');
-  const personal = (await rows(owner, 'my_workspaces')).find(row => row.personal);
-  await denied(owner, 'create_workspace_service_account', [personal.id, named('personal'), ...grant()], 'shared workspace');
+  const personal = (await rows(owner, 'my_workspaces')).find(row => row.personal).id;
+  const B = await board(owner, personal, 'personal-board');
+  const outside = await board(owner, await workspace(owner, 'beside-personal'), 'outside');
+  await rows(stranger, 'my_workspaces');
+  await denied(stranger, 'create_workspace_service_account', [personal, named('forbidden'), ...grant()], 'administrator');
+  const a = await account(owner, personal);
+  const k = await key(owner, a.id);
+  assert.equal((await rows(service, 'service_workspace_api_keys')).find(row => row.keyId === k.keyId)?.keyHash, k.hash);
+  assert.equal(await sees(k.who, B), true);
+  assert.equal(await sees(k.who, outside), false, 'a personal key stays inside the personal workspace');
+  await node(k.who, B, 'machine edit');
+  await denied(k.who, 'create_node', nodeArgs(outside, 'no write'));
+  await ok(k.who, 'open_incident', [B, 'personal-group', 'Incident: personal', 'firing', 0]);
+  const [incident] = await sql(OWNER, `SELECT * FROM incident WHERE source_board_id = ${B}`);
+  const mine = await permission(owner, incident.boardId);
+  assert.equal(mine.workspaceId, personal, 'the incident board joins the personal workspace');
+  assert.equal(mine.canManage, true, 'and belongs to its owner, never to the machine');
+  assert.equal(await sees(k.who, incident.boardId), true);
+});
+
+test('deactivating a person stops the keys of their personal workspace', async () => {
+  const owner = person();
+  await ok(owner, 'ensure_personal_workspace');
+  const personal = (await rows(owner, 'my_workspaces')).find(row => row.personal).id;
+  const B = await board(owner, personal, 'deactivated-owner');
+  const k = await key(owner, (await account(owner, personal)).id);
+  assert.equal(await sees(k.who, B), true);
+  await ok(service, 'deactivate_workspace_identity', [id(owner)]);
+  assert.equal(await sees(k.who, B), false, 'a deactivated person keeps no access through a personal key');
+  await denied(k.who, 'create_node', nodeArgs(B, 'after deactivation'));
+  assert.equal((await rows(service, 'service_workspace_api_keys')).some(row => row.keyId === k.keyId), false);
+});
+
+const limitsOff = process.env.REDCRAYON_LIMITS === 'on' ? false : 'the module was published without REDCRAYON_LIMITS=on';
+test("a personal key opens no incident board past its owner's board allowance", { skip: limitsOff }, async () => {
+  const owner = person();
+  await ok(owner, 'ensure_personal_workspace');
+  const personal = (await rows(owner, 'my_workspaces')).find(row => row.personal).id;
+  const B = await board(owner, personal, 'full-allowance');
+  const k = await key(owner, (await account(owner, personal)).id);
+  // Fill the allowance with grants alone: 500 real boards would spend the owner's write budget.
+  const base = BigInt(`0x${RUN}`) << 12n;
+  try {
+    for (let i = 0n; i < 499n; i++) await sql(OWNER, `INSERT INTO board_grant (id, board_id, grantee, role) VALUES (${base + i}, ${base + i}, 0x${owner.identity}, 'owner')`);
+    await denied(k.who, 'open_incident', [B, 'over-allowance', 'Incident: over', 'firing', 0], 'at most 500 boards');
+  } finally {
+    await sql(OWNER, `DELETE FROM board_grant WHERE board_id >= ${base} AND board_id < ${base + 499n}`);
+  }
 });
 
 test('per-key board and role permissions are intersected with current account permissions', async () => {

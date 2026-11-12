@@ -27,7 +27,7 @@
     finally { busy = false; }
   }
 </script>
-{#if !workspace.personal && managesWorkspace(workspace)}
+{#if managesWorkspace(workspace)}
   <section class="workspace-panel">
     <h2>Service accounts</h2>
     {#if $serviceAccountState === 'unavailable'}

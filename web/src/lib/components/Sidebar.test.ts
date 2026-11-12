@@ -64,4 +64,11 @@ describe('Sidebar', () => {
     expect(within(nav).getAllByRole('link', { name: 'Service accounts & keys' })).toHaveLength(1);
     expect(within(nav).getByRole('link', { name: 'New workspace' })).toHaveAttribute('href', '/workspaces/new');
   });
+
+  it('offers a personal workspace its service accounts, not members', () => {
+    render(Sidebar, { props: { theme: 'dark', ontoggle: () => {}, path: '/workspaces/keys', workspace: '1' } });
+    const nav = screen.getByRole('navigation', { name: 'Workspaces' });
+    expect(within(nav).getByRole('link', { name: 'Service accounts & keys' })).toHaveAttribute('href', '/workspaces/keys?workspace=1');
+    expect(within(nav).queryByRole('link', { name: 'Members & access' })).toBeNull();
+  });
 });
