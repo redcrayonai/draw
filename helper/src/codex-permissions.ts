@@ -24,12 +24,9 @@ function disabledTools(value: unknown): string[] {
   return value;
 }
 
-/** Returns only denials owned by this installer; independent user denials must survive policy edits. */
-export async function configureCodexPermissions(
-  mode: 'local' | 'hosted', policy: Policy, previousManagedDisabledTools: string[] = [],
-): Promise<string[]> {
-  if (!['local', 'hosted'].includes(mode) || ['boards', 'conversation', 'snippets', 'uploads'].some(key => !['ask', 'deny'].includes(policy[key as keyof Policy]))) throw unavailable();
-  disabledTools(previousManagedDisabledTools);
+type Rpc = (method: string, params: Frame) => Promise<Frame>;
+
+async function withCodexConfig<T>(update: (read: Frame, user: Frame, rpc: Rpc) => Promise<T>): Promise<T> {
   const child = spawn('codex', ['app-server', '--listen', 'stdio://'], { stdio: ['pipe', 'pipe', 'ignore'] });
   let sequence = 0;
   let buffer = '';
@@ -85,12 +82,32 @@ export async function configureCodexPermissions(
     const read = await rpc('config/read', { includeLayers: true });
     const user = Array.isArray(read.layers) && read.layers.find((layer: Frame) => layer.name?.type === 'user' && !layer.name.profile && !layer.disabledReason);
     if (!user || typeof user.version !== 'string' || typeof user.name.file !== 'string') throw unavailable();
-    const plugin = mode === 'local' ? 'draw-local@draw-local-dev' : 'draw@draw-binary';
+    return await update(read, user, rpc);
+  } finally { close(); }
+}
+
+async function writeConfig(rpc: Rpc, user: Frame, edits: Frame[]) {
+  if (!edits.length) return;
+  const written = await rpc('config/batchWrite', { filePath: user.name.file, expectedVersion: user.version, edits });
+  if (written.status !== 'ok') throw new Error('UNCONFIRMED: another Codex configuration layer overrides Draw settings. Check Codex settings.');
+}
+
+/** Returns only denials owned by this installer; independent user denials must survive policy edits. */
+export async function configureCodexPermissions(
+  mode: 'local' | 'hosted', policy: Policy, previousManagedDisabledTools: string[] = [],
+): Promise<string[]> {
+  if (!['local', 'hosted'].includes(mode) || ['boards', 'conversation', 'snippets', 'uploads'].some(key => !['ask', 'deny'].includes(policy[key as keyof Policy]))) throw unavailable();
+  disabledTools(previousManagedDisabledTools);
+  return withCodexConfig(async (read, user, rpc) => {
+    const plugin = 'draw@draw-binary';
     const server = mode === 'local' ? 'draw-local' : 'draw';
-    const settings = (config: Frame) => object(object(object(object(config.plugins)[plugin]).mcp_servers)[server]);
+    const settings = (config: Frame, id = plugin) => object(object(object(object(config.plugins)[id]).mcp_servers)[server]);
     const effective = settings(object(read.config));
     const saved = settings(object(user.config));
-    const existing = new Set([...disabledTools(saved.disabled_tools), ...disabledTools(effective.disabled_tools)]);
+    // Import once: repeating this would restore old installer denials after the user chooses Ask.
+    const legacy = mode === 'local' && saved.disabled_tools === undefined && effective.disabled_tools === undefined
+      ? [settings(object(user.config), 'draw-local@draw-local-dev'), settings(object(read.config), 'draw-local@draw-local-dev')] : [];
+    const existing = new Set([...legacy.flatMap(settings => disabledTools(settings.disabled_tools)), ...disabledTools(saved.disabled_tools), ...disabledTools(effective.disabled_tools)]);
     const previous = new Set(previousManagedDisabledTools);
     const requested = policy.boards === 'deny' ? [...(mode === 'local' ? localTools : hostedTools)] : [
       ...(policy.conversation === 'deny' ? [mode === 'local' ? 'attach_conversation' : 'start_chat'] : []),
@@ -104,8 +121,45 @@ export async function configureCodexPermissions(
     const prefix = `plugins.${plugin}.mcp_servers.${server}`;
     const edits = Object.entries({ default_tools_approval_mode: 'prompt', disabled_tools: disabled, ...(Object.keys(tools).length ? { tools } : {}) })
       .map(([key, value]) => ({ keyPath: `${prefix}.${key}`, value, mergeStrategy: 'replace' }));
-    const written = await rpc('config/batchWrite', { filePath: user.name.file, expectedVersion: user.version, edits });
-    if (written.status !== 'ok') throw new Error('UNCONFIRMED: another Codex configuration layer overrides Draw permissions. Check Codex settings.');
+    await writeConfig(rpc, user, edits);
     return managed;
-  } finally { close(); }
+  });
+}
+
+/** Run only after the unified plugin installs successfully; retain credentials and policy in place. */
+export async function disableLegacyCodexIntegrations(): Promise<void> {
+  await withCodexConfig(async (read, user, rpc) => {
+    const listed = await rpc('plugin/list', { forceRefetch: false, marketplaceKinds: ['local', 'vertical', 'workspace-directory', 'shared-with-me', 'created-by-me-remote'] });
+    if (!Array.isArray(listed.marketplaces) || (listed.marketplaceLoadErrors?.length ?? 0) > 0) throw unavailable();
+    const configs = [object(user.config), object(read.config)];
+    const plugins = new Map(configs.flatMap(config => Object.entries(object(config.plugins)))
+      .filter(([id, settings]) => /^draw(?:-local)?@/.test(id) && object(settings).enabled !== false));
+    for (const entry of listed.marketplaces) {
+      const marketplace = object(entry);
+      if (!Array.isArray(marketplace.plugins)) throw unavailable();
+      for (const entry of marketplace.plugins) {
+        const plugin = object(entry);
+        if (plugin.installed === true && plugin.enabled === true && ['draw', 'draw-local'].includes(plugin.name)) {
+          if (typeof plugin.id !== 'string' || !/^draw(?:-local)?@[a-zA-Z0-9_-]+$/.test(plugin.id)) throw unavailable();
+          plugins.set(plugin.id, { enabled: true });
+        }
+      }
+    }
+    const edits: Frame[] = [];
+    for (const id of plugins.keys()) {
+      if (id !== 'draw@draw-binary') {
+        if (!/^draw(?:-local)?@[a-zA-Z0-9_-]+$/.test(id)) throw unavailable();
+        edits.push({ keyPath: `plugins.${id}.enabled`, value: false, mergeStrategy: 'replace' });
+      }
+    }
+    for (const name of ['draw', 'redcrayon', 'draw-local']) {
+      if (configs.some(config => {
+        const settings = object(config.mcp_servers)[name];
+        return settings !== undefined && object(settings).enabled !== false;
+      })) {
+        edits.push({ keyPath: `mcp_servers.${name}.enabled`, value: false, mergeStrategy: 'replace' });
+      }
+    }
+    await writeConfig(rpc, user, edits);
+  });
 }

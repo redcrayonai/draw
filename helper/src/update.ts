@@ -87,16 +87,16 @@ export function integrationNotices(current: string, directory = join(homedir(), 
   const notices: string[] = [];
   try {
     for (const file of readdirSync(directory)) {
-      if (!/^(codex|claude-code|pi)-(local|hosted)\.json$/.test(file)) continue;
+      if (!/^(codex|claude-code|pi)-(local|hosted|unified)\.json$/.test(file)) continue;
       try {
         const record = JSON.parse(readFileSync(join(directory, file), 'utf8'));
-        if (!['codex', 'claude-code', 'pi'].includes(record.agent) || !['local', 'hosted'].includes(record.mode)) continue;
+        if (!['codex', 'claude-code', 'pi'].includes(record.agent) || !['local', 'hosted', 'unified'].includes(record.mode)) continue;
         parse(record.version);
-        if (record.version !== current || record.protocol !== 1) notices.push(`Refresh your ${record.agent} ${record.mode} integration for Draw ${current}: draw install ${record.agent} --mode ${record.mode}`);
+        if (record.version !== current || record.protocol !== 1 || record.mode !== 'unified') notices.push(`Refresh your ${record.agent} integration for Draw ${current}: draw install ${record.agent}`);
       } catch { /* An incomplete receipt cannot identify an installed integration. */ }
     }
   } catch {}
-  return notices;
+  return [...new Set(notices)];
 }
 export async function notifyUpdate(current: string) {
   if (!process.stderr.isTTY || !process.stdin.isTTY || process.env.CI || process.env.DRAW_NO_UPDATE_CHECK) return;

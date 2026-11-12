@@ -254,10 +254,11 @@ test('triage skill: links only shared modules, names only registered tools, and 
 
 const readme = read('plugin/README.md');
 
-test('README: What leaves your machine opens with the disclosure, then the upload table', () => {
+test('README: local storage and hosted disclosure precede the upload table', () => {
   const section = readme.slice(readme.indexOf('## What leaves your machine'), readme.indexOf('## Boards and links'));
   const paragraphs = section.split(/\n\n+/);
-  assert.equal(paragraphs[1], DISCLOSURE);
+  assert.match(paragraphs[1], /Local Draw stores boards on your machine and does not upload source to hosted\nDraw/);
+  assert.equal(paragraphs[2], DISCLOSURE);
   assert.match(section, /\| kind \| Uploads \| Claimed by \|/);
   for (const kind of ['start', 'ref', 'cite', 'checkpoint']) assert.match(section, new RegExp(`^\\| ${kind} \\|`, 'm'), kind);
 });

@@ -4,11 +4,13 @@ import { afterEach, expect, it, vi } from 'vitest';
 import { WebSocketServer, type WebSocket } from 'ws';
 import drawPi from './pi-extension';
 import { spawn } from 'node:child_process';
+import { localCall } from './local-mcp';
+vi.mock('./local-mcp', () => ({ localEndpoint: () => ({ origin: 'http://127.0.0.1:1234', token: 'test' }), localCall: vi.fn() }));
 vi.mock('node:child_process', async original => ({ ...await original<object>(), spawn: vi.fn() }));
 const cleanups: (() => Promise<void>)[] = [];
 afterEach(async () => { for (const close of cleanups.splice(0).reverse()) await close(); vi.unstubAllEnvs(); vi.clearAllMocks(); });
 
-async function fixture() {
+async function fixture(mode?: 'unified') {
   const server = new WebSocketServer({ port: 0, host: '127.0.0.1' });
   await new Promise<void>(resolve => server.once('listening', resolve));
   cleanups.push(() => new Promise(resolve => { for (const client of server.clients) client.terminate(); server.close(() => resolve()); }));
@@ -27,15 +29,15 @@ async function fixture() {
     });
     return child as any;
   });
-  const handlers = new Map<string, Function>(), sent = vi.fn(), register = vi.fn(), appendEntry = vi.fn(), notify = vi.fn(), abort = vi.fn();
+  const handlers = new Map<string, Function[]>(), sent = vi.fn(), register = vi.fn(), appendEntry = vi.fn(), notify = vi.fn(), abort = vi.fn();
   let idle = true;
   const context = { cwd: process.cwd(), isIdle: () => idle, abort, ui: { notify }, sessionManager: { getSessionId: () => 'existing-session', getEntries: () => [] as any[] } };
-  drawPi({ on: (name, fn) => { handlers.set(name, fn); }, sendUserMessage: sent, registerMcpServer: register, appendEntry });
+  drawPi({ on: (name, fn) => { handlers.set(name, [...handlers.get(name) ?? [], fn]); }, sendUserMessage: sent, registerMcpServer: register, appendEntry }, mode ? { mode, executable: '/test/draw' } : undefined);
   const frames: any[] = []; let socket: WebSocket;
   server.on('connection', ws => { socket = ws; ws.on('message', raw => frames.push(JSON.parse(String(raw)))); ws.send(JSON.stringify({ ok: true })); });
   const chat = { token: 'test.token.signature', board: '123', origin };
-  const invoke = (name: string, event: object = {}) => handlers.get(name)!(event, context);
-  const attach = async () => { await invoke('tool_result', { toolName: 'mcp__draw__start_session', input: {}, content: [{ type: 'text', text: JSON.stringify({ chat }) }] }); await vi.waitFor(() => expect(frames.some(f => f.auth)).toBe(true)); };
+  const invoke = async (name: string, event: object = {}) => { for (const fn of handlers.get(name) ?? []) await fn(event, context); };
+  const attach = async () => { const count = frames.filter(f => f.auth).length; await invoke('tool_result', { toolName: 'mcp__draw__start_session', input: {}, content: [{ type: 'text', text: JSON.stringify({ chat }) }] }); await vi.waitFor(() => expect(frames.filter(f => f.auth)).toHaveLength(count + 1)); };
   cleanups.push(async () => { await invoke('session_shutdown'); });
   return { frames, invoke, attach, context, sent, register, appendEntry, notify, abort, hookInputs, chat, send: (frame: object) => socket.send(JSON.stringify(frame)), busy: (value: boolean) => { idle = !value; } };
 }
@@ -101,4 +103,55 @@ it('loads local and hosted integrations together without leaking mode or executa
   expect(registerMcpServer.mock.calls.map(call => call[0])).toEqual(['draw', 'draw-local']);
   expect(registerMcpServer.mock.calls[1][1].command).toBe('/installed/draw');
   expect(process.env.DRAW_MODE).toBe('local'); expect(process.env.DRAW_EXECUTABLE).toBe('/other/draw');
+});
+
+it('registers both transports in unified mode and stops the previous chat when switching modes', async () => {
+  const polls: { resolve(value: object): void; signal: AbortSignal }[] = [];
+  vi.mocked(localCall).mockImplementation(async (_endpoint, input, signal) => {
+    if ((input as any).action !== 'poll_local_agent') return {};
+    return new Promise((resolve, reject) => {
+      polls.push({ resolve, signal: signal! });
+      signal!.addEventListener('abort', () => reject(new Error('aborted')), { once: true });
+    });
+  });
+  const f = await fixture('unified');
+  expect(f.register.mock.calls.map(call => call[0])).toEqual(['draw-local', 'draw']);
+  await f.attach();
+  await f.invoke('tool_result', { toolName: 'mcp__draw_local__open_board', structuredContent: { slug: 'local-board' } });
+  expect(f.appendEntry).toHaveBeenLastCalledWith('draw-chat', null);
+  polls[0].resolve({ type: 'message', id: 'local-message', text: 'local feedback' });
+  await vi.waitFor(() => expect(f.sent).toHaveBeenCalledExactlyOnceWith('local feedback'));
+  await f.invoke('message_end', { message: { role: 'assistant', content: [{ type: 'text', text: 'local reply only' }] } });
+  expect(localCall).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({ action: 'local_agent_event', event: expect.objectContaining({ delta: 'local reply only\n\n' }) }), undefined);
+  expect(f.frames.some(frame => frame.delta === 'local reply only')).toBe(false);
+  await f.attach();
+  expect(polls.at(-1)!.signal.aborted).toBe(true);
+  expect(localCall).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({ action: 'disconnect_local_agent', board: 'local-board' }), undefined);
+  polls.at(-1)!.resolve({ type: 'message', id: 'stale', text: 'stale local feedback' });
+  vi.mocked(localCall).mockClear();
+  await f.invoke('message_end', { message: { role: 'assistant', content: [{ type: 'text', text: 'hosted reply only' }] } });
+  await vi.waitFor(() => expect(f.frames.some(frame => frame.delta === 'hosted reply only')).toBe(true));
+  expect(localCall).not.toHaveBeenCalled();
+  expect(f.sent).toHaveBeenCalledTimes(1);
+});
+it('keeps the latest local selection when an older hosted capture finishes later', async () => {
+  vi.mocked(localCall).mockImplementation(async (_endpoint, input, signal) => {
+    if ((input as any).action !== 'poll_local_agent') return {};
+    return new Promise((_resolve, reject) => signal!.addEventListener('abort', () => reject(new Error('aborted')), { once: true }));
+  });
+  const f = await fixture('unified');
+  let child!: EventEmitter;
+  vi.mocked(spawn).mockImplementation(() => {
+    child = Object.assign(new EventEmitter(), { stdin: new PassThrough(), stdout: new PassThrough(), stderr: new PassThrough(), kill: vi.fn() });
+    return child as any;
+  });
+  const hosted = f.invoke('tool_result', { toolName: 'mcp__draw__start_session', input: {}, structuredContent: { chat: f.chat } });
+  await vi.waitFor(() => expect(child).toBeDefined());
+  await f.invoke('tool_result', { toolName: 'mcp__draw_local__open_board', structuredContent: { slug: 'new-local' } });
+  child.emit('close', 0);
+  await hosted;
+  expect(f.appendEntry).toHaveBeenCalledExactlyOnceWith('draw-chat', null);
+  await f.invoke('message_end', { message: { role: 'assistant', content: [{ type: 'text', text: 'latest selection' }] } });
+  expect(localCall).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({ action: 'local_agent_event', board: 'new-local', event: expect.objectContaining({ delta: 'latest selection\n\n' }) }), undefined);
+  expect(f.frames).toEqual([]);
 });

@@ -20,6 +20,8 @@ for (const pinned of Object.values(manifest.optionalDependencies)) {
 execFileSync('pnpm', ['build:local'], { cwd: here, stdio: 'inherit' });
 const dist = join(here, 'dist'), output = join(dist, 'binary');
 mkdirSync(output, { recursive: true });
+rmSync(join(dist, 'unified'), { recursive: true, force: true });
+cpSync(join(plugin, 'unified'), join(dist, 'unified'), { recursive: true });
 // Keep the hosted plugin's historical Node entry points for existing plugin installations.
 for (const name of ['redcrayon.mjs', 'chat-hook.mjs']) copyFileSync(join(dist, name), join(plugin, 'bin', name));
 mkdirSync(join(plugin, 'pi'), { recursive: true });
@@ -30,7 +32,7 @@ mkdirSync(hosted, { recursive: true });
 for (const name of [...manifest.files, 'package.json']) {
   cpSync(join(plugin, name), join(hosted, name), { recursive: true });
 }
-const assets = ['local-assets', 'skills', 'mcp.json', 'plugin.json', '.codex-plugin', '.claude-plugin', 'local-pi-extension.mjs', 'pi-extension.mjs', 'hosted-plugin'];
+const assets = ['local-assets', 'skills', 'unified', 'mcp.json', 'plugin.json', '.codex-plugin', '.claude-plugin', 'local-pi-extension.mjs', 'pi-extension.mjs', 'hosted-plugin'];
 const target = `bun-${process.platform}-${process.arch}${process.arch === 'x64' ? '-baseline' : ''}`;
 execFileSync(bun, ['build', join(here, 'src/binary-cli.ts'), '--compile', `--target=${target}`, '--format=esm', '--bytecode', '--minify', '--define', `__DRAW_VERSION__=${JSON.stringify(version)}`, ...assets.flatMap(path => ['--asset', path]), '--outfile', join(output, 'draw')], { cwd: dist, stdio: 'inherit' });
 chmodSync(join(output, 'draw'), 0o755);

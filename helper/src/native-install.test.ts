@@ -6,15 +6,15 @@ import { dirname, join, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { activateNativePlugin, prepareNativePlugin, runNativeInstall, runNativePermissions } from './native-install';
 import { choosePermissions, permissionPath, savePermissions } from './permissions';
-import { configureCodexPermissions } from './codex-permissions';
+import { configureCodexPermissions, disableLegacyCodexIntegrations } from './codex-permissions';
 import { installLocalCodex } from './local-install';
-vi.mock('./codex-permissions', () => ({ configureCodexPermissions: vi.fn() }));
+vi.mock('./codex-permissions', () => ({ configureCodexPermissions: vi.fn(), disableLegacyCodexIntegrations: vi.fn() }));
 vi.mock('./local-install', () => ({ installLocalCodex: vi.fn() }));
 vi.mock('./permissions', async original => ({ ...await original<typeof import('./permissions')>(), choosePermissions: vi.fn(), savePermissions: vi.fn() }));
 vi.mock('node:os', async original => ({ ...await original<typeof import('node:os')>(), homedir: vi.fn() }));
 vi.mock('node:fs', async original => {
   const fs = await original<typeof import('node:fs')>();
-  return { ...fs, cpSync: vi.fn(fs.cpSync), renameSync: vi.fn(fs.renameSync), readFileSync: vi.fn(fs.readFileSync) };
+  return { ...fs, cpSync: vi.fn(fs.cpSync), renameSync: vi.fn(fs.renameSync), readFileSync: vi.fn(fs.readFileSync), readdirSync: vi.fn(fs.readdirSync) };
 });
 const actualFs = await vi.importActual<typeof import('node:fs')>('node:fs');
 let directory: string, root: string, destination: string, executable: string;
@@ -23,6 +23,7 @@ function write(file: string, value: unknown) { mkdirSync(dirname(file), { recurs
 beforeEach(() => {
   vi.mocked(cpSync).mockImplementation(actualFs.cpSync); vi.mocked(renameSync).mockImplementation(actualFs.renameSync);
   vi.mocked(readFileSync).mockImplementation(actualFs.readFileSync);
+  vi.mocked(readdirSync).mockImplementation(actualFs.readdirSync);
   directory = mkdtempSync(join(tmpdir(), 'draw-install-test-')); root = join(directory, 'assets'); destination = join(directory, 'prepared');
   executable = join(directory, "native tools' folder", 'draw $(never-execute)');
   vi.mocked(homedir).mockReturnValue(directory);
@@ -31,24 +32,25 @@ beforeEach(() => {
   vi.mocked(installLocalCodex).mockReset();
   write(executable, '#!/bin/sh\nprintf "%s\\n" "$@"\n'); chmodSync(executable, 0o755);
   for (const file of ['plugin.json', '.codex-plugin/plugin.json']) write(join(root, file), { name: 'draw-local', version: 'old' });
+  write(join(root, 'unified/skills/navigate/SKILL.md'), '# unified routing');
   write(join(root, 'mcp.json'), { mcpServers: {} }); write(join(root, 'skills/local/SKILL.md'), '# local board');
   write(join(root, 'pi-extension.mjs'), 'export default (pi, options) => { pi.loaded = options; };');
   const hosted = join(root, 'hosted-plugin');
   for (const file of ['plugin.json', '.codex-plugin/plugin.json', '.claude-plugin/plugin.json']) write(join(hosted, file), { name: 'draw', version: 'old', ...(file.startsWith('.codex') ? { hooks: './codex/hooks.json' } : {}) });
   for (const file of ['hooks/hooks.json', 'codex/hooks.json']) write(join(hosted, file), readFileSync(resolve('../plugin', file), 'utf8'));
   write(join(hosted, '.mcp.json'), { mcpServers: { draw: { type: 'http', url: 'https://test.example/mcp' } } });
-  write(join(hosted, 'skills/navigate/SKILL.md'), '# hosted board');
+  for (const skill of ['navigate', 'handoff', 'triage']) write(join(hosted, `skills/${skill}/SKILL.md`), '# hosted board [reference](../../references/review.md)');
 });
 afterEach(() => { vi.unstubAllEnvs(); vi.clearAllMocks(); rmSync(directory, { recursive: true, force: true }); });
 
 it.each(['codex', 'claude-code', 'pi'] as const)('prepares supported local manifests and native MCP for %s', agent => {
   const { target, name, marketplace } = prepareNativePlugin(root, destination, executable, '1.2.3', agent, 'local');
-  expect(name).toBe('draw-local'); expect(marketplace).toBe('draw-local-dev');
+  expect(name).toBe('draw'); expect(marketplace).toBe('draw-binary');
   const market = json(join(target, '.claude-plugin/marketplace.json'));
   expect(market.plugins[0].source).toEqual(agent === 'claude-code' ? './' : { source: 'local', path: '.' });
   expect(json(join(target, '.mcp.json'))).toEqual(json(join(target, 'mcp.json')));
   expect(json(join(target, 'mcp.json')).mcpServers['draw-local']).toEqual({ type: 'stdio', command: executable, args: ['local-mcp', '--per-repo'], ...(agent === 'codex' ? { env: { DRAW_PERMISSION_FILE: permissionPath('local'), DRAW_PERMISSION_MODE: 'local' } } : {}) });
-  for (const file of ['plugin.json', '.codex-plugin/plugin.json', '.claude-plugin/plugin.json']) expect(json(join(target, file))).toMatchObject({ name: 'draw-local', version: expect.stringMatching(/^1\.2\.3\+binary\.[a-f0-9]{16}$/) });
+  for (const file of ['plugin.json', '.codex-plugin/plugin.json', '.claude-plugin/plugin.json']) expect(json(join(target, file))).toMatchObject({ name: 'draw', version: expect.stringMatching(/^1\.2\.3\+binary\.[a-f0-9]{16}$/) });
   if (agent === 'claude-code') {
     const hooks = json(join(target, 'hooks/hooks.json')).hooks;
     expect(hooks.PostToolUse[0].matcher).toContain('open_board');
@@ -74,7 +76,7 @@ it.each(['codex', 'claude-code', 'pi'] as const)('keeps hosted MCP and native ho
   for (const file of ['hooks/hooks.json', 'codex/hooks.json']) {
     const hooks = json(join(target, file)).hooks;
     for (const group of Object.values(hooks) as any[]) for (const entry of group) for (const hook of entry.hooks) {
-      expect(hook.command).toContain('/bin/draw'); expect(hook.command).not.toMatch(/node|\.mjs/);
+      expect(hook.command.includes('/bin/draw') || hook.command.includes('local-claude-hook')).toBe(true); expect(hook.command).not.toMatch(/node|\.mjs/);
     }
     const capture = hooks.PreToolUse.flatMap((entry: any) => entry.hooks).find((hook: any) => hook.command.endsWith(" hook'"));
     expect(execFileSync('/bin/sh', ['-c', capture.command], { encoding: 'utf8', env: { ...process.env, CLAUDE_PLUGIN_ROOT: target, PLUGIN_ROOT: target } })).toBe('hook\n');
@@ -86,7 +88,7 @@ it.each(['local', 'hosted'] as const)('launches Codex with its %s policy path wi
   vi.mocked(homedir).mockReturnValue(join(directory, "settings' $(literal)"));
   writeFileSync(executable, '#!/bin/sh\nprintf "%s\\n" "$DRAW_PERMISSION_FILE" "$DRAW_PERMISSION_MODE"\n');
   const { target } = prepareNativePlugin(root, destination, executable, '1.2.3', 'codex', mode);
-  expect(execFileSync(join(target, 'bin/draw'), [], { encoding: 'utf8' })).toBe(`${permissionPath(mode)}\n${mode}\n`);
+  expect(execFileSync(join(target, 'bin/draw'), [mode === 'local' ? 'local' : 'capture'], { encoding: 'utf8' })).toBe(`${permissionPath(mode)}\n${mode}\n`);
   vi.mocked(homedir).mockReturnValue(join(directory, 'different-home'));
   expect(prepareNativePlugin(root, destination, executable, '1.2.3', 'codex', mode).target).not.toBe(target);
 });
@@ -121,10 +123,7 @@ it('aborts before policy configuration or installation if consent is unavailable
 });
 
 it('saves enforced permissions before plugin activation and retains them if installation fails', async () => {
-  const sourceRoot = dirname(new URL(import.meta.url).pathname);
-  vi.mocked(readFileSync).mockImplementation(((file: any, options: any) => actualFs.readFileSync(
-    typeof file === 'string' && file.startsWith(sourceRoot + '/') ? join(root, file.slice(sourceRoot.length + 1)) : file, options,
-  )) as typeof readFileSync);
+  useBundledAssets();
   vi.mocked(installLocalCodex).mockImplementationOnce(() => {
     expect(savePermissions).toHaveBeenCalledWith('local', expect.objectContaining({ managedDisabledTools: ['read_code'] }));
     throw new Error('agent install failed');
@@ -153,7 +152,7 @@ it.each(['local', 'hosted'] as const)('loads the pi wrapper with the native exec
   expect(manifest.pi).toEqual({ extensions: ['./pi/extension.mjs'], skills: ['./skills'] });
   const extension = await import(pathToFileURL(join(target, 'pi/extension.mjs')).href);
   const pi: any = {}; await extension.default(pi);
-  expect(pi.loaded).toEqual({ executable, mode });
+  expect(pi.loaded).toEqual({ executable, mode: 'unified' });
   expect(process.env.DRAW_EXECUTABLE).toBe(''); expect(process.env.DRAW_MODE).toBe('');
 });
 
@@ -213,3 +212,33 @@ it('invalidates pi extraction when only extension code changes at the same relea
   const after = prepare(); expect(after).not.toBe(before);
   expect(readFileSync(join(after, 'pi/pi-extension.mjs'), 'utf8')).toContain('new extension');
 });
+
+it('installs one skill with both transports and correctly relocated workflow references', () => {
+  const { target } = prepareNativePlugin(root, destination, executable, '1.2.3', 'codex');
+  expect(readdirSync(join(target, 'skills'))).toEqual(['navigate']);
+  expect(readdirSync(join(target, 'skills/navigate/references')).sort()).toEqual(['handoff.md', 'hosted.md', 'local.md', 'triage.md']);
+  expect(readFileSync(join(target, 'skills/navigate/references/hosted.md'), 'utf8')).toContain('../../../references/review.md');
+  expect(Object.keys(json(join(target, 'mcp.json')).mcpServers).sort()).toEqual(['draw', 'draw-local']);
+  expect(prepareNativePlugin(root, destination, executable, '1.2.3', 'codex', 'local').target).toBe(target);
+  expect(prepareNativePlugin(root, destination, executable, '1.2.3', 'codex', 'hosted').target).toBe(target);
+});
+
+it('configures both policies and replaces competing integrations only after successful installation', async () => {
+  useBundledAssets();
+  vi.mocked(installLocalCodex).mockImplementationOnce(() => {
+    expect(configureCodexPermissions).toHaveBeenCalledTimes(2);
+    expect(savePermissions).toHaveBeenCalledTimes(2);
+    expect(disableLegacyCodexIntegrations).not.toHaveBeenCalled();
+  });
+  await runNativeInstall(['codex'], '1.2.3');
+  expect(installLocalCodex).toHaveBeenCalledWith(join(directory, '.redcrayon/plugins/installed/codex-hosted'), 'draw-binary', 'draw');
+  expect(disableLegacyCodexIntegrations).toHaveBeenCalledOnce();
+  expect(json(join(directory, '.redcrayon/integrations/codex-unified.json'))).toMatchObject({ mode: 'unified' });
+});
+
+function useBundledAssets() {
+  const sourceRoot = dirname(new URL(import.meta.url).pathname);
+  const asset = (file: any) => typeof file === 'string' && file.startsWith(sourceRoot + '/') ? join(root, file.slice(sourceRoot.length + 1)) : file;
+  vi.mocked(readFileSync).mockImplementation(((file: any, options: any) => actualFs.readFileSync(asset(file), options)) as typeof readFileSync);
+  vi.mocked(readdirSync).mockImplementation(((file: any, options: any) => actualFs.readdirSync(asset(file), options)) as typeof readdirSync);
+}

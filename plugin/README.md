@@ -1,13 +1,13 @@
-# redcrayon
+# Draw
 
 redcrayon draws what your coding agent builds on a live board: the components it
 touched, the flows between them, each one citing a line the agent read, and code
 refs that point into the exact symbols. You read the board instead of a prose
 summary, and you find it again on your dashboard.
 
-This plugin adds the draw server, drawing skills, code refs, and private board
-chat. Claude Code and Codex connect their existing conversation automatically
-when they open a board. Other agents can draw through the same server URL.
+The native integration installs one **Draw** plugin with local and hosted tools,
+one drawing skill, code refs, and private board chat. Local boards are the
+default. The existing marketplace plugin described below uses hosted boards.
 
 **Server URL:** `http://localhost:8788/mcp`
 
@@ -30,16 +30,34 @@ Keep optional dependencies enabled. Draw needs no Node or Bun after installation
 git and your chosen agent remain prerequisites. Install that agent's integration:
 
 ```sh
-draw install codex --mode hosted
+draw install codex
 # Or:
-draw install claude-code --mode hosted
-draw install pi --mode hosted
+draw install claude-code
+draw install pi
 ```
 
-Restart the agent, connect Draw, and sign in through its MCP controls. pi 1.4.0
-was verified. Use `--mode local` for repository boards without a server account;
-local is the default when `--mode` is omitted. Local and hosted integrations can
-coexist. Choose one hosted installation method to avoid duplicate tools.
+Restart the agent and ask **"create a draw board"**, or run `/draw:navigate`.
+Draw opens a local repository board without an account. Ask explicitly for a
+**hosted board** to use the hosted connection, then sign in through your agent's
+Draw MCP controls when needed. There is no separate binary login step. Give an
+existing board link to continue there; Draw keeps its backend and does not
+silently create a replacement or upload a local board.
+
+Both backends ship in the same plugin, named `draw@draw-binary` in Claude Code
+and Codex. The MCP server names `draw-local` and `draw` identify its local and
+hosted tools; they are not separate plugins to install. The single
+`/draw:navigate` skill also handles board feedback, reconnects, and incidents
+from natural prompts. Legacy `--mode local|hosted` install flags remain accepted;
+both install the same unified plugin. Native installation replaces the older Draw
+integrations it manages and preserves saved permission choices. pi 1.4.0 was
+verified with the earlier native integration.
+
+Codex setup disables older Draw plugins and direct `draw`, `redcrayon`, and
+`draw-local` MCP entries without deleting their settings or credentials.
+Claude Code setup disables older Draw plugins. Pi setup disables the resources
+of earlier native local and npm Draw packages in global/current-project settings
+while keeping those packages installed. Custom installations and direct MCP
+configuration in Claude Code or pi may need separate cleanup.
 
 [Local Draw](../LOCAL_MODE.md#install-the-standalone-executable) describes current
 CI artifact downloads, source builds, local storage, and agent setup. Existing
@@ -58,9 +76,9 @@ capture service. Production sign-in was not verified in this change.
 
 ### Codex permissions in the native integration
 
-`draw install codex --mode local` and `draw install codex --mode hosted` ask you
-to choose **Ask** or **Deny** for board access, conversation attachment, and
-source-code access. Hosted setup also asks about source uploads. The suggested
+`draw install codex` asks you to choose **Ask** or **Deny** separately for local
+and hosted board access, conversation attachment, and source-code access.
+Hosted setup also asks about source uploads. The suggested
 choices are Ask for boards/chat and Deny for source code/uploads. Ask uses
 Codex tool approval; Deny blocks the operation without prompting. Hosted source
 uploads set to Ask additionally open a browser approval page before reading or
@@ -68,10 +86,11 @@ uploading files. Only you may choose **Allow once** there. Uploads can include
 whole cited files, not just the lines displayed on a board.
 
 Choices are separate for local and hosted mode. Reinstalling preserves them.
-Local is the default, so `draw install codex` needs no mode flag.
 To review or change them without reinstalling:
 
 ```sh
+draw permissions codex
+# Or review one backend:
 draw permissions codex --mode local
 draw permissions codex --mode hosted
 ```
@@ -81,8 +100,8 @@ explicitly through `attach_conversation` locally or `start_chat` when hosted;
 opening a hosted board alone does not authorize conversation attachment.
 
 First setup without an interactive terminal stops unless you explicitly select
-the suggested choices with `draw install codex --mode local --permissions-defaults`
-(or `--mode hosted`). The same flag is available on `draw permissions codex`;
+the suggested choices with `draw install codex --permissions-defaults`.
+The same flag is available on `draw permissions codex`;
 saved choices are preserved, so it does not reset an existing policy.
 
 These settings cover the installed Draw integration. They do not restrict
@@ -91,7 +110,10 @@ and notes. They do not erase code already stored on a board. Dashboard snippet
 storage consent remains a separate setting. Existing marketplace and source
 installers do not gain these native setup prompts automatically.
 
-## Install
+## Existing hosted marketplace installation
+
+These instructions install the earlier hosted plugin. For the native release,
+use `draw install <agent>` above; do not install both methods together.
 
 ### Claude Code
 
@@ -239,6 +261,10 @@ The next call after a sign-out asks you to sign in again. Your boards stay as
 they are.
 
 ## What leaves your machine
+
+Local Draw stores boards on your machine and does not upload source to hosted
+Draw. Your coding agent keeps its own data handling policy. The following
+describes hosted boards; choosing local does not authorize these uploads.
 
 To check code refs, redcrayon uploads each file your agent cites and deletes it within 10 minutes. It keeps paths, line numbers, git hashes, hashes of the cited lines and the GitHub repo address. It keeps the cited lines themselves only if you turn on storing code.
 

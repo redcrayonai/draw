@@ -2,7 +2,7 @@ import { EventEmitter } from 'node:events';
 import { readFileSync } from 'node:fs';
 import { PassThrough } from 'node:stream';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { configureCodexPermissions } from './codex-permissions';
+import { configureCodexPermissions, disableLegacyCodexIntegrations } from './codex-permissions';
 
 const { spawn } = vi.hoisted(() => ({ spawn: vi.fn() }));
 vi.mock('node:child_process', () => ({ spawn }));
@@ -12,7 +12,7 @@ afterEach(() => { vi.useRealTimers(); vi.clearAllMocks(); });
 function server(settings: Record<string, unknown> = {}, mode = 'local', overrides: Record<string, unknown> = {}) {
   const child = Object.assign(new EventEmitter(), { stdin: new PassThrough(), stdout: new PassThrough(), kill: vi.fn() });
   const frames: any[] = [];
-  const plugin = mode === 'local' ? 'draw-local@draw-local-dev' : 'draw@draw-binary';
+  const plugin = 'draw@draw-binary';
   const name = mode === 'local' ? 'draw-local' : 'draw';
   const config = { plugins: { [plugin]: { enabled: true, mcp_servers: { [name]: settings } } }, approval_policy: 'never', sandbox_mode: 'read-only' };
   const results: Record<string, any> = {
@@ -21,6 +21,7 @@ function server(settings: Record<string, unknown> = {}, mode = 'local', override
       { name: { type: 'user', file: '/mock/config.toml' }, version: 'user-version', config },
       { name: { type: 'project', dotCodexFolder: '/mock/project/.codex' }, version: 'project-version', config: {} },
     ] },
+    'plugin/list': { marketplaces: [], marketplaceLoadErrors: [] },
     'config/batchWrite': { status: 'ok', version: 'next-version', filePath: '/mock/config.toml' },
     ...overrides,
   };
@@ -45,9 +46,9 @@ describe('Draw plugin permissions in Codex', () => {
     expect(s.write()).toEqual({
       filePath: '/mock/config.toml', expectedVersion: 'user-version',
       edits: [
-        { keyPath: 'plugins.draw-local@draw-local-dev.mcp_servers.draw-local.default_tools_approval_mode', value: 'prompt', mergeStrategy: 'replace' },
-        { keyPath: 'plugins.draw-local@draw-local-dev.mcp_servers.draw-local.disabled_tools', value: ['custom', 'read_code'], mergeStrategy: 'replace' },
-        { keyPath: 'plugins.draw-local@draw-local-dev.mcp_servers.draw-local.tools', value: { read_board: { approval_mode: 'prompt', output_token_limit: 1000 } }, mergeStrategy: 'replace' },
+        { keyPath: 'plugins.draw@draw-binary.mcp_servers.draw-local.default_tools_approval_mode', value: 'prompt', mergeStrategy: 'replace' },
+        { keyPath: 'plugins.draw@draw-binary.mcp_servers.draw-local.disabled_tools', value: ['custom', 'read_code'], mergeStrategy: 'replace' },
+        { keyPath: 'plugins.draw@draw-binary.mcp_servers.draw-local.tools', value: { read_board: { approval_mode: 'prompt', output_token_limit: 1000 } }, mergeStrategy: 'replace' },
       ],
     });
     expect(s.child.kill).toHaveBeenCalledOnce();
@@ -139,5 +140,113 @@ describe('Draw plugin permissions in Codex', () => {
     const error = await configureCodexPermissions('local', policy).catch(error => error);
     expect(error.message).not.toContain('private config content');
     expect(s.write()).toBeUndefined();
+  });
+});
+
+function readConfig(config: Record<string, unknown>, effective = config) {
+  return { config: effective, layers: [{ name: { type: 'user', file: '/mock/config.toml' }, version: 'user-version', config }] };
+}
+
+describe('unified Codex plugin migration', () => {
+  it('imports manual legacy local denials while preserving installer ownership', async () => {
+    const legacy = { enabled: false, mcp_servers: { 'draw-local': { disabled_tools: ['read_code', 'attach_conversation', 'custom'] } } };
+    const config = { plugins: { 'draw-local@draw-local-dev': legacy } };
+    const before = JSON.stringify(config);
+    const s = server({}, 'local', { 'config/read': readConfig(config) });
+    expect(await configureCodexPermissions('local', policy, ['read_code'])).toEqual(['read_code']);
+    expect(s.write().edits[1]).toEqual({ keyPath: 'plugins.draw@draw-binary.mcp_servers.draw-local.disabled_tools', value: ['attach_conversation', 'custom', 'read_code'], mergeStrategy: 'replace' });
+    expect(JSON.stringify(config)).toBe(before);
+  });
+
+  it('can release migrated managed denials without claiming or restoring manual denials', async () => {
+    const config = { plugins: { 'draw-local@draw-local-dev': { mcp_servers: { 'draw-local': { disabled_tools: ['read_code', 'attach_conversation'] } } } } };
+    const s = server({}, 'local', { 'config/read': readConfig(config) });
+    expect(await configureCodexPermissions('local', { ...policy, snippets: 'ask' }, ['read_code'])).toEqual([]);
+    expect(s.write().edits[1].value).toEqual(['attach_conversation']);
+
+    const migrated = { plugins: { ...config.plugins, 'draw@draw-binary': { mcp_servers: { 'draw-local': { disabled_tools: ['attach_conversation'] } } } } };
+    const again = server({}, 'local', { 'config/read': readConfig(migrated) });
+    expect(await configureCodexPermissions('local', { ...policy, snippets: 'ask' })).toEqual([]);
+    expect(again.write().edits[1].value).toEqual(['attach_conversation']);
+  });
+
+  it('disables only older Draw entries and leaves credentials, policies, and other plugins untouched', async () => {
+    const config = {
+      plugins: {
+        'draw@draw-binary': { enabled: true, mcp_servers: { draw: { disabled_tools: ['delete_node'] } } },
+        'draw-local@draw-local-dev': { enabled: true, mcp_servers: { 'draw-local': { disabled_tools: ['read_code'] } } },
+        'draw@older-market': { enabled: true, token: 'retain-me' },
+        'draw@already-off': { enabled: false },
+        'draw-editor@other': { enabled: true },
+      },
+      mcp_servers: {
+        draw: { url: 'https://example.test/mcp', bearer_token_env_var: 'DRAW_TOKEN' },
+        redcrayon: { command: 'redcrayon', args: ['mcp'], env: { TOKEN: 'retain-me' } },
+        'draw-local': { command: 'draw', args: ['local-mcp', '--per-repo'] },
+        other: { command: 'other' },
+      },
+      approval_policy: 'never', sandbox_mode: 'read-only',
+    };
+    const before = JSON.stringify(config);
+    const s = server({}, 'local', { 'config/read': readConfig(config) });
+    await disableLegacyCodexIntegrations();
+    expect(s.write()).toEqual({ filePath: '/mock/config.toml', expectedVersion: 'user-version', edits: [
+      { keyPath: 'plugins.draw-local@draw-local-dev.enabled', value: false, mergeStrategy: 'replace' },
+      { keyPath: 'plugins.draw@older-market.enabled', value: false, mergeStrategy: 'replace' },
+      ...['draw', 'redcrayon', 'draw-local'].map(name => ({ keyPath: `mcp_servers.${name}.enabled`, value: false, mergeStrategy: 'replace' })),
+    ] });
+    expect(JSON.stringify(config)).toBe(before);
+  });
+
+  it('finds installed Draw plugins in the supported inventory even without config entries', async () => {
+    const s = server({}, 'local', { 'plugin/list': { marketplaces: [{ plugins: [
+      { id: 'draw@remote-market', name: 'draw', installed: true, enabled: true },
+      { id: 'draw@draw-binary', name: 'draw', installed: true, enabled: true },
+      { id: 'draw@not-installed', name: 'draw', installed: false, enabled: true },
+      { id: 'draw@disabled', name: 'draw', installed: true, enabled: false },
+      { id: 'other@remote-market', name: 'other', installed: true, enabled: true },
+    ] }] } });
+    await disableLegacyCodexIntegrations();
+    expect(s.frames.map(frame => frame.method)).toEqual(['initialize', 'initialized', 'config/read', 'plugin/list', 'config/batchWrite']);
+    expect(s.write().edits).toEqual([{ keyPath: 'plugins.draw@remote-market.enabled', value: false, mergeStrategy: 'replace' }]);
+  });
+
+  it('does not write when no legacy integrations are enabled', async () => {
+    const s = server();
+    await disableLegacyCodexIntegrations();
+    expect(s.write()).toBeUndefined();
+  });
+
+  it('disables saved legacy entries even when the current project already disables them', async () => {
+    const config = { plugins: { 'draw@older-market': { enabled: true } }, mcp_servers: { draw: { command: 'draw' } } };
+    const effective = { plugins: { 'draw@older-market': { enabled: false } }, mcp_servers: { draw: { enabled: false } } };
+    const s = server({}, 'local', { 'config/read': readConfig(config, effective) });
+    await disableLegacyCodexIntegrations();
+    expect(s.write().edits).toEqual([
+      { keyPath: 'plugins.draw@older-market.enabled', value: false, mergeStrategy: 'replace' },
+      { keyPath: 'mcp_servers.draw.enabled', value: false, mergeStrategy: 'replace' },
+    ]);
+  });
+
+  it.each([
+    { 'plugin/list': { marketplaces: [], marketplaceLoadErrors: [{ message: 'private detail' }] } },
+    { 'plugin/list': { marketplaces: [{ plugins: [{ id: 'draw@unsafe.path', name: 'draw', installed: true, enabled: true }] }] } },
+    { 'plugin/list': { error: { message: 'private detail' } } },
+  ])('does not disable anything when the inventory is unsafe or incomplete', async overrides => {
+    const s = server({}, 'local', overrides);
+    await expect(disableLegacyCodexIntegrations()).rejects.toThrow('UNAVAILABLE');
+    expect(s.write()).toBeUndefined();
+    expect(s.child.kill).toHaveBeenCalledOnce();
+  });
+
+  it.each([
+    { error: { code: -32600, data: { config_write_error_code: 'configVersionConflict' } } },
+    { status: 'okOverridden' },
+  ])('reports conflicting or overridden migration writes', async result => {
+    server({}, 'local', {
+      'config/read': readConfig({ mcp_servers: { draw: { command: 'draw' } } }),
+      'config/batchWrite': result,
+    });
+    await expect(disableLegacyCodexIntegrations()).rejects.toThrow('UNCONFIRMED');
   });
 });

@@ -39,12 +39,18 @@ export function piCaptureHook(input: object, cwd: string, notify: (message: stri
 }
 
 /** Loaded in the user's pi session: board messages never start another conversation. */
-export default function drawPi(pi: Pi, options?: { mode: 'local' | 'hosted'; executable: string }) {
+export default function drawPi(pi: Pi, options?: { mode: 'local' | 'hosted' | 'unified'; executable: string }) {
   const helper = options ? [options.executable] : piHelperCommand();
   const mode = options?.mode ?? process.env.DRAW_MODE;
   if (mode === 'local' || (!mode && process.env.DRAW_LOCAL_BOARD)) return localPi(pi, helper);
-  pi.registerMcpServer('draw', { url: process.env.REDCRAYON_MCP_URL || `${origin()}/mcp`, exposure: 'direct' });
   let active: { core: ChatCore; close(): void } | undefined;
+  let generation = 0;
+  const close = () => { generation++; active?.close(); active = undefined; };
+  const local = mode === 'unified' ? localPi(pi, helper, () => {
+    close();
+    pi.appendEntry('draw-chat', null);
+  }) : undefined;
+  pi.registerMcpServer('draw', { url: process.env.REDCRAYON_MCP_URL || `${origin()}/mcp`, exposure: 'direct' });
   let sequence = 0;
   const attach = (chat: { token: string; board: string; origin: string }, ctx: Context) => {
     active?.close();
@@ -95,12 +101,16 @@ export default function drawPi(pi: Pi, options?: { mode: 'local' | 'hosted'; exe
   const connection = (event: any, ctx: Context) => chatConnection({
     hook_event_name: 'PostToolUse', tool_name: event.toolName, tool_response: event.structuredContent ?? { content: event.content }, session_id: ctx.sessionManager.getSessionId(),
   }, false);
-  pi.on('session_start', (_event, ctx) => {
-    active?.close(); active = undefined;
+  pi.on('session_start', async (_event, ctx) => {
+    close();
     const saved = ctx.sessionManager.getEntries().filter(e => e.type === 'custom' && e.customType === 'draw-chat').at(-1)?.data;
     if (!saved || Date.now() - saved.at > 11 * 60 * 60_000) return;
     const chat = connection({ toolName: 'mcp__draw__start_chat', structuredContent: saved }, ctx);
-    if (chat) attach(chat, ctx);
+    if (chat) {
+      const current = generation;
+      await local?.close();
+      if (current === generation) attach(chat, ctx);
+    }
   });
   pi.on('tool_call', async (event, ctx) => {
     if (!/^mcp__draw__/.test(event.toolName)) return;
@@ -111,11 +121,16 @@ export default function drawPi(pi: Pi, options?: { mode: 'local' | 'hosted'; exe
   });
   pi.on('tool_result', async (event, ctx) => {
     if (event.isError || !/^mcp__draw__/.test(event.toolName)) return;
+    const chat = connection(event, ctx);
+    const current = chat ? ++generation : generation;
     try {
       await piCaptureHook({ hook_event_name: 'PostToolUse', tool_name: event.toolName, tool_input: event.input, tool_response: event.structuredContent ?? { content: event.content }, cwd: ctx.cwd }, ctx.cwd, message => ctx.ui.notify(message, 'info'), helper);
     } catch (error) { ctx.ui.notify(String(error), 'warning'); }
-    const chat = connection(event, ctx);
-    if (chat) { pi.appendEntry('draw-chat', chat); attach(chat, ctx); }
+    if (chat && current === generation) {
+      await local?.close();
+      if (current !== generation) return;
+      pi.appendEntry('draw-chat', chat); attach(chat, ctx);
+    }
   });
   pi.on('input', event => {
     if (event.source !== 'extension' && typeof event.text === 'string') active?.core.agent({ type: 'user', id: `pi-user-${++sequence}`, text: event.text, origin: 'terminal' });
@@ -129,5 +144,5 @@ export default function drawPi(pi: Pi, options?: { mode: 'local' | 'hosted'; exe
   pi.on('tool_execution_start', event => active?.core.agent({ type: 'tool', id: event.toolCallId, phase: 'start', summary: `Tool: ${event.toolName}` }));
   pi.on('tool_execution_end', event => active?.core.agent({ type: 'tool', id: event.toolCallId, phase: 'done' }));
   pi.on('agent_settled', event => active?.core.agent({ type: 'state', state: event.aborted ? 'stopped' : 'idle' }));
-  pi.on('session_shutdown', () => { active?.close(); active = undefined; });
+  pi.on('session_shutdown', close);
 }

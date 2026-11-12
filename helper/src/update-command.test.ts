@@ -44,5 +44,11 @@ it('flags stale integrations using successful install receipts only', () => {
   writeFileSync(join(dir, 'pi-local.json'), JSON.stringify({ agent: 'pi', mode: 'local', version: '1.0.0', protocol: 1 }));
   writeFileSync(join(dir, 'codex-hosted.json'), JSON.stringify({ agent: 'codex', mode: 'hosted', version: '2.0.0', protocol: 1 }));
   writeFileSync(join(dir, 'claude-code-local.json'), 'incomplete');
-  expect(integrationNotices('2.0.0', dir)).toEqual(['Refresh your pi local integration for Draw 2.0.0: draw install pi --mode local']);
+  expect(integrationNotices('2.0.0', dir)).toEqual(['Refresh your codex integration for Draw 2.0.0: draw install codex', 'Refresh your pi integration for Draw 2.0.0: draw install pi']);
+});
+it('deduplicates old mode receipts and accepts a current unified installation', () => {
+  const dir = directory();
+  for (const mode of ['local', 'hosted']) writeFileSync(join(dir, `codex-${mode}.json`), JSON.stringify({ agent: 'codex', mode, version: '1.0.0', protocol: 1 }));
+  writeFileSync(join(dir, 'pi-unified.json'), JSON.stringify({ agent: 'pi', mode: 'unified', version: '2.0.0', protocol: 1 }));
+  expect(integrationNotices('2.0.0', dir)).toEqual(['Refresh your codex integration for Draw 2.0.0: draw install codex']);
 });

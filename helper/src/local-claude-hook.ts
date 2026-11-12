@@ -4,8 +4,11 @@ import { localCommand } from './local-runtime';
 import { localCall, localEndpoint } from './local-mcp';
 import { localDirectory } from './local-path';
 import { hookResult } from './hook-result';
+import { chatConnection, chatRequest } from './chat-bootstrap';
+import { chatSocketPath } from './chat-path';
 
-const LOCAL_BOARD_TOOL = '^mcp__(?:plugin_draw[-_]local_)?draw[-_]local__(open_board|read_board)$';
+const LOCAL_BOARD_TOOL = '^mcp__(?:plugin_draw(?:[-_]local)?_)?draw[-_]local__(open_board|read_board)$';
+const HOSTED_BOARD_TOOL = '^mcp__(plugin_draw_)?(?:draw|redcrayon)(-dev)?__(start_session|start_chat)$';
 const BOARD = /^[a-zA-Z0-9_-]{1,100}$/;
 
 function options(args: string[]) {
@@ -27,7 +30,7 @@ export function localClaudeSettings(args: string[], launcher = localCommand()) {
   return { hooks: {
     SessionStart: [{ hooks: [hook] }], UserPromptSubmit: [{ hooks: [hook, wake] }],
     PreToolUse: [{ hooks: [hook, wake] }], Stop: [{ hooks: [hook, wake] }], SessionEnd: [{ hooks: [hook] }],
-    ...(auto ? { PostToolUse: [{ matcher: LOCAL_BOARD_TOOL, hooks: [hook, wake] }] } : {}),
+    ...(auto ? { PostToolUse: [{ matcher: `${LOCAL_BOARD_TOOL}|${HOSTED_BOARD_TOOL}`, hooks: [hook, wake] }] } : {}),
   } };
 }
 
@@ -76,11 +79,21 @@ export async function runLocalClaudeHook(args: string[]) {
       } catch { return ''; }
     };
     board = previous = saved();
+    if (!hook.tool_response?.isError && !hookResult(hook.tool_response)?.isError && chatConnection(hook, false)) {
+      if (!waiting && board) {
+        await localCall(localEndpoint(endpointArgs), { action: 'disconnect_local_agent', board, session: `claude-code:${hook.session_id}` });
+        rmSync(binding, { force: true });
+      }
+      return 0;
+    }
     if (opening && !waiting) {
       const result = hookResult(hook.tool_response);
       if (hook.tool_response?.isError || !result || result.isError || typeof result.slug !== 'string' || !BOARD.test(result.slug) || result.repo !== repo) return 0;
       try { if (hook.tool_input?.repo !== undefined && realpathSync(hook.tool_input.repo) !== repo) return 0; } catch { return 0; }
       board = result.slug;
+      const hosted = chatSocketPath(repo, `claude-code:${hook.session_id}`);
+      rmSync(`${hosted}.connection.json`, { force: true });
+      await chatRequest(hosted, { hook_event_name: 'SessionEnd' });
     }
     // The asynchronous wake hook can start before the attaching hook saves its binding.
     if (opening && waiting && !board) for (let n = 0; n < 30 && !board; n++) { await new Promise(resolve => setTimeout(resolve, 100)); board = saved(); }

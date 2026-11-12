@@ -8,13 +8,13 @@ else if (args[0] === '--executable-path') console.log(process.execPath);
 else if (args[0] === '--help' || args[0] === '-h') console.log(
   'Draw — architecture boards for your coding agent\n\n' +
   '  draw [--repo path] [--port number] [--no-open]   Open a local board\n' +
-  '  draw install <codex|claude-code|pi> [--mode local|hosted] [--permissions-defaults]\n' +
+  '  draw install <codex|claude-code|pi> [--permissions-defaults]\n' +
   '  draw permissions codex [--mode local|hosted] [--permissions-defaults]\n' +
   '  draw update [--check] [--channel stable|preview] [--installer npm|bun]\n' +
   '  draw local-mcp --per-repo                       Local MCP bridge\n' +
   '  draw capture | chat | tap | marks | doctor      Hosted helper commands\n' +
   '  draw live --board slug --map mapping.json       Local piped activity\n\n' +
-  'Mode defaults to local. Use --mode hosted for hosted integrations.\n' +
+  'One Draw integration: new boards are local; request hosted explicitly or use a hosted link.\n' +
   'Codex --permissions-defaults: Ask for boards/chat; Deny for source code.\n' +
   'Hosted source uploads set to Ask require browser approval before reading files.\n' +
   'Set DRAW_NO_UPDATE_CHECK=1 to disable automatic update checks.'

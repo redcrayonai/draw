@@ -31,17 +31,17 @@ Use your platform's filename. The `.tgz` is the platform package; the canonical 
 Install the integration for your agent, then start it in your repository:
 
 ```sh
-draw install codex --mode local
+draw install codex
 # Or:
-draw install claude-code --mode local
-draw install pi --mode local
+draw install claude-code
+draw install pi
 ```
 
-`--mode local` is the default. Ask the agent to use the local Draw skill to open a board for this repository. In Codex, the skill is `$draw-local:local`. The integration connects the current conversation. Restart the agent after installing or refreshing its integration.
+One Draw plugin contains both local and hosted workflows. Restart the agent after installation, then ask **"create a draw board"** (or use `/draw:navigate`). New boards are local by default. Codex setup reviews separate local and hosted Ask/Deny choices and disables older competing Draw integrations while preserving their settings and credentials.
 
 You can also run `draw` directly in your repository to open the browser; `draw --no-open` only prints the URL. Running `draw` again opens the existing server. Keep the terminal serving the board open; Ctrl-C stops it without deleting boards. Keep the executable in place after installing an integration, or rerun the install command if you move it. Existing boards retain their storage.
 
-For hosted boards, use the same command with `--mode hosted`, then connect the hosted MCP server and authenticate in your agent. Existing marketplace installations remain supported; choose one hosted installation method to avoid duplicate tools. Hosted behavior has been exercised against a controlled relay/capture fixture with real agents; production authentication was not verified in this change.
+For hosted boards, explicitly ask for a hosted board or supply its existing link, then authenticate through your agent's Draw MCP controls when needed. No second installation is required. Legacy install `--mode` flags are accepted but install the same unified plugin. Hosted behavior has been exercised against a controlled relay/capture fixture with real agents; production authentication was not verified in this change.
 
 ## Updates
 
@@ -56,7 +56,7 @@ draw update --installer bun
 
 Stable updates use npm's `latest` channel. The updater checks that a release contains the shared runtime and a matching platform package before installing that exact version through npm or Bun with lifecycle scripts disabled. It will not replace Draw with the older hosted-only package. Direct archive installations can use a new archive or explicitly choose a package manager.
 
-An update does not restart running boards or agents. Start the new executable for subsequent sessions. Draw records which integration version you installed and tells you when to rerun `draw install <agent> --mode <mode>`; this refreshes the agent's cached skills and launchers.
+An update does not restart running boards or agents. Start the new executable for subsequent sessions. Draw records which integration version you installed and tells you when to rerun `draw install <agent>`; this refreshes the agent's cached skills and launchers.
 
 Interactive local launches check for updates at most daily using a cache. Set `DRAW_NO_UPDATE_CHECK=1` to disable those checks. MCP and hook output stays free of update notices. Checks do not install updates automatically.
 
@@ -82,7 +82,7 @@ To move the distribution, copy the entire `helper/dist/` directory, including `l
 
 ## Try the source distribution with Codex
 
-The local build is also a self-contained Codex plugin, with a local-only skill and MCP bridge. Install this checkout once:
+This legacy developer-only source distribution retains the separate local plugin. For the unified Draw experience, build the executable and use the native installer above. To test the local-only source bridge itself:
 
 ```sh
 pnpm -C helper build:local
@@ -92,7 +92,7 @@ codex
 
 In Codex, ask: **Use `$draw-local:local` to open a board for this repository.** The skill starts the local server if needed, reuses or creates a named board, shares its private browser link, and attaches the current thread using `CODEX_THREAD_ID`. Approve the requested local server/tool operations in Codex as usual. You do not need to copy a thread ID or configure MCP manually. Start Codex from the repository you want to draw. Do not use `--no-daemon`, which removes the shared connection needed by board chat.
 
-This development marketplace is named `draw-local-dev`; it installs `draw-local` alongside any existing hosted Draw plugin. It does not replace the hosted plugin or its account connection. The build fingerprints the packaged code and skill to avoid stale installed copies. After changing/rebuilding the local plugin, reinstall with `draw install codex` (or `node helper/dist/redcrayon.mjs install codex` for the source distribution) and start a new Codex session to load the update. This source installer targets standalone Codex; native installers support all three agents, and manual source setup for Claude and pi is documented below.
+This development marketplace is named `draw-local-dev`; it installs `draw-local` alongside any existing hosted Draw plugin. It does not replace the hosted plugin or its account connection. The build fingerprints the packaged code and skill to avoid stale installed copies. After changing/rebuilding the local plugin, reinstall with `node helper/dist/redcrayon.mjs install codex` and start a new Codex session to load the update. This source installer targets standalone Codex; native installers support all three agents, and manual source setup for Claude and pi is documented below.
 
 To remove this development install: `codex plugin remove draw-local@draw-local-dev`, then `codex plugin marketplace remove draw-local-dev`. Existing local boards remain in the storage directory.
 
@@ -184,7 +184,7 @@ Wake notifications bypass `UserPromptSubmit` in the tested Claude version. The h
 
 ### pi
 
-For the native executable, `draw install pi --mode local` extracts and installs the bundled extension. Source builds put `local-pi-extension.mjs` in `helper/dist/`; use it directly for a specific board:
+For the native executable, `draw install pi` extracts and installs the bundled extension. Source builds put `local-pi-extension.mjs` in `helper/dist/`; use it directly for a specific board:
 
 ```sh
 DRAW_LOCAL_BOARD=<slug> pi -e /absolute/path/to/dist/local-pi-extension.mjs
