@@ -728,6 +728,7 @@ async function boot(conn: DbConnection, identityHex: string, signedIn: boolean):
         },
         drawIn: ids => drawEdgesIn(world, ids), // setView rerendered synchronously: the edges are in the DOM
         paintBar: m => {
+          if (!m && tellingBar.contains(document.activeElement)) tellButton.focus(); // closing hands focus back
           renderTellingBar(tellingBar, m);
           wrap.classList.toggle('telling-open', m !== null);
         },

@@ -81,6 +81,19 @@ describe('renderTellingBar', () => {
     expect(play.title).toBe('Motion is reduced on this device. Use Next.');
   });
 
+  it('takes focus into the bar on opening: the main button, or Next when Play is disabled', () => {
+    document.body.insertAdjacentHTML('afterbegin', '<button id="opener">Play walk-through</button>');
+    document.getElementById('opener')!.focus();
+    renderTellingBar(el, model({ at: 0, playing: true }));
+    expect(document.activeElement).toBe(btn(el, 'Pause'));
+    document.getElementById('opener')!.focus();
+    renderTellingBar(el, model({ at: 1 }));
+    expect(document.activeElement).toBe(document.getElementById('opener')); // a repaint leaves focus alone
+    renderTellingBar(el, null);
+    renderTellingBar(el, model({ at: 0, reduced: true }));
+    expect(document.activeElement).toBe(btn(el, 'Next'));
+  });
+
   it('keeps focus when Play becomes Pause', () => {
     renderTellingBar(el, model());
     btn(el, 'Play')!.focus();

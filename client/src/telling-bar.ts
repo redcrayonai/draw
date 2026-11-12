@@ -72,6 +72,7 @@ export function renderTellingBar(root: HTMLElement, m: TellingBarModel | null): 
   let p = parts.get(root);
   if (!p) { p = build(root); parts.set(root, p); }
   p.model = m;
+  const opening = root.hidden;
   root.hidden = false;
   const focused = document.activeElement;
   const inside = root.contains(focused);
@@ -139,4 +140,6 @@ export function renderTellingBar(root: HTMLElement, m: TellingBarModel | null): 
     const target = ok ? held : p.main.disabled ? p.controls.querySelector<HTMLElement>('[data-act="exit"]')! : p.main;
     if (document.activeElement !== target) target.focus();
   }
+  // Opening takes focus into the bar: Space then works its controls, not the button that opened it.
+  if (opening) (p.main.disabled ? p.next : p.main).focus();
 }
