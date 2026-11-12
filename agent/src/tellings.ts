@@ -30,5 +30,5 @@ export function saveTellingArgs(boardId: bigint, input: TellingInput, author: st
 }
 
 export const SAVE_TELLING_DESCRIPTION =
-  'Save a walk-through of this board for one audience: ordered steps, each lighting 1 to 12 nodes with a short title and one sentence (body), and optionally where the claim comes from (source) and which nodes the view should frame (frame). Start from one node the audience already knows and add a few nodes per step. Saving again for the same audience replaces it. At most 12 steps and 6 audiences per board.';
+  'Save a walk-through of this board for one audience: ordered steps, each lighting 1 to 12 nodes with a short title and one sentence (body), and optionally where the claim comes from (source) and which nodes the view should frame (frame). Start from one node the audience already knows and add a few nodes per step. Saving again for the same audience replaces it. At most 12 steps and 6 audiences per board. Everyone who can view the board, including through a shared link, can read every field.';
 export const REMOVE_TELLING_DESCRIPTION = "Remove this board's walk-through for one audience.";

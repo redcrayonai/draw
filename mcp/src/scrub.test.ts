@@ -45,6 +45,7 @@ describe('scrub (spec §3 Outcome mapping)', () => {
   it('a 530 that matches no template, or names the vendor, is not a module sentence', () => {
     expect(isModuleSentence('evidence rule: source path ' + "'nope' does not exist in the repo imported for board 1")).toBe(true);
     expect(scrub(new DbError(530, 'telling rule: at most 12 steps'), { write: true, board: 'main' }).text).toMatch(/^REJECTED: telling rule: at most 12 steps/);
+    expect(scrub(new DbError(530, 'telling rule: no telling for that audience on this board; this board has: Product, Engineers'), { write: true, board: 'main' }).text).toMatch(/^REJECTED: telling rule: no telling for that audience on this board; this board has: Product, Engineers/);
     expect(isModuleSentence('something the module never says')).toBe(false);
     expect(isModuleSentence("evidence rule: source path 'spacetime' does not exist in the repo imported for board 1")).toBe(false);
   });

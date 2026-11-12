@@ -476,7 +476,7 @@ describe('icons on the hosted create_node and update_node', () => {
 });
 
 describe('tellings on the hosted server', () => {
-  const fake = (nodes: bigint[]) => {
+  const fake = (nodes: bigint[], fails: Error[] = []) => {
     const calls: { reducer: string; args: Record<string, any> }[] = [];
     const db = {
       stats: { dbCalls: 0, dbMs: 0, writes: 0 },
@@ -488,6 +488,8 @@ describe('tellings on the hosted server', () => {
       },
       async call(reducer: string, args: Record<string, any>) {
         calls.push({ reducer, args });
+        const fail = fails.shift();
+        if (fail) throw fail;
       },
     };
     const t = { ctx: { db }, signal: new AbortController().signal, named: () => {}, deadline: Date.now() + 15_000 } as never;
@@ -501,6 +503,10 @@ describe('tellings on the hosted server', () => {
     expect(calls).toEqual([{ reducer: 'save_telling', args: { boardId: 1n, audience: 'Product', title: 'T', steps: '[{"nodes":["2"],"frame":[],"title":"A","body":"B","source":""}]', author: 'claude' } }]);
   });
 
+  it('save_telling says who can read a walk-through', () => {
+    expect(TOOLS.save_telling.description).toContain('Everyone who can view the board, including through a shared link, can read every field.');
+  });
+
   it('save_telling refuses a node that is not on the board before any call', async () => {
     const { calls, t } = fake([3n]);
     await expect(TOOLS.save_telling.run(TOOLS.save_telling.input.parse(input) as never, t)).rejects.toThrow(/node 2/);
@@ -512,6 +518,13 @@ describe('tellings on the hosted server', () => {
     const args = TOOLS.remove_telling.input.parse({ board: '1', audience: 'Product' });
     expect(text(await TOOLS.remove_telling.run(args as never, t))).toBe('removed telling: Product board=main');
     expect(calls).toEqual([{ reducer: 'remove_telling', args: { boardId: 1n, audience: 'Product' } }]);
+  });
+
+  it('remove_telling: a retry after a lost answer that finds no telling means the first one landed', async () => {
+    const { calls, t } = fake([], [new DbError(502, 'bad gateway'), new DbError(530, 'telling rule: no telling for that audience on this board; this board has none')]);
+    const args = TOOLS.remove_telling.input.parse({ board: '1', audience: 'Product' });
+    expect(text(await TOOLS.remove_telling.run(args as never, t))).toBe('removed telling: Product board=main');
+    expect(calls.length).toBe(2);
   });
 });
 

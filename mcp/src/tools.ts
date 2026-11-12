@@ -257,7 +257,7 @@ async function removal(run: () => Promise<void>): Promise<void> {
     try {
       await run();
     } catch (again) {
-      if (again instanceof DbError && again.status === 530 && /does not exist|not found/.test(again.message)) return;
+      if (again instanceof DbError && again.status === 530 && /does not exist|not found|no telling for/.test(again.message)) return;
       throw again;
     }
   }
