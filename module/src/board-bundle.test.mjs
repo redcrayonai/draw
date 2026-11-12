@@ -136,6 +136,6 @@ test('parseBundle refuses corrupt, unsupported, oversized and inconsistent bundl
   assert.deepEqual(parseBundle(bundleText(v1).replace(`"version":${BUNDLE_VERSION}`, '"version":1')).tellings, []);
   rejects(resealed(v1), 'board must have exactly the fields');
   // Checksum over the canonical board JSON: a re-encoded but identical board still verifies.
-  const pretty = JSON.stringify({ format: 'draw.board-bundle', version: 1, sha256: sha256Hex(JSON.stringify(board)), board }, null, 2);
+  const pretty = JSON.stringify({ format: 'draw.board-bundle', version: BUNDLE_VERSION, sha256: sha256Hex(JSON.stringify(board)), board }, null, 2);
   assert.equal(parseBundle(pretty).name, 'Payments');
 });

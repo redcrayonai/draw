@@ -126,7 +126,8 @@ test('TL saving the same audience again replaces the row in place, with the new 
 test('TL a seventh audience is refused', async () => {
   const s = await scenario('tl-limit');
   for (let i = 1; i <= 6; i++) await ok(s.who.token, 'save_telling', saveArgs(s, { audience: `audience ${i}` }));
-  await rejects(s.who.token, 'save_telling', saveArgs(s, { audience: 'audience 7' }), 'telling rule: at most 6 tellings on a board');
+  await rejects(s.who.token, 'save_telling', saveArgs(s, { audience: 'audience 7' }),
+    'telling rule: at most 6 tellings on a board; this board has: audience 1, audience 2, audience 3, audience 4, audience 5, audience 6');
   // Replacing one of the six still works.
   await ok(s.who.token, 'save_telling', saveArgs(s, { audience: 'AUDIENCE 6', title: 'again' }));
   assert.equal((await tellingsOn(s.B)).length, 6);
@@ -164,7 +165,14 @@ test('TL remove deletes the row; removing again is refused', async () => {
   await ok(s.who.token, 'save_telling', saveArgs(s, { audience: 'Product' }));
   await ok(s.who.token, 'remove_telling', [s.B, ' PRODUCT ']);
   assert.deepEqual(await tellingsOn(s.B), []);
-  await rejects(s.who.token, 'remove_telling', [s.B, 'product'], 'telling rule: no telling for that audience on this board');
+  await rejects(s.who.token, 'remove_telling', [s.B, 'product'], 'telling rule: no telling for that audience on this board; this board has none');
+});
+
+test('TL removing an unknown audience names the audiences the board has', async () => {
+  const s = await scenario('tl-remove-list');
+  await ok(s.who.token, 'save_telling', saveArgs(s, { audience: 'Product' }));
+  await ok(s.who.token, 'save_telling', saveArgs(s, { audience: 'Engineers' }));
+  await rejects(s.who.token, 'remove_telling', [s.B, 'sales'], 'telling rule: no telling for that audience on this board; this board has: Product, Engineers');
 });
 
 // --- lifecycle -----------------------------------------------------------------

@@ -2823,6 +2823,12 @@ export const playTrace = reducer(
 const tellingFor = (ctx: any, boardId: bigint, audience: string) =>
   [...ctx.db.telling.boardId.filter(boardId)].find((row: any) => audienceKey(row.audience) === audienceKey(audience));
 
+// Refusals name the board's audiences so an agent can replace or remove one saved in an earlier session.
+const tellingAudiences = (ctx: any, boardId: bigint) => {
+  const rows = [...ctx.db.telling.boardId.filter(boardId)].sort((a: any, b: any) => (a.id < b.id ? -1 : 1));
+  return rows.length ? `this board has: ${rows.map((row: any) => row.audience).join(', ')}` : 'this board has none';
+};
+
 /** Store a walk-through of the board for one audience; saving the same audience again replaces it. */
 export const saveTelling = reducer(
   { boardId: t.u64(), audience: t.string(), title: t.string(), steps: t.string(), author: t.string() },
@@ -2836,7 +2842,7 @@ export const saveTelling = reducer(
     const row = { boardId, audience: audience.trim(), title: title.trim(), steps: parsed.json, author: author.trim(), updatedAt: ctx.timestamp };
     const prev = tellingFor(ctx, boardId, audience);
     if (prev) ctx.db.telling.id.update({ ...row, id: prev.id });
-    else if ([...ctx.db.telling.boardId.filter(boardId)].length >= MAX_TELLINGS_PER_BOARD) throw new SenderError(`telling rule: at most ${MAX_TELLINGS_PER_BOARD} tellings on a board`);
+    else if ([...ctx.db.telling.boardId.filter(boardId)].length >= MAX_TELLINGS_PER_BOARD) throw new SenderError(`telling rule: at most ${MAX_TELLINGS_PER_BOARD} tellings on a board; ${tellingAudiences(ctx, boardId)}`);
     else ctx.db.telling.insert({ ...row, id: 0n });
     touch(ctx, boardId);
   }
@@ -2847,7 +2853,7 @@ export const removeTelling = reducer(
   (ctx, { boardId, audience }) => {
     assertBoardWrite(ctx, boardId);
     const row = tellingFor(ctx, boardId, audience);
-    if (!row) throw new SenderError('telling rule: no telling for that audience on this board');
+    if (!row) throw new SenderError(`telling rule: no telling for that audience on this board; ${tellingAudiences(ctx, boardId)}`);
     ctx.db.telling.id.delete(row.id);
     touch(ctx, boardId);
   }

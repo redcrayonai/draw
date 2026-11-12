@@ -634,6 +634,7 @@ test('tellings are read by every reader of the board, refused to view-link visit
   assert.deepEqual((await tellings(viewer)).map(r => r.audience), ['product']);
   assert.deepEqual(await tellings(stranger), []);
   await denied(viewer, 'save_telling', [B, ...save], 'not authorized');
+  await denied(viewer, 'remove_telling', [B, 'product'], 'not authorized');
   await denied(stranger, 'save_telling', [B, ...save], 'not authorized');
 });
 
