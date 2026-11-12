@@ -1,19 +1,47 @@
-.local-mode { height: 100vh; display: flex; flex-direction: column; overflow: hidden; }
-#local-header { display: flex; gap: 16px; align-items: center; padding: 16px 24px; border-bottom: 1px solid var(--line, #333); }
-#local-header strong { font-size: 20px; } #status { margin-left: auto; font-size: 12px; }
-#local-main { display: flex; flex: 1; min-height: 0; }
-#local-canvas { flex: 1; min-width: 0; position: relative; }
-#local-tools { position: absolute; z-index: 1; top: 16px; left: 16px; display: flex; gap: 8px; }
-#canvas { width: 100%; height: 100%; touch-action: none; }
-#local-panel { width: 320px; padding: 20px; overflow: auto; border-left: 1px solid var(--line, #333); }
-.local-mode button, .local-mode input, .local-mode select, .local-mode textarea { font: inherit; color: inherit; background: var(--surface, #202124); border: 1px solid var(--line, #454545); border-radius: 6px; padding: 8px; }
-.local-mode button { cursor: pointer; } .local-mode button:hover { border-color: #999; }
-.local-mode label { display: flex; flex-direction: column; gap: 6px; margin: 12px 0; font-size: 12px; }
-.local-mode textarea { min-height: 64px; resize: vertical; }
-.local-mode h2 { font-size: 14px; margin: 24px 0 10px; }
-.local-mode p { font-size: 12px; line-height: 1.6; white-space: pre-wrap; }
-#geometry { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; } #geometry input { width: 100%; box-sizing: border-box; }
-.local-note { border-top: 1px solid #444; padding: 12px 0; }
-.local-mode pre { overflow: auto; font-size: 12px; max-height: 300px; }
-.local-mode :focus-visible { outline: 2px solid #77b7ff; outline-offset: 3px; }
-@media(max-width: 700px) { #local-panel { width: 230px; padding: 12px; } #local-header { gap: 8px; padding: 8px; } }
+/* Bundled OFL fonts keep the hosted typography without external requests. */
+@font-face { font-family: 'Geist'; font-style: normal; font-weight: 100 900; font-display: swap; src: url('/assets/fonts/geist.ttf') format('truetype'); }
+@font-face { font-family: 'Geist Mono'; font-style: normal; font-weight: 100 900; font-display: swap; src: url('/assets/fonts/geist-mono.ttf') format('truetype'); }
+/* Local-only layout; the header, rail, tools, zoom and themes use hosted chrome. */
+.local-mode { height: 100dvh; }
+#canvas { display: block; width: 100%; height: 100%; background-color: var(--paper); background-image: radial-gradient(var(--dot) 1px, transparent 1px); background-size: 22px 22px; touch-action: none; user-select: none; }
+#canvas.panning { cursor: grab; } #canvas.panning:active { cursor: grabbing; } #canvas.armed { cursor: crosshair; }
+#boards { max-width: 280px; font: 600 14px var(--sans); background: transparent; color: var(--ink); border: none; padding: 6px; text-overflow: ellipsis; }
+#boards option { background: var(--panel); }
+#status { font-size: 11px; color: var(--muted); max-width: 30vw; overflow-wrap: anywhere; }
+#conversation-toggle { display: flex; align-items: center; gap: 8px; }
+.local-history { display: flex; } .local-history button { width: 28px; height: 28px; font-size: 18px; }
+.local-float { position: absolute; top: var(--space-4); right: var(--space-4); width: 340px; max-width: calc(100% - 32px); max-height: calc(100% - 112px); overflow: auto; padding: var(--space-4); background: var(--panel-2); border: 1px solid var(--border); border-radius: var(--r-lg); box-shadow: var(--shadow); z-index: 15; }
+.local-mode [hidden] { display: none !important; }
+.local-mode :is(#rail, .local-float) :is(input, select, textarea) { width: 100%; min-width: 0; font: inherit; color: var(--ink); background: var(--inset); border: 1px solid var(--hairline); border-radius: var(--r-sm); padding: 8px; }
+.local-mode :is(#rail, .local-float) label { display: flex; flex-direction: column; gap: 6px; margin: 12px 0; color: var(--muted); font-size: 12px; }
+.local-mode textarea { min-height: 72px; resize: vertical; }
+.local-mode :is(#rail, .local-float) button:not(.icon-btn):not(.rail-switch) { padding: 7px 10px; border: 1px solid var(--hairline); border-radius: var(--r-sm); margin: 2px 4px 2px 0; font-size: 12px; }
+.local-mode :is(#rail, .local-float) button:hover { background: var(--panel-hi); }
+.local-mode :is(#rail, .local-float) h2:not(.rail-title) { font-size: 12px; margin: 20px 0 8px; }
+.local-mode :is(#rail, .local-float) p { font-size: 12px; line-height: 1.6; color: var(--muted); white-space: pre-wrap; overflow-wrap: anywhere; }
+.local-mode details { margin: 16px 0; font-size: 12px; color: var(--muted); }
+.local-mode summary { cursor: pointer; padding: 4px 0; }
+.local-mode pre { overflow: auto; font: var(--code-font); max-height: 260px; background: var(--inset); }
+#geometry { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.local-note { border-top: 1px solid var(--border); padding: 12px 0; margin-top: 12px; font-size: 12px; }
+.local-message { margin: 12px 0; border-bottom: 1px solid var(--border); padding-bottom: 12px; }
+.local-message .local-prompt { color: var(--ink); padding: 10px; border-radius: var(--r-md); background: var(--inset); }
+.local-delivery { display: block; color: var(--faint); font: 10px var(--mono); margin: 6px 0; }
+.local-session { font: 10px var(--mono); overflow-wrap: anywhere; }
+#local-conversation [data-connection] { padding: 10px 0; }
+#local-conversation [data-messages]:empty { display: none; }
+#local-conversation [data-messages] { max-height: 36vh; overflow: auto; }
+#local-conversation [data-send] button { background: var(--ink); color: var(--panel); }
+#local-activity details { margin-bottom: 8px; }
+#local-activity [data-state] { font-size: 11px; }
+@media (max-width: 1100px) { .local-mode .zoom-cluster { bottom: 94px; } }
+@media (max-width: 700px) {
+  #local-header { padding: 0 8px; gap: 4px; } #boards { max-width: 130px; font-size: 12px; }
+  #local-header .crumb-root, #local-header .crumb-sep, #local-header .live, #local-header .tb-div { display: none; }
+  #local-header .header-actions { gap: 2px; } #status { position: absolute; top: calc(100dvh - 28px); right: 12px; max-width: calc(100vw - 24px); font-size: 10px; }
+  #conversation-toggle span { display: none; } #conversation-toggle { min-width: 32px; padding: 6px; }
+  .local-mode #rail { width: 220px; max-height: calc(100% - 188px); }
+  .local-mode #dock { bottom: 32px; max-width: calc(100% - 24px); overflow-x: auto; }
+  .local-mode .zoom-cluster { bottom: 104px; }
+  .local-float { max-height: calc(100% - 124px); }
+}

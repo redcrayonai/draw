@@ -4,7 +4,7 @@ import type { LiveEdge } from './render';
 
 export function mountLocalActivity(container: HTMLElement, world: SVGGElement, board: () => LocalBoard | undefined, redraw: () => void) {
   const section = document.createElement('section');
-  section.innerHTML = '<h2>Live activity</h2><p data-state>No source connected</p><div data-summary></div>';
+  section.innerHTML = '<details><summary>Live traffic</summary><p data-state>No source connected</p><div data-summary></div></details>';
   container.append(section);
   let window: LocalTrafficWindow | undefined;
   let received = 0;

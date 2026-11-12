@@ -680,7 +680,7 @@ function setPresencePop(open: boolean): void {
 popLabel?.addEventListener('click', () => {
   setPresencePop(popEl.hidden);
 });
-dismissible(popEl, popLabel, () => setPresencePop(false));
+if (popEl) dismissible(popEl, popLabel, () => setPresencePop(false));
 
 /** The agent's avatar (G47): a drawn bot head, toolbar stroke weight. */
 function botIcon(size: number): SVGSVGElement {

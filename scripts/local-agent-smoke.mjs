@@ -158,6 +158,7 @@ try {
   await until(async () => { const status = await call({ action: 'chat_status', board: board.slug }); return status.connected && status.state === 'idle'; });
   await expect(page.locator('[data-stop]')).toHaveText(kind === 'claude-code' ? 'Stop after current step' : 'Stop agent');
   // Submit through the browser, then assert that the live canvas and durable store both change.
+  await page.getByRole('button', { name: 'Conversation', exact: true }).click();
   await page.locator('[data-send] textarea').fill('Use draw-local read_board and apply_board to rename selected node 1 to HANDOFF_OK, preserving its position. Reply to note 2 with the marker from our earlier message and resolve that note. Then reply with that marker followed by HANDOFF_OK. Read the latest revision before writing. Use only local board tools.');
   await page.getByRole('button', { name: 'Send feedback', exact: true }).click();
   const updated = await until(async () => {

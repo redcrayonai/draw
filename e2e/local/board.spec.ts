@@ -42,6 +42,15 @@ test('packaged local board: tool edits, browser drag, review, concurrent tab and
     page.on('pageerror', error => errors.push(error.message));
     page.on('request', request => { if (!request.url().startsWith(endpoint.origin)) external.push(request.url()); });
     await page.goto(`${endpoint.origin}/#local&key=${endpoint.token}`);
+    await page.evaluate(() => document.fonts.ready);
+    expect(await page.evaluate(() => document.fonts.check('12px Geist') && document.fonts.check('12px "Geist Mono"'))).toBe(true);
+    await expect(page.locator('html')).toHaveAttribute('data-theme', 'material-light');
+    await page.getByRole('button', { name: 'Theme: Material Light', exact: true }).click();
+    await page.locator('[data-theme-opt="dark"]').click();
+    await page.reload();
+    await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark');
+    await page.getByRole('button', { name: 'Theme: Dark', exact: true }).click();
+    await page.locator('[data-theme-opt="material-light"]').click();
     await expect(page.locator('#status')).toHaveText('Create your first board');
     const opened = await cli(['local-mcp'], JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name: 'open_board', arguments: { name: 'Local architecture' } } }));
     expect(opened.code).toBe(0);
@@ -89,6 +98,8 @@ test('packaged local board: tool edits, browser drag, review, concurrent tab and
     await page.getByRole('button', { name: 'Attach reference', exact: true }).click();
     await page.getByRole('button', { name: 'shared/local.ts:1–1', exact: true }).click();
     await expect(page.locator('[data-code]')).toContainText('Local wire/storage contract');
+    await page.getByRole('button', { name: 'Review', exact: true }).click();
+    await second.getByRole('button', { name: 'Review', exact: true }).click();
     await page.locator('#note textarea').fill('Please check the timeout.');
     await page.getByRole('button', { name: 'Add note', exact: true }).click();
     await expect(second.locator('#notes')).toContainText('Please check the timeout.');
@@ -136,21 +147,62 @@ test('packaged local board: tool edits, browser drag, review, concurrent tab and
     await page.getByRole('button', { name: 'Connect selected', exact: true }).click();
     await expect(page.locator('.edge-hit')).toHaveCount(1);
     expect((await call({ action: 'read_board', board: board.slug })).edges).toHaveLength(1);
-    await page.getByRole('button', { name: 'Add node', exact: true }).click();
+    await page.getByRole('button', { name: 'Close review', exact: true }).click();
+    await page.locator('[data-kind=service]').click();
+    await page.locator('#canvas').click({ position: { x: 600, y: 500 } });
     await expect(page.locator('.node[data-id]')).toHaveCount(3);
     const extra = await call({ action: 'read_board', board: board.slug });
     const addedNode = extra.nodes.find((n: { label: string }) => n.label === 'Service');
     const removedNode = await cli(['local-mcp'], JSON.stringify({ jsonrpc: '2.0', id: 5, method: 'tools/call', params: { name: 'apply_board', arguments: { board: board.slug, revision: extra.revision, operations: [{ type: 'element.delete', id: addedNode.id }] } } }));
     expect(JSON.parse(removedNode.stdout).result.isError).toBeUndefined();
     await expect(page.locator('.node[data-id]')).toHaveCount(2);
+    // Every retained drawing tool places its actual kind; panning never moves a node.
+    for (const kind of ['datastore', 'external', 'boundary', 'note', 'text']) {
+      await page.locator(`[data-kind=${kind}]`).click();
+      await page.locator('#canvas').click({ position: { x: 700, y: 450 } });
+      await expect(page.locator('.node[data-id]')).toHaveCount(3);
+      const added = await call({ action: 'read_board', board: board.slug });
+      const item = added.nodes.find((n: { kind: string }) => n.kind === kind);
+      expect(item).toBeTruthy();
+      await call({ action: 'apply_board', board: board.slug, revision: added.revision, operations: [{ type: 'element.delete', id: item.id }] });
+      await expect(page.locator('.node[data-id]')).toHaveCount(2);
+    }
+    const beforePan = await call({ action: 'read_board', board: board.slug });
+    const transform = await page.locator('#world').getAttribute('transform');
+    await page.getByRole('button', { name: 'Hand', exact: true }).click();
+    const panBox = (await node.boundingBox())!;
+    await page.mouse.move(panBox.x + panBox.width / 2, panBox.y + panBox.height / 2);
+    await page.mouse.down(); await page.mouse.move(panBox.x + panBox.width / 2 + 50, panBox.y + panBox.height / 2 + 30); await page.mouse.up();
+    await expect(page.locator('#world')).not.toHaveAttribute('transform', transform!);
+    expect((await call({ action: 'read_board', board: board.slug })).nodes).toEqual(beforePan.nodes);
+    await page.getByRole('button', { name: 'Select', exact: true }).click();
+    await page.getByRole('button', { name: 'Fit', exact: true }).click();
+    const zoom = await page.locator('#hud-zoom').textContent();
+    await page.getByRole('button', { name: 'Zoom out', exact: true }).click();
+    await expect(page.locator('#hud-zoom')).not.toHaveText(zoom!);
+    await page.getByRole('button', { name: 'Fit', exact: true }).click();
     writeFileSync(join(directory, 'mapping.json'), JSON.stringify({ api: '1', database: '2' }));
     const pipe = await cli(['live', '--board', board.slug, '--map', join(directory, 'mapping.json')], '{"from":"api","to":"database","duration_ms":12}\nmalformed\n{"from":"database","to":"api","error":true}');
     expect(pipe.code).toBe(1); expect(pipe.stderr).toContain('Accepted 2; rejected 1');
+    await page.getByText('Live traffic', { exact: true }).click();
     await expect(page.locator('[data-summary]')).toContainText('Gateway → Database: 1 calls');
     await expect(page.locator('[data-summary]')).toContainText('Database → Gateway: 1 calls · 1 errors · latency unknown');
     await expect(page.locator('.edge.live')).toHaveCount(1);
     await expect(page.locator('.local-reverse')).toHaveCount(1);
     await page.screenshot({ path: join(root, '.context/local-board.png') });
+    for (const width of [768, 390, 320]) {
+      await page.setViewportSize({ width, height: 844 });
+      await page.getByRole('button', { name: 'Conversation', exact: true }).click();
+      await expect(page.locator('[data-send] textarea')).toBeVisible();
+      await page.locator('[data-send] textarea').fill('Keep this draft');
+      await page.getByRole('button', { name: 'Close conversation', exact: true }).click();
+      await page.getByRole('button', { name: 'Conversation', exact: true }).click();
+      await expect(page.locator('[data-send] textarea')).toHaveValue('Keep this draft');
+      const panel = (await page.locator('#local-conversation').boundingBox())!;
+      expect(panel.x).toBeGreaterThanOrEqual(0); expect(panel.x + panel.width).toBeLessThanOrEqual(width);
+      expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBe(width);
+      await page.getByRole('button', { name: 'Close conversation', exact: true }).click();
+    }
     expect(errors).toEqual([]); expect(external).toEqual([]);
     await stop(); await start();
     const restored = await call({ action: 'read_board', board: board.slug });

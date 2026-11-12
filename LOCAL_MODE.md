@@ -77,13 +77,17 @@ Notes use `note.add` (`target`, `text`), `note.reply` (`id`, `text`), and `note.
 
 ## Browser editing and review
 
-Create a board, add nodes, drag to move, or use the inspector for exact position and size. Shift-click two nodes and choose **Connect selected**. Select an edge to edit its label, description, or direction. Drag empty canvas to pan; scroll to zoom; **Fit** frames the graph. Keyboard users can focus nodes, press Enter to select, and use arrow keys to move; Ctrl/Cmd-Z on the canvas undoes, Shift-Ctrl/Cmd-Z redoes.
+Local mode uses the hosted canvas chrome and theme picker, with bundled fonts and no external font requests. Material Light is the default; theme choices persist in this browser.
+
+Create a board with **+**, choose a node kind in the bottom toolbar, and click the canvas to place it. Drag nodes to move them, or use the Board panel for exact position and size. The Hand tool pans even when dragging over a node. Shift-click two nodes and choose **Connect selected**. Select an edge to edit its label, description, or direction. Drag empty canvas to pan; scroll to zoom; **Fit** frames the graph. Keyboard users can focus nodes, press Enter to select, and use arrow keys to move; Ctrl/Cmd-Z on the canvas undoes, Shift-Ctrl/Cmd-Z redoes.
 
 Undo/redo retains the last 30 graph edits in the browser session, including deletion with stable IDs. It refuses to overwrite a graph changed elsewhere. Review notes are retained across graph undo. Inspector drafts are not silently replaced by incoming updates; a stale save is refused. **Reload fields** discards the draft and reads the current values.
 
-Attach code references through the inspector and click a reference to inspect local source. Select a node or edge to anchor a review note. The review list distinguishes open/resolved and detached notes.
+Attach code references through the inspector and click a reference to inspect local source. Open **Review** in the header and select a node or edge to anchor a review note. The review list distinguishes open/resolved and detached notes.
 
 ## Existing-conversation feedback
+
+Open **Conversation** in the header to send feedback or stop the agent. Manual connection fields are under **Connection settings**; an attached conversation needs no reconfiguration. Review and conversation drafts survive closing their panels.
 
 ### Codex
 
@@ -103,7 +107,7 @@ codex app-server --listen unix:///absolute/private/path/draw-codex.sock
 codex --remote unix:///absolute/private/path/draw-codex.sock -C /absolute/path/to/repository
 ```
 
-In that conversation, ask the agent to call `attach_conversation` with the board slug, its current thread ID, and the absolute socket path. The browser's Codex connection form accepts the same values. A terminal already using the default shared daemon can omit the socket path. The adapter reads and resumes that loaded thread after checking its working directory; it never creates a replacement conversation. A private stdio server cannot be attached through this socket adapter.
+In that conversation, ask the agent to call `attach_conversation` with the board slug, its current thread ID, and the absolute socket path. The browser's **Conversation → Connection settings** form accepts the same values. A terminal already using the default shared daemon can omit the socket path. The adapter reads and resumes that loaded thread after checking its working directory; it never creates a replacement conversation. A private stdio server cannot be attached through this socket adapter.
 
 ### Claude Code
 
