@@ -99,7 +99,7 @@ test('workspace admins create scoped service accounts and keys, rotate, revoke, 
     await expect(memberPage.getByRole('region', { name: 'Members', exact: true })).toBeVisible();
     await expect(memberPage.getByRole('link', { name: 'Service accounts & keys' })).toHaveCount(0);
     await memberPage.goto(`${dashboard}/workspaces/keys?workspace=${workspace.id}`);
-    await expect(memberPage.getByText('Owners and admins of a shared workspace manage its service accounts.')).toBeVisible();
+    await expect(memberPage.getByText('Owners and admins of a workspace manage its service accounts.')).toBeVisible();
     await expect(memberPage.getByRole('heading', { name: 'Service accounts', exact: true })).toHaveCount(0);
     await expect(memberPage.getByText('Build automation', { exact: true })).toHaveCount(0);
   } finally { await memberContext.close(); }

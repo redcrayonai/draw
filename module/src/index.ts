@@ -3344,6 +3344,9 @@ export const openIncident = reducer(
     const board = ctx.db.board.insert({ id: 0n, name: title, slug: newSlug(ctx.db.board, ctx.random) });
     copyDrawing(ctx, sourceBoardId, board.id, false);
     if (isWorkspaceMachine(ctx)) {
+      // A personal workspace's boards count against its owner, whoever opens them.
+      const home = ctx.db.workspace.id.find(ctx.db.boardWorkspace.boardId.find(sourceBoardId)!.workspaceId);
+      if (home?.personal) assertBoardAllowance(ctx, home.owner);
       refreshStats(ctx, board.id, { init: true });
       emit(ctx, board.id, 'board.created', { name: title, via: 'incident' });
     } else {

@@ -212,7 +212,6 @@ export const SENDER_ERRORS: readonly RegExp[] = [
   /^service account rule: API key has not expired$/,
   /^service account rule: API key is already in use$/,
   /^service account rule: API key is unavailable$/,
-  /^service account rule: create service accounts in a shared workspace$/,
   /^service account rule: enable this service account before creating a key$/,
   /^service account rule: expiry schedule is unavailable$/,
   /^service account rule: invalid key ID or SHA-256 digest$/,
