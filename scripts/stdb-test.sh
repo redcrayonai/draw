@@ -187,8 +187,9 @@ case "$cmd" in
     trap stop EXIT
     start
     MODULE_ENV=none publish
+    # shortcut: Node 22 can corrupt non-ASCII child stdout; drop this single-suite workaround once its runner is fixed.
     MODULE_ENV=none STDB_URL="$URL" STDB_DB="$DB" STDB_OWNER_TOKEN="$(cat "$ROOT/owner-token")" \
-      node --test "$@" "$REPO/scripts/verify-issuers-local.mjs"
+      node --test --experimental-test-isolation=none "$@" "$REPO/scripts/verify-issuers-local.mjs"
     ;;
   *)
     echo "usage: scripts/stdb-test.sh run|start|publish|legacy|test|parity|mcp|versions|outside|failclosed|stop [node --test args]" >&2
