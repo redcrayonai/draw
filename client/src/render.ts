@@ -843,6 +843,7 @@ interface EdgeEntry {
   /** Last-written blast class of g and labels ('' = none). */
   blast: string;
   marker: string;
+  direction?: 'forward' | 'both' | 'none';
   selected: boolean;
   /** Last-written focus-near state of g and labels. */
   near: boolean;
@@ -1918,11 +1919,11 @@ export function renderBoard(
     const head = markerFor(evCls, state.overlay, selected, diffColor === 'added' ? 'green' : diffColor === 'removed' ? 'red' : diffColor === 'changed' ? 'blue' : reader?.status === 'stale' ? 'red' : edge.color);
     // The overlay owns weight; with it off, a medium or bold edge takes a head of its weight.
     const marker = !state.overlay && weight !== undefined && WEIGHT_HEAD_PX.has(weight) ? `${head}-${weight}` : head;
-    if (marker !== e.marker || state.edgeDirections) {
-      e.line.setAttribute('marker-end', `url(#${marker})`);
-      e.marker = marker;
-      const direction = state.edgeDirections?.get(edge.id);
+    const direction = state.edgeDirections?.get(edge.id);
+    if (marker !== e.marker || direction !== e.direction) {
       if (direction === 'none') e.line.removeAttribute('marker-end');
+      else e.line.setAttribute('marker-end', `url(#${marker})`);
+      e.marker = marker; e.direction = direction;
       if (direction === 'both') e.line.setAttribute('marker-start', `url(#${marker})`);
       else e.line.removeAttribute('marker-start');
     }

@@ -2688,3 +2688,17 @@ describe('incident triage: the time window and chart pins', () => {
     expect(world.querySelector('.layer-anchors')!.childElementCount).toBe(0);
   });
 });
+
+it('caches local arrow directions and restores hosted markers when the override disappears', () => {
+  const world = mkWorld(), nodes = [mkNode(1), mkNode(2)], edges = [mkEdge(1, 1, 2)];
+  const state = mkState({ edgeDirections: new Map([[1n, 'both']]) });
+  renderBoard(world, nodes, edges, state);
+  const line = world.querySelector<SVGPathElement>('.edge path:not(.edge-hit)')!;
+  expect(line.getAttribute('marker-start')).toBe(line.getAttribute('marker-end'));
+  const changes = mutations(world, () => renderBoard(world, nodes, edges, { ...state, overrides: new Map([[1n, { x: 400, y: 200 }]]) }));
+  expect(changes.filter(change => change.attributeName?.startsWith('marker-'))).toHaveLength(0);
+  renderBoard(world, nodes, edges, { ...state, edgeDirections: new Map([[1n, 'none']]) });
+  expect(line.hasAttribute('marker-start')).toBe(false); expect(line.hasAttribute('marker-end')).toBe(false);
+  renderBoard(world, nodes, edges, mkState());
+  expect(line.hasAttribute('marker-start')).toBe(false); expect(line.hasAttribute('marker-end')).toBe(true);
+});

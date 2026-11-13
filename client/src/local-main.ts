@@ -22,6 +22,7 @@ const overrides = new Map<bigint, { x: number; y: number }>();
 let board: LocalBoard | undefined;
 let events: EventSource | undefined;
 let busy = false;
+let boardSelection = 0;
 let editorRevision = -1;
 let editorId = '';
 let editorDirty = false;
@@ -136,21 +137,26 @@ function inspector() {
 }
 async function mutate(operations: LocalOperation[], expected = board?.revision, record = true) {
   if (!board || busy) throw new Error('UNAVAILABLE: wait for the current save before editing again');
-  const before = graph(board), slug = board.slug;
+  const before = graph(board), slug = board.slug, selected = boardSelection;
   busy = true; say('Saving…');
   try {
     const result = await call<LocalBoard>({ action: 'apply_board', board: slug, revision: expected, operations });
-    if (board.slug === slug && record && operations.some(op => op.type.startsWith('node.') || op.type.startsWith('edge.') || op.type === 'element.delete')) {
+    if (boardSelection === selected && board.slug === slug && record && operations.some(op => op.type.startsWith('node.') || op.type.startsWith('edge.') || op.type === 'element.delete')) {
       undo.push({ before, after: graph(result) }); if (undo.length > 30) undo.shift(); redo.length = 0;
     }
-    if (board.slug === slug && result.revision >= board.revision) board = result;
-    say('Saved');
+    if (boardSelection === selected && board.slug === slug && result.revision >= board.revision) board = result;
+    if (boardSelection === selected) say('Saved');
   }
-  catch (error) { const latest = await call<LocalBoard>({ action: 'read_board', board: slug }); if (board.slug === slug && latest.revision >= board.revision) board = latest; throw error; }
+  catch (error) { const latest = await call<LocalBoard>({ action: 'read_board', board: slug }); if (boardSelection === selected && board.slug === slug && latest.revision >= board.revision) board = latest; throw error; }
   finally { busy = false; render(); inspector(); }
 }
 async function open(slug: string) {
-  board = await call<LocalBoard>({ action: 'read_board', board: slug });
+  const selected = ++boardSelection;
+  const opened = await call<LocalBoard>({ action: 'read_board', board: slug });
+  if (selected !== boardSelection) return;
+  board = opened;
+  element<HTMLSelectElement>('boards').value = slug;
+  drag = undefined;
   traffic.reset();
   history.replaceState(null, '', boardHref({ app: location.origin, slug, db: 'local', home: 'local' }));
   selection.clear(); selectedEdges.clear(); overrides.clear(); render(); inspector();
@@ -182,8 +188,9 @@ async function restore(backwards: boolean) {
   const from = backwards ? undo : redo, to = backwards ? redo : undo, entry = from[from.length - 1];
   if (!entry) return;
   if (JSON.stringify(graph(board)) !== JSON.stringify(backwards ? entry.after : entry.before)) { say('Graph changed elsewhere; undo would overwrite those edits'); return; }
+  const selected = boardSelection;
   await mutate([{ type: 'graph.restore', ...(backwards ? entry.before : entry.after) }], board.revision, false);
-  from.pop(); to.push(entry);
+  if (selected === boardSelection) { from.pop(); to.push(entry); }
 }
 element('undo').onclick = () => run(() => restore(true));
 element('redo').onclick = () => run(() => restore(false));
