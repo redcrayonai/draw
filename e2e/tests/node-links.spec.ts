@@ -7,7 +7,6 @@ import { test, expect, boardLink, nodes, openBoard, palette, shareBoard } from '
 
 const NONE = { none: [] };
 const node = (page: Page, label: string) => nodes(page).filter({ hasText: label }).first();
-const edges = (page: Page) => page.locator('#world .layer-edges .edge, #world g.edge');
 
 /** Select a node near its top edge. An external node's body is unfilled and takes no pointer events itself:
  *  the canvas picks by position, so the press only has to land there (and clear of a resting cursor). */

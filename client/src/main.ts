@@ -1768,7 +1768,14 @@ async function boot(conn: DbConnection, identityHex: string, signedIn: boolean):
         crayon: crayonUi.crayon,
         outside: id => depthFrame() !== null && id !== depthFrame() && !depthInside.has(id),
         stepOut: () => stepOut(),
-        stepIn: id => openLinked(id) || stepInto(id),
+        // A node can be a frame and a link at once. Its layers glyph steps in and its link glyph opens the
+        // board; Enter and a double-click step in when there is something to step into, else follow the link.
+        stepIn: (id, glyph) => (glyph === 'layers' ? stepInto(id) : glyph === 'link' ? openLinked(id) : stepInto(id) || openLinked(id)),
+        edgeOutside: id => {
+          if (depthFrame() === null) return false;
+          const edge = getEdges().find(e => e.id === id);
+          return edge !== undefined && !(depthInside.has(edge.fromNode) && depthInside.has(edge.toNode));
+        },
         quickAdd: (nodeId, side, at) => quickAdd(nodeId, side, at),
       });
       // Chart hover: select mode only, never during a gesture or an edit.
@@ -1915,9 +1922,12 @@ async function boot(conn: DbConnection, identityHex: string, signedIn: boolean):
         palette.open();
       };
       /** A new node on `side` of `from`, joined to it by an edge: a plain one, or one that links `target`. */
-      const addBeside = async (from: Node, side: Side, target?: { id: bigint; name: string }) => {
+      const addBeside = async (fromId: bigint, side: Side, target?: { id: bigint; name: string }) => {
         const size = { w: 160, h: 80 };
         const here = boardId, writes = ops;
+        // Read the node now, not when the menu opened: someone may have moved it, or deleted it, since.
+        const from = getNodes().find(n => n.id === fromId);
+        if (!from) return;
         try {
           // A link node is stored as plain "Board": the board's name is never written onto this board,
           // where everyone who reads it would see it. Each reader is shown the name from their own link
@@ -1937,11 +1947,10 @@ async function boot(conn: DbConnection, identityHex: string, signedIn: boolean):
       const quickAddEl = document.getElementById('quick-add') as HTMLElement;
       let closeQuickAdd = () => {};
       const quickAdd = (nodeId: bigint, side: Side, at: { x: number; y: number }) => {
-        const from = getNodes().find(n => n.id === nodeId);
-        if (!from || !canDraw()) return;
+        if (!getNodes().some(n => n.id === nodeId) || !canDraw()) return;
         closeQuickAdd = openQuickAdd(quickAddEl, at, [
-          { label: 'Add connected node', hint: 'a new node on this side, joined by an edge', run: () => { void addBeside(from, side); } },
-          { label: 'Link a board\u2026', hint: 'a node on this side that opens another board', run: () => pickBoard(target => { void addBeside(from, side, target); }) },
+          { label: 'Add connected node', hint: 'a new node on this side, joined by an edge', run: () => { void addBeside(nodeId, side); } },
+          { label: 'Link a board\u2026', hint: 'a node on this side that opens another board', run: () => pickBoard(target => { void addBeside(nodeId, side, target); }) },
         ]);
       };
       // Managers can rename and delete; versioned boards are named by their history.

@@ -128,8 +128,12 @@ export interface EditorDeps {
   outside?: (id: bigint) => boolean;
   /** Esc with nothing else to put down: step out one frame. False when the view is on the whole board. */
   stepOut?: () => boolean;
-  /** Enter on one selected node: open the board it links, else step inside it. False when it does neither. */
-  stepIn?: (id: bigint) => boolean;
+  /** Go into a node: step inside a frame, or open the board a link node links. `glyph` when the press was
+   *  on one of the two glyphs, which then does only its own; Enter and a double-click pass none. False when
+   *  the node is neither. */
+  stepIn?: (id: bigint, glyph?: 'layers' | 'link') => boolean;
+  /** An edge outside the frame the reader stepped into: drawn dimmed, and not picked by a click. */
+  edgeOutside?: (id: bigint) => boolean;
   /** A click on a node's side handle (quick-add.ts): offer what to add on that side. `at` is in client pixels. */
   quickAdd?: (nodeId: bigint, side: Side, at: { x: number; y: number }) => void;
 }
@@ -190,8 +194,8 @@ export class Editor {
   // Pointer capture retargets pointerup, which suppresses native dblclick —
   // detect double-clicks manually from consecutive pointerdowns.
   private lastClick: { time: number; x: number; y: number; nodeId: bigint | null } | null = null;
-  /** A press that began on a node's layers or link glyph, until it is let go. */
-  private glyphPress: { nodeId: bigint; x: number; y: number } | null = null;
+  /** A press that began on a node's layers or link glyph, until that pointer is let go. */
+  private glyphPress: { nodeId: bigint; glyph: 'layers' | 'link'; pointerId: number; x: number; y: number } | null = null;
   /** Fingers on the canvas, by pointer id: a second one turns the gesture into a pinch. */
   private touches = new Map<number, { x: number; y: number }>();
 
@@ -991,6 +995,8 @@ export class Editor {
       // about to start reads the world point under the pointer, and the
       // canvas must not keep sliding under a drag, marquee or pan (G7).
       viewport.stopAnimation();
+      // Any new press ends a glyph press still held: a second finger down makes it a pinch, never a click on the glyph.
+      this.glyphPress = null;
       if (this.editInput) {
         return; // input blur handles commit
       }
@@ -1040,7 +1046,7 @@ export class Editor {
 
       // Edge selection: the fat transparent twin (or the label) carries the id.
       const edgeHit = (evt.target as Element).closest<SVGElement>('[data-edge-id]');
-      if (edgeHit?.dataset.edgeId && evt.button === 0 && !this.panArmed) {
+      if (edgeHit?.dataset.edgeId && evt.button === 0 && !this.panArmed && !this.deps.edgeOutside?.(BigInt(edgeHit.dataset.edgeId))) {
         const id = BigInt(edgeHit.dataset.edgeId);
         if (id < 0n) return;
         if (evt.shiftKey) {
@@ -1065,7 +1071,9 @@ export class Editor {
       // on the glyph (the second pointerup listener below).
       const glyph = evt.button === 0 ? (evt.target as Element).closest('.node-layers, .node-link') : null;
       const glyphNode = glyph?.closest<SVGGElement>('[data-id]')?.dataset.id;
-      this.glyphPress = glyphNode === undefined ? null : { nodeId: BigInt(glyphNode), x: evt.clientX, y: evt.clientY };
+      if (glyph && glyphNode !== undefined) {
+        this.glyphPress = { nodeId: BigInt(glyphNode), glyph: glyph.classList.contains('node-link') ? 'link' : 'layers', pointerId: evt.pointerId, x: evt.clientX, y: evt.clientY };
+      }
       // A handle has its own click (quick add): two of them are never a double-click on the node under it.
       if (evt.button === 0 && !this.panArmed && !evt.shiftKey && !(evt.target as Element).closest('.edge-handle')) {
         const node = this.nodeAt(w.x, w.y);
@@ -1327,9 +1335,10 @@ export class Editor {
     const glyphClick = (evt: PointerEvent) => {
       const press = this.glyphPress;
       this.glyphPress = null;
-      if (press === null || Math.hypot(evt.clientX - press.x, evt.clientY - press.y) >= tapSlop(evt)) return;
+      if (press === null || press.pointerId !== evt.pointerId || Math.hypot(evt.clientX - press.x, evt.clientY - press.y) >= tapSlop(evt)) return;
       if (this.deps.outside?.(press.nodeId)) return;
-      if (this.deps.stepIn?.(press.nodeId)) this.lastClick = null; // not the first half of a double-click
+      // Each glyph does its own thing: on a node that is a frame and a link, layers steps in and the link opens.
+      if (this.deps.stepIn?.(press.nodeId, press.glyph)) this.lastClick = null; // not the first half of a double-click
     };
     svg.addEventListener('pointerup', evt => {
       this.touches.delete(evt.pointerId);

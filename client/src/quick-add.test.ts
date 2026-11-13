@@ -33,6 +33,16 @@ describe('quick add', () => {
     expect(placeBeside(node, 'bottom', size, [node, under])).toEqual({ x: under.x + 160 + 32, y: under.y });
   });
 
+  it('clears a whole column however many are stacked there, and a tall node in one move', () => {
+    const column = Array.from({ length: 40 }, (_, i) => ({ x: 560 + BESIDE_GAP, y: 200 + i * (80 + 32), ...size }));
+    const spot = placeBeside(node, 'right', size, [node, ...column]);
+    expect(spot).toEqual({ x: 560 + BESIDE_GAP, y: 200 + 40 * (80 + 32) });
+    expect(column.some(c => spot.y < c.y + c.h && spot.y + 80 > c.y)).toBe(false);
+    // Narrower than the new node, so it is something in the way and not a frame around it.
+    const tall = { x: 700, y: 100, w: 60, h: 900 };
+    expect(placeBeside(node, 'right', size, [node, tall])).toEqual({ x: 560 + BESIDE_GAP, y: 1000 + 32 });
+  });
+
   it('a frame drawn around both is not in the way', () => {
     const frame = { x: 0, y: 0, w: 2000, h: 1000 };
     expect(placeBeside(node, 'right', size, [frame, node])).toEqual({ x: 560 + BESIDE_GAP, y: 200 });

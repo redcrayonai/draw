@@ -370,16 +370,28 @@ export class Ops {
    */
   async createConnectedAction(fields: NodeFields, from: bigint, targetBoardId?: bigint): Promise<bigint> {
     const intent = this.conn.db.visibleArchitectureVersion?.boardId.find(fields.boardId)?.assertionMode === 'intent';
-    const make = () => captureInsert(
-      this.conn.db.visibleNode,
-      row => row.boardId === fields.boardId && row.label === fields.label && row.x === fields.x && row.y === fields.y && row.w === fields.w && row.h === fields.h,
-      () => this.conn.reducers.createConnectedNode({
-        boardId: fields.boardId, label: fields.label, sublabel: fields.sublabel, x: fields.x, y: fields.y, w: fields.w, h: fields.h,
-        token: fields.token, focal: fields.focal, kind: fields.kind, doc: fields.doc, imported: fields.imported,
-        shape: fields.shape, color: fields.color, strokeStyle: fields.strokeStyle, size: fields.size,
-        fromNode: this.cur('node', from), edgeLabel: '', evidence: intent ? '' : `human:${this.myIdentityHex}`, targetBoardId,
-      })
-    );
+    const evidence = intent ? '' : `human:${this.myIdentityHex}`;
+    // Captured by its edge, not its node. Quick add puts the node at a spot worked out from `from`, so
+    // two people adding on the same side of one node ask for identical nodes, and a match on the node's
+    // fields could take the other person's (undo would then delete theirs). The edge carries this
+    // client's identity in its evidence, which no one else's has. On a branch evidence is empty and the
+    // match is from-node and label only, as weak as every other capture here.
+    const make = async (): Promise<bigint> => {
+      const fromNode = this.cur('node', from);
+      const edgeId = await captureInsert(
+        this.conn.db.visibleEdge,
+        row => row.boardId === fields.boardId && row.fromNode === fromNode && row.label === '' && row.evidence === evidence,
+        () => this.conn.reducers.createConnectedNode({
+          boardId: fields.boardId, label: fields.label, sublabel: fields.sublabel, x: fields.x, y: fields.y, w: fields.w, h: fields.h,
+          token: fields.token, focal: fields.focal, kind: fields.kind, doc: fields.doc, imported: fields.imported,
+          shape: fields.shape, color: fields.color, strokeStyle: fields.strokeStyle, size: fields.size,
+          fromNode, edgeLabel: '', evidence, targetBoardId,
+        })
+      );
+      const edge = this.conn.db.visibleEdge.id.find(edgeId);
+      if (!edge) throw new Error('the new node was removed before it arrived');
+      return edge.toNode;
+    };
     const id = await make();
     this.history.push({
       label: `create "${fields.label}"`,

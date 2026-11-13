@@ -217,6 +217,8 @@ export class Viewport {
    */
   fit(bounds: Bounds | null, insets: Insets = NO_INSETS, ms = 0): void {
     if (!bounds) {
+      // Nothing to frame: a zoom still on its way to bounds that are gone stops where it is.
+      this.stopAnimation();
       return;
     }
     const rect = this.svg.getBoundingClientRect();

@@ -110,6 +110,15 @@ describe('Viewport.stopAnimation (G7)', () => {
       vp.stopAnimation();
       flush(performance.now() + 400);
       expect(vp.scale).toBe(mid);
+
+      // A fit to nothing (the board emptied under the zoom) stops it too, where it is.
+      vp.fit(frame, NONE, 360);
+      flush(performance.now() + 60);
+      const partway = vp.scale;
+      vp.fit(null, NONE, 360);
+      expect(frames.size).toBe(0);
+      flush(performance.now() + 400);
+      expect(vp.scale).toBe(partway);
     } finally {
       vi.unstubAllGlobals();
     }

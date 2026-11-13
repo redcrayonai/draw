@@ -1,5 +1,5 @@
 import type { Page } from '@playwright/test';
-import { test, expect, boardLink, nodes, palette, type Stack } from '../fixtures';
+import { test, expect, boardLink, fingers, nodes, palette, type Stack } from '../fixtures';
 
 // Stepping inside a frame (client/src/depth.ts): one board read at several depths. A node with nodes
 // drawn inside it is a frame; stepping in frames the view on it, dims the rest and shows the depth
@@ -169,4 +169,63 @@ test('a frame that stops being one steps the view out, and depth is never part o
   await page.reload();
   await expect(nodes(page)).toHaveCount(8);
   await expect(trail(page)).toBeHidden();
+});
+
+test('a frame that is also a board link: each glyph does its own; dimmed edges and a pinch do nothing', async ({ stack, account }) => {
+  const token = stack.accountToken();
+  const name = `Acme ${Date.now()}`, other = `billing-${Date.now()}`;
+  const board = await seedDepthBoard(stack, token, name);
+  await stack.callReducer(token, 'create_board', [other]);
+  const [target] = await stack.sql(`SELECT id FROM board WHERE name = '${other}'`);
+  const id = Object.fromEntries((await stack.sql(`SELECT id, label FROM node WHERE board_id = ${board}`)).map(row => [String(row.label), Number(row.id)]));
+  await stack.callReducer(token, 'link_node_board', [id.Payments, Number(target.id)]);
+  const page = await account(token);
+  await page.goto(await boardLink(stack, board));
+  await expect(nodes(page)).toHaveCount(9);
+  const payments = node(page, 'Payments');
+  await expect(payments.locator('.node-layers')).toHaveCount(1);
+  await expect(payments.locator('.node-link')).toHaveCount(1);
+
+  // The layers glyph steps inside, though the node links a board; Enter and a double-click do too.
+  await payments.locator('.node-layers').click();
+  await expect(crumbs(page)).toHaveText([name, 'Payments']);
+  await page.keyboard.press('Escape');
+  await expect(trail(page)).toBeHidden();
+  await pick(page, 'Payments');
+  await page.keyboard.press('Enter');
+  await expect(crumbs(page)).toHaveText([name, 'Payments']);
+  await expect(page.locator('#board-title')).toHaveText(name);
+
+  // Inside Payments, the edge from ledger out to Identity is dimmed: a press on it selects nothing.
+  // The same press on the whole board does select it, so this is the frame's doing.
+  const [crossing] = await stack.sql(`SELECT id FROM edge WHERE board_id = ${board} AND from_node = ${id.ledger} AND to_node = ${id.Identity}`);
+  const press = async () => {
+    const hit = page.locator(`#world .edge-hit[data-edge-id="${crossing.id}"]`);
+    await hit.dispatchEvent('pointerdown', { button: 0, pointerId: 7, pointerType: 'mouse', isPrimary: true, bubbles: true, clientX: 5, clientY: 5 });
+    await hit.dispatchEvent('pointerup', { button: 0, pointerId: 7, pointerType: 'mouse', isPrimary: true, bubbles: true, clientX: 5, clientY: 5 });
+  };
+  await press();
+  await expect(page.locator('#toolbar')).toBeHidden();
+  await page.keyboard.press('Escape');
+  await expect(trail(page)).toBeHidden();
+  await press();
+  await expect(page.locator('#toolbar')).toBeVisible();
+  await page.keyboard.press('Escape');
+
+  // A finger on the layers glyph is a tap that steps in; with a second finger down it is a pinch, and steps nowhere.
+  const glyph = (await node(page, 'checkout-api').locator('.node-layers').boundingBox())!;
+  const on = { x: glyph.x + glyph.width / 2, y: glyph.y + glyph.height / 2 };
+  await fingers(page, [0, 20, 40].map(d => [on, { x: on.x + 200 + d, y: on.y + 150 }]));
+  await expect(trail(page)).toBeHidden();
+  await page.locator('#hud-fit').click(); // the pinch zoomed the board: put the glyph back where a finger can find it
+  const again = (await node(page, 'checkout-api').locator('.node-layers').boundingBox())!;
+  const tap = { x: again.x + again.width / 2, y: again.y + again.height / 2 };
+  await fingers(page, [[tap], [tap]]);
+  await expect(crumbs(page)).toHaveText([name, 'Payments', 'checkout-api']);
+  await crumbs(page).first().click();
+  await expect(trail(page)).toBeHidden();
+
+  // The link glyph opens the board the frame links.
+  await payments.locator('.node-link').click();
+  await expect(page.locator('#board-title')).toHaveText(other);
 });

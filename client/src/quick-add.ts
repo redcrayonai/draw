@@ -20,8 +20,8 @@ export function sideOf(node: Box, at: { x: number; y: number }): Side {
 const overlaps = (a: Box, b: Box) => a.x < b.x + b.w && a.x + a.w > b.x && a.y < b.y + b.h && a.y + a.h > b.y;
 
 /**
- * Where a `size` node goes on `side` of `node`: centred on it, BESIDE_GAP away, then stepped along
- * the side (down for left and right, right for top and bottom) past whatever is already drawn there.
+ * Where a `size` node goes on `side` of `node`: centred on it, BESIDE_GAP away, then moved along the
+ * side (down for left and right, right for top and bottom) clear of whatever is already drawn there.
  * A node the new one would sit wholly inside (a frame around both) is not in the way.
  */
 export function placeBeside(node: Box, side: Side, size: { w: number; h: number }, others: readonly Box[]): { x: number; y: number } {
@@ -33,9 +33,13 @@ export function placeBeside(node: Box, side: Side, size: { w: number; h: number 
   };
   // Strictly larger: a node of the same size on the same spot is the thing to step past, not a frame.
   const inside = (outer: Box) => outer.w * outer.h > spot.w * spot.h && outer.x <= spot.x && outer.y <= spot.y && outer.x + outer.w >= spot.x + spot.w && outer.y + outer.h >= spot.y + spot.h;
-  for (let tries = 0; tries < 24 && others.some(other => overlaps(spot, other) && !inside(other)); tries++) {
-    if (across) spot.y += size.h + STEP_GAP;
-    else spot.x += size.w + STEP_GAP;
+  // Each pass moves past the far edge of everything in the way, so nothing passed is met again:
+  // it ends within one pass per node, however many are stacked there.
+  for (let pass = 0; pass <= others.length; pass++) {
+    const blocking = others.filter(other => overlaps(spot, other) && !inside(other));
+    if (blocking.length === 0) break;
+    if (across) spot.y = Math.max(...blocking.map(other => other.y + other.h)) + STEP_GAP;
+    else spot.x = Math.max(...blocking.map(other => other.x + other.w)) + STEP_GAP;
   }
   return { x: snap(spot.x), y: snap(spot.y) };
 }
