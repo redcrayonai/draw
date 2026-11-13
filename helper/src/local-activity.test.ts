@@ -46,3 +46,18 @@ it('caps distinct directional edge buckets', () => {
   for (let i = 0; i < 1000; i++) expect(activity.accept(large, services, [{ from: 'root', to: String(i) }]).accepted).toBe(1);
   expect(activity.accept(large, services, [{ from: 'root', to: '1000' }]).rejected).toEqual({ 'edge window limit': 1 });
 });
+
+it('drops pending and published traffic when an edge is repointed or removed', () => {
+  const frames: LocalTrafficWindow[] = [], activity = new LocalActivity(w => frames.push(w), 0);
+  activity.accept(board, mapping, [{ from: 'api', to: 'db' }], 10);
+  activity.flush(20);
+  activity.accept(board, mapping, [{ from: 'api', to: 'db' }], 30);
+  const changed = { ...board, nodes: [...board.nodes, { id: '4' }], edges: [{ id: '3', from: '1', to: '4' }] } as LocalBoard;
+  activity.reconcile(changed);
+  expect(activity.snapshot().traffic).toEqual([]);
+  activity.accept(changed, { api: '1', db: '4' }, [{ from: 'api', to: 'db' }], 40);
+  activity.flush(50);
+  expect(activity.snapshot().traffic).toEqual([expect.objectContaining({ edge: '3', count: 1 })]);
+  activity.reconcile({ ...changed, edges: [] });
+  expect(frames.at(-1)?.traffic).toEqual([]);
+});

@@ -1,4 +1,5 @@
 /** Local wire/storage contract. IDs are strings, including across browser and tools. */
+export const LOCAL_REQUEST_BYTES = 1024 * 1024;
 export type LocalRef = { path: string; start: number; end: number };
 export type LocalNode = { id: string; label: string; description: string; x: number; y: number; w: number; h: number; kind: 'service' | 'datastore' | 'external' | 'boundary' | 'note' | 'text'; refs: LocalRef[] };
 export type LocalEdge = { id: string; from: string; to: string; label: string; description: string; direction: 'forward' | 'both' | 'none'; refs: LocalRef[] };

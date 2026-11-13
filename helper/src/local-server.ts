@@ -10,6 +10,7 @@ import { boardHref } from '../../shared/board-link';
 import { LocalChat } from './local-chat';
 import { standalone } from './local-runtime';
 import { LocalActivity } from './local-activity';
+import { LOCAL_REQUEST_BYTES } from '../../shared/local';
 
 const unavailable = (message: string): never => { throw new Error(`UNAVAILABLE: ${message}`); };
 export const MAX_LOCAL_VIEWER_BYTES = 4 * 1024 * 1024;
@@ -62,7 +63,7 @@ export async function startLocal(options: { repo: string; directory: string; ass
         const chunks: Buffer[] = []; let size = 0;
         for await (const chunk of request) {
           size += chunk.length;
-          if (size > 1024 * 1024) { response.writeHead(413); response.end('REJECTED: request too large'); request.destroy(); return; }
+          if (size > LOCAL_REQUEST_BYTES) { response.writeHead(413); response.end('REJECTED: request too large'); request.destroy(); return; }
           chunks.push(chunk);
         }
         const input = JSON.parse(Buffer.concat(chunks).toString('utf8'));
@@ -72,7 +73,7 @@ export async function startLocal(options: { repo: string; directory: string; ass
           case 'list_boards': result = store.list(); break;
           case 'open_board': result = withLink(store.create(input.name, repo)); break;
           case 'read_board': result = withLink(store.read(input.board)); break;
-          case 'apply_board': result = store.mutate(input.board, input.revision, input.operations); broadcast(input.board); break;
+          case 'apply_board': result = store.mutate(input.board, input.revision, input.operations); activities.get(input.board)?.reconcile(store.read(input.board)); broadcast(input.board); break;
           case 'attach_conversation': result = await chat.attach(input.board, input.threadId, input.socketPath); break;
           case 'connect_local_agent':
             if (!['claude-code', 'pi'].includes(input.agent)) throw new Error('REJECTED: unsupported local agent');
@@ -151,7 +152,12 @@ export async function startLocal(options: { repo: string; directory: string; ass
       for (const response of viewers.keys()) if (!sendLocalEvent(response, ': heartbeat\n\n')) viewers.delete(response);
     }, 15000);
     heartbeat.unref();
-    const trafficTimer = setInterval(() => { for (const activity of activities.values()) activity.flush(); }, 1000);
+    const trafficTimer = setInterval(() => {
+      for (const [slug, activity] of activities) {
+        activity.flush();
+        if (activity.snapshot().stale) activities.delete(slug);
+      }
+    }, 1000);
     trafficTimer.unref();
     return { origin, token, store, url: `${store.list()[0] ? boardHref({ app: origin, slug: store.list()[0].slug, db: 'local', home: 'local' }) : `${origin}/#local`}&key=${token}`, close: async () => {
       clearInterval(heartbeat);

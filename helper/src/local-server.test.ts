@@ -79,3 +79,13 @@ it('returns a usable private board link without storing its capability in the bo
   expect((await call({ action: 'read_board', board: board.slug })).value.connection.session.id).toBe('pi:current-pi');
   expect(JSON.stringify(app.store.read(board.slug))).not.toContain(app.token);
 });
+
+it('reclaims stale activity slots so later boards can use traffic', async () => {
+  const { call } = await setup();
+  for (let i = 0; i < 32; i++) {
+    const { value: board } = await call({ action: 'open_board', name: `Board ${i}` });
+    expect((await call({ action: 'activity', board: board.slug, mapping: {}, events: [], flush: true })).status).toBe(200);
+  }
+  const { value: board } = await call({ action: 'open_board', name: 'Next board' });
+  await vi.waitFor(async () => expect((await call({ action: 'activity', board: board.slug, mapping: {}, events: [], flush: true })).status).toBe(200), { timeout: 2000 });
+});

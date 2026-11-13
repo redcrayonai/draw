@@ -87,6 +87,8 @@ test('packaged local board: tool edits, browser drag, review, concurrent tab and
       { jsonrpc: '2.0', id: 3, method: 'tools/call', params: { name: 'read_board', arguments: { board: board.slug } } },
     ].map(v => JSON.stringify(v)).join('\n'));
     expect(bridge.code).toBe(0);
+    const oversized = await cli(['local-mcp'], JSON.stringify({ jsonrpc: '2.0', id: 99, method: 'tools/call', params: { padding: 'x'.repeat(1024 * 1024) } }));
+    expect(oversized.code).not.toBe(0); expect(oversized.stderr).toContain('input line exceeds the size limit');
     const frames = bridge.stdout.trim().split('\n').map(line => JSON.parse(line));
     expect(frames[1].result.tools.some((t: { name: string }) => t.name === 'attach_conversation')).toBe(true);
     expect(JSON.parse(frames[2].result.content[0].text).nodes).toHaveLength(2);

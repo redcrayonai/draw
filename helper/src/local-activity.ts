@@ -4,6 +4,7 @@ import type { LocalBoard } from '../../shared/local';
 type Bucket = { edge: string; reverse: boolean; count: number; errors: number; durations: number[] };
 export class LocalActivity {
   private buckets = new Map<string, Bucket>();
+  private endpoints = new Map<string, string>();
   private began: number;
   private last = 0;
   private rateStart = 0;
@@ -13,8 +14,17 @@ export class LocalActivity {
     this.began = now; this.latest = { at: now, duration: 0, stale: true, traffic: [] };
   }
   snapshot() { return this.latest; }
+  reconcile(board: LocalBoard) {
+    const endpoints = new Map(board.edges.map(edge => [edge.id, `${edge.from}:${edge.to}`]));
+    const changed = new Set([...this.endpoints].filter(([id, pair]) => endpoints.get(id) !== pair).map(([id]) => id));
+    this.endpoints = endpoints;
+    for (const [key, bucket] of this.buckets) if (changed.has(bucket.edge)) this.buckets.delete(key);
+    const traffic = this.latest.traffic.filter(item => !changed.has(item.edge));
+    if (traffic.length !== this.latest.traffic.length) { this.latest = { ...this.latest, traffic }; this.publish(this.latest); }
+  }
   accept(board: LocalBoard, mapping: unknown, events: unknown[], now = Date.now()) {
     if (!mapping || typeof mapping !== 'object' || Array.isArray(mapping) || Object.keys(mapping).length > 5000 || Object.values(mapping).some(v => typeof v !== 'string') || !Array.isArray(events) || events.length > LIMITS.batch) throw new Error('REJECTED: invalid activity mapping or batch');
+    this.reconcile(board);
     if (now - this.rateStart >= 1000) { this.rateCount = 0; this.rateStart = now; }
     const services = mapping as Record<string, string>;
     let accepted = 0; const rejected: Record<string, number> = {};

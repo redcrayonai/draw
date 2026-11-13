@@ -4,6 +4,7 @@ import { once } from 'node:events';
 import { localDirectory } from './local-path';
 import { localLines } from './local-lines';
 import { enforceToolPermissions } from './permissions';
+import { LOCAL_REQUEST_BYTES } from '../../shared/local';
 
 const str = { type: 'string' };
 const board = { board: str };
@@ -30,7 +31,9 @@ export function localEndpoint(args: string[]) {
   return endpoint as { origin: string; token: string };
 }
 export async function localCall(endpoint: { origin: string; token: string }, input: unknown, signal = AbortSignal.timeout(30000)) {
-  const response = await fetch(`${endpoint.origin}/api/call`, { method: 'POST', headers: { Authorization: `Bearer ${endpoint.token}`, 'Content-Type': 'application/json' }, body: JSON.stringify(input), signal, redirect: 'error' });
+  const body = JSON.stringify(input);
+  if (Buffer.byteLength(body) > LOCAL_REQUEST_BYTES) throw new Error('REJECTED: local request exceeds 1 MB; split it into smaller batches');
+  const response = await fetch(`${endpoint.origin}/api/call`, { method: 'POST', headers: { Authorization: `Bearer ${endpoint.token}`, 'Content-Type': 'application/json' }, body, signal, redirect: 'error' });
   const result = await response.json() as any;
   if (!response.ok) throw new Error(result.error ?? 'UNAVAILABLE: local request failed');
   return result;
@@ -39,7 +42,7 @@ export async function runLocalMcp(args: string[]) {
   // Plugin MCP processes start in the plugin directory, not the user's checkout.
   const perRepo = args.length === 1 && args[0] === '--per-repo';
   const tools = perRepo ? localTools.map(tool => ({ ...tool, inputSchema: schema({ ...tool.inputSchema.properties, repo: { type: 'string', description: 'Absolute path of the current repository. Pass it on every call.' } }, [...tool.inputSchema.required, 'repo']) })) : localTools;
-  for await (const line of localLines(process.stdin, 1024 * 1024, message => process.stderr.write(`${message}\n`))) {
+  for await (const line of localLines(process.stdin, LOCAL_REQUEST_BYTES, message => { throw new Error(message); })) {
     let request: any;
     let answer: object;
     try { request = JSON.parse(line); }
