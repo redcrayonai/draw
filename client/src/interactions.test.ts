@@ -92,6 +92,19 @@ describe('duplicating', () => {
     await vi.waitFor(() => expect(duplicateNodesAction).toHaveBeenCalledWith([node], undefined));
     expect(document.getElementById('inline-edit')).toBeNull();
   });
+
+  it('⌘D while naming copies the named node even if the selection moves on during the save', async () => {
+    const { node, editor, updateNodeAction, duplicateNodesAction } = setup();
+    let saved!: () => void;
+    updateNodeAction.mockReturnValueOnce(new Promise<void>(resolve => { saved = resolve; }));
+    editor.startInlineEdit(node, 'label');
+    const input = document.getElementById('inline-edit') as HTMLTextAreaElement;
+    input.value = 'db-primary';
+    input.dispatchEvent(new KeyboardEvent('keydown', { key: 'd', metaKey: true, bubbles: true }));
+    editor.selectNodes([]);
+    saved();
+    await vi.waitFor(() => expect(duplicateNodesAction).toHaveBeenCalledWith([node], undefined));
+  });
 });
 
 describe('resizing fitted nodes', () => {

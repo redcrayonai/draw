@@ -947,7 +947,7 @@ export class Ops {
         // A chart copies through create_chart with its data. Focal is never
         // copied; the source (even 'sample') travels with the data.
         if (nodes[i].kind === 'chart') {
-          await this.copyChart(nodes[i], chartRows.get(nodes[i].id), 16, false, created);
+          await this.copyChart({ ...nodes[i], x: fields[i].x, y: fields[i].y }, chartRows.get(nodes[i].id), 0, false, created);
         } else {
           created(await this.createNode(fields[i]));
         }

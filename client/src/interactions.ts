@@ -904,12 +904,11 @@ export class Editor {
     } else if (this.mode.kind === 'dragNodes' && this.mode.copy && this.mode.moved) {
       const { orig, copy } = this.mode;
       for (const n of this.deps.getNodes()) {
-        const o = orig.get(n.id);
-        if (o === undefined) continue;
+        if (!orig.has(n.id)) continue;
         const r = this.rect(n);
         layer.append(el('rect', {
           class: 'copy-ghost',
-          x: String(o.x + copy.dx), y: String(o.y + copy.dy), width: String(r.w), height: String(r.h),
+          x: String(n.x + copy.dx), y: String(n.y + copy.dy), width: String(r.w), height: String(r.h),
         }));
       }
     } else if (this.mode.kind === 'drawEdge') {
@@ -1267,9 +1266,11 @@ export class Editor {
             this.mode.moved = true;
           }
           if (this.mode.copy) {
-            // Clamped like a move: no copy lands left of or above the origin.
-            const origs = [...this.mode.orig.values()];
-            this.mode.copy = { dx: Math.max(dx, -Math.min(...origs.map(o => o.x))), dy: Math.max(dy, -Math.min(...origs.map(o => o.y))) };
+            // Clamped like a move: no copy lands left of or above the origin. Copies are
+            // made from the stored rows, so the clamp and the ghost read those, not a glide frame.
+            const orig = this.mode.orig;
+            const rows = this.deps.getNodes().filter(n => orig.has(n.id));
+            this.mode.copy = { dx: Math.max(dx, -Math.min(...rows.map(n => n.x))), dy: Math.max(dy, -Math.min(...rows.map(n => n.y))) };
             this.deps.rerender();
             return;
           }
@@ -1392,7 +1393,7 @@ export class Editor {
           }
           if (mode.copy) {
             const { dx, dy } = mode.copy;
-            if (dx !== 0 || dy !== 0) this.duplicateSelection({ dx, dy });
+            if (dx !== 0 || dy !== 0) this.duplicateNodes(mode.orig.keys(), { dx, dy });
             this.deps.rerender();
             return;
           }
@@ -1639,7 +1640,7 @@ export class Editor {
       }
       if (meta && evt.key.toLowerCase() === 'd') {
         evt.preventDefault();
-        this.duplicateSelection();
+        this.duplicateNodes(this.selection);
         return;
       }
       if (evt.key === 'Delete' || evt.key === 'Backspace') {
@@ -1800,11 +1801,12 @@ export class Editor {
     void conn;
   }
 
-  /** ⌘D and ⌥-drag: copy the selected nodes by an offset, then select the copies. */
-  private duplicateSelection(offset?: { dx: number; dy: number }): void {
+  /** ⌘D and ⌥-drag: copy these nodes by an offset, then select the copies. */
+  private duplicateNodes(ids: Iterable<bigint>, offset?: { dx: number; dy: number }): void {
     if (this.topologyReadOnly) return;
     const duplicatedBoard = this.deps.boardId;
-    const sel = this.deps.getNodes().filter(n => this.selection.has(n.id));
+    const wanted = new Set(ids);
+    const sel = this.deps.getNodes().filter(n => wanted.has(n.id));
     if (sel.length === 0) return;
     void this.deps.ops
       .duplicateNodesAction(sel, offset)
@@ -2072,9 +2074,9 @@ export class Editor {
         evt.preventDefault();
         finish(true);
       } else if ((evt.metaKey || evt.ctrlKey) && evt.key.toLowerCase() === 'd') {
-        // ⌘D while naming: save the name, then copy the node with it.
+        // ⌘D while naming: save the name, then copy this node with it (the selection may have moved on).
         evt.preventDefault();
-        void (finish(true) ?? Promise.resolve()).then(() => this.duplicateSelection());
+        void (finish(true) ?? Promise.resolve()).then(() => this.duplicateNodes([node.id]));
       } else if (evt.key === 'Escape') {
         finish(false);
       }

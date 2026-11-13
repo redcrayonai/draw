@@ -430,6 +430,13 @@ describe('deleting and duplicating charts', () => {
     expect(f.charts.has(id)).toBe(true);
   });
 
+  it('a chart copy lands at the offset it is given, as an ⌥-drag asks', async () => {
+    const id = await ops.createChart(FIELDS);
+    const [copy] = await ops.duplicateNodesAction([f.node.rows.get(id)!], { dx: 200, dy: -40 });
+    const c = f.node.rows.get(copy)!;
+    expect([c.x, c.y]).toEqual([FIELDS.x + 200, FIELDS.y - 40]);
+  });
+
   it('duplicate of a mixed selection uses create_node for nodes and create_chart for charts, in order', async () => {
     const svc = service(f, 'api');
     const id = await ops.createChart(FIELDS);
