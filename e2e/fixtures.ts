@@ -129,7 +129,11 @@ export async function drawNode(page: Page, label: string) {
 
 export async function shareBoard(page: Page, mode: 'view' | 'edit') {
   await page.locator('#act-share').click();
-  await page.getByRole('switch', { name: 'Share with link' }).check();
+  // Not check(): any board update that lands right after the click repaints the switch from the
+  // stored state, so it can read off for a moment before the link's own row turns it on.
+  const toggle = page.getByRole('switch', { name: 'Share with link' });
+  if (!(await toggle.isChecked())) await toggle.click();
+  await expect(toggle).toBeChecked();
   const button = page.getByRole('button', { name: mode === 'edit' ? 'Can edit' : 'Can view', exact: true });
   await button.click();
   await expect(button).toHaveAttribute('aria-pressed', 'true');
