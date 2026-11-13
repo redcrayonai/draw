@@ -159,6 +159,7 @@ export const SENDER_ERRORS: readonly RegExp[] = [
   /^link code is invalid or expired$/,
   /^link code must be 32–128 characters of A-Z, a-z, 0-9, _ or -$/,
   /^link rule: cannot verify who created legacy dev board [^]*?; existing access was kept; ask the database owner to recover its ownership before linking$/,
+  /^link rule: link a node to another board that you can open$/,
   /^link rule: use an agent identity and an active owner account$/,
   /^link rule: use an agent identity to offer an agent link$/,
   /^mark [^]*? does not exist$/,

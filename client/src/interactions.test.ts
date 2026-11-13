@@ -161,12 +161,16 @@ describe('public examples are read only', () => {
     editor.syncChrome();
     expect(editor.selection.has(1n)).toBe(true);
     expect(editor.handles.size).toBe(0);
-    for (const button of document.querySelectorAll<HTMLButtonElement>('#toolbar button:not(#tb-more):not(#tb-library), .add-row')) {
+    for (const button of document.querySelectorAll<HTMLButtonElement>('#toolbar button:not(#tb-more):not(#tb-library):not(#tb-step-in):not(#tb-open-board), .add-row')) {
       expect(button.disabled, button.outerHTML).toBe(true);
     }
     // Saving to your own library writes nothing to the board: the button
     // agrees with ⇧L and ⌘K "Add selection to library".
     expect((document.getElementById('tb-library') as HTMLButtonElement).disabled).toBe(false);
+    // Stepping inside a frame only moves the view: a reader of a view-only board keeps it.
+    expect((document.getElementById('tb-step-in') as HTMLButtonElement).disabled).toBe(false);
+    // Following a board link is the same: it moves the view and writes nothing.
+    expect((document.getElementById('tb-open-board') as HTMLButtonElement).disabled).toBe(false);
     expect(document.getElementById('rail-hint')?.textContent).toBe('Public example. Explore the drawing or export it. Start a new board to draw.');
   });
 

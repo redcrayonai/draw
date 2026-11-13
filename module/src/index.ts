@@ -398,6 +398,17 @@ const tables = {
       icon: t.string(),
     }
   ),
+  // A node that points at another board ("Link a board"). Its own table and view, as nodeIcon: no
+  // column is added to node. The link grants nothing: the target keeps its own access, and
+  // visible_node_link names it only to a reader who can open it.
+  nodeLink: table(
+    {},
+    {
+      nodeId: t.u64().primaryKey(),
+      boardId: t.u64().index('btree'),
+      targetBoardId: t.u64().index('btree'),
+    }
+  ),
   // A chart pinned to the node or edge it measures, keyed by the chart's node
   // id. Its own table: visible_chart's public row shape is frozen. The row goes
   // with the chart and with its target.
@@ -985,8 +996,7 @@ export const visibleRows = spacetimedb.exportGroup({
   }),
   // Never on public boards: a published board must not announce "auth-svc is vulnerable to CVE X".
   visibleThreat: spacetimedb.view({ name: 'visible_threat', public: true }, t.array(tables.threat.rowType), ctx => {
-    const open = openBoardIds(ctx);
-    return [...linkLayerBoardIds(ctx, 'threats')].filter(id => open?.has(id) ?? true).flatMap(id => [...ctx.db.threat.boardId.filter(id)]);
+    return [...linkLayerBoardIds(ctx, 'threats', undefined, openBoardIds(ctx))].flatMap(id => [...ctx.db.threat.boardId.filter(id)]);
   }),
   // Marks and their waiters: members and edit-link visitors (markBoardIds); read cursors: the sender's own.
   visibleMark: spacetimedb.view({ name: 'visible_mark', public: true }, t.array(tables.mark.rowType), ctx => {
@@ -1010,12 +1020,11 @@ export const visibleRows = spacetimedb.exportGroup({
   }),
   // A session's file list is every path the owner's repo tracks; its readers (the agent, the MCP server) are members.
   visibleRepoFile: spacetimedb.view({ name: 'visible_repo_file', public: true }, t.array(tables.repoFile.rowType), ctx => {
-    const open = openBoardIds(ctx);
-    return [...memberBoardIds(ctx)].filter(id => open?.has(id) ?? true).flatMap(id => [...ctx.db.repoFile.boardId.filter(id)]);
+    return [...memberBoardIds(ctx, openBoardIds(ctx))].flatMap(id => [...ctx.db.repoFile.boardId.filter(id)]);
   }),
   // repoRoot is the owner's checkout path (/Users/<name>/src/<private repo>): '' unless the reader is a member.
   visibleSession: spacetimedb.view({ name: 'visible_session', public: true }, t.array(tables.session.rowType), ctx => {
-    const members = memberBoardIds(ctx);
+    const members = memberBoardIds(ctx, openBoardIds(ctx));
     return [...viewBoardIds(ctx)].flatMap(id => ctx.db.session.boardId.find(id) ?? []).map(s => (members.has(s.boardId) ? s : { ...s, repoRoot: '' }));
   }),
   visibleHideSetMember: spacetimedb.view({ name: 'visible_hide_set_member', public: true }, t.array(tables.hideSetMember.rowType), ctx => {
@@ -1613,30 +1622,35 @@ function hasLinkVisit(ctx: any, boardId: bigint, viewer: any): boolean {
 }
 
 // Board grants, team grants and agent links: readableBoardIds without link visits and public boards.
-function memberBoardIds(ctx: any): Set<bigint> {
-  if (isWorkspaceMachine(ctx)) return workspaceMachineBoardIds(ctx);
-  if (isService(ctx)) return new Set([...ctx.db.board.iter()].map((board: any) => board.id));
+// With `only` (a canvas's open boards) the answer is memberBoardIds ∩ only, and no role is worked out
+// for any other board: a tab switching boards pays for the boards it shows, not for every board it lists.
+function memberBoardIds(ctx: any, only?: ReadonlySet<bigint>): Set<bigint> {
+  const wanted = (id: bigint) => !only || only.has(id);
+  if (isWorkspaceMachine(ctx)) return new Set([...workspaceMachineBoardIds(ctx)].filter(wanted));
+  if (isService(ctx)) return only ? new Set([...only].filter(id => ctx.db.board.id.find(id))) : new Set([...ctx.db.board.iter()].map((board: any) => board.id));
   if (ctx.db.workspaceAccount.identity.find(ctx.sender)?.disabled) return new Set();
-  const boards = humanBoardIds(ctx);
+  const boards = humanBoardIds(ctx, ctx.sender, only);
   // An agent reads its own boards (below) and the boards its owner shared with it.
   const agentLink = ctx.db.agentLink.agent.find(ctx.sender);
   if (agentLink) {
     for (const grant of ctx.db.agentGrant.agent.filter(ctx.sender)) {
-      if (agentMayEdit(ctx, grant.boardId, ctx.sender)) boards.add(grant.boardId);
+      if (wanted(grant.boardId) && agentMayEdit(ctx, grant.boardId, ctx.sender)) boards.add(grant.boardId);
     }
   }
   for (const linked of ctx.db.agentLink.owner.filter(ctx.sender)) {
-    for (const grant of ctx.db.boardGrant.grantee.filter(linked.agent)) boards.add(grant.boardId);
+    for (const grant of ctx.db.boardGrant.grantee.filter(linked.agent)) if (wanted(grant.boardId)) boards.add(grant.boardId);
   }
   return boards;
 }
 
 // Members' boards plus the opened links that include `layer`: the sensitive layers a link leaves out by default.
-function linkLayerBoardIds(ctx: any, layer: 'threats' | 'code', members?: ReadonlySet<bigint>): Set<bigint> {
+// `only` as on memberBoardIds: the layer's boards among those.
+function linkLayerBoardIds(ctx: any, layer: 'threats' | 'code', members?: ReadonlySet<bigint>, only?: ReadonlySet<bigint>): Set<bigint> {
   if (ctx.db.workspaceAccount.identity.find(ctx.sender)?.disabled) return new Set();
-  const boards = members ? new Set(members) : memberBoardIds(ctx);
+  const boards = members ? new Set(members) : memberBoardIds(ctx, only);
   if (isService(ctx) || isWorkspaceMachine(ctx)) return boards;
   for (const visit of ctx.db.linkVisit.viewer.filter(ctx.sender)) {
+    if (only && !only.has(visit.boardId)) continue;
     const share = ctx.db.linkShare.boardId.find(visit.boardId);
     if (share && linkIncludes(share, layer)) boards.add(visit.boardId);
   }
@@ -1661,7 +1675,7 @@ function codeBoardIds(ctx: any): Set<bigint> {
 function codeViewBoardIds(ctx: any): Set<bigint> {
   const open = openBoardIds(ctx);
   if (!open) return codeBoardIds(ctx);
-  const layer = linkLayerBoardIds(ctx, 'code');
+  const layer = linkLayerBoardIds(ctx, 'code', undefined, open);
   return new Set([...open].filter(id => layer.has(id) || (!isWorkspaceMachine(ctx) && ctx.db.publicBoard.boardId.find(id))));
 }
 
@@ -1708,12 +1722,12 @@ function openBoardIds(ctx: any): Set<bigint> | undefined {
 // The boards whose marks the sender reads: members' boards and edit links it opened (D14), on its open boards.
 function markBoardIds(ctx: any): Set<bigint> {
   if (ctx.db.workspaceAccount.identity.find(ctx.sender)?.disabled) return new Set();
-  const boards = memberBoardIds(ctx);
-  for (const visit of isWorkspaceMachine(ctx) ? [] : ctx.db.linkVisit.viewer.filter(ctx.sender)) {
-    if (ctx.db.linkShare.boardId.find(visit.boardId)?.mode === 'edit') boards.add(visit.boardId);
-  }
   const open = openBoardIds(ctx);
-  return open ? new Set([...boards].filter(id => open.has(id))) : boards;
+  const boards = memberBoardIds(ctx, open);
+  for (const visit of isWorkspaceMachine(ctx) ? [] : ctx.db.linkVisit.viewer.filter(ctx.sender)) {
+    if ((!open || open.has(visit.boardId)) && ctx.db.linkShare.boardId.find(visit.boardId)?.mode === 'edit') boards.add(visit.boardId);
+  }
+  return boards;
 }
 
 function viewBoardIds(ctx: any): Set<bigint> {
@@ -1731,7 +1745,7 @@ export const readBoardSnapshot = spacetimedb.procedure({ boardId: t.u64() }, t.s
     const baseName = version?.assertionMode === 'intent' && canReadBoard(tx, version.baseBoardId) ? tx.db.board.id.find(version.baseBoardId)?.name : undefined;
     const open = openBoardIds(tx);
     if (open && !open.has(boardId)) return { ...empty, board, version, baseName };
-    const members = memberBoardIds(tx);
+    const members = memberBoardIds(tx, new Set([boardId]));
     const code = linkLayerBoardIds(tx, 'code', members).has(boardId) || (!isWorkspaceMachine(tx) && Boolean(tx.db.publicBoard.boardId.find(boardId)));
     const threats = linkLayerBoardIds(tx, 'threats', members).has(boardId);
     const session = tx.db.session.boardId.find(boardId);
@@ -1969,6 +1983,7 @@ function clearBoardContent(ctx: any, boardId: bigint): void {
   for (const row of [...ctx.db.edgeWeight.boardId.filter(boardId)]) ctx.db.edgeWeight.edgeId.delete(row.edgeId);
   for (const row of [...ctx.db.edgeMotion.boardId.filter(boardId)]) ctx.db.edgeMotion.edgeId.delete(row.edgeId);
   for (const row of [...ctx.db.nodeIcon.boardId.filter(boardId)]) ctx.db.nodeIcon.nodeId.delete(row.nodeId);
+  for (const row of [...ctx.db.nodeLink.boardId.filter(boardId)]) ctx.db.nodeLink.nodeId.delete(row.nodeId);
   for (const row of [...ctx.db.chartAnchor.boardId.filter(boardId)]) ctx.db.chartAnchor.nodeId.delete(row.nodeId);
   for (const row of [...ctx.db.nodeTouch.boardId.filter(boardId)]) ctx.db.nodeTouch.nodeId.delete(row.nodeId);
   for (const row of [...ctx.db.codeRefHash.boardId.filter(boardId)]) ctx.db.codeRefHash.refId.delete(row.refId);
@@ -1993,6 +2008,8 @@ export const deleteBoard = reducer(
 // Every row about the board (RC-690; scripts/verify-deletion-local.mjs finds a table this misses).
 // Library items saved from it are their owner's copies and stay.
 function removeBoard(ctx: any, boardId: bigint): void {
+  // Links to this board from nodes on other boards: the nodes stay, as ordinary nodes.
+  for (const row of [...ctx.db.nodeLink.targetBoardId.filter(boardId)]) ctx.db.nodeLink.nodeId.delete(row.nodeId);
   revokeBoardEmbed(ctx, boardId);
   for (const receipt of [...ctx.db.boardItemReceipt.boardId.filter(boardId)]) ctx.db.boardItemReceipt.key.delete(receipt.key);
   for (const embed of [...ctx.db.boardEmbed.comparisonBoardId.filter(boardId)]) {
@@ -2180,6 +2197,53 @@ export const createNode = reducer(nodeArgs(), (ctx, args) => {
   focusAgentNode(ctx, node.boardId, node.id);
 });
 
+// --- board links: a node that points at another board ---------------------------
+const LINK_RULE = 'link rule: link a node to another board that you can open';
+
+function setNodeLink(ctx: any, node: any, targetBoardId: bigint): void {
+  // One sentence for a board that does not exist and one the caller cannot read: a link is no way to find boards.
+  if (targetBoardId === node.boardId || !canReadBoard(ctx, targetBoardId)) throw new SenderError(LINK_RULE);
+  const row = { nodeId: node.id, boardId: node.boardId, targetBoardId };
+  if (ctx.db.nodeLink.nodeId.find(node.id)) ctx.db.nodeLink.nodeId.update(row);
+  else ctx.db.nodeLink.insert(row);
+}
+
+export const linkNodeBoard = reducer(
+  { nodeId: t.u64(), targetBoardId: t.u64() },
+  (ctx, { nodeId, targetBoardId }) => {
+    const node = findNodeOrThrow(ctx, nodeId);
+    architectureEdit(ctx, node.boardId);
+    setNodeLink(ctx, node, targetBoardId);
+    touchNode(ctx, nodeId, node.boardId);
+    touch(ctx, node.boardId);
+  }
+);
+
+// Quick add: a node beside another, the edge between them and (for "Link a board") the node's link, in
+// one transaction. A refusal of any of the three leaves none of them: no node that looks like a link
+// and is not one, no node without its edge.
+export const createConnectedNode = reducer(
+  { ...nodeArgs(), fromNode: t.u64(), edgeLabel: t.string(), evidence: t.string(), targetBoardId: t.option(t.u64()) },
+  (ctx, args) => {
+    const node = insertNode(ctx, args);
+    insertEdge(ctx, { boardId: node.boardId, fromNode: args.fromNode, toNode: node.id, label: args.edgeLabel, evidence: args.evidence });
+    if (args.targetBoardId !== undefined) setNodeLink(ctx, node, args.targetBoardId);
+    refreshStats(ctx, node.boardId);
+    emit(ctx, node.boardId, 'node.created', { label: node.label, kind: node.kind });
+    focusAgentNode(ctx, node.boardId, node.id);
+  }
+);
+
+export const unlinkNodeBoard = reducer(
+  { nodeId: t.u64() },
+  (ctx, { nodeId }) => {
+    const node = findNodeOrThrow(ctx, nodeId);
+    architectureEdit(ctx, node.boardId);
+    ctx.db.nodeLink.nodeId.delete(nodeId);
+    touch(ctx, node.boardId);
+  }
+);
+
 function assertIconFor(ctx: any, boardId: bigint, kind: string, icon: string): void {
   // Before any architectureEdit: fact boards would answer with their own rule.
   if (ctx.db.architectureVersion.boardId.find(boardId)?.assertionMode === 'fact') throw new SenderError(ARCHITECTURE_ICON_RULE);
@@ -2357,6 +2421,7 @@ function removeNodeRows(ctx: any, node: any): Set<bigint> {
   ctx.db.chart.nodeId.delete(node.id); // false (no throw) for non-chart nodes
   revokeChartEmbed(ctx, node.id);
   ctx.db.nodeIcon.nodeId.delete(node.id); // false (no throw) for nodes without an icon
+  ctx.db.nodeLink.nodeId.delete(node.id); // and for nodes that link no board
   ctx.db.chartAnchor.nodeId.delete(node.id); // a chart's own pin
   dropAnchorsOn(ctx, 'node', node.id);
   ctx.db.nodeTouch.nodeId.delete(node.id); // its marks stay: they carry the node's label
@@ -4103,7 +4168,7 @@ const MEMBERS_RULE = 'only board members can see or change threats';
 /** Edit access first, then membership: an edit-link visitor can edit the board and still never touches threats. */
 function assertThreatBoard(ctx: any, boardId: bigint): void {
   assertBoardWrite(ctx, boardId);
-  if (!memberBoardIds(ctx).has(boardId)) throw new SenderError(MEMBERS_RULE);
+  if (!memberBoardIds(ctx, new Set([boardId])).has(boardId)) throw new SenderError(MEMBERS_RULE);
 }
 
 function findThreatOrThrow(ctx: any, id: bigint): any {
@@ -4738,6 +4803,8 @@ function copyDrawing(ctx: any, from: bigint, to: bigint, keepFocal = true): { no
     const row = ctx.db.node.insert({ ...n, id: 0n, boardId: to, focal: keepFocal && n.focal }); nodes.set(n.id, row.id);
     const icon = ctx.db.nodeIcon.nodeId.find(n.id);
     if (icon) ctx.db.nodeIcon.insert({ nodeId: row.id, boardId: to, icon: icon.icon });
+    const link = ctx.db.nodeLink.nodeId.find(n.id);
+    if (link && link.targetBoardId !== to) ctx.db.nodeLink.insert({ nodeId: row.id, boardId: to, targetBoardId: link.targetBoardId });
     const chart = ctx.db.chart.nodeId.find(n.id);
     if (chart) ctx.db.chart.insert({ ...chart, nodeId: row.id, boardId: to });
   }
@@ -5127,6 +5194,8 @@ export const mergeArchitectureProposal = reducer(
       const keyed = k.startsWith('proposal:') ? ctx.db.node.id.update({ ...row, sourceKey: `node:${row.id}` }) : row;
       const icon = ctx.db.nodeIcon.nodeId.find(n.id);
       if (icon) ctx.db.nodeIcon.insert({ nodeId: row.id, boardId: base, icon: icon.icon });
+      const link = ctx.db.nodeLink.nodeId.find(n.id);
+      if (link && link.targetBoardId !== base) ctx.db.nodeLink.insert({ nodeId: row.id, boardId: base, targetBoardId: link.targetBoardId });
       baseNodes.set(keyed.sourceKey, keyed); headNodes.set(k, { ...n, mergedKey: keyed.sourceKey });
       addedNodes++;
     }
@@ -5155,6 +5224,12 @@ export const mergeArchitectureProposal = reducer(
         ctx.db.node.id.update({ ...b, label: n.label, sublabel: n.sublabel, kind: n.kind, doc: n.doc });
         // As updateNode: a kind no icon shows on loses its icon (RC-687).
         if (!ICON_NODE_KINDS.includes(n.kind)) ctx.db.nodeIcon.nodeId.delete(b.id);
+      }
+      // Its board link follows the branch too: linked, relinked or unlinked there, so here.
+      const want = ctx.db.nodeLink.nodeId.find(n.id)?.targetBoardId, has = ctx.db.nodeLink.nodeId.find(b.id)?.targetBoardId;
+      if (want !== has) {
+        ctx.db.nodeLink.nodeId.delete(b.id);
+        if (want !== undefined && want !== base) ctx.db.nodeLink.insert({ nodeId: b.id, boardId: base, targetBoardId: want });
       }
     }
     for (const [k, e] of headEdges) {
@@ -5755,6 +5830,11 @@ function linkFields(ctx: any, boardId: bigint, access: string): { linkMode: stri
   };
 }
 
+/** The orgs an owner's board is shared with; only its owner is told. */
+function sharedWithOf(ctx: any, boardId: bigint, access: string): string[] {
+  return access === 'owner' ? [...ctx.db.teamGrant.boardId.filter(boardId)].map((g: any) => g.orgId) : [];
+}
+
 // Every board the caller can reach, once, with the strongest access first:
 // own grant, then (for an agent) its owner's grants to it, then a team grant
 // of any of their orgs, then a linked agent's board, then an opened link, then
@@ -5823,14 +5903,62 @@ export const myBoards = spacetimedb.view(
         name: board.name,
         access,
         orgId,
-        sharedWith:
-          access === 'owner' ? [...ctx.db.teamGrant.boardId.filter(boardId)].map(g => g.orgId) : [],
+        sharedWith: sharedWithOf(ctx, boardId, access),
         statsReady: Boolean(s),
         ...linkFields(ctx, boardId, access),
       });
     });
     return [...out.values()];
   }
+);
+
+// The canvas's board list: my_boards without the stats. Every content write refreshes its board's
+// board_stats row, which re-ran my_boards (a walk over every board the reader lists) for each open
+// canvas. This view reads no stats, so a canvas tab's list changes only when access, a link or a
+// session does. The dashboard keeps my_boards.
+const MyBoardAccessRow = t.row('MyBoardAccessRow', {
+  boardId: t.u64().primaryKey(),
+  access: t.string(), // as my_boards.access
+  sharedWith: t.array(t.string()), // as my_boards.sharedWith
+  linkMode: t.string(),
+  linkToken: t.string(),
+  isSession: t.bool(),
+});
+export const myBoardAccess = spacetimedb.view(
+  { name: 'my_board_access', public: true },
+  t.array(MyBoardAccessRow),
+  ctx => {
+    const out = new Map<bigint, any>();
+    eachMyBoard(ctx, (boardId, access) => {
+      if (out.has(boardId) || !ctx.db.board.id.find(boardId)) return;
+      out.set(boardId, {
+        boardId, access,
+        sharedWith: sharedWithOf(ctx, boardId, access),
+        ...linkFields(ctx, boardId, access),
+        isSession: Boolean(ctx.db.session.boardId.find(boardId)),
+      });
+    });
+    return [...out.values()];
+  }
+);
+
+// The board links on the boards the caller reads. A link names its target (id, name, slug) only to a
+// reader who can open that board; anyone else gets the row with those blank, so the canvas can say
+// "a board you cannot open" without saying which. Sharing a board never shares what its nodes link.
+const NodeLinkRow = t.row('NodeLinkRow', {
+  nodeId: t.u64().primaryKey(),
+  boardId: t.u64(),
+  targetBoardId: t.u64(), // 0 when the reader cannot open the target
+  name: t.string(),
+  slug: t.string(),
+});
+export const visibleNodeLink = spacetimedb.view(
+  { name: 'visible_node_link', public: true },
+  t.array(NodeLinkRow),
+  ctx => [...viewBoardIds(ctx)].flatMap(id => [...ctx.db.nodeLink.boardId.filter(id)]).map((link: any) => {
+    const target = canReadBoard(ctx, link.targetBoardId) ? ctx.db.board.id.find(link.targetBoardId) : undefined;
+    return { nodeId: link.nodeId, boardId: link.boardId, targetBoardId: target ? target.id : 0n, name: target ? target.name : '', slug: target ? target.slug : '' };
+  })
 );
 
 const BoardSlugRow = t.row('BoardSlugRow', {
