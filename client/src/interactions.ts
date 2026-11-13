@@ -560,12 +560,9 @@ export class Editor {
     if (armedName !== null) {
       setHidden(this.railHint, false);
       const armed = `armed · ${armedName}`;
-      // A kind stays armed for repeat placement; a note, text or library template places once.
       const tail = this.crayonOn
         ? 'click nodes to circle them · Send when done · esc puts it down'
-        : this.armedTemplate !== null || this.armedKind === 'note' || this.armedKind === 'text'
-        ? 'click canvas to place · esc to disarm'
-        : 'keep clicking to place more · Esc or Select finishes';
+        : 'click canvas to place · esc to disarm';
       if (this.railHint.textContent !== armed + tail) {
         this.railHint.replaceChildren();
         const line = document.createElement('span');
@@ -614,8 +611,7 @@ export class Editor {
     }
   }
 
-  /** Click-to-place: a kind stays armed (multi-place) until esc; a note, text
-   *  or library template places once and disarms. */
+  /** Click-to-place: every pick places once and hands back the select tool. */
   private placeArmed(wx: number, wy: number): void {
     if (this.topologyReadOnly) return;
     const pick = this.armedTemplate;
@@ -627,8 +623,8 @@ export class Editor {
     }
     const kind = this.armedKind;
     if (kind !== null) {
-      // A note or text is written right after it lands, so the next click is free.
-      if (kind === 'note' || kind === 'text') this.arm(null);
+      // A new node is named right after it lands, so the next click is free.
+      this.arm(null);
       this.placeKind(kind, wx, wy);
     }
   }
@@ -654,8 +650,8 @@ export class Editor {
         if (this.deps.boardId !== placedBoard) return;
         this.setSelection([id]);
         this.deps.rerender();
-        // A new note or text opens its editor: the caret is ready for the text.
-        const node = kind === 'note' || kind === 'text' ? this.deps.getNodes().find(n => n.id === id) : undefined;
+        // A new node opens its label editor: typing replaces the default name.
+        const node = this.deps.getNodes().find(n => n.id === id);
         if (node !== undefined) this.startInlineEdit(node, 'label');
       })
       .catch(err => showError((err as Error).message));
@@ -1036,8 +1032,7 @@ export class Editor {
         return;
       }
 
-      // Armed placement: a kind stays armed until esc; a note or library
-      // template places once.
+      // Armed placement: one click places, then the select tool is back.
       if ((this.armedKind !== null || this.armedTemplate !== null) && evt.button === 0 && !this.panArmed) {
         this.placeArmed(w.x, w.y);
         evt.preventDefault();
