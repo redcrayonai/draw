@@ -1,0 +1,50 @@
+import { expect, it, vi } from 'vitest';
+import { mountLocalChat } from './local-chat';
+import { mountLocalRefs } from './local-refs';
+import type { LocalBoard, LocalNode } from '../../shared/local';
+
+const board: LocalBoard = { slug: 'board', name: 'Board', repo: '/repo', revision: 0, nextId: 2, nodes: [], edges: [], notes: [], feedback: [] };
+const input = (field: HTMLInputElement | HTMLTextAreaElement, value: string) => { field.value = value; field.dispatchEvent(new Event('input', { bubbles: true })); };
+it('preserves a new feedback draft while the previous message is being delivered', async () => {
+  const container = document.createElement('div');
+  let finish!: () => void;
+  const pending = new Promise<void>(resolve => { finish = resolve; });
+  const call = vi.fn(() => pending);
+  mountLocalChat(container, () => board, () => [], call, () => {});
+  const form = container.querySelector<HTMLFormElement>('[data-send]')!;
+  const text = form.querySelector('textarea')!;
+  input(text, 'First message'); form.dispatchEvent(new Event('submit', { cancelable: true }));
+  expect(call).toHaveBeenCalledWith(expect.objectContaining({ text: 'First message' }));
+  input(text, 'Next message'); finish(); await pending;
+  await new Promise(resolve => setTimeout(resolve, 0));
+  expect(text.value).toBe('Next message');
+});
+it('preserves the next reference draft while the previous code read completes', async () => {
+  const container = document.createElement('div');
+  const node: LocalNode = { id: '1', label: 'API', description: '', x: 0, y: 0, w: 160, h: 80, kind: 'service', refs: [] };
+  let finish!: () => void;
+  const pending = new Promise<void>(resolve => { finish = resolve; });
+  const mutate = vi.fn(async () => {});
+  mountLocalRefs(container, () => board, () => node, mutate, () => pending, () => {});
+  const form = container.querySelector('form')!, path = form.querySelector<HTMLInputElement>('[name="path"]')!;
+  input(path, 'first.ts'); form.dispatchEvent(new Event('submit', { cancelable: true }));
+  input(path, 'next.ts'); finish(); await pending;
+  await vi.waitFor(() => expect(mutate).toHaveBeenCalled());
+  expect(path.value).toBe('next.ts');
+  expect(mutate).toHaveBeenCalledWith([expect.objectContaining({ patch: { refs: [{ path: 'first.ts', start: 1, end: 1 }] } })], 0);
+});
+it('ignores an old code response after the user opens another reference', async () => {
+  const container = document.createElement('div');
+  const node: LocalNode = { id: '1', label: 'API', description: '', x: 0, y: 0, w: 160, h: 80, kind: 'service', refs: [{ path: 'first.ts', start: 1, end: 1 }, { path: 'second.ts', start: 1, end: 1 }] };
+  let finish!: (source: { text: string }) => void;
+  const pending = new Promise<{ text: string }>(resolve => { finish = resolve; });
+  const call = vi.fn().mockReturnValueOnce(pending).mockResolvedValueOnce({ text: 'second file' });
+  const render = mountLocalRefs(container, () => board, () => node, async () => {}, call, () => {});
+  render();
+  const buttons = [...container.querySelectorAll<HTMLButtonElement>('[data-refs] button')];
+  buttons[0].click(); buttons[2].click();
+  await vi.waitFor(() => expect(container.querySelector('[data-code]')!.textContent).toBe('second file'));
+  finish({ text: 'first file' }); await pending;
+  await new Promise(resolve => setTimeout(resolve, 0));
+  expect(container.querySelector('[data-code]')!.textContent).toBe('second file');
+});

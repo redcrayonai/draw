@@ -19,6 +19,8 @@ import { HelperError } from './capture';
 import { chatDir, chatSocketPath, removeDeadSockets } from './chat-path';
 import { connectCodex } from './chat-codex';
 import { CHAT_PERSON_MAX_CHARS, CHAT_VIEWER_TTL_MS, type ChatSession, type ChatEvent, type ApprovalDecision } from '../../shared/chat';
+import { enforceToolPermissions, PermissionError, runtimePermissions } from './permissions';
+import { approvedChatConnection } from './chat-bootstrap';
 
 export const CHAT_USAGE = 'redcrayon: usage: redcrayon chat --token <token from start_chat>';
 const MAX_EVENTS = 500;
@@ -569,10 +571,32 @@ export async function runChat(argv: string[], origin: string, cwd: string, log: 
   if (!token) throw new HelperError(CHAT_USAGE);
   const agent = flags.get('--agent') ?? 'claude-code';
   if (agent !== 'claude-code' && agent !== 'codex') throw new HelperError(CHAT_USAGE);
+  const managed = !!runtimePermissions('hosted');
+  if (managed) {
+    enforceToolPermissions('start_chat', 'hosted');
+    if (agent !== 'codex') throw new PermissionError('REJECTED: call start_chat and approve it in Codex before connecting this conversation.');
+  }
   const thread = flags.get('--session') ?? (agent === 'codex' ? process.env.CODEX_THREAD_ID : undefined);
   if (thread && !/^[a-zA-Z0-9_:.-]{1,180}$/.test(thread)) throw new HelperError(CHAT_USAGE);
   if (agent === 'codex' && !thread) throw new HelperError('redcrayon: chat needs the current conversation id.');
   const sessionId = thread ? (thread.startsWith(`${agent}:`) ? thread : `${agent}:${thread}`) : undefined;
+  if (managed) {
+    // The owned child receives the successful hook event directly, never a saved approval flag.
+    const approval = await new Promise<Record<string, any>>((resolve, reject) => {
+      let raw = '';
+      const fail = () => finish(new PermissionError('REJECTED: call start_chat and approve it in Codex before connecting this conversation.'));
+      const data = (chunk: Buffer) => { raw += chunk; if (raw.length > 1024 * 1024) fail(); };
+      const end = () => { try { finish(undefined, JSON.parse(raw)); } catch { fail(); } };
+      const finish = (error?: Error, value?: Record<string, any>) => {
+        clearTimeout(timer); process.stdin.off('data', data).off('end', end).off('error', fail); process.stdin.pause();
+        if (error) reject(error); else resolve(value!);
+      };
+      const timer = setTimeout(fail, 2000);
+      if (process.stdin.isTTY || process.stdin.readableEnded) { fail(); return; }
+      process.stdin.on('data', data).once('end', end).once('error', fail);
+    });
+    if (!approval || !approvedChatConnection(approval, { session: sessionId!, token, origin })) throw new PermissionError('REJECTED: this chat was not approved through start_chat in Codex.');
+  }
   const board = boardOfToken(token);
   const WS = (globalThis as { WebSocket?: new (url: string) => Socketish }).WebSocket;
   if (!WS) throw new HelperError('redcrayon: chat needs Node 22 or newer.');
@@ -592,6 +616,20 @@ export async function runChat(argv: string[], origin: string, cwd: string, log: 
   const finished = new Promise<number>(resolve => (done = resolve));
   let closing = false;
   const quit = () => { closing = true; done(0); controller.abort(); };
+  const allowed = () => {
+    if (closing) return false;
+    if (!managed) return true;
+    try {
+      if (!runtimePermissions('hosted')) throw new PermissionError('REJECTED: Draw conversation permission settings are missing.');
+      enforceToolPermissions('start_chat', 'hosted');
+      return true;
+    } catch (error) {
+      closing = true;
+      log(error instanceof Error ? error.message : 'REJECTED: Draw conversation permission could not be checked.');
+      done(1); controller.abort(); adapter?.close();
+      return false;
+    }
+  };
   let saveTimer: ReturnType<typeof setTimeout> | undefined;
   const save = () => {
     try {
@@ -602,9 +640,10 @@ export async function runChat(argv: string[], origin: string, cwd: string, log: 
   };
   const core: ChatCore = new ChatCore({
     send: e => {
-      if (ws?.readyState === 1) ws.send(JSON.stringify(e));
+      if (allowed() && ws?.readyState === 1) ws.send(JSON.stringify(e));
     },
     wake: line => {
+      if (!allowed()) return;
       if (!sessionId || agent !== 'claude-code') return wake(line);
       if (waiter && !waiter.destroyed) { waiter.end(JSON.stringify({ wake: line }) + '\n'); waiter = undefined; }
     },
@@ -644,6 +683,7 @@ export async function runChat(argv: string[], origin: string, cwd: string, log: 
       let answer: Record<string, unknown> = {};
       try {
         const input = JSON.parse(raw.slice(0, end));
+        if (!allowed()) { conn.end('{}\n'); return; }
         if (input.hook_event_name === 'BoardChatWait') {
           waiter?.end('{}\n');
           waiter = conn;
@@ -687,9 +727,11 @@ export async function runChat(argv: string[], origin: string, cwd: string, log: 
   process.once('SIGTERM', quit);
   if (agent === 'codex') {
     try {
+      if (!allowed()) throw new PermissionError('REJECTED: Draw conversation access was revoked.');
       core.paused = true;
-      adapter = await connectCodex({ threadId: thread!.replace(/^codex:/, ''), cwd, socketPath: flags.get('--socket'), signal: controller.signal, emit: event => core.agent(event), onDisconnect: () => done(1) });
-      core.attach(adapter.session, adapter);
+      adapter = await connectCodex({ threadId: thread!.replace(/^codex:/, ''), cwd, socketPath: flags.get('--socket'), signal: controller.signal, emit: event => { if (allowed()) core.agent(event); }, onDisconnect: () => done(1) });
+      const guarded = async (action: () => Promise<void>) => { if (!allowed()) throw new PermissionError('REJECTED: Draw conversation access was revoked.'); await action(); };
+      core.attach(adapter.session, { send: text => guarded(() => adapter!.send(text)), stop: () => guarded(() => adapter!.stop()), approve: (id, decision) => guarded(() => adapter!.approve(id, decision)) });
       if (!core.queue.length) core.paused = false;
     } catch (error) {
       if (!closing) {
@@ -703,11 +745,12 @@ export async function runChat(argv: string[], origin: string, cwd: string, log: 
     }
   }
   const connect = () => {
-    if (closing) return;
+    if (!allowed()) return;
     const socket = new WS(url);
     ws = socket;
-    socket.addEventListener('open', () => socket.send(JSON.stringify({ auth: token, role: 'agent', ...(core.session ? { session: core.session } : {}) })));
+    socket.addEventListener('open', () => { if (allowed()) socket.send(JSON.stringify({ auth: token, role: 'agent', ...(core.session ? { session: core.session } : {}) })); });
     socket.addEventListener('message', ev => {
+      if (!allowed()) return;
       let msg: { ok?: boolean; type?: unknown; id?: unknown; text?: unknown; context?: unknown; count?: unknown };
       try {
         msg = JSON.parse(String(ev.data));

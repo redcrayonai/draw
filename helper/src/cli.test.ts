@@ -10,6 +10,9 @@ import { dirname, join } from 'node:path';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { CAPTURE_ID_RE, MB, MIN_HELPER_VERSION, claimCapture, newCaptureId, type CaptureBody, type CheckpointBody, type FileBody } from '../../shared/capture';
 import { HELPER_VERSION, HOOK_MATCHER, PRIVACY, buildCapture, githubRemote } from './capture';
+import { startLocal } from './local-server';
+import { localDirectory } from './local-path';
+import { DEFAULT_PERMISSIONS } from './permissions';
 
 const HELPER = join(dirname(new URL(import.meta.url).pathname), '..');
 let dir: string;
@@ -62,12 +65,40 @@ beforeEach(() => {
 });
 
 type Run = { code: number; stdout: string; stderr: string };
+it('prints valid local Claude settings without changing global configuration or contacting a service', async () => {
+  const result = await run(['local-claude-settings', '--board', 'test-board', '--repo', dir], { cwd: dir });
+  expect(result.code).toBe(0);
+  expect(JSON.parse(result.stdout).hooks.Stop[0].hooks[1].asyncRewake).toBe(true);
+  expect(requests).toHaveLength(0);
+});
+it('routes plugin MCP calls by explicit repository regardless of the plugin process directory', async () => {
+  const other = join(dir, 'other-repository'); mkdirSync(other);
+  const repositories = [dir, other];
+  const apps = await Promise.all(repositories.map(repo => startLocal({ repo, directory: localDirectory(repo), assets: dir })));
+  try {
+    apps[0].store.create('First repository', dir); apps[1].store.create('Second repository', other);
+    const input = [
+      { jsonrpc: '2.0', id: 1, method: 'tools/list' },
+      ...[dir, other, '.', undefined].map((repo, i) => ({ jsonrpc: '2.0', id: i + 2, method: 'tools/call', params: { name: 'list_boards', arguments: { repo } } })),
+    ].map(value => JSON.stringify(value)).join('\n');
+    const result = await run(['local-mcp', '--per-repo'], { cwd: HELPER, input });
+    expect(result.code).toBe(0);
+    const frames = result.stdout.trim().split('\n').map(line => JSON.parse(line));
+    expect(frames[0].result.tools.every((tool: any) => tool.inputSchema.required.includes('repo'))).toBe(true);
+    expect(JSON.parse(frames[1].result.content[0].text).map((board: any) => board.name)).toEqual(['First repository']);
+    expect(JSON.parse(frames[2].result.content[0].text).map((board: any) => board.name)).toEqual(['Second repository']);
+    for (const frame of frames.slice(3)) expect(frame.result).toMatchObject({ isError: true, content: [{ type: 'text', text: expect.stringContaining('REJECTED:') }] });
+  } finally {
+    await Promise.all(apps.map(app => app.close()));
+    for (const repo of repositories) rmSync(localDirectory(repo), { recursive: true, force: true });
+  }
+});
 function run(args: string[], opts: { cwd: string; input?: string; env?: Record<string, string>; node?: string[] }): Promise<Run> {
   return new Promise(done => {
     const child = execFile(
       process.execPath,
       [...(opts.node ?? []), bundle, ...args],
-      { cwd: opts.cwd, env: { ...process.env, ...GIT_ENV, REDCRAYON_ORIGIN: origin, ...opts.env } },
+      { cwd: opts.cwd, env: { ...process.env, ...GIT_ENV, CODEX_THREAD_ID: '', DRAW_PERMISSION_FILE: '', REDCRAYON_ORIGIN: origin, ...opts.env } },
       (err, stdout, stderr) => done({ code: err ? ((err as { code?: number }).code ?? 1) : 0, stdout, stderr })
     );
     child.stdin!.end(opts.input ?? '');
@@ -90,6 +121,67 @@ function repo(files: Record<string, string | Buffer> = {}, init: string[] = []):
 }
 const bodies = () => requests.filter(r => r.url === '/facts').map(r => JSON.parse(r.body) as CaptureBody);
 const status = (root: string) => sh(root, 'status', '--porcelain', '--untracked-files=all', '--ignored');
+
+describe('installed Codex permissions', () => {
+  function policy(overrides: Partial<typeof DEFAULT_PERMISSIONS> = {}) {
+    const path = join(dir, 'codex-permissions.json');
+    writeFileSync(path, JSON.stringify({ permissions: { ...DEFAULT_PERMISSIONS, ...overrides } }));
+    return { DRAW_PERMISSION_FILE: path };
+  }
+  it('blocks direct source captures before inspecting a checkout or contacting hosted Draw', async () => {
+    const result = await run(['capture', 'ref', 'private.ts'], { cwd: dir, env: policy() });
+    expect(result.code).toBe(1);
+    expect(result.stderr).toContain('No source was read or uploaded');
+    expect(result.stdout).toBe('');
+    expect(requests).toEqual([]);
+  });
+  it('permits session metadata with source uploads denied', async () => {
+    const result = await run(['capture', 'start'], { cwd: repo(), env: policy() });
+    expect(result.code).toBe(0);
+    expect(bodies()).toMatchObject([{ kind: 'start' }]);
+  });
+  it.each([
+    ['add_code_ref', { path: 'private.ts' }],
+    ['create_edge', { evidence: 'source:private.ts:1' }],
+    ['apply_board', { edges: [{ evidence: 'source:private.ts:1', capture: 'cap_previously_uploaded' }] }],
+    ['mark_checkpoint', {}],
+    ['arrive', {}],
+  ])('rejects %s source use even with a previously uploaded capture', async (name, args) => {
+    const result = await run(['hook'], { cwd: dir, env: policy(), input: JSON.stringify({
+      hook_event_name: 'PreToolUse', tool_name: `mcp__plugin_draw_draw__${name}`,
+      tool_input: { ...args, board: '1', capture: 'cap_previously_uploaded' },
+    }) });
+    expect(result.code).toBe(2);
+    expect(result.stderr).toContain('source code access is denied');
+    expect(result.stdout).toBe('');
+    expect(requests).toEqual([]);
+  });
+  it.each(['create_node', 'start_chat', 'start_session', 'future_tool'])('rejects denied board tool %s before hooks can fail open', async name => {
+    const result = await run(['hook'], { cwd: dir, env: policy({ boards: 'deny' }), input: JSON.stringify({
+      hook_event_name: 'PreToolUse', tool_name: `mcp__draw__${name}`, tool_input: {},
+    }) });
+    expect(result.code).toBe(2);
+    expect(result.stderr).toContain('board access is denied');
+    expect(requests).toEqual([]);
+  });
+  it('allows source-free drawing with source denied, but refuses a missing configured policy', async () => {
+    const input = JSON.stringify({ hook_event_name: 'PreToolUse', tool_name: 'mcp__draw__create_edge', tool_input: { evidence: 'agent:planned dependency' } });
+    expect((await run(['hook'], { cwd: dir, env: policy(), input })).code).toBe(0);
+    const missing = await run(['hook'], { cwd: dir, env: { DRAW_PERMISSION_FILE: join(dir, 'does-not-exist') }, input });
+    expect(missing.code).toBe(2);
+    expect(missing.stderr).toContain('settings are missing');
+    expect(requests).toEqual([]);
+  });
+  it.each([
+    ['read_code', {}], ['attach_conversation', { conversation: 'deny' }], ['list_boards', { boards: 'deny' }],
+  ] as const)('local %s denial precedes endpoint lookup', async (name, overrides) => {
+    const result = await run(['local-mcp', '--per-repo'], { cwd: dir, env: policy(overrides), input: JSON.stringify({
+      jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name, arguments: { repo: '/nonexistent-draw-repository' } },
+    }) });
+    expect(JSON.parse(result.stdout).result).toMatchObject({ isError: true, content: [{ text: expect.stringContaining('is denied') }] });
+    expect(requests).toEqual([]);
+  });
+});
 
 /** One capture command that worked: one cap_ line on stdout, one upload. */
 async function captured(args: string[], cwd: string): Promise<CaptureBody> {
@@ -119,7 +211,7 @@ describe('the bundle', () => {
     expect(imports.length).toBeGreaterThan(0);
     expect(imports.filter(p => !p.startsWith('node:'))).toEqual([]);
     expect(JSON.parse(readFileSync(join(HELPER, 'package.json'), 'utf8')).version).toBe(HELPER_VERSION);
-    const [a, b] = [HELPER_VERSION, MIN_HELPER_VERSION].map(v => v.split('.').map(Number));
+    const [a, b] = [HELPER_VERSION, MIN_HELPER_VERSION].map(v => v.split(/[-+]/)[0].split('.').map(Number));
     expect(a[0] * 1e6 + a[1] * 1e3 + a[2]).toBeGreaterThanOrEqual(b[0] * 1e6 + b[1] * 1e3 + b[2]);
   });
 });
@@ -131,7 +223,7 @@ describe('capture commands', () => {
     expect(first.code).toBe(0);
     expect(first.stdout).toMatch(/^cap_[A-Za-z0-9]{22}\n$/);
     expect(first.stderr).toBe(`${PRIVACY}\n`);
-    expect(bodies()).toEqual([{ v: 1, helper: HELPER_VERSION, kind: 'start', toplevel: root, objectFormat: 'sha1', head: sh(root, 'rev-parse', 'HEAD') }]);
+    expect(bodies()).toEqual([{ v: 1, helper: HELPER_VERSION.split(/[-+]/)[0], kind: 'start', toplevel: root, objectFormat: 'sha1', head: sh(root, 'rev-parse', 'HEAD') }]);
     expect(requests[0]).toMatchObject({ method: 'POST', url: '/facts', headers: { 'content-type': 'application/json' } });
     expect(requests[0].headers.origin).toBeUndefined();
     const second = await run(['capture', 'start'], { cwd: root });

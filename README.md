@@ -77,6 +77,12 @@ Board chat needs Node 22+ and access to the same conversation through a shared
 Codex app server. If chat cannot attach, continue in Codex; drawing still works.
 [Setup, existing connections, and MCP-only fallback](https://docs.redcrayon.ai/connect/#codex).
 
+The upcoming native executable installs one Draw plugin with
+`draw install codex`. Ask "create a draw board" to start locally, or explicitly
+ask for a hosted board. Existing board links keep their backend. One shared set of
+permissions covers local and hosted access.
+[Native setup, defaults, and permission changes](plugin/README.md#codex-permissions-in-the-native-integration).
+
 </details>
 
 <details>
@@ -139,6 +145,9 @@ A SIEM alert marks **admin-portal** compromised; scanner findings mark the gatew
 Thirteen themes, from Neo-brutalism to Nord: pick one from the board header.
 
 ## What leaves your machine
+
+Native local boards stay on your machine and need no account. The following
+applies when you explicitly use a hosted board or the existing hosted plugin.
 
 **Code snippet storage is off by default.** Code refs keep paths, symbols, line numbers and hashes. Code text stays on the board only if you enable **Store code snippets on my boards** in dashboard **Settings → Code**.
 

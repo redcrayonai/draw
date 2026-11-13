@@ -5,6 +5,8 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { chatDir, chatSocketPath } from './chat-path';
 import { hookResult } from './hook-result';
+import { localCommand } from './local-runtime';
+import { enforceToolPermissions, PermissionError, runtimePermissions } from './permissions';
 
 export interface ChatConnection { session: string; agent: 'claude-code' | 'codex'; token: string; board: string; origin: string; at: number }
 
@@ -23,6 +25,12 @@ export function chatConnection(input: Record<string, any>, codex: boolean): Chat
   if (url.username || url.password || (url.protocol !== 'https:' && !(url.protocol === 'http:' && ['localhost', '127.0.0.1', '[::1]'].includes(url.hostname)))) return;
   const agent = codex ? 'codex' : 'claude-code';
   return { session: `${agent}:${thread}`, agent, token: chat.token, board: String(chat.board), origin: url.origin, at: Date.now() };
+}
+
+export function approvedChatConnection(input: Record<string, any>, connection: Pick<ChatConnection, 'session' | 'token' | 'origin'>): boolean {
+  if (!String(input.tool_name).endsWith('__start_chat')) return false;
+  const approved = chatConnection(input, true);
+  return !!approved && approved.session === connection.session && approved.token === connection.token && approved.origin === connection.origin;
 }
 
 export function chatRequest(path: string, input: object, timeout = 2000): Promise<Record<string, any>> {
@@ -47,7 +55,12 @@ export function chatRequest(path: string, input: object, timeout = 2000): Promis
 }
 
 /** Starts the packaged helper, never an agent or a new conversation. */
-export async function startChatConnection(cwd: string, connection: ChatConnection): Promise<boolean> {
+export async function startChatConnection(cwd: string, connection: ChatConnection, approval?: Record<string, any>): Promise<boolean> {
+  const managed = connection.agent === 'codex' && !!runtimePermissions('hosted');
+  if (managed) {
+    enforceToolPermissions('start_chat', 'hosted');
+    if (!approval || !approvedChatConnection(approval, connection)) throw new PermissionError('REJECTED: call start_chat and approve it in Codex before connecting this conversation.');
+  }
   mkdirSync(chatDir(), { recursive: true, mode: 0o700 });
   const path = chatSocketPath(cwd, connection.session);
   const lock = `${path}.starting`;
@@ -77,7 +90,7 @@ export async function startChatConnection(cwd: string, connection: ChatConnectio
       }
     }
     writeFileSync(`${path}.connection.json`, JSON.stringify(connection), { mode: 0o600 });
-    const helper = join(dirname(fileURLToPath(import.meta.url)), 'redcrayon.mjs');
+    const [executable, ...args] = localCommand(join(dirname(fileURLToPath(import.meta.url)), 'redcrayon.mjs'));
     let owner: string | undefined;
     if (connection.agent === 'claude-code') {
       try {
@@ -95,10 +108,11 @@ export async function startChatConnection(cwd: string, connection: ChatConnectio
         }
       } catch { /* Stop still works at the next hook if the harness cannot be identified. */ }
     }
-    const child = spawn(process.execPath, [helper, 'chat', '--token', connection.token, '--session', connection.session, '--agent', connection.agent, ...(owner ? ['--owner', owner] : [])], {
-      cwd, detached: true, stdio: 'ignore', env: { ...process.env, REDCRAYON_ORIGIN: connection.origin },
+    const child = spawn(executable, [...args, 'chat', '--token', connection.token, '--session', connection.session, '--agent', connection.agent, ...(owner ? ['--owner', owner] : [])], {
+      cwd, detached: true, stdio: managed ? ['pipe', 'ignore', 'ignore'] : 'ignore', env: { ...process.env, REDCRAYON_ORIGIN: connection.origin },
     });
     child.on('error', () => {});
+    if (managed) { child.stdin?.on('error', () => {}); child.stdin?.end(JSON.stringify(approval)); }
     child.unref();
     for (let n = 0; n < 20; n++) {
       await new Promise(resolve => setTimeout(resolve, 100));

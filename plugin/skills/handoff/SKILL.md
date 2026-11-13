@@ -9,6 +9,13 @@ argument-hint: [session-name | board link]
 The board is another view of this conversation. The plugin connects chat when you
 open a board with `start_session`; the user does not need a separate handoff step.
 
+For native Codex installs with managed permissions, call `start_chat` explicitly
+after opening the board so Codex can request attachment approval. Respect Deny;
+do not use the helper or another connection to bypass it. The user can review
+choices with `draw permissions codex`, then restart Codex.
+Never submit a Draw browser approval form programmatically: only the human may
+choose **Allow once**.
+
 1. If there is no active board, call `start_session`. A board link goes in `link`,
    another argument in `name`; with neither, use the branch name. Never create a
    replacement board just to connect chat.

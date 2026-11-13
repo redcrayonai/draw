@@ -21,6 +21,7 @@ export default defineConfig(({ mode }) => {
     build: { rollupOptions: { input: {
       main: fileURLToPath(new URL('./index.html', import.meta.url)),
       embed: fileURLToPath(new URL('./embed.html', import.meta.url)),
+      local: fileURLToPath(new URL('./local.html', import.meta.url)),
     } } },
     server: { fs: { allow: [searchForWorkspaceRoot(process.cwd()), pluginDir, ...linkedPlugins] } },
     resolve: { alias: {

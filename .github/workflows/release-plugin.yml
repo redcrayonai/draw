@@ -1,23 +1,6 @@
-# Releases the redcrayon plugin and its helper as one npm package,
-# @redcrayonai/draw (spec §7, §9; RC-560). Runs on a tag plugin-v<version>, or by
-# hand (Run workflow) on main or on such a tag, e.g. for a hotfix: bump the
-# versions, merge to main, run it. release-labels.yml starts it on the tag a
-# release:plugin PR gets. Never on a branch push or a PR:
-#
-#   1. on a tag, stamps its version into the plugin package/manifest and helper;
-#      checks they agree, then configures the release's
-#      endpoint from the PLUGIN_MCP_ORIGIN repository variable; committed
-#      defaults stay local;
-#   2. builds the helper and copies helper/dist/redcrayon.mjs to plugin/bin/;
-#   3. packs plugin/ and runs scripts/vendor-scan.sh over everything that ships:
-#      the packed npm package and the marketplace file;
-#   4. publishes plugin/ to npm with provenance, by trusted publishing (the
-#      id-token below; no npm token). npm accepts provenance only from a public
-#      repo equal to plugin/package.json's repository (this one), so this step
-#      fails until the repo is public; publish by hand until then.
-#
-# .claude-plugin/marketplace.json points Claude Code at npm @redcrayonai/draw
-# ^1.0.0, so a 1.x release reaches users without changing it.
+# Ship one version of the shared executable, its four platform packages, and
+# the existing hosted plugin. Native packages publish before the canonical npm
+# package; every executable is built and exercised on its target architecture.
 
 name: release-plugin
 
@@ -35,8 +18,10 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  release:
+  prepare:
     runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.version.outputs.version }}
     steps:
       - uses: actions/checkout@v7
 
@@ -68,6 +53,14 @@ jobs:
           fi
           echo "version=$tag" >> "$GITHUB_OUTPUT"
 
+      - name: Refuse a version already used by the older Node package
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          if npm view "@redcrayonai/draw@$VERSION" version >/dev/null 2>&1; then
+            test "$(npm view "@redcrayonai/draw@$VERSION" drawRuntime.protocol)" = 1 || { echo 'This version predates the shared runtime; release a new version.' >&2; exit 1; }
+          fi
+
       - name: Configure the release endpoint
         env:
           PLUGIN_MCP_ORIGIN: ${{ vars.PLUGIN_MCP_ORIGIN }}
@@ -89,6 +82,32 @@ jobs:
           if (helperOrigin !== origin) throw new Error('helper DEFAULT_ORIGIN must match the plugin MCP origin; check the PLUGIN_MCP_ORIGIN configuration step');
           NODE
 
+  native:
+    needs: prepare
+    uses: ./.github/workflows/native-packages.yml
+    with:
+      version: ${{ needs.prepare.outputs.version }}
+      mcp-origin: ${{ vars.PLUGIN_MCP_ORIGIN }}
+
+  release:
+    needs: [prepare, native]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      id-token: write
+    steps:
+      - uses: actions/checkout@v7
+      - name: Restore the validated release version and endpoint
+        env:
+          VERSION: ${{ needs.prepare.outputs.version }}
+          PLUGIN_MCP_ORIGIN: ${{ vars.PLUGIN_MCP_ORIGIN }}
+        run: |
+          node scripts/release-labels.mjs stamp-plugin "$VERSION"
+          node scripts/plugin-config.mjs "$PLUGIN_MCP_ORIGIN"
+      - uses: actions/download-artifact@v8
+        with:
+          pattern: draw-native-*
+          path: ${{ runner.temp }}/native
       - uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115 # v6.1.1
         with:
           package_json_file: helper/package.json
@@ -108,6 +127,8 @@ jobs:
           cp helper/dist/redcrayon.mjs plugin/bin/redcrayon.mjs
           test -f helper/dist/chat-hook.mjs || { echo "::error::the helper build wrote no helper/dist/chat-hook.mjs"; exit 1; }
           cp helper/dist/chat-hook.mjs plugin/bin/chat-hook.mjs
+          mkdir -p plugin/pi
+          cp helper/dist/pi-extension.mjs plugin/pi/extension.mjs
           rm -f plugin/bin/.gitkeep
 
       - name: Pack the plugin
@@ -127,14 +148,51 @@ jobs:
           scripts/vendor-scan.sh "$RUNNER_TEMP/release.targets" --hosted-plugin
           node --test scripts/plugin.test.mjs
 
+      - name: Publish native packages first
+        env:
+          VERSION: ${{ needs.prepare.outputs.version }}
+        run: |
+          npm install -g npm@^11.5.1
+          case "$VERSION" in *-*) channel=next ;; *) channel=latest ;; esac
+          for platform in darwin linux; do
+            for arch in arm64 x64; do
+              archive="$RUNNER_TEMP/native/draw-native-$platform-$arch/draw-$platform-$arch.tgz"
+              package="@redcrayonai/draw-$platform-$arch"
+              test -f "$archive"
+              tar -xOf "$archive" package/package.json | node --input-type=module -e '
+                let input = ""; for await (const chunk of process.stdin) input += chunk;
+                const p = JSON.parse(input);
+                if (p.name !== process.argv[1] || p.version !== process.env.VERSION) throw Error("Native package identity/version mismatch");
+              ' "$package"
+              if npm view "$package@$VERSION" version >/dev/null 2>&1; then
+                echo "$package@$VERSION is already on npm; skipping the publish."
+              else
+                npm publish "$archive" --provenance --access public --tag "$channel"
+              fi
+            done
+          done
+
       - name: Publish @redcrayonai/draw to npm (trusted publishing, provenance)
         working-directory: plugin
         env:
-          VERSION: ${{ steps.version.outputs.version }}
+          VERSION: ${{ needs.prepare.outputs.version }}
         run: |
-          npm install -g npm@^11.5.1
+          case "$VERSION" in *-*) channel=next ;; *) channel=latest ;; esac
           if npm view "@redcrayonai/draw@$VERSION" version >/dev/null 2>&1; then
+            test "$(npm view "@redcrayonai/draw@$VERSION" drawRuntime.protocol)" = 1 || { echo 'This version predates the shared runtime; release a new version.' >&2; exit 1; }
             echo "@redcrayonai/draw@$VERSION is already on npm; skipping the publish."
           else
-            npm publish --provenance --access public
+            npm publish --provenance --access public --tag "$channel"
           fi
+
+      - name: Attach standalone archives and checksums to the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ needs.prepare.outputs.version }}
+        run: |
+          mkdir -p "$RUNNER_TEMP/standalone"
+          cp "$RUNNER_TEMP"/native/draw-native-*/draw-*.tgz "$RUNNER_TEMP/standalone/"
+          (cd "$RUNNER_TEMP/standalone" && sha256sum draw-*.tgz > SHA256SUMS)
+          case "$VERSION" in *-*) prerelease=true; latest=false ;; *) prerelease=false; latest=true ;; esac
+          gh release view "plugin-v$VERSION" >/dev/null 2>&1 || gh release create "plugin-v$VERSION" --target "$GITHUB_SHA" --title "Draw $VERSION" --generate-notes --prerelease="$prerelease" --latest="$latest"
+          gh release upload "plugin-v$VERSION" "$RUNNER_TEMP"/standalone/* --clobber

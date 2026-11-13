@@ -418,6 +418,8 @@ function makeEdgeRefs(badge: EdgeRefBadge, edgeId: bigint): { g: SVGGElement; te
 }
 
 export interface RenderState {
+  /** Local boards can explicitly choose arrow direction without changing hosted edge semantics. */
+  edgeDirections?: ReadonlyMap<bigint, 'forward' | 'both' | 'none'>;
   selection: ReadonlySet<bigint>;
   /** Edges selected for inspection (view-local). */
   selectedEdges: ReadonlySet<bigint>;
@@ -562,7 +564,7 @@ const fmtRate = (rps: number) => (rps < 10 ? Math.round(rps * 10) / 10 : Math.ro
 
 /** The numbers an edge can show: live `12ms · 41/s` (`· 2 err`), else its stored latency (`38ms`, `13ms local`, `~4ms`). */
 function edgeMetric(edge: Pick<Edge, 'latencyMs' | 'latencySource'>, live?: LiveEdge): string {
-  if (live) return `${fmtMs(live.p50)}ms · ${fmtRate(live.rps)}/s${live.errors > 0 ? ` · ${live.errors} err` : ''}`;
+  if (live) return `${live.p50 >= 0 ? `${fmtMs(live.p50)}ms` : 'latency unknown'} · ${fmtRate(live.rps)}/s${live.errors > 0 ? ` · ${live.errors} err` : ''}`;
   if (!(edge.latencyMs >= 0)) return '';
   const n = fmtMs(edge.latencyMs);
   return edge.latencySource === 'estimate' ? `~${n}ms` : edge.latencySource === 'local' ? `${n}ms local` : `${n}ms`;
@@ -841,6 +843,7 @@ interface EdgeEntry {
   /** Last-written blast class of g and labels ('' = none). */
   blast: string;
   marker: string;
+  direction?: 'forward' | 'both' | 'none';
   selected: boolean;
   /** Last-written focus-near state of g and labels. */
   near: boolean;
@@ -1916,9 +1919,13 @@ export function renderBoard(
     const head = markerFor(evCls, state.overlay, selected, diffColor === 'added' ? 'green' : diffColor === 'removed' ? 'red' : diffColor === 'changed' ? 'blue' : reader?.status === 'stale' ? 'red' : edge.color);
     // The overlay owns weight; with it off, a medium or bold edge takes a head of its weight.
     const marker = !state.overlay && weight !== undefined && WEIGHT_HEAD_PX.has(weight) ? `${head}-${weight}` : head;
-    if (marker !== e.marker) {
-      e.line.setAttribute('marker-end', `url(#${marker})`);
-      e.marker = marker;
+    const direction = state.edgeDirections?.get(edge.id);
+    if (marker !== e.marker || direction !== e.direction) {
+      if (direction === 'none') e.line.removeAttribute('marker-end');
+      else e.line.setAttribute('marker-end', `url(#${marker})`);
+      e.marker = marker; e.direction = direction;
+      if (direction === 'both') e.line.setAttribute('marker-start', `url(#${marker})`);
+      else e.line.removeAttribute('marker-start');
     }
 
     if (route.d !== e.d) {

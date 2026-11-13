@@ -241,3 +241,15 @@ test('no tracked file points into the hosted service repo (cloud/<dir>/)', () =>
   const { status, stdout } = spawnSync('git', ['grep', '-nE', '(^|[^[:alnum:]_])cloud/(auth|docs|e2e|mcp|scripts|web|wrangler)/', '--', '.', ':!scripts/vendor-scan.test.mjs'], { cwd: root, encoding: 'utf8' });
   assert.equal(status, 1, `private repo paths in the core:\n${stdout}`);
 });
+
+test('native plugin launcher keeps the same narrow endpoint exceptions including pi', () => {
+  const files = { ...hostedPluginFiles };
+  for (const directory of ['plugin', 'pack/package']) {
+    files[`${directory}/package.json`] = JSON.stringify({ name: '@redcrayonai/draw', bin: { draw: 'bin/draw', redcrayon: 'bin/draw' } });
+    files[`${directory}/pi/extension.mjs`] = hostedPluginFiles['plugin/bin/redcrayon.mjs'];
+  }
+  assert.equal(tree(files, hostedPluginTargets)().length, 8);
+  assert.deepEqual(tree(files, hostedPluginTargets)({ hostedPlugin: true }), []);
+  files['plugin/pi/extension.mjs'] += 'const key = "sk_live_forbidden";\n';
+  assert.equal(tree(files, hostedPluginTargets)({ hostedPlugin: true }).length, 1);
+});

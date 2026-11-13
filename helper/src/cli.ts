@@ -37,10 +37,19 @@ import { runChat } from './chat';
 import { hookResult as resultJson } from './hook-result';
 import { runMarks } from './marks';
 import { runTap } from './tap';
+import { runLocal } from './local-cli';
+import { standalone } from './local-runtime';
+import { runLocalInstall } from './local-install';
+import { runLocalMcp } from './local-mcp';
+import { runLocalLive } from './local-live';
+import { localClaudeSettings, runLocalClaudeHook } from './local-claude-hook';
+import { notifyUpdate } from './update';
+import { requireCapturePermission } from './capture-permission';
+import { enforceToolPermissions, PermissionError, runtimePermissions } from './permissions';
 
 
 const USAGE =
-  'redcrayon: usage: redcrayon capture start | capture ref <path> [--board <id>] | capture cite <path> [--board <id>] | capture checkpoint --board <id> --base <sha> [--also <path>…] | hook | doctor | tap --token <t> | marks --token <t> | chat --token <t>';
+  'redcrayon: usage: redcrayon local [--repo path] | local-mcp [--repo path] | live --board slug --map mapping.json [--repo path] | capture start | capture ref <path> [--board <id>] | capture cite <path> [--board <id>] | capture checkpoint --board <id> --base <sha> [--also <path>…] | hook | doctor | tap --token <t> | marks --token <t> | chat --token <t>';
 
 const firstLine = (s: string) => s.split('\n')[0].replace(/[\x00-\x1f\x7f]/g, '').slice(0, 200);
 const BATCH_CAPTURE_TIMEOUT = 'redcrayon: source captures took too long for one batch. Split apply_board into smaller batches or create_edge calls.';
@@ -70,6 +79,7 @@ async function upload(body: CaptureBody, parent?: AbortSignal): Promise<string> 
 
 /** Upload one capture; the privacy line goes out once, after the first upload that worked. */
 async function capture(kind: CaptureKind, opts: CaptureOpts, notice: (line: string) => void, signal?: AbortSignal, deadline?: number): Promise<string> {
+  await requireCapturePermission(kind, opts, signal);
   signal?.throwIfAborted();
   if (deadline !== undefined && Date.now() >= deadline) throw new HelperError(BATCH_CAPTURE_TIMEOUT);
   const body = buildCapture(kind, opts, deadline);
@@ -110,7 +120,8 @@ async function doctor(cwd: string): Promise<number> {
     ok &&= good;
   };
   const major = Number(process.versions.node.split('.')[0]);
-  check('node', major >= 20, major >= 20 ? `v${process.versions.node}` : `v${process.versions.node}; redcrayon needs Node 20 or later`);
+  if (standalone) check('runtime', true, `bundled Bun ${process.versions.bun}`);
+  else check('node', major >= 20, major >= 20 ? `v${process.versions.node}` : `v${process.versions.node}; redcrayon needs Node 20 or later`);
   try {
     check('git', true, execFileSync('git', ['--version'], { encoding: 'utf8' }).trim());
   } catch {
@@ -162,9 +173,10 @@ async function preToolUse(tool: string, args: Json, cwd: string, out: string[], 
       if (count < 1 || count > 16) return 0;
       const edges = [...args.edges];
       let changed = false;
-      // Leave ten seconds for startup and cleanup inside the plugin hook's 45 s limit.
-      const deadline = Date.now() + 35_000;
-      const budget = AbortSignal.timeout(35_000);
+      // Managed Codex hooks leave time for the separate source approval form.
+      const duration = runtimePermissions('hosted') ? 125_000 : 35_000;
+      const deadline = Date.now() + duration;
+      const budget = AbortSignal.timeout(duration);
       const stop = new AbortController();
       const signal = AbortSignal.any([budget, stop.signal]);
       try {
@@ -193,6 +205,7 @@ async function preToolUse(tool: string, args: Json, cwd: string, out: string[], 
     out.push(JSON.stringify({ hookSpecificOutput: { hookEventName: 'PreToolUse', updatedInput: { ...args, capture: id } } }));
     return 0;
   } catch (e) {
+    if (e instanceof PermissionError) { err.push(e.message); return 2; }
     // start_session outside a checkout opens a drawing-only board
     if (!(e instanceof HelperError) || tool === 'start_session') return 0;
     err.push(e.message);
@@ -236,6 +249,11 @@ async function hook(out: string[], err: string[]): Promise<number> {
     for await (const chunk of process.stdin) chunks.push(chunk as Buffer);
     const input: unknown = JSON.parse(Buffer.concat(chunks).toString('utf8'));
     if (!isObject(input) || !isObject(input.tool_input)) return 0;
+    const guarded = /^mcp__(plugin_draw_)?(?:draw|redcrayon)(-dev)?__(.+)$/.exec(String(input.tool_name))?.[3];
+    if (guarded && input.hook_event_name === 'PreToolUse') {
+      try { enforceToolPermissions(guarded, 'hosted', input.tool_input); }
+      catch (error) { err.push(error instanceof Error ? error.message : 'REJECTED: Draw permissions could not be checked.'); return 2; }
+    }
     const tool = new RegExp(HOOK_MATCHER).exec(String(input.tool_name))?.[3];
     if (!tool) return 0;
     const cwd = typeof input.cwd === 'string' ? input.cwd : process.cwd();
@@ -254,6 +272,7 @@ async function hook(out: string[], err: string[]): Promise<number> {
 async function main(argv: string[]): Promise<{ code: number; out: string[]; err: string[] }> {
   const out: string[] = [];
   const err: string[] = [];
+  if (argv[0] === 'chat-hook') { await import('./chat-hook'); return { code: 0, out, err }; }
   if (argv[0] === 'hook') return { code: await hook(out, err), out, err };
   if (process.platform === 'win32') return { code: 1, out, err: [say.windows] };
   try {
@@ -271,6 +290,12 @@ async function main(argv: string[]): Promise<{ code: number; out: string[]; err:
       process.once('SIGTERM', () => stop.abort());
       return { code: await runMarks(argv.slice(1), origin(), { out, err, signal: stop.signal }), out, err };
     }
+    if (argv[0] === 'install') return { code: runLocalInstall(argv.slice(1)), out, err };
+    if (argv[0] === 'local') return { code: await runLocal(argv.slice(1)), out, err };
+    if (argv[0] === 'local-mcp') return { code: await runLocalMcp(argv.slice(1)), out, err };
+    if (argv[0] === 'live') return { code: await runLocalLive(argv.slice(1)), out, err };
+    if (argv[0] === 'local-claude-hook') return { code: await runLocalClaudeHook(argv.slice(1)), out, err };
+    if (argv[0] === 'local-claude-settings') return { code: 0, out: [JSON.stringify(localClaudeSettings(argv.slice(1)), null, 2)], err };
     if (argv[0] === 'chat') return { code: await runChat(argv.slice(1), origin(), process.cwd(), line => process.stderr.write(`${line}\n`), line => process.stdout.write(`${line}\n`)), out, err };
     return { code: 1, out, err: [USAGE] };
   } catch (e) {
@@ -278,7 +303,15 @@ async function main(argv: string[]): Promise<{ code: number; out: string[]; err:
   }
 }
 
+declare const __DRAW_VERSION__: string;
+// Only native local launches check; opening the board proceeds while the request is in flight.
+const update = typeof __DRAW_VERSION__ !== 'undefined' && process.argv[2] === 'local'
+  ? notifyUpdate(__DRAW_VERSION__) : undefined;
 const { code, out, err } = await main(process.argv.slice(2));
+await update;
+if (typeof __DRAW_VERSION__ !== 'undefined') {
+  for (let i = 0; i < err.length; i++) err[i] = err[i].replace(/^redcrayon:/, 'draw:');
+}
 // Exit once both streams are flushed: an idle keep-alive socket must not hold the process.
 const flush = (stream: NodeJS.WriteStream, lines: string[]) =>
   new Promise<void>(done => stream.write(lines.map(l => `${l}\n`).join(''), () => done()));

@@ -13,6 +13,7 @@ agent/.agent-token*
 # the helper bundle, copied into the plugin at release time
 plugin/bin/redcrayon.mjs
 plugin/bin/chat-hook.mjs
+plugin/pi/extension.mjs
 
 # local secrets (API keys); the .env.example files are the committed templates
 .env

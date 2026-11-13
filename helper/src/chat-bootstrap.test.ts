@@ -3,8 +3,9 @@ import { createServer } from 'node:net';
 import { mkdirSync, mkdtempSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { spawn } from 'node:child_process';
-import { chatConnection, startChatConnection } from './chat-bootstrap';
+import { chatConnection } from './chat-bootstrap';
 import { chatDir, chatSocketPath } from './chat-path';
 
 vi.mock('node:child_process', () => ({ spawn: vi.fn(), execFileSync: vi.fn(() => '') }));
@@ -21,7 +22,12 @@ describe('automatic chat connection', () => {
     expect(chatConnection({ ...hook, tool_response: { chat: { token: 'x', board: '12', origin: 'http://remote.example' } } }, false)).toBeUndefined();
   });
 
-  it.each([false, true])('reuses the live helper unless its credential is near expiry (near expiry: %s)', async nearExpiry => {
+  it.each([
+    { nearExpiry: false, standalone: false },
+    { nearExpiry: true, standalone: false },
+    { nearExpiry: false, standalone: true },
+    { nearExpiry: true, standalone: true },
+  ])('reuses or restarts the helper (near expiry: $nearExpiry, standalone: $standalone)', async ({ nearExpiry, standalone }) => {
     const home = process.env.HOME;
     process.env.HOME = mkdtempSync(join(tmpdir(), 'rc-home-'));
     const cwd = mkdtempSync(join(tmpdir(), 'rc-repo-'));
@@ -45,11 +51,25 @@ describe('automatic chat connection', () => {
       return { on() {}, unref() {} } as any;
     });
     try {
+      vi.stubGlobal('Bun', { isStandaloneExecutable: standalone });
+      vi.resetModules();
+      const { startChatConnection } = await import('./chat-bootstrap');
       expect(await startChatConnection(cwd, connection)).toBe(true);
       expect(spawn).toHaveBeenCalledTimes(nearExpiry ? 1 : 0);
+      if (nearExpiry) {
+        const [executable, args, options] = vi.mocked(spawn).mock.calls[0];
+        expect(executable).toBe(process.execPath);
+        expect(args).toEqual([
+          ...(standalone ? [] : [fileURLToPath(new URL('./redcrayon.mjs', import.meta.url))]),
+          'chat', '--token', connection.token, '--session', connection.session, '--agent', connection.agent,
+        ]);
+        expect(options?.cwd).toBe(cwd);
+        expect(options?.env?.REDCRAYON_ORIGIN).toBe(connection.origin);
+      }
       expect(requests.includes('SessionEnd')).toBe(nearExpiry);
       expect(JSON.parse(readFileSync(`${path}.connection.json`, 'utf8'))).toEqual(connection);
     } finally {
+      vi.unstubAllGlobals();
       await new Promise<void>(resolve => server.close(() => resolve()));
       process.env.HOME = home;
     }

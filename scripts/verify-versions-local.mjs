@@ -496,30 +496,30 @@ test('an architecture snapshot restores as a plain board; its history is provena
 test('capture is one consistent state while others write', async () => {
   const { who: O, W } = await ownWorkspace('snap-busy');
   const C = await board(O, W, 'snap-busy');
-  let writing = true;
-  // Writer: each step adds a chart (node and chart row in one write), links it to the last one and
-  // deletes the one before (its edges go in the same write).
-  const writer = (async () => {
-    const ids = [];
-    for (let i = 0; i < 30; i++) {
-      await ok(O, 'create_chart', [C, `chart ${i}`, '', (i % 8) * 240, Math.floor(i / 8) * 160, 224, 144, 'stat', 'value\n1\n', NONE, NONE]);
-      ids.push((await sql(OWNER, `SELECT id FROM node WHERE board_id = ${C} AND label = 'chart ${i}'`))[0].id);
-      if (i > 0) await ok(O, 'create_edge', [C, ids[i - 1], ids[i], 'next', 'human:test', NONE, NONE, NONE]);
-      if (i > 1) await ok(O, 'delete_node', [ids[i - 2]]);
+  const ids = [];
+  // Race each capture against adding a chart, linking it and deleting its predecessor.
+  // 30 captures plus 87 edits stay below the person's 300/minute write budget.
+  for (let i = 0; i < 30; i++) {
+    const results = await Promise.allSettled([
+      (async () => {
+        await ok(O, 'create_chart', [C, `chart ${i}`, '', (i % 8) * 240, Math.floor(i / 8) * 160, 224, 144, 'stat', 'value\n1\n', NONE, NONE]);
+        ids.push((await sql(OWNER, `SELECT id FROM node WHERE board_id = ${C} AND label = 'chart ${i}'`))[0].id);
+        if (i > 0) await ok(O, 'create_edge', [C, ids[i - 1], ids[i], 'next', 'human:test', NONE, NONE, NONE]);
+        if (i > 1) await ok(O, 'delete_node', [ids[i - 2]]);
+      })(),
+      (async () => {
+        const r = await capture(O, C);
+        assert.equal(r.error, undefined, r.error);
+        const board = parseBundle(r.bundle); // refuses an edge, hide set or chart naming a row of another state
+        const charted = new Set(board.charts.map(row => row.nodeId));
+        assert.deepEqual(board.nodes.filter(n => n.kind === 'chart' && !charted.has(n.id)).map(n => n.label), [], 'a chart node without its chart row');
+      })(),
+    ]);
+    // Drain both tasks even on failure, so a writer cannot leak into the next test.
+    for (const result of results) {
+      if (result.status === 'rejected') throw result.reason;
     }
-    writing = false;
-  })();
-  let captures = 0;
-  while (writing) {
-    const r = await capture(O, C);
-    assert.equal(r.error, undefined, r.error);
-    const board = parseBundle(r.bundle); // refuses an edge, hide set or chart naming a row of another state
-    const charted = new Set(board.charts.map(row => row.nodeId));
-    assert.deepEqual(board.nodes.filter(n => n.kind === 'chart' && !charted.has(n.id)).map(n => n.label), [], 'a chart node without its chart row');
-    captures++;
   }
-  await writer;
-  assert.ok(captures > 3, `${captures} captures ran during the writes`);
 });
 
 test('a board bigger than one call restores through pieces', async () => {
