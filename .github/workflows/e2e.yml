@@ -9,12 +9,14 @@ permissions:
 jobs:
   browser:
     runs-on: ubuntu-latest
-    # Room for a slow apt mirror in the Chromium install (12 min once) on top of a ~10-minute shard.
+    # Room for a slow apt mirror in the Chromium install (12 min once) on top of a ~4-minute shard.
     timeout-minutes: 25
     strategy:
       fail-fast: false
       matrix:
-        shard: [1, 2, 3]
+        # One worker per shard (playwright.config.ts): dashboard journeys time out when many workers share
+        # a machine. Shards split by test count and the last files are the slow ones, so add shards, not workers.
+        shard: [1, 2, 3, 4, 5, 6, 7, 8]
     steps:
       - uses: actions/checkout@v7
       - uses: ./.github/actions/spacetime
