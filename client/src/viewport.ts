@@ -54,9 +54,9 @@ export function chromeInsets(wrap: HTMLElement): Insets {
     insets.bottom = w.bottom - dock.top + PANEL_GAP;
   }
   // The depth trail sits top centre while the view is inside a frame: keep the frame clear of it.
-  const trail = document.getElementById('depth-trail');
-  if (shown(trail)) {
-    insets.top = Math.max(insets.top, trail.getBoundingClientRect().bottom - w.top);
+  const trail = shownRect('depth-trail');
+  if (trail) {
+    insets.top = Math.max(insets.top, trail.bottom - w.top);
   }
   // The walk-through bar replaces the dock while it plays; reserve from its top edge down.
   const bar = shownRect('telling-bar');
