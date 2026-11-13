@@ -343,12 +343,16 @@ export function mountAgentChat(chatButton: HTMLButtonElement, opts: AgentChatOpt
   /** A pairing link waiting for the person's answer. Never acted on without it: anyone can send someone a link. */
   let pairing: { run(): Promise<'linked' | 'already'>; busy: boolean; failed: boolean; already?: boolean } | null = null;
   const expanded = new Set<string>();
-  // The launcher names who answers, as the panel's header does; the status dot stays last.
-  const launchLabel = el('span', 'ac-label', 'Your agent');
   const back = el('span', 'ac-back', 'Back to chat');
   back.hidden = true;
-  chatButton.insertBefore(launchLabel, chatButton.querySelector('.ac-dot'));
-  chatButton.insertBefore(back, launchLabel);
+  chatButton.append(back);
+  // The launcher's list (index.html): the agents of this chat, then plugin-mounts.ts's panels. Optional in pages without it.
+  const menu = document.getElementById('launcher-menu'), chatOptions = document.getElementById('chat-options');
+  // data-open, not hidden: with no chat button to open it from, the stylesheet keeps the plugin panels' buttons in view.
+  const menuOpen = () => Boolean(menu?.hasAttribute('data-open'));
+  const setMenu = (on: boolean) => { menu?.toggleAttribute('data-open', on); };
+  /** A session's name, told apart from another of the same name. */
+  const sessionLabel = (s: ChatSession) => (model.sessions.some(other => other.id !== s.id && other.name === s.name) ? `${s.name} · ${s.id.slice(-8)}` : s.name);
   const draw = button('ac-draw', '', () => {
     setOpen(false);
     setDrawing(true);
@@ -814,8 +818,7 @@ export function mountAgentChat(chatButton: HTMLButtonElement, opts: AgentChatOpt
     const state = !model.online ? ({ connecting: 'Connecting', reconnecting: 'Reconnecting', syncing: 'Syncing conversation', waiting: 'Waiting for agent', offline: 'Not connected', ready: 'Syncing conversation' }[model.connection]) : model.state === 'working' ? 'Working' : model.state === 'stopping' ? 'Stopping' : model.state === 'stopped' ? 'Stopped' : 'Ready';
     const awaitingApproval = model.online && model.items.some(i => i.kind === 'approval' && i.status === 'pending');
     statusText.textContent = `${awaitingApproval ? 'Needs approval' : state} · private to you`;
-    agentName.textContent = launchLabel.textContent = model.session?.name || 'Your agent';
-    launchLabel.hidden = drawing;
+    agentName.textContent = model.session?.name || 'Your agent';
     const ends = Boolean(model.session?.capabilities.end);
     const label = ends ? 'End chat' : 'New chat';
     if (sessionAction.dataset.label !== label) {
@@ -832,12 +835,16 @@ export function mountAgentChat(chatButton: HTMLButtonElement, opts: AgentChatOpt
       placeholder.value = '';
       placeholder.disabled = true;
       sessions.replaceChildren(placeholder, ...model.sessions.map(s => {
-        const duplicate = model.sessions.some(other => other.id !== s.id && other.name === s.name);
-        const option = el('option', undefined, duplicate ? `${s.name} · ${s.id.slice(-8)}` : s.name);
+        const option = el('option', undefined, sessionLabel(s));
         option.value = s.id;
         return option;
       }));
       sessions.dataset.options = options;
+      // The same agents in the launcher's list; with none connected yet, the chat itself, which says how to connect one.
+      chatOptions?.replaceChildren(...(model.sessions.length ? model.sessions : [null]).map(s => button('launch-option', s ? sessionLabel(s) : 'Your agent', () => {
+        if (s) selectSession(s.id);
+        setOpen(true, true);
+      })));
     }
     sessions.value = model.selected ?? '';
     dot.className = `ac-dot ${!model.online ? 'off' : busy() ? 'busy' : ''}`;
@@ -1114,6 +1121,7 @@ export function mountAgentChat(chatButton: HTMLButtonElement, opts: AgentChatOpt
     if (next || byPerson) setDrawing(false);
     if (next === open) return;
     if (next) opts.onOpen?.();
+    if (next) setMenu(false);
     open = next;
     draw.hidden = !next;
     panel.hidden = !next;
@@ -1139,7 +1147,24 @@ export function mountAgentChat(chatButton: HTMLButtonElement, opts: AgentChatOpt
     }
   }
 
-  chatButton.addEventListener('click', () => setOpen(!open, true));
+  chatButton.addEventListener('click', () => {
+    // One way in opens at once. Several, plugin panels among them, wait to be chosen between.
+    const choices = menu && !open && !drawing ? menu.querySelectorAll('#chat-options > button, #plugin-launcher:not([hidden]) > button').length : 0;
+    if (choices < 2) return setOpen(!open, true);
+    setMenu(!menuOpen());
+    if (menuOpen()) menu!.querySelector('button')?.focus();
+  });
+  // Any choice closes the list: a plugin's button opens its panel itself.
+  menu?.addEventListener('click', () => setMenu(false));
+  menu?.addEventListener('keydown', ev => {
+    if (ev.key !== 'Escape') return;
+    ev.stopPropagation(); // the canvas's own Escape would clear the selection
+    setMenu(false);
+    chatButton.focus();
+  });
+  document.addEventListener('pointerdown', ev => {
+    if (menu && menuOpen() && !menu.contains(ev.target as Node) && !chatButton.contains(ev.target as Node)) setMenu(false);
+  });
   panel.addEventListener('keydown', ev => ev.stopPropagation());
   renderStatus();
 

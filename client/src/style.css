@@ -2460,76 +2460,89 @@ body.lib-dragging #board {
   right: var(--space-4);
   bottom: calc(var(--space-5) + var(--shortcuts-h) + var(--space-3) + var(--canvas-launcher-lift, 0px));
   display: flex;
-  align-items: center;
-  /* one surface for every way to reach an agent, the Shortcuts pill's sibling; its buttons fill it */
-  border: 1px solid var(--hairline);
-  border-radius: var(--r-md);
-  background: var(--panel-2);
-  box-shadow: var(--shadow-lg);
-  overflow: hidden;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: var(--space-2);
   z-index: 17;
 }
 
-#plugin-launcher { display: flex; }
-
-/* Nothing to reach (or only the chat, and it is open): no empty surface. */
-#canvas-launcher:not(:has(> #act-chat:not([hidden]), > #plugin-launcher:not([hidden]) > button)),
-:root[data-agent-chat] #canvas-launcher:not(:has(> #plugin-launcher:not([hidden]) > button)) {
+/* The list opens upward from the button: the launcher is anchored at its bottom. */
+#launcher-menu {
   display: none;
+  flex-direction: column;
+  min-width: 176px;
+  max-width: min(280px, calc(100vw - 2 * var(--space-4)));
+  padding: var(--space-1);
+  border: 1px solid var(--hairline);
+  border-radius: var(--r-lg);
+  background: var(--panel-2);
+  box-shadow: var(--shadow-lg);
+  transform-origin: bottom right;
+  animation: launcher-up var(--dur) var(--ease);
 }
 
-/* Leave the red-crayon Send button reachable while marks are pending. */
-body:has(.mark-send:not([hidden])) { --canvas-launcher-lift: 48px; }
-/* The inspector stops above the group: its 46px and the gap under it. */
-body:has(#canvas-launcher > #act-chat:not([hidden]), #plugin-launcher:not([hidden]) > button) { --canvas-launcher-h: calc(46px + var(--space-3)); }
+@keyframes launcher-up {
+  from { opacity: 0; transform: translateY(6px) scale(0.98); }
+}
 
-@media (min-width: 721px) {
-  body.plugin-dock-open #canvas-launcher { right: calc(var(--plugin-dock-w) + var(--space-4)); }
+#launcher-menu[data-open] {
+  display: flex;
 }
 
 #plugin-launcher[hidden] {
   display: none;
 }
 
-#act-chat,
-.plugin-launch {
-  position: relative;
-  flex-shrink: 0;
+#chat-options,
+#plugin-launcher {
   display: flex;
-  align-items: center;
-  gap: 7px;
+  flex-direction: column;
+}
+
+/* No chat button to open the list from (no agent, or the chat is open): plugin panels keep their buttons in view. */
+#canvas-launcher:has(> #act-chat[hidden]) > #launcher-menu:has(#plugin-launcher:not([hidden]) > button),
+:root[data-agent-chat] #launcher-menu:has(#plugin-launcher:not([hidden]) > button) {
+  display: flex;
+  animation: none;
+}
+
+#canvas-launcher:has(> #act-chat[hidden]) #chat-options,
+:root[data-agent-chat] #chat-options {
+  display: none;
+}
+
+.launch-option,
+.plugin-launch {
+  flex-shrink: 0;
   /* a 44px target each, as the dock's buttons */
-  min-width: 44px;
-  height: 44px;
-  padding: 0 14px;
-  border-radius: 0;
+  min-height: 44px;
+  padding: 0 var(--space-3);
+  border-radius: var(--r-md);
   color: var(--ink);
-  font: 500 12px/1 var(--sans);
+  font: 500 13px/1.3 var(--sans);
+  text-align: left;
+  overflow: hidden;
+  text-overflow: ellipsis;
   white-space: nowrap;
   transition: background var(--dur) var(--ease);
 }
 
-/* the group clips an outset ring */
-#act-chat:focus-visible,
-.plugin-launch:focus-visible {
-  outline-offset: -2px;
-}
-
-#act-chat:hover,
+.launch-option:hover,
 .plugin-launch:hover {
   background: var(--panel-hi);
 }
 
-/* A hairline between neighbours. */
-:root:not([data-agent-chat]) #act-chat:not([hidden]) + #plugin-launcher > .plugin-launch:first-child::before,
-.plugin-launch + .plugin-launch::before {
-  content: '';
-  position: absolute;
-  left: 0;
-  top: 12px;
-  bottom: 12px;
-  width: 1px;
-  background: var(--hairline);
+/* Leave the red-crayon Send button reachable while marks are pending. */
+body:has(.mark-send:not([hidden])) { --canvas-launcher-lift: 48px; }
+/* The inspector stops above the button: its 44px and the gap under it. */
+body:has(#canvas-launcher > #act-chat:not([hidden]), #plugin-launcher:not([hidden]) > button) { --canvas-launcher-h: calc(44px + var(--space-3)); }
+
+@media (min-width: 721px) {
+  body.plugin-dock-open #canvas-launcher { right: calc(var(--plugin-dock-w) + var(--space-4)); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  #launcher-menu { animation: none; }
 }
 
 #plugin-dock {
@@ -5888,7 +5901,7 @@ a.ctl {
 
 :root[data-theme='brutal'] :is(.topbar, #rail, #inspector, #toolbar, .tb-popover, #dock, .zoom-cluster,
   #shortcuts-toggle, #legend, #shortcuts, #presence-pop, #theme-pop, #palette-panel, .btn-primary, #chart-tip,
-  #plugin-dock, #canvas-launcher,
+  #plugin-dock, #launcher-menu, #act-chat,
   #connect-panel, #act-connect, #act-share, #share-pop, #empty-connect) {
   border-width: 2px;
   border-color: var(--ink);
@@ -6631,25 +6644,43 @@ svg:not(.armed) #crayon .mark-chip { pointer-events: all; cursor: pointer; }
 /* ---------- agent chat (agent-chat.ts): the person's own agent, docked beside the board ---------- */
 
 /* The open panel has its own Close: the launcher is gone until then. */
+#act-chat {
+  position: relative;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  min-width: 44px;
+  height: 44px;
+  padding: 0 11px;
+  border: 1px solid var(--hairline);
+  border-radius: var(--r-md);
+  background: var(--panel-2);
+  box-shadow: var(--shadow-lg);
+  color: var(--ink);
+  font: 500 12px/1 var(--sans);
+  white-space: nowrap;
+  transition: background var(--dur) var(--ease);
+}
+#act-chat:hover { background: var(--panel-hi); }
 #act-chat[hidden], :root[data-agent-chat] #act-chat { display: none; }
 /* Presence colour, so the one way to reach an agent stands out from the grey chrome around it. */
-#act-chat .ac-spark { color: var(--accent); flex: none; }
-#act-chat .ac-label { max-width: 18ch; overflow: hidden; text-overflow: ellipsis; line-height: 1.3; }
+#act-chat .ac-bot { color: var(--accent); flex: none; }
 #act-chat [hidden] { display: none; }
-#act-chat .ac-dot { background: var(--faint); }
+#act-chat .ac-dot { position: absolute; right: 5px; top: 5px; background: var(--faint); }
 #act-chat[data-state='on'] .ac-dot { background: var(--ok); }
 #act-chat[data-state='busy'] .ac-dot { background: var(--accent); animation: ac-pulse 1.2s ease-in-out infinite; }
 #act-chat[data-unread='true']::after {
   content: '';
   position: absolute;
-  /* on the spark, so it cannot be read as the neighbouring button's */
-  top: 10px;
-  left: 25px;
+  top: -3px;
+  right: -3px;
   width: 8px;
   height: 8px;
   border-radius: 50%;
   background: var(--accent);
-  box-shadow: 0 0 0 2px var(--panel-2);
+  box-shadow: 0 0 0 2px var(--app);
 }
 .ac-dot { width: 7px; height: 7px; flex: none; border-radius: 50%; background: var(--ok); }
 .ac-dot.off { background: var(--faint); }

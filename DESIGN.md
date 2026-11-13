@@ -240,13 +240,14 @@ Use sans for prose and actions. Use mono for paths, snippets, line numbers, and 
 An error says what failed and uses ink with a dashed underline; focal orange does not carry save errors.
 General dashboard errors keep their existing dashed border and readable message.
 
-**Agent launcher.** Every way to reach an agent sits in one group at the bottom right, above Shortcuts:
-the chat button first, then one button per plugin panel, with a hairline between neighbours.
-The chat button shows draw's spark in `--accent`, the agent's name as the panel header gives it, and a status dot.
-The group is the floating surface; its buttons fill it, 44px high, with no border or shadow of their own. The inspector stops above it.
+**Agent launcher.** One 44px button at the bottom right, above Shortcuts, is the way to an agent.
+It shows the bot head an agent has everywhere (presence chips, the library's Agent icon) in `--accent`, with a status dot.
+With one agent it opens the chat at once. With several, or with plugin panels, it opens a list above itself:
+one row per agent, then one per plugin panel, each 44px high. Escape or a press elsewhere closes the list.
+While there is no chat button to open it from, plugin panels keep their rows in view. The inspector stops above the button.
 
 **Share.** The header has one Share button. Its popover holds Link and, for owners, Embed, switched by text tabs
-on a rule at the top. A person with only one of the two sees no tabs. Do not add a second header button for a way
+on a rule at the top. A person with only one of the two sees no tabs; with no link to offer (a snapshot), the button reads Embed. Do not add a second header button for a way
 to publish the board.
 
 **Inputs and popovers.** Reuse existing input, search, share, and theme-picker patterns.
