@@ -22,6 +22,8 @@ export const TRACE_TABLES = ['visible_trace_playback'];
 export const CHANGE_NOTE_TABLES = ['visible_change_note'];
 /** Threats (members-only view): optional like change notes, so a module without them keeps the board open. */
 export const THREAT_TABLES = ['visible_threat'];
+/** Tellings (walk-throughs per audience): optional, so a module without them keeps the board open. */
+export const TELLING_TABLES = ['visible_telling'];
 /** Red crayon review marks, waiting agents and read cursors: optional, so a module without them keeps the board open. */
 export const MARK_TABLES = ['visible_mark', 'visible_mark_waiter', 'visible_mark_read'];
 /** Hand-set edge weights (RC-688): optional, so a module without them draws every edge at regular weight. */
@@ -201,4 +203,7 @@ export function subscribeBoard(
   conn.subscriptionBuilder()
     .onError(ctx => console.warn('board links unavailable (module predates them):', ctx.event))
     .subscribe(all(NODE_LINK_TABLES));
+  conn.subscriptionBuilder()
+    .onError(ctx => console.warn('tellings unavailable (module predates tellings):', ctx.event))
+    .subscribe(all(TELLING_TABLES));
 }

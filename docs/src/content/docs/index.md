@@ -28,6 +28,7 @@ hero:
 | Watch your instrumented app while you run it locally | [Watch local traffic with tap](/use-cases/tap/) |
 | Explain pod churn, errors or latency | [Investigate an incident](/use-cases/investigate/) |
 | Understand the impact of an alert or vulnerability | [Triage security findings](/use-cases/security/) |
+| Explain a system, change or incident to people outside the work | [Explain it with a walk-through](/use-cases/explain/) |
 | Put a chart or diagram in a handover | [Share an explanation or report](/use-cases/share/) |
 
 ## Choose what you share

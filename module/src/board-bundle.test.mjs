@@ -52,6 +52,7 @@ function seed(db, boardId = 7n) {
   db.session.insert({ id: 91n, boardId, repoRoot: '/r', baseSha: 'b', headSha: 'h', checkpoint: 2, coverage: '{}', startedAt: time(1n), updatedAt: time(2n) });
   db.sessionRoute.insert({ boardId, nodeIds: [1n, 2n], currentIndex: 1, revision: 1, currentCheckpoint: 2, updatedAt: time(2n) });
   db.sessionRemote.insert({ boardId, remoteUrl: 'https://github.com/o/r', pushedHead: '', dirtyPaths: ['src/a.ts'] });
+  db.telling.insert({ id: 101n, boardId, audience: 'product', title: 'Checkout', steps: JSON.stringify([{ nodes: ['1', '999'], frame: ['2'], title: 't', body: 'b', source: '' }]), author: 'agent', updatedAt: time(7n) });
   db.tracePlayback.insert({ boardId, spans: JSON.stringify([{ id: 'a', parent: null, node: '1', startMs: 0, durationMs: 5, status: 'ok' }]), source: 'local', title: 't', seq: 1, playedAt: time(6n) });
 }
 
@@ -94,13 +95,16 @@ test('capture, parse and restore round-trip every row with consistent new ids', 
   assert.deepEqual(again.routeEvents[0].nodeIds, [n1, '0']);
   assert.deepEqual(again.sessionRoute.nodeIds, [n1, n2]);
   assert.equal(JSON.parse(again.tracePlayback.spans)[0].node, n1);
+  const [step] = JSON.parse(again.tellings[0].steps);
+  assert.deepEqual([step.nodes, step.frame], [[n1], [n2]], 'a step node not in the bundle is dropped');
   // Everything else is equal once ids are put back.
   const ID = new Set(['id', 'fromNode', 'toNode', 'nodeId', 'edgeId', 'setId', 'targetId', 'refId', 'anchorId', 'node']);
   const strip = v => Array.isArray(v) ? v.map(strip)
     : v && typeof v === 'object' ? Object.fromEntries(Object.entries(v).map(([k, x]) => [k,
       ID.has(k) && typeof x === 'string' ? '#' : k === 'nodeIds' ? x.map(() => '#') : (k === 'readers' || k === 'spans') ? strip(JSON.parse(x)) : strip(x)]))
     : v;
-  assert.deepEqual(strip({ ...again, name: '', source: null }), strip({ ...capture(db), name: '', source: null }));
+  const plain = b => strip({ ...b, name: '', source: null, tellings: b.tellings.map(t => ({ ...t, steps: '' })) });
+  assert.deepEqual(plain(again), plain(capture(db)));
 });
 
 test('parseBundle refuses corrupt, unsupported, oversized and inconsistent bundles', () => {
@@ -127,7 +131,11 @@ test('parseBundle refuses corrupt, unsupported, oversized and inconsistent bundl
   rejects(resealed({ ...board, changeNotes: [{ ...board.changeNotes[0], refId: '4242' }] }), 'code ref 4242');
   const { threats, ...missing } = board;
   rejects(resealed(missing), 'board must have exactly the fields');
+  // Version 1 predates tellings: it still reads, with none; version 2 must carry them.
+  const { tellings, ...v1 } = board;
+  assert.deepEqual(parseBundle(bundleText(v1).replace(`"version":${BUNDLE_VERSION}`, '"version":1')).tellings, []);
+  rejects(resealed(v1), 'board must have exactly the fields');
   // Checksum over the canonical board JSON: a re-encoded but identical board still verifies.
-  const pretty = JSON.stringify({ format: 'draw.board-bundle', version: 1, sha256: sha256Hex(JSON.stringify(board)), board }, null, 2);
+  const pretty = JSON.stringify({ format: 'draw.board-bundle', version: BUNDLE_VERSION, sha256: sha256Hex(JSON.stringify(board)), board }, null, 2);
   assert.equal(parseBundle(pretty).name, 'Payments');
 });

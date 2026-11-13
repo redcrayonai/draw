@@ -172,7 +172,7 @@ describe('index.html DOM contract', () => {
     expect(btn.hasAttribute('hidden')).toBe(true);
     expect(btn.classList.contains('btn-primary')).toBe(false);
     // Share and Export are the filled buttons; share.ts shows one at a time (owners export from the popover)
-    expect([...doc.querySelectorAll('.header-actions > .btn-primary')].map(b => b.id)).toEqual(['act-share', 'act-export']);
+    expect([...doc.querySelectorAll('.header-actions > .btn-primary')].map(b => b.id)).toEqual(['act-share', 'act-export', 'act-tell']);
     expect(doc.querySelector('#share-pop #share-export')?.textContent).toBe('Export SVG');
     expect(btn.querySelector('.act-label')?.textContent).toBe('Connect an agent');
     // the label collapses to the icon at laptop widths; the name stays

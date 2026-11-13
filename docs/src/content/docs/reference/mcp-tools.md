@@ -72,6 +72,8 @@ says why, and the first word tells the agent what to do:
 | `start_tap` | Starts a live view of your app's local traffic on the board, while you run it. |
 | `set_edge_latency` | Sets an edge's latency and where the number came from: production, local or an estimate. |
 | `play_trace` | Replays one request on the board, span by span; errors show red. |
+| `save_telling` | Saves a walk-through of the board for one audience: ordered steps that light a few nodes each, with one sentence. Saving again for the same audience replaces it. |
+| `remove_telling` | Removes the walk-through for one audience. |
 
 ## Red crayon review
 

@@ -77,7 +77,7 @@ describe.skipIf(!E.VERSIONS_E2E)('versions against a real database and object st
     const { versionId } = await saveVersion(O.token, BigInt(B));
     const [row] = await sql(O.token, `SELECT * FROM my_board_versions WHERE id = ${versionId}`);
     const stored = await getObject(store, row.object_key, 1 << 24);
-    expect(new TextDecoder().decode(stored)).toMatch(/^\{"format":"draw.board-bundle","version":1,/);
+    expect(new TextDecoder().decode(stored)).toMatch(/^\{"format":"draw.board-bundle","version":2,/);
     const restored = await restoreVersion(O.token, BigInt(versionId), key(), '');
     expect(restored.slug).not.toBe('');
     expect(await labels(restored.boardId)).toEqual(await labels(B));

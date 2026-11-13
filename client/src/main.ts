@@ -100,7 +100,10 @@ import { mountArchitectureRail } from './architecture-rail';
 import { branchActions, branchTree, chipText, statusWord, type BranchAction, type BranchStatus, type Role } from './branches';
 import { mountBranchPopover } from './branch-popover';
 import { ACTION_LABELS, openBranchCreate, openBranchReview, type ChangeRow } from './branch-dialogs';
-import { playRoute, routeLegs } from './route-play';
+import { playRoute, reducedMotion, routeLegs } from './route-play';
+import { readTellings, type StepView, type Telling } from './telling';
+import { renderTellingBar } from './telling-bar';
+import { createTellingPlayer, drawEdgesIn, tellingKeyRoute } from './telling-play';
 import { mountCrayon } from './crayon';
 import { listening, setupReview } from './review-panel';
 import { playTrace } from './trace-play';
@@ -705,6 +708,55 @@ async function boot(conn: DbConnection, identityHex: string, signedIn: boolean):
       const rebuildThreats = () => {
         threats = buildThreatIndex([...conn.db.visibleThreat.iter()].filter(t => t.boardId === boardId));
       };
+      // Tellings (walk-throughs): readable by everyone on the board, view-only included.
+      // Optional: an older module has no table, so the button stays hidden.
+      let tellings: Telling[] = [];
+      let tellingView: StepView | null = null; // read where the RenderState is built
+      const tellButton = document.getElementById('act-tell') as HTMLButtonElement;
+      const tellingBar = document.getElementById('telling-bar') as HTMLElement;
+      const rebuildTellings = () => {
+        tellings = readTellings(conn.db.visibleTelling?.iter() ?? [], boardId);
+        tellButton.hidden = tellings.length === 0;
+      };
+      const player = createTellingPlayer({
+        tellings: () => tellings,
+        liveNodes: () => new Set(getNodes().map(n => n.id)),
+        setView: view => { tellingView = view; rerender(); },
+        fly: ids => {
+          const want = new Set(ids);
+          viewport.flyTo(contentBounds(getNodes().filter(n => want.has(n.id))), chromeInsets(wrap), reducedMotion() ? 0 : 900);
+        },
+        drawIn: ids => drawEdgesIn(world, ids), // setView rerendered synchronously: the edges are in the DOM
+        paintBar: m => {
+          if (!m && tellingBar.contains(document.activeElement)) tellButton.focus(); // closing hands focus back
+          renderTellingBar(tellingBar, m);
+          wrap.classList.toggle('telling-open', m !== null);
+        },
+        edges: () => getEdges(), // declared further down
+        reduced: reducedMotion,
+      });
+      // Opening in an already hidden tab starts blocked, like a later visibilitychange.
+      // Clears the selection first, as Esc does: Delete during a walk-through must not remove a hidden box.
+      // editor is declared further down; openTelling only runs after it exists.
+      const openTelling = () => {
+        editor.selectedEdges.clear();
+        editor.selectNodes([]);
+        player.setBlocked(document.visibilityState === 'hidden');
+        player.open();
+      };
+      tellButton.addEventListener('click', openTelling);
+      document.addEventListener('visibilitychange', () => player.setBlocked(document.hidden));
+      // Reduced motion turned on while a walk-through plays: refresh pauses it.
+      window.matchMedia?.('(prefers-reduced-motion: reduce)').addEventListener('change', () => player.refresh());
+      // Capture phase, ahead of the editor's Space-pan and Esc (tellingKeyRoute decides).
+      document.addEventListener('keydown', evt => {
+        const route = tellingKeyRoute(evt, player.isOpen);
+        if (route === 'stop') evt.stopPropagation(); // the bar button's native activation still fires
+        else if (route === 'player' && player.key(evt)) {
+          evt.preventDefault();
+          evt.stopPropagation();
+        }
+      }, true);
       // Code refs: rebuilt on table change, never per frame. Orphans (target
       // deleted) are dropped here so neither badge nor inspector sees them.
       let refsByTarget = new Map<string, RefSummary[]>();
@@ -1654,6 +1706,7 @@ async function boot(conn: DbConnection, identityHex: string, signedIn: boolean):
           notes: changeNotes,
           threatMarkers,
           blast,
+          telling: tellingView,
         });
         placePeek();
         crayonUi.sync();
@@ -2197,6 +2250,7 @@ async function boot(conn: DbConnection, identityHex: string, signedIn: boolean):
             { id: 'threat-collapse', group: 'View', title: 'Close threat', keys: 'Esc', run: closeThreat },
           ]),
           { id: 'replay-trace', group: 'View', title: 'Replay trace', keywords: ['latency', 'request', 'flow'], run: replayTrace },
+          ...(tellings.length === 0 ? [] : [{ id: 'play-telling', group: 'View', title: 'Play walk-through', keywords: ['telling', 'tour', 'explain'], run: openTelling }]),
           ...(canRename() ? [
             { id: 'rename-board', group: 'General', title: 'Rename board', keywords: ['title', 'name'], run: renameBoard },
             { id: 'delete-board', group: 'General', title: 'Delete this board', keywords: ['remove', 'trash'], run: deleteThisBoard },
@@ -2500,6 +2554,7 @@ async function boot(conn: DbConnection, identityHex: string, signedIn: boolean):
       const onTableChange = () => {
         const current = conn.db.visibleBoard.id.find(boardId);
         if (!current) {
+          player.close(); // the board is gone or no longer readable: nothing left to walk through
           paintShare(null);
           syncRenamable();
           showBoardUnavailable(boardsHref, newBoardHref(), linkGone());
@@ -2520,6 +2575,7 @@ async function boot(conn: DbConnection, identityHex: string, signedIn: boolean):
         rebuildRefs();
         rebuildChangeNotes();
         rebuildThreats();
+        rebuildTellings();
         rebuildCharts();
         rebuildEdgeWeights();
         rebuildIcons();
@@ -2537,6 +2593,7 @@ async function boot(conn: DbConnection, identityHex: string, signedIn: boolean):
         // A frame deleted, hidden or emptied under the view steps it out to the nearest frame left.
         if (syncDepth()) { frameView(); rerender(); }
         rerender();
+        player.refresh(); // after the rerender: a gone telling or node repaints from the fresh board
       };
       let refreshPending = false;
       const scheduleTableChange = () => {
@@ -2555,6 +2612,7 @@ async function boot(conn: DbConnection, identityHex: string, signedIn: boolean):
         conn.db.visibleEdge,
         conn.db.visibleEdgeWeight,
         ...(conn.db.visibleEdgeMotion ? [conn.db.visibleEdgeMotion] : []),
+        ...(conn.db.visibleTelling ? [conn.db.visibleTelling] : []),
         conn.db.visibleHideSet,
         conn.db.visibleHideSetMember,
         conn.db.visibleCodeRef,

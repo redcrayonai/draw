@@ -16,6 +16,12 @@ export class EmbedClock {
     if (this.elapsed >= this.duration) this.elapsed = 0;
     this.playing = true; this.start(); this.changed();
   }
+  /** Jump to a time (clamped), paint it; a playing clock keeps playing from there. */
+  seek(ms: number): void {
+    this.elapsed = Math.min(this.duration, Math.max(0, ms));
+    this.last = performance.now();
+    this.paint(this.elapsed); this.changed();
+  }
   pause(): void { this.playing = false; this.stop(); this.changed(); }
   replay(): void { if (this.reduced) return; this.elapsed = 0; this.paint(0); this.play(); }
   setBlocked(blocked: boolean): void {

@@ -4,18 +4,19 @@
 // the module passes the Timestamp and Identity constructors to parseBundle.
 import { sha256Hex } from './sha256';
 import { PLUGIN_TABLES } from './plugin-meta.generated';
+import { remapTellingSteps } from './tellings';
 
 export const BUNDLE_FORMAT = 'draw.board-bundle';
-export const BUNDLE_VERSION = 1;
+export const BUNDLE_VERSION = 2;
 /** UTF-8 bytes of a whole bundle file. */
 export const MAX_BUNDLE_BYTES = 16 * 1024 * 1024;
 
 type Codec = 'u64' | 'u32' | 'i32' | 'f32' | 'f64' | 'bool' | 'string' | 'time' | 'identity' | 'u64[]' | 'string[]' | 'u64?';
 type Cols = Record<string, Codec>;
 
-// Format v1. Each section is one board-owned table; its columns, in key order. A column left out
+// Format v2 (v1 had no tellings). Each section is one board-owned table; its columns, in key order. A column left out
 // is never stored: code text (edge.evidenceSnippet, codeRef.snippet), a mark's claim and lease,
-// and every boardId (the restored board's). Never change v1: append a v2 and decode v1 into it.
+// and every boardId (the restored board's). Never change a format: append the next and decode older ones into it.
 export const SECTIONS = {
   nodes: { table: 'node', cols: { id: 'u64', label: 'string', sublabel: 'string', x: 'i32', y: 'i32', w: 'i32', h: 'i32', token: 'string', focal: 'bool', doc: 'string', hidden: 'bool', imported: 'bool', kind: 'string', shape: 'string', color: 'string', strokeStyle: 'string', size: 'string', sourceKey: 'string' } },
   edges: { table: 'edge', cols: { id: 'u64', fromNode: 'u64', toNode: 'u64', label: 'string', evidence: 'string', hidden: 'bool', imported: 'bool', color: 'string', strokeStyle: 'string', evidenceStatus: 'string', relation: 'string', latencyMs: 'f32', latencySource: 'string' } },
@@ -39,6 +40,7 @@ export const SECTIONS = {
   sessionRemote: { table: 'sessionRemote', one: true, cols: { remoteUrl: 'string', pushedHead: 'string', dirtyPaths: 'string[]' } },
   tracePlayback: { table: 'tracePlayback', one: true, cols: { spans: 'string', source: 'string', title: 'string', seq: 'u32', playedAt: 'time' } },
   boardWindow: { table: 'boardWindow', one: true, cols: { startMs: 'f64', endMs: 'f64', updatedAt: 'time' } },
+  tellings: { table: 'telling', cols: { id: 'u64', audience: 'string', title: 'string', steps: 'string', author: 'string', updatedAt: 'time' } },
 } as const satisfies Record<string, { table: string; one?: true; cols: Cols }>;
 
 // Every other table and why a bundle leaves it out: the coverage inventory. scripts/verify-versions-local.mjs
@@ -144,7 +146,8 @@ export function parseBundle(text: string, conv: Convert = PLAIN): BundleBoard {
   if (f.version > BUNDLE_VERSION) fail(`the bundle is format ${f.version}; this server reads formats up to ${BUNDLE_VERSION}`);
   if (Object.keys(f).join() !== 'format,version,sha256,board' || !isObj(f.board)) fail('the bundle must have exactly format, version, sha256 and board');
   if (typeof f.sha256 !== 'string' || sha256Hex(JSON.stringify(f.board)) !== f.sha256) fail('the bundle checksum does not match its contents');
-  const raw = f.board as Record<string, unknown>;
+  // v1 predates tellings: it decodes as v2 with none.
+  const raw = (f.version === 1 ? { ...f.board, tellings: [] } : f.board) as Record<string, unknown>;
   const expected = ['name', 'source', 'architecture', ...Object.keys(SECTIONS)];
   if (Object.keys(raw).length !== expected.length || expected.some(k => !(k in raw))) fail(`board must have exactly the fields ${expected.join(', ')}`);
   const board: any = {
@@ -250,6 +253,7 @@ export function restoreBoard(ctx: any, b: BundleBoard, boardId: bigint, epoch: u
   if (b.session) db.session.insert({ ...b.session, id: 0n, boardId });
   if (b.sessionRoute) db.sessionRoute.insert({ ...b.sessionRoute, boardId, nodeIds: b.sessionRoute.nodeIds.map((id: bigint) => to(nodes, id)) });
   if (b.sessionRemote) db.sessionRemote.insert({ ...b.sessionRemote, boardId });
+  for (const t of b.tellings) db.telling.insert({ ...t, id: 0n, boardId, steps: remapTellingSteps(t.steps, id => to(nodes, id)) });
   if (b.tracePlayback) db.tracePlayback.insert({ ...b.tracePlayback, boardId, spans: remapJson(b.tracePlayback.spans, (s: any) => ({ ...s, node: to(nodes, BigInt(s.node)).toString() })) });
 }
 

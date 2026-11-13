@@ -112,6 +112,7 @@ import ReconcileArchitectureProposalReducer from "./reconcile_architecture_propo
 import RedeemAgentLinkReducer from "./redeem_agent_link_reducer";
 import RemoveChangeNoteReducer from "./remove_change_note_reducer";
 import RemoveCodeRefReducer from "./remove_code_ref_reducer";
+import RemoveTellingReducer from "./remove_telling_reducer";
 import RemoveThreatReducer from "./remove_threat_reducer";
 import RenameBoardReducer from "./rename_board_reducer";
 import RenameLibraryItemReducer from "./rename_library_item_reducer";
@@ -122,6 +123,7 @@ import ResizeNodeReducer from "./resize_node_reducer";
 import ReviewArchitectureProposalReducer from "./review_architecture_proposal_reducer";
 import RevokeAgentBoardReducer from "./revoke_agent_board_reducer";
 import SaveLibraryItemReducer from "./save_library_item_reducer";
+import SaveTellingReducer from "./save_telling_reducer";
 import SeedDemoBoardReducer from "./seed_demo_board_reducer";
 import SendMarksReducer from "./send_marks_reducer";
 import SetArchitectureEdgeRelationReducer from "./set_architecture_edge_relation_reducer";
@@ -242,6 +244,7 @@ import VisibleSelectionRow from "./visible_selection_table";
 import VisibleSessionRow from "./visible_session_table";
 import VisibleSessionRemoteRow from "./visible_session_remote_table";
 import VisibleSessionRouteRow from "./visible_session_route_table";
+import VisibleTellingRow from "./visible_telling_table";
 import VisibleThreatRow from "./visible_threat_table";
 import VisibleTracePlaybackRow from "./visible_trace_playback_table";
 
@@ -704,6 +707,13 @@ const tablesSchema = __schema({
     constraints: [
     ],
   }, VisibleSessionRouteRow),
+  visibleTelling: __table({
+    name: 'visible_telling',
+    indexes: [
+    ],
+    constraints: [
+    ],
+  }, VisibleTellingRow),
   visibleThreat: __table({
     name: 'visible_threat',
     indexes: [
@@ -800,6 +810,7 @@ const reducersSchema = __reducers(
   __reducerSchema("redeem_agent_link", RedeemAgentLinkReducer),
   __reducerSchema("remove_change_note", RemoveChangeNoteReducer),
   __reducerSchema("remove_code_ref", RemoveCodeRefReducer),
+  __reducerSchema("remove_telling", RemoveTellingReducer),
   __reducerSchema("remove_threat", RemoveThreatReducer),
   __reducerSchema("rename_board", RenameBoardReducer),
   __reducerSchema("rename_library_item", RenameLibraryItemReducer),
@@ -810,6 +821,7 @@ const reducersSchema = __reducers(
   __reducerSchema("review_architecture_proposal", ReviewArchitectureProposalReducer),
   __reducerSchema("revoke_agent_board", RevokeAgentBoardReducer),
   __reducerSchema("save_library_item", SaveLibraryItemReducer),
+  __reducerSchema("save_telling", SaveTellingReducer),
   __reducerSchema("seed_demo_board", SeedDemoBoardReducer),
   __reducerSchema("send_marks", SendMarksReducer),
   __reducerSchema("set_architecture_edge_relation", SetArchitectureEdgeRelationReducer),

@@ -1989,6 +1989,52 @@ describe('depth: stepped inside a frame', () => {
   });
 });
 
+describe('telling: lit, seen and hidden', () => {
+  const nodes = [mkNode(1), mkNode(2, { x: 300 }), mkNode(3, { y: 300 }), mkNode(4, { x: 300, y: 600 })];
+  const edges = [mkEdge(10, 1, 2), mkEdge(11, 2, 4)];
+  const telling = { lit: new Set([2n]), seen: new Set([1n]), stepOf: new Map([[1n, 1], [2n, 2]]) };
+  const node = (world: SVGGElement, id: number) => world.querySelector(`.node[data-id="${id}"]`)!;
+  const edgeG = (world: SVGGElement, id: number) => world.querySelector(`.edge-hit[data-edge-id="${id}"]`)!.parentElement!;
+  const state = (cls: Element) => (cls.classList.contains('telling-lit') ? 'lit' : cls.classList.contains('telling-seen') ? 'seen' : '');
+
+  it('marks lit and seen nodes, shows edges between shown nodes, badges each shown node', () => {
+    const world = mkWorld();
+    renderBoard(world, nodes, edges, mkState({ telling, focus: { id: 2n, flow: true } }));
+    expect(world.classList.contains('telling-on')).toBe(true);
+    // the telling owns the dimming
+    expect(world.classList.contains('focus-dim')).toBe(false);
+    expect(world.classList.contains('focus-flow')).toBe(false);
+    expect(world.querySelector('.focus-near')).toBeNull();
+    expect([1, 2, 3, 4].map(id => state(node(world, id)))).toEqual(['seen', 'lit', '', '']);
+    expect(state(edgeG(world, 10))).toBe('lit');
+    expect(state(edgeG(world, 11))).toBe('');
+    expect([...world.querySelectorAll('.layer-edge-labels .edge-labels')].map(state).sort()).toEqual(['', 'lit']);
+    const badge = node(world, 2).querySelector('.node-step')!;
+    expect(badge.querySelector('text')!.textContent).toBe('2');
+    expect(badge.querySelector('title')!.textContent).toBe('Step 2');
+    expect(badge.getAttribute('role')).toBe('img');
+    expect(node(world, 1).querySelector('.node-step text')!.textContent).toBe('1');
+    expect(node(world, 3).querySelector('.node-step')).toBeNull();
+
+    // identical render: zero mutations
+    expect(mutations(world, () => renderBoard(world, nodes, edges, mkState({ telling, focus: { id: 2n, flow: true } })))).toHaveLength(0);
+
+    // a new number updates the badge in place
+    renderBoard(world, nodes, edges, mkState({ telling: { ...telling, stepOf: new Map([[1n, 1], [2n, 3]]) } }));
+    expect(node(world, 2).querySelector('.node-step')).toBe(badge);
+    expect(badge.querySelector('text')!.textContent).toBe('3');
+    expect(badge.querySelector('title')!.textContent).toBe('Step 3');
+
+    // a node that leaves the telling loses its badge
+    renderBoard(world, nodes, edges, mkState({ telling: { ...telling, seen: new Set<bigint>() } }));
+    expect(node(world, 1).querySelector('.node-step')).toBeNull();
+    expect(state(edgeG(world, 10))).toBe('');
+
+    renderBoard(world, nodes, edges, mkState({ telling: null }));
+    expect(world.outerHTML).not.toMatch(/telling-|node-step/);
+  });
+});
+
 describe('neighbour focus (Task 4)', () => {
   const nodes = [mkNode(1), mkNode(2), mkNode(3), mkNode(4, { y: 600 })];
   const edges = [mkEdge(10, 1, 2, 'a-b'), mkEdge(11, 2, 3, 'b-c')];

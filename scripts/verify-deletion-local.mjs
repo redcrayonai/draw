@@ -228,6 +228,7 @@ before(async () => {
   await ok(owner.token, 'set_node_hidden', [b, true, some('scratch')]);
   sets = (await sql(OWNER, `SELECT * FROM hide_set WHERE board_id = ${B}`)).map(s => s.id);
   await ok(owner.token, 'plan_route', [B, [a, b]]);
+  await ok(owner.token, 'save_telling', [B, 'product', 'Checkout', JSON.stringify([{ nodes: [String(a)], title: 'Start', body: 'Requests start here.' }]), 'agent']);
   await ok(owner.token, 'play_trace', [B, JSON.stringify([{ id: 's1', node: String(a), startMs: 0, durationMs: 5 }]), 'local', 'checkout']);
   const token = randomBytes(16).toString('hex');
   await ok(owner.token, 'set_link_share', [B, 'view', token]);

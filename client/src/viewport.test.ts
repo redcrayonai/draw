@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { Viewport, chromeInsets, revealDelta, type Insets } from './viewport';
 
 const NONE: Insets = { left: 0, right: 0, top: 0, bottom: 0 };
@@ -51,6 +51,77 @@ describe('Viewport.fit insets (G6)', () => {
     vp.fit(bounds, { ...NONE, left: 380 });
     expect(vp.scale).toBeGreaterThan(0.1);
     expect(vp.worldToScreen(bounds.maxX, 0).x).toBeLessThanOrEqual(400);
+  });
+});
+
+describe('Viewport.flyTo', () => {
+  const frames = new Map<number, FrameRequestCallback>();
+  let next = 0;
+  const flush = (t: number) => { const due = [...frames.values()]; frames.clear(); for (const cb of due) cb(t); };
+  beforeEach(() => {
+    frames.clear();
+    vi.stubGlobal('requestAnimationFrame', (cb: FrameRequestCallback) => { frames.set(++next, cb); return next; });
+    vi.stubGlobal('cancelAnimationFrame', (id: number) => { frames.delete(id); });
+  });
+  afterEach(() => vi.unstubAllGlobals());
+  const insets = { left: 264, right: 0, top: 0, bottom: 98 };
+  const small = { minX: 100, minY: 100, maxX: 200, maxY: 160 };
+
+  it('lands where fit would when fit stays at or under maxScale', () => {
+    const a = mkViewport();
+    const b = mkViewport();
+    a.fit(bounds, insets);
+    const t0 = performance.now();
+    b.flyTo(bounds, insets, 200);
+    flush(t0 + 1000);
+    expect(b.tx).toBeCloseTo(a.tx, 6);
+    expect(b.ty).toBeCloseTo(a.ty, 6);
+    expect(b.scale).toBeCloseTo(a.scale, 9);
+  });
+
+  it('caps the scale at maxScale and centres the bounds in the free area', () => {
+    const vp = mkViewport();
+    vp.flyTo(small, insets, 0);
+    expect(vp.scale).toBe(1.5);
+    const tl = vp.worldToScreen(small.minX, small.minY);
+    const br = vp.worldToScreen(small.maxX, small.maxY);
+    // free area: x 280..1376 (left inset + gap, margin), y 64..734 (margin, bottom inset + gap)
+    expect(tl.x - 280).toBeCloseTo(1376 - br.x, 6);
+    expect(tl.y - 64).toBeCloseTo(734 - br.y, 6);
+  });
+
+  it('tweens scale and translation together', () => {
+    const vp = mkViewport();
+    const t0 = performance.now();
+    vp.flyTo(bounds, insets, 200);
+    const end = mkViewport();
+    end.fit(bounds, insets);
+    flush(t0 + 50);
+    expect(vp.scale).toBeGreaterThan(Math.min(1, end.scale));
+    expect(vp.scale).toBeLessThan(Math.max(1, end.scale));
+    expect(vp.tx).not.toBe(0);
+  });
+
+  it('stopAnimation freezes it', () => {
+    const vp = mkViewport();
+    const t0 = performance.now();
+    vp.flyTo(bounds, insets, 200);
+    flush(t0 + 50);
+    const mid = [vp.tx, vp.ty, vp.scale];
+    vp.stopAnimation();
+    flush(t0 + 400);
+    expect([vp.tx, vp.ty, vp.scale]).toEqual(mid);
+  });
+
+  it('ms <= 0 jumps and null bounds does nothing', () => {
+    const vp = mkViewport();
+    vp.flyTo(null, insets, 0);
+    expect([vp.tx, vp.ty, vp.scale]).toEqual([0, 0, 1]);
+    const a = mkViewport();
+    a.fit(bounds, insets);
+    vp.flyTo(bounds, insets, 0);
+    expect([vp.tx, vp.ty, vp.scale]).toEqual([a.tx, a.ty, a.scale]);
+    expect(frames.size).toBe(0);
   });
 });
 
@@ -191,6 +262,47 @@ describe('chromeInsets (G6/G7)', () => {
     document.getElementById('inspector')!.getBoundingClientRect = rect(16, 500, 1408, 300);
     document.getElementById('inspector')!.hidden = false;
     expect(chromeInsets(wrap)).toEqual({ left: 0, right: 0, top: 68 + 350 - 52 + 16, bottom: 900 - 500 + 16 });
+  });
+
+  it('reserves a visible walk-through bar; a hidden one adds nothing', () => {
+    const wrap = document.getElementById('canvas-wrap')!;
+    const bar = document.createElement('div');
+    bar.id = 'telling-bar';
+    wrap.append(bar);
+    // The bar floats 24px above the canvas bottom; it covers from its top edge down.
+    bar.getBoundingClientRect = rect(0, 760, 1440, 116);
+    expect(chromeInsets(wrap).bottom).toBe(900 - 760 + 16);
+    bar.hidden = true;
+    expect(chromeInsets(wrap).bottom).toBe(900 - 818 + 16);
+  });
+
+  // The walk-through hides side panels with display: none, which leaves them
+  // un-hidden but with an all-zero rect.
+  const zeroRects = () => {
+    for (const id of ['rail', 'dock', 'inspector']) {
+      const el = document.getElementById(id)!;
+      el.hidden = false;
+      el.getBoundingClientRect = rect(0, 0, 0, 0);
+    }
+  };
+
+  it('panels that take no space on screen reserve nothing', () => {
+    const wrap = document.getElementById('canvas-wrap')!;
+    zeroRects();
+    const withZero = chromeInsets(wrap);
+    for (const id of ['rail', 'dock', 'inspector']) document.getElementById(id)!.remove();
+    expect(withZero).toEqual(chromeInsets(wrap));
+    expect(withZero).toEqual({ left: 0, right: 0, top: 0, bottom: 0 });
+  });
+
+  it('with zero-size panels, the bottom inset is the strip the bar covers', () => {
+    const wrap = document.getElementById('canvas-wrap')!;
+    zeroRects();
+    const bar = document.createElement('div');
+    bar.id = 'telling-bar';
+    wrap.append(bar);
+    bar.getBoundingClientRect = rect(80, 745, 1280, 131);
+    expect(chromeInsets(wrap)).toEqual({ left: 0, right: 0, top: 0, bottom: 900 - 745 + 16 });
   });
 
   it('a dismissed rail reserves nothing', () => {

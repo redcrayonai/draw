@@ -117,6 +117,7 @@ npx -y @redcrayonai/draw@1 doctor   # check node, git, repo, network
 | **Watch local traffic**<br>*"Start a tap while I exercise checkout locally."* | Measured traffic, latency and errors on the request path. Needs Node 22 and OpenTelemetry traces. [Examples](https://docs.redcrayon.ai/use-cases/tap/). |
 | **Investigate an incident**<br>*"Checkout pods keep restarting. Lay out what you find."* | Charts beside the services they describe, each saying where its data came from. Pairs with a Grafana or Kubernetes MCP server. |
 | **Triage security findings**<br>*"Mark what this alert and scan affect. What do I fix first?"* | Compromised and vulnerable services marked, each with its blast radius. Explain the priority using exposure, evidence and sensitive downstream systems. |
+| **Explain it to someone**<br>*"/draw:make-it-make-sense why the rename takes three releases, for product"* | A walk-through on the board: a few boxes shown in order, one plain sentence each, one telling per audience. Readers press Play walk-through. [Walkthrough](https://docs.redcrayon.ai/use-cases/explain/). |
 
 ### Review a risky change
 

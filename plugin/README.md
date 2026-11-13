@@ -142,6 +142,11 @@ use `draw install <agent>` above; do not install both methods together.
    opened: it charts measured evidence beside the hops it describes and leaves
    the suspects to you.
 
+   To explain something to people outside the work,
+   `/draw:make-it-make-sense <what to explain, and for whom>` draws a few boxes
+   and saves a walk-through per audience. Readers open the board and press
+   Play walk-through.
+
 The existing Node-based plugin needs git and Node 20+ for code refs and
 checkpoints, and Node 22+ for board chat. Its drawing tools work without Node.
 The native executable supplies its own runtime for these helper operations. Automatic Claude Code

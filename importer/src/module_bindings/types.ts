@@ -958,6 +958,17 @@ export const TeamGrant = __t.object("TeamGrant", {
 });
 export type TeamGrant = __Infer<typeof TeamGrant>;
 
+export const Telling = __t.object("Telling", {
+  id: __t.u64(),
+  boardId: __t.u64(),
+  audience: __t.string(),
+  title: __t.string(),
+  steps: __t.string(),
+  author: __t.string(),
+  updatedAt: __t.timestamp(),
+});
+export type Telling = __Infer<typeof Telling>;
+
 export const Threat = __t.object("Threat", {
   id: __t.u64(),
   boardId: __t.u64(),
@@ -1092,6 +1103,9 @@ export type VisibleSessionRemote = __Infer<typeof VisibleSessionRemote>;
 
 export const VisibleSessionRoute = __t.object("VisibleSessionRoute", {});
 export type VisibleSessionRoute = __Infer<typeof VisibleSessionRoute>;
+
+export const VisibleTelling = __t.object("VisibleTelling", {});
+export type VisibleTelling = __Infer<typeof VisibleTelling>;
 
 export const VisibleThreat = __t.object("VisibleThreat", {});
 export type VisibleThreat = __Infer<typeof VisibleThreat>;

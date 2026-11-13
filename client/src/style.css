@@ -6272,6 +6272,34 @@ button.depth-crumb:hover {
 #world .route-comet:has(.blast-dot) .route-tail { fill: var(--c-red); }
 #world .route-dot.blast-dot.warm { fill: var(--c-amber); filter: drop-shadow(0 0 4px var(--c-amber)); }
 #world .route-comet:has(.blast-dot.warm) .route-tail { fill: var(--c-amber); }
+/* Telling: only the nodes named so far show; the current step's are lit, earlier ones step back.
+   It owns the dimming (no focus-dim or blast-on while telling-on). Hidden rows take no pointer. */
+#world.telling-on .node:not(.telling-lit):not(.telling-seen),
+#world.telling-on .edge:not(.telling-lit):not(.telling-seen),
+#world.telling-on .edge-labels:not(.telling-lit):not(.telling-seen) { opacity: 0; pointer-events: none; }
+#world.telling-on .node:not(.telling-lit):not(.telling-seen) *,
+#world.telling-on .edge:not(.telling-lit):not(.telling-seen) *,
+#world.telling-on .edge-labels:not(.telling-lit):not(.telling-seen) * { pointer-events: none; }
+#world.telling-on .node.telling-seen { opacity: 0.55; }
+#world.telling-on .edge.telling-seen,
+#world.telling-on .edge-labels.telling-seen { opacity: 0.4; }
+/* The transparent zero shadow gives the lit shadow a start value to grow from. */
+/* A trace replay's glow and transitions win: the telling shadow steps aside for trace nodes and replays. */
+#world.telling-on:not(.trace-playing) .node:not(.trace-active):not(.trace-error) .node-rect { filter: drop-shadow(0 0 0 transparent); transition: filter var(--dur) var(--ease); }
+#world.telling-on .node.telling-lit:not(.trace-active):not(.trace-error) .node-rect { filter: drop-shadow(0 4px 10px color-mix(in srgb, var(--accent) 45%, transparent)); }
+@media (prefers-reduced-motion: reduce) {
+  #world.telling-on .node,
+  #world.telling-on .edge,
+  #world.telling-on .edge-labels,
+  #world.telling-on:not(.trace-playing) .node:not(.trace-active):not(.trace-error) .node-rect { transition: none; }
+}
+/* The telling owns the overlays: its step badge takes the corner a waypoint marker uses. */
+#world.telling-on .node-route { display: none; }
+/* A walk-through owns the canvas: the editing chrome steps out while it plays. */
+#canvas-wrap.telling-open :is(#rail, #dock, #inspector, .zoom-cluster, #shortcuts-toggle, .mark-send) { display: none; }
+.node-step { pointer-events: none; }
+.node-step-circle { fill: var(--accent); }
+.node-step-number { font: 600 12px var(--mono); fill: var(--on-accent); }
 /* The card's hovered row lights its node. */
 #world .node.tc-lit .node-rect { stroke: var(--sel); stroke-width: 2; stroke-dasharray: none; }
 
@@ -6549,7 +6577,7 @@ svg:not(.armed) #crayon .mark-chip { pointer-events: all; cursor: pointer; }
   .mark-banner[data-state='working'] .mb-dot { animation: mark-pulse 1.2s ease-in-out infinite; }
 }
 @keyframes mark-pulse { 50% { opacity: 0.35; } }
-:root[data-theme='brutal'] :is(#review-pop, .mark-banner) { border: 2px solid var(--ink); border-radius: 0; box-shadow: 4px 4px 0 var(--ink); }
+:root[data-theme='brutal'] :is(#review-pop, .mark-banner, #telling-bar) { border: 2px solid var(--ink); border-radius: 0; box-shadow: 4px 4px 0 var(--ink); }
 
 /* ---------- agent chat (agent-chat.ts): the person's own agent, docked beside the board ---------- */
 
@@ -6861,4 +6889,50 @@ svg:not(.armed) #crayon .mark-chip { pointer-events: all; cursor: pointer; }
   .ac-panel { top: auto; left: 0; width: auto; height: 62%; border-left: 0; border-top: 1px solid var(--hairline); border-radius: var(--r-xl) var(--r-xl) 0 0; box-shadow: var(--shadow-lg); }
   .ac-resize { display: none; }
   :root[data-agent-chat] :is(#dock, .zoom-cluster, #shortcuts-toggle) { visibility: hidden; }
+}
+
+/* Walk-through caption bar (telling-bar.ts): bottom centre of the canvas, same layer as the mark banner. */
+#telling-bar {
+  position: absolute;
+  bottom: var(--space-5);
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 15;
+  width: min(820px, calc(100% - 32px));
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding: var(--space-3) var(--space-4);
+  border: 1px solid var(--border);
+  border-radius: var(--r-lg);
+  background: var(--panel);
+  box-shadow: var(--shadow-lg);
+  color: var(--ink);
+}
+#telling-bar[hidden] { display: none; }
+#telling-bar .telling-controls { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); }
+#telling-bar .telling-hint { margin: 0; font: 400 12px/1.4 var(--sans); color: var(--muted); }
+#telling-bar .telling-hint[hidden] { display: none; }
+#telling-bar .telling-count { font: 500 12px/1 var(--mono); color: var(--muted); min-width: 5ch; }
+#telling-bar .telling-switch-slot { display: contents; }
+#telling-bar .telling-switch { display: inline-flex; flex-wrap: wrap; gap: var(--space-1); margin-left: var(--space-2); }
+#telling-bar .telling-exit { margin-left: auto; }
+#telling-bar .telling-btn { transition: background var(--dur) var(--ease), border-color var(--dur) var(--ease); }
+#telling-bar button:disabled { opacity: 0.45; cursor: default; }
+#telling-bar button:disabled:hover { background: var(--panel-hi); }
+#telling-bar .telling-aud[aria-pressed='true'] { border-color: var(--accent); background: var(--accent); color: var(--on-accent); }
+#telling-bar .telling-caption { min-width: 0; overflow-wrap: anywhere; } /* a long unbroken word wraps inside the bar */
+#telling-bar .telling-title { font: 600 14px/1.3 var(--sans); }
+#telling-bar .telling-body { margin: 0; max-width: 62ch; font: 450 20px/1.42 var(--sans); }
+#telling-bar .telling-source { font: 400 12px/1.4 var(--mono); color: var(--muted); overflow-wrap: anywhere; }
+#telling-bar .telling-progress { display: flex; gap: var(--space-1); }
+#telling-bar .telling-progress > span { flex: 1; height: 4px; border-radius: 2px; background: var(--panel-hi); }
+#telling-bar .telling-progress > span.done { background: var(--accent); }
+@media (prefers-reduced-motion: reduce) {
+  #telling-bar, #telling-bar .telling-btn { transition: none; }
+}
+/* Narrow screens: a long walk-through scrolls inside the bar instead of covering the board. */
+@media (max-width: 560px) {
+  #telling-bar { max-height: 60%; overflow-y: auto; }
 }

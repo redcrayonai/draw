@@ -42,6 +42,7 @@ const HOSTED = [
   'mark_checkpoint', 'plan_route', 'arrive', 'reroute', 'remove_code_ref', 'set_node_doc', 'set_selection', 'layout_board',
   'add_change_note', 'update_change_note', 'remove_change_note',
   'add_threat', 'update_threat', 'remove_threat',
+  'save_telling', 'remove_telling',
   'wait_for_marks', 'watch_marks', 'start_chat', 'reply_to_mark', 'list_marks',
   'pin_chart', 'set_time_window', 'open_incident',
 ];
@@ -116,7 +117,7 @@ describe('the hosted tool list (spec §4)', () => {
   it('titles, scopes and annotations', () => {
     for (const def of Object.values(TOOLS)) expect(def.title.length).toBeGreaterThan(0);
     expect(Object.entries(TOOLS).filter(([, d]) => d.scope === 'board:read').map(([n]) => n).sort()).toEqual(['describe_charts', 'get_board', 'get_chart', 'list_marks']);
-    expect(Object.entries(TOOLS).filter(([, d]) => d.annotations?.destructiveHint).map(([n]) => n).sort()).toEqual(['delete_edge', 'delete_node', 'remove_change_note', 'remove_code_ref', 'remove_threat']);
+    expect(Object.entries(TOOLS).filter(([, d]) => d.annotations?.destructiveHint).map(([n]) => n).sort()).toEqual(['delete_edge', 'delete_node', 'remove_change_note', 'remove_code_ref', 'remove_telling', 'remove_threat']);
     expect(TOOLS.get_board.annotations?.readOnlyHint).toBe(true);
   });
 
@@ -471,6 +472,59 @@ describe('icons on the hosted create_node and update_node', () => {
       expect(TOOLS[tool].description).not.toContain('aws-s3');
       expect(TOOLS[tool].description.length, tool).toBeLessThan(4096);
     }
+  });
+});
+
+describe('tellings on the hosted server', () => {
+  const fake = (nodes: bigint[], fails: Error[] = []) => {
+    const calls: { reducer: string; args: Record<string, any> }[] = [];
+    const db = {
+      stats: { dbCalls: 0, dbMs: 0, writes: 0 },
+      async read(q: { text: string }) {
+        if (q.text.includes('visible_board')) return [{ id: 1n, name: 'main' }];
+        if (q.text.includes('visible_session')) return [];
+        if (q.text.includes('visible_node')) return nodes.map(id => ({ id }));
+        throw new Error(`unexpected read ${q.text}`);
+      },
+      async call(reducer: string, args: Record<string, any>) {
+        calls.push({ reducer, args });
+        const fail = fails.shift();
+        if (fail) throw fail;
+      },
+    };
+    const t = { ctx: { db }, signal: new AbortController().signal, named: () => {}, deadline: Date.now() + 15_000 } as never;
+    return { calls, t };
+  };
+  const input = { board: '1', audience: 'Product', title: 'T', steps: [{ nodes: ['2'], title: 'A', body: 'B' }], author: 'claude' };
+
+  it('save_telling calls the reducer once', async () => {
+    const { calls, t } = fake([2n]);
+    expect(text(await TOOLS.save_telling.run(TOOLS.save_telling.input.parse(input) as never, t))).toBe('committed telling: Product, 1 steps board=main');
+    expect(calls).toEqual([{ reducer: 'save_telling', args: { boardId: 1n, audience: 'Product', title: 'T', steps: '[{"nodes":["2"],"frame":[],"title":"A","body":"B","source":""}]', author: 'claude' } }]);
+  });
+
+  it('save_telling says who can read a walk-through', () => {
+    expect(TOOLS.save_telling.description).toContain('Everyone who can view the board, including through a shared link, can read every field.');
+  });
+
+  it('save_telling refuses a node that is not on the board before any call', async () => {
+    const { calls, t } = fake([3n]);
+    await expect(TOOLS.save_telling.run(TOOLS.save_telling.input.parse(input) as never, t)).rejects.toThrow(/node 2/);
+    expect(calls).toEqual([]);
+  });
+
+  it('remove_telling answers removed', async () => {
+    const { calls, t } = fake([]);
+    const args = TOOLS.remove_telling.input.parse({ board: '1', audience: 'Product' });
+    expect(text(await TOOLS.remove_telling.run(args as never, t))).toBe('removed telling: Product board=main');
+    expect(calls).toEqual([{ reducer: 'remove_telling', args: { boardId: 1n, audience: 'Product' } }]);
+  });
+
+  it('remove_telling: a retry after a lost answer that finds no telling means the first one landed', async () => {
+    const { calls, t } = fake([], [new DbError(502, 'bad gateway'), new DbError(530, 'telling rule: no telling for that audience on this board; this board has none')]);
+    const args = TOOLS.remove_telling.input.parse({ board: '1', audience: 'Product' });
+    expect(text(await TOOLS.remove_telling.run(args as never, t))).toBe('removed telling: Product board=main');
+    expect(calls.length).toBe(2);
   });
 });
 
