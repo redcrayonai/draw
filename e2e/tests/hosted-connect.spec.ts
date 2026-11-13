@@ -16,6 +16,9 @@ const DASHBOARD = 'https://dash.e2e.invalid/dashboard';
 const PRIVACY = 'https://example.test/privacy';
 const ADD = 'claude plugin marketplace add redcrayonai/draw && claude plugin install draw@redcrayonai';
 const CODEX_ADD = 'codex plugin marketplace add redcrayonai/draw && codex plugin add draw@redcrayonai';
+const NATIVE = 'npm install -g @redcrayonai/draw && draw install claude-code';
+const CODEX_NATIVE = 'npm install -g @redcrayonai/draw && draw install codex';
+const HOSTED = 'Open a hosted Draw board for this task and draw what you build on it as you go.';
 const PROMPT = 'Open a Draw board for this task and draw what you build on it as you go.';
 const LEAD = 'Your agent opens a board for its task and draws what it builds. It signs in as you and shows as agent of Test account.';
 const FOOTER = [
@@ -143,7 +146,7 @@ test('the selected agent highlight switches in the same frame as its commands', 
     expect(state).toEqual({
       selected: 'true', fill: selectedFill,
       otherFills: Array(4).fill('rgba(0, 0, 0, 0)'),
-      command: name === 'codex' ? CODEX_ADD : ADD,
+      command: name === 'codex' ? CODEX_NATIVE : NATIVE,
     });
   }
 });
@@ -159,9 +162,9 @@ test('the Connect dialog lists five clients with the exact commands, and remembe
 
   const claude = page.locator('#connect-pane-claude');
   await expect(claude).toBeVisible();
-  await expect(claude.locator('code')).toHaveText([ADD, `REDCRAYON_MCP_URL='${MCP}' claude`, '/draw:navigate']);
-  await expect(claude.locator('.connect-step-title')).toHaveText(['Install the plugin', 'Sign in', 'Open your board']);
-  // Plugin install is primary; other clients keep the plain-language prompt.
+  await expect(claude.locator('code')).toHaveText([NATIVE, ADD, `REDCRAYON_MCP_URL='${MCP}' claude`, HOSTED]);
+  await expect(claude.locator('.connect-step-title')).toHaveText(['Install Draw', 'Sign in', 'Start drawing']);
+  // The one install is primary; other clients keep the plain-language prompt.
   const panes = page.locator('#connect-panes');
   await expect(panes).toContainText(PROMPT);
   for (const gone of ['npx', '/redcrayon:navigate']) await expect(panes).not.toContainText(gone);
@@ -173,8 +176,10 @@ test('the Connect dialog lists five clients with the exact commands, and remembe
     await expect(copy).toHaveText('copied');
     expect(await page.evaluate(() => navigator.clipboard.readText())).toBe(text);
   };
-  await copies(claude, 'install command', ADD);
-  await copies(claude, 'drawing command', '/draw:navigate');
+  await copies(claude, 'install command', NATIVE);
+  await claude.locator('details').first().evaluate((d: HTMLDetailsElement) => { d.open = true; });
+  await copies(claude, 'marketplace command', ADD);
+  await copies(claude, 'prompt', HOSTED);
 
   await tab('Cursor').click();
   const config = encodeURIComponent(Buffer.from(JSON.stringify({ url: MCP })).toString('base64'));
@@ -185,8 +190,8 @@ test('the Connect dialog lists five clients with the exact commands, and remembe
   await expect(page.locator('#connect-pane-other code').first()).toHaveText(MCP);
   await tab('Codex').click();
   const codex = page.locator('#connect-pane-codex');
-  await expect(codex.locator('code')).toHaveText([CODEX_ADD, `REDCRAYON_MCP_URL='${MCP}' codex`, PROMPT]);
-  await copies(codex, 'install command', CODEX_ADD);
+  await expect(codex.locator('code')).toHaveText([CODEX_NATIVE, CODEX_ADD, `REDCRAYON_MCP_URL='${MCP}' codex`, HOSTED]);
+  await copies(codex, 'install command', CODEX_NATIVE);
   await expect(page.locator('#connect-foot p')).toHaveText([...FOOTER, 'Privacy policy']);
   await expect(page.locator('#connect-foot a')).toHaveAttribute('href', PRIVACY);
 

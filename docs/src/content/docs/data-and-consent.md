@@ -7,6 +7,9 @@ description: What leaves your machine, what draw stores, and what readers can se
 line numbers and hashes. Cited files still pass through the server for checks.
 Board content is not end-to-end encrypted. Hosted operators can read stored data.
 
+This page covers hosted boards. A [local board](/local/) stays on your machine
+and uploads no source.
+
 ## Three separate choices
 
 | Choice | Where | What it controls |

@@ -38,7 +38,8 @@ checks. Sharing a board, including code refs in its link, and publishing an
 embed are separate choices. [Your data and code consent](/data-and-consent/)
 explains each choice and who can read stored data.
 
-- [Connect your agent](/connect/): Claude Code, Cursor, Codex, claude.ai or another MCP client.
+- [Connect your agent](/connect/): Claude Code, Codex, pi, Cursor, claude.ai or another MCP client.
+- [Local boards](/local/): boards on your machine, with no account.
 - [Find and manage your boards](/dashboard/): the dashboard sidebar, board gallery and details panel.
 - [Capabilities](/capabilities/boards/): boards, code refs, charts, threats, branches, embeds and workspace access.
 - [MCP tools](/reference/mcp-tools/): every board tool your agent can call.
