@@ -58,3 +58,28 @@ test('pending acknowledgements hold reconnect even after the editor closes', asy
   const backup = JSON.parse(await readFile((await (await download).path())!, 'utf8'));
   expect(backup.unacknowledgedWrites.some((w: any) => w.args.some((a: any) => a.label === 'Unacknowledged label'))).toBe(true);
 });
+
+test('movement redraws geometry without rebuilding chrome, while content still refreshes', async ({ guest, stack }) => {
+  const page = await guest({ reducedMotion: 'reduce' });
+  await openBoard(page, stack.url);
+  await drawNode(page, 'Move me');
+  const node = page.locator('#world g.node');
+  const before = await node.getAttribute('transform');
+  await page.evaluate(() => {
+    (window as any).__titleChanges = 0;
+    new MutationObserver(records => { (window as any).__titleChanges += records.length; })
+      .observe(document.getElementById('board-title')!, { childList: true, characterData: true, subtree: true });
+  });
+  await page.evaluate(async () => {
+    const conn = (window as any).conn;
+    const n = [...conn.db.visibleNode.iter()][0];
+    await conn.reducers.moveNode({ nodeId: n.id, x: n.x + 200, y: n.y });
+  });
+  await expect(node).not.toHaveAttribute('transform', before!);
+  expect(await page.evaluate(() => (window as any).__titleChanges)).toBe(0);
+  await node.dblclick();
+  await page.locator('#inline-edit').fill('New label');
+  await page.locator('#inline-edit').press('Enter');
+  await expect(node).toContainText('New label');
+  expect(await page.evaluate(() => (window as any).__titleChanges)).toBeGreaterThan(0);
+});

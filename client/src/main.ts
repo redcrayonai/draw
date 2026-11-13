@@ -64,6 +64,7 @@ import { boardHref } from '../../shared/board-link';
 import { signInWithGuestBoard } from './guest-handoff';
 import { trackBoardWrites } from './save-status';
 import { protectUnsavedEdits } from './unsaved-edits';
+import { positionOnly, scheduleTableRefresh } from './table-refresh';
 import { readAnonymousToken, saveAnonymousToken, clearAnonymousToken } from './anonymous-identity';
 import {
   buildRefsIndex,
@@ -2333,18 +2334,23 @@ async function boot(conn: DbConnection, identityHex: string, signedIn: boolean):
         paintReview(); // a node removed under a row stops its pan
         rerender();
       };
-      let refreshPending = false;
-      const scheduleTableChange = () => {
-        if (refreshPending) return;
-        refreshPending = true;
-        requestAnimationFrame(() => { refreshPending = false; onTableChange(); });
+      const onPositionChange = () => {
+        trackMoves();
+        rerender();
       };
+      const scheduleRefresh = scheduleTableRefresh(onTableChange, onPositionChange);
+      const scheduleTableChange = () => scheduleRefresh(false);
+      conn.db.visibleNode.onInsert(scheduleTableChange);
+      conn.db.visibleNode.onDelete(scheduleTableChange);
+      conn.db.visibleNode.onUpdate((_ctx, before, after) => {
+        // Version comparisons retain removed-node geometry from the base board.
+        scheduleRefresh(!getVersion() && positionOnly(before, after));
+      });
       for (const table of [
         conn.db.visibleBoard,
         conn.db.myBoards,
         ...(conn.db.myBoardPermissions ? [conn.db.myBoardPermissions] : []),
         conn.db.myLinkIncludes,
-        conn.db.visibleNode,
         conn.db.visibleEdge,
         conn.db.visibleEdgeWeight,
         ...(conn.db.visibleEdgeMotion ? [conn.db.visibleEdgeMotion] : []),
