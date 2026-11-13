@@ -356,7 +356,7 @@ test('a free-text block can be branched and submitted', async ({ guest, stack })
   await openReview(owner);
   await review(owner).locator('button[data-action="submit"]').click();
   // Whichever answer comes first: the dialog's refusal or the new status.
-  await expect(review(owner).locator('[role="alert"]:visible').or(status(owner).filter({ hasText: 'In review' }))).toHaveText('In review');
+  await expect(review(owner).locator('[role="alert"]:visible').or(status(owner).filter({ hasText: 'In review' }))).toHaveText('In review', { timeout: 2_000 });
   await expect(review(owner)).toHaveCount(0);
 });
 
@@ -370,7 +370,7 @@ test('an icon placed from the library on a branch is saved and shown after a rel
   await fork(owner, 'iconic');
   await place(owner, 'orchestrator', 700, 400);
   await expect(owner.locator('#error-strip:visible').or(owner.getByRole('img', { name: 'Orchestrator' })).first()).toBeVisible(); // placed or refused
-  await expect(owner.locator('#error-text')).toHaveText('');
+  await expect(owner.locator('#error-text')).toHaveText('', { timeout: 2_000 });
   await expect(owner.getByRole('img', { name: 'Orchestrator' })).toHaveCount(1);
   await owner.reload();
   await expect(owner.locator('#canvas-wrap')).toHaveAttribute('aria-busy', 'false');
@@ -387,7 +387,7 @@ test('a chart placed from the library on a branch lands on the canvas', async ({
   await fork(owner, 'charts');
   await place(owner, 'stat', 520, 420);
   await expect(owner.locator('#error-strip:visible').or(owner.locator('#world g.node.node-chart')).first()).toBeVisible(); // placed or refused
-  await expect(owner.locator('#error-text')).toHaveText('');
+  await expect(owner.locator('#error-text')).toHaveText('', { timeout: 2_000 });
   await expect(owner.locator('#world g.node.node-chart')).toHaveCount(1);
 });
 

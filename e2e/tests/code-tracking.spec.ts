@@ -454,5 +454,5 @@ test('a change note on a board without consent shows paths and statuses with no 
   const note = page.locator('#inspector .cn-note');
   await expect(note.locator('.cn-reader.stale')).toContainText(`${READER}:40`);
   await expect(note.locator('.cn-reader.stale')).toContainText('still reads');
-  await expect(note.locator('.cn-snippet')).toHaveCount(0);
+  await expect(note.locator('.cn-snippet')).toHaveCount(0, { timeout: 2_000 });
 });

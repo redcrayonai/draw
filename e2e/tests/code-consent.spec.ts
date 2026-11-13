@@ -143,9 +143,9 @@ async function deleteAndUndo(page: Page, stack: Stack, token: string, B: number,
 }
 
 /** After the undo: the ref and the edge on new ids with this text, each with its hash row again. */
-async function expectRestored(stack: Stack, B: number, before: Awaited<ReturnType<typeof codeRows>>, text = { ref: '', line: '' }) {
+async function expectRestored(stack: Stack, B: number, before: Awaited<ReturnType<typeof codeRows>>, text = { ref: '', line: '' }, timeout?: number) {
   // The ref's hash row is the restore's last write.
-  await expect.poll(async () => { const r = await codeRows(stack, B); return [r.refHashes.length, r.edgeHashes.length]; }).toEqual([1, 1]);
+  await expect.poll(async () => { const r = await codeRows(stack, B); return [r.refHashes.length, r.edgeHashes.length]; }, timeout ? { timeout } : undefined).toEqual([1, 1]);
   const { refs: [ref], refHashes, edges: [edge], edgeHashes } = await codeRows(stack, B);
   const node = async (label: string) => Number((await stack.sql(`SELECT id FROM node WHERE board_id = ${B} AND label = '${label}'`))[0].id);
   const [api, db] = [await node('api'), await node('db')];
@@ -369,7 +369,7 @@ test('undo brings the ref back even when the module gives it the id of the edge 
   await expect.poll(async () => (await codeRows(stack, B)).refs.length).toBe(1);
   const { refs: [ref], edges: [edge] } = await codeRows(stack, B);
   test.skip(ref.id !== edge.id, 'id sequences did not line up');
-  await expectRestored(stack, B, before);
+  await expectRestored(stack, B, before, undefined, 2_000);
 });
 
 test('undo restores code text with consent, and restores without text after consent is turned off', async ({ account, stack }) => {

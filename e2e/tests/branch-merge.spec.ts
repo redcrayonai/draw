@@ -127,7 +127,7 @@ test('rows added to the base after a fork are never listed as removed, even afte
   await expect(owner.locator('#world')).toContainText('queue');
   await openReview(owner);
   await expect(review(owner).locator('.branch-change-title').first()).toBeVisible();
-  await expect(review(owner).locator('.branch-sign.minus')).toHaveCount(0);
+  await expect(review(owner).locator('.branch-sign.minus')).toHaveCount(0, { timeout: 2_000 });
   await owner.keyboard.press('Escape');
   await expect(review(owner)).toHaveCount(0);
   // Nor on the canvas diff (painted: queue is marked added), nor in the merge sentence.
@@ -213,7 +213,7 @@ test('a merged branch shows no stale diff', async ({ guest, stack }) => {
   await drawNode(owner, 'queue');
   await mergeAll(owner);
   await expect(owner.locator('#world')).toContainText('queue');
-  await expect(owner.locator('#world g.node.diff-removed')).toHaveCount(0);
+  await expect(owner.locator('#world g.node.diff-removed')).toHaveCount(0, { timeout: 2_000 });
   await expect(owner.locator('#world g.node.diff-added')).toHaveCount(0);
   await openReview(owner);
   await expect(review(owner).locator('.branch-empty')).toHaveText('No changes yet.');
@@ -244,7 +244,7 @@ test('a merge adds back rows the base deleted after the fork, as the review prom
   await expect(status(owner)).toHaveText('Merged');
   await toBase(owner);
   await expect(owner.locator('#world')).toContainText('api');
-  await expect(owner.locator('#world')).toContainText('orders');
+  await expect(owner.locator('#world')).toContainText('orders', { timeout: 2_000 });
   await expect(nodes(owner)).toHaveCount(2);
   expect(await labelsOn(stack, B)).toEqual(['api', 'orders']);
 });

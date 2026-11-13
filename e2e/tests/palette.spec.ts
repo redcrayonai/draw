@@ -361,7 +361,7 @@ test('Connect in order wires every pair when an edge id equals a node id this ta
   await selectAll(page);
   await palette(page, 'connect in order');
   await page.keyboard.press('Enter');
-  await expect.poll(async () => (await edges(stack, board)).map(e => [e.from, e.to])).toEqual([[a, b], [b, c]]);
+  await expect.poll(async () => (await edges(stack, board)).map(e => [e.from, e.to]), { timeout: 2_000 }).toEqual([[a, b], [b, c]]);
 });
 
 test('a title match outranks a keyword match', async ({ guest, stack }) => {
@@ -372,7 +372,7 @@ test('a title match outranks a keyword match', async ({ guest, stack }) => {
   await selectAll(page);
   await palette(page, 'flow');
   await expect(page.locator('#palette-list')).toContainText('Replay trace');
-  await expect(page.locator('#palette-list .palette-row').first()).toContainText('Connect in order as a flow');
+  await expect(page.locator('#palette-list .palette-row').first()).toContainText('Connect in order as a flow', { timeout: 2_000 });
 });
 
 test('⇧T tidies a selection and arms nothing', async ({ guest, stack }) => {
@@ -383,7 +383,7 @@ test('⇧T tidies a selection and arms nothing', async ({ guest, stack }) => {
   await selectAll(page);
   await page.keyboard.press('Shift+T');
   await expect.poll(async () => tidied(await positions(stack, board))).toBe(true);
-  await expect(page.locator('.add-row[data-kind="text"]')).not.toHaveClass(/armed/);
+  await expect(page.locator('.add-row[data-kind="text"]')).not.toHaveClass(/armed/, { timeout: 2_000 });
   await expect(page.locator('#tool-select')).toHaveClass(/armed/);
   await page.locator('#board').click(EMPTY);
   // Drawing c lands after anything that click wrote: only a, b and c exist.
