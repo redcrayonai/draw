@@ -9,7 +9,7 @@ else if (args[0] === '--help' || args[0] === '-h') console.log(
   'Draw — architecture boards for your coding agent\n\n' +
   '  draw [--repo path] [--port number] [--no-open]   Open a local board\n' +
   '  draw install <codex|claude-code|pi> [--permissions-defaults]\n' +
-  '  draw permissions codex [--mode local|hosted] [--permissions-defaults]\n' +
+  '  draw permissions codex [--permissions-defaults]\n' +
   '  draw update [--check] [--channel stable|preview] [--installer npm|bun]\n' +
   '  draw local-mcp --per-repo                       Local MCP bridge\n' +
   '  draw capture | chat | tap | marks | doctor      Hosted helper commands\n' +

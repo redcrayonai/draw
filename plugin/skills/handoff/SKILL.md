@@ -12,7 +12,7 @@ open a board with `start_session`; the user does not need a separate handoff ste
 For native Codex installs with managed permissions, call `start_chat` explicitly
 after opening the board so Codex can request attachment approval. Respect Deny;
 do not use the helper or another connection to bypass it. The user can review
-choices with `draw permissions codex --mode hosted`, then restart Codex.
+choices with `draw permissions codex`, then restart Codex.
 Never submit a Draw browser approval form programmatically: only the human may
 choose **Allow once**.
 

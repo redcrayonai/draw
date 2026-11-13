@@ -98,7 +98,7 @@ it.each([
   ['codex', '--permissions-defaults', '--mode', 'hosted'],
 ])('reconfigures permissions without reinstalling (%j)', async (...args) => {
   expect(await runNativePermissions(args)).toBe(0);
-  expect(choosePermissionSet).toHaveBeenCalledWith(['hosted'], { defaults: true, reconfigure: true });
+  expect(choosePermissionSet).toHaveBeenCalledWith(['local', 'hosted'], { defaults: true, reconfigure: true });
   expect(configureCodexPermissions).toHaveBeenCalledWith('hosted', expect.objectContaining({ snippets: 'deny' }), ['old_tool']);
   expect(savePermissions).toHaveBeenCalledWith('hosted', { permissions: { boards: 'ask', conversation: 'ask', snippets: 'deny', uploads: 'deny' }, managedDisabledTools: ['read_code'] });
   expect(installLocalCodex).not.toHaveBeenCalled();

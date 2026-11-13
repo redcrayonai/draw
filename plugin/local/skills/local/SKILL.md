@@ -15,7 +15,7 @@ node, edge, and note IDs are stable strings, not hosted board IDs.
 Native Codex installs have permission choices for boards, conversation attachment,
 and source reads. Respect denied tools; do not bypass a denial with the terminal
 or another connection. The user can review choices with
-`draw permissions codex --mode local`, then restart Codex. Do not change those
+`draw permissions codex`, then restart Codex. Do not change those
 choices for them. If Draw displays a browser approval page, never submit its
 form programmatically: only the human may choose **Allow once**.
 

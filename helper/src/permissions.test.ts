@@ -150,13 +150,15 @@ it('customizes shared defaults once, with Ask/Deny only for source', async () =>
   for (const entry of entries) expect(entry.record.permissions).toEqual({ boards: 'ask', conversation: 'allow', snippets: 'ask', uploads: 'deny' });
   expect(question).toHaveBeenCalledTimes(6);
 });
-it('preserves old denials and mode-specific choices when accepting the summary', async () => {
+it('combines old split choices using the more restrictive setting', async () => {
   tty(true); question.mockResolvedValueOnce('yes');
   const local = { permissions: { ...DEFAULT_PERMISSIONS, boards: 'deny' as const, snippets: 'ask' as const } };
   savePermissions('local', local);
   const entries = await choosePermissionSet(['local', 'hosted'], { reconfigure: true });
-  expect(entries[0].record).toEqual(local);
-  expect(entries[1].record.permissions).toEqual(DEFAULT_PERMISSIONS);
+  for (const entry of entries) expect(entry.record.permissions).toEqual({ ...DEFAULT_PERMISSIONS, boards: 'deny' });
+  const text = vi.mocked(process.stderr.write).mock.calls.map(call => call[0]).join('');
+  expect(text.match(/Board access and edits/g)).toHaveLength(1);
+  expect(text).not.toMatch(/\(local\)|\(hosted\)|local \+ hosted/);
   expect(question).toHaveBeenCalledOnce();
 });
 it('uses terminal color and respects NO_COLOR without losing labels', async () => {
@@ -169,4 +171,23 @@ it('uses terminal color and respects NO_COLOR without losing labels', async () =
   await choosePermissionSet(['local', 'hosted']);
   text = vi.mocked(process.stderr.write).mock.calls.map(call => call[0]).join('');
   expect(text).not.toContain('\x1b['); expect(text).toContain('Allow'); expect(text).toContain('Deny');
+});
+
+it('reviews conflicting saved settings once, then applies customization to both backends', async () => {
+  tty(true);
+  savePermissions('local', { permissions: { ...DEFAULT_PERMISSIONS, boards: 'ask', snippets: 'ask' }, managedDisabledTools: ['local-only'] });
+  savePermissions('hosted', { permissions: { ...DEFAULT_PERMISSIONS, uploads: 'ask' }, managedDisabledTools: ['hosted-only'] });
+  question.mockResolvedValueOnce('n').mockResolvedValueOnce('allow').mockResolvedValueOnce('ask').mockResolvedValueOnce('ask').mockResolvedValueOnce('');
+  const entries = await choosePermissionSet(['local', 'hosted']);
+  for (const entry of entries) expect(entry.record.permissions).toMatchObject({ boards: 'allow', conversation: 'ask', snippets: 'ask' });
+  expect(entries[1].record.permissions.uploads).toBe('ask');
+  expect(entries.map(entry => entry.record.managedDisabledTools)).toEqual([['local-only'], ['hosted-only']]);
+  expect(question).toHaveBeenCalledTimes(5);
+});
+it('does not reprompt for matching shared choices or let unused local upload settings override hosted', async () => {
+  savePermissions('local', { permissions: DEFAULT_PERMISSIONS });
+  savePermissions('hosted', { permissions: { ...DEFAULT_PERMISSIONS, uploads: 'ask' } });
+  const entries = await choosePermissionSet(['local', 'hosted']);
+  expect(entries[1].record.permissions.uploads).toBe('ask');
+  expect(question).not.toHaveBeenCalled();
 });

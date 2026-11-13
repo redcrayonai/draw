@@ -61,10 +61,10 @@ entry point governs routing and preserves the user's existing board.
 
 ## Respect access choices
 
-Local and hosted permission choices are separate. Respect denied tools, source
+One shared permission choice applies to local and hosted Draw. Respect denied tools, source
 reads, captures, uploads, and conversation attachment. Do not bypass a denial
 through another server, a terminal command, or a browser. The user can review
-their policy with `draw permissions codex --mode local` or `--mode hosted`, then
+their policy with `draw permissions codex`, then
 restart Codex. Do not change their choices for them.
 
 Board and chat choices are Ask/Allow; source reads and uploads are Ask/Deny.

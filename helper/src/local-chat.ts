@@ -17,7 +17,7 @@ export class LocalChat {
       // The board server can predate the plugin process, so consult the saved Codex policy directly.
       const policy = process.env.DRAW_PERMISSION_MODE === 'local' && process.env.DRAW_PERMISSION_FILE
         ? runtimePermissions('local') : readPermissions('local')?.permissions;
-      if ((!policy && connection.managed) || policy?.boards === 'deny' || policy?.conversation === 'deny') throw new PermissionError('REJECTED: Draw conversation attachment is denied. Review draw permissions codex --mode local.');
+      if ((!policy && connection.managed) || policy?.boards === 'deny' || policy?.conversation === 'deny') throw new PermissionError('REJECTED: Draw conversation attachment is denied. Review draw permissions codex.');
       connection.managed ||= !!policy;
     } catch (error) {
       connection.revoked = true; connection.state = 'disconnected'; connection.connecting = false;

@@ -90,14 +90,13 @@ uploads set to Ask additionally open a browser approval page before reading or
 uploading files. Only you may choose **Allow once** there. Uploads can include
 whole cited files, not just the lines displayed on a board.
 
-Choices are separate for local and hosted mode. Reinstalling preserves them.
+Choices apply to both local and hosted Draw. Older differing choices combine
+using the more restrictive setting (Deny, then Ask, then Allow). Reinstalling
+preserves matching choices.
 To review or change them without reinstalling:
 
 ```sh
 draw permissions codex
-# Or review one backend:
-draw permissions codex --mode local
-draw permissions codex --mode hosted
 ```
 
 Restart Codex after installing or changing tool permissions. Connect board chat

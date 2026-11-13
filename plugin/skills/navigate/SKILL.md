@@ -30,7 +30,7 @@ takes `board`: the `id` that `start_session` returned, as a string of digits
 
 Native Codex installs enforce permission choices. Respect denied tools and source
 captures; do not bypass them with a terminal command or another connection.
-The user can review choices with `draw permissions codex --mode hosted`, then
+The user can review choices with `draw permissions codex`, then
 restart Codex. Source uploads set to Ask open a browser approval page before
 reading files. Never submit this form programmatically: only the human may
 choose **Allow once**. For managed Codex installs, connect conversation chat

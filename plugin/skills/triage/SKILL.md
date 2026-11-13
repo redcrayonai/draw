@@ -24,7 +24,7 @@ takes `board`: the `id` that `start_session` returned, as a string of digits.
 
 Respect native Codex permission settings; do not bypass a denied operation with
 another connection or a terminal command. The user can review them with
-`draw permissions codex --mode hosted`, then restart Codex. Source uploads set
+`draw permissions codex`, then restart Codex. Source uploads set
 to Ask open a browser approval page. Never submit its form programmatically:
 only the human may choose **Allow once**. Use an explicit `start_chat` call if
 conversation attachment is needed; opening the board does not authorize it.

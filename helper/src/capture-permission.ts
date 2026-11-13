@@ -70,7 +70,7 @@ export async function requireCapturePermission(kind: CaptureKind, opts: CaptureO
   const denied = () => {
     const current = runtimePermissions('hosted');
     if (!current || current.boards === 'deny' || current.snippets === 'deny' || current.uploads === 'deny') {
-      throw new PermissionError('REJECTED: Draw source capture is denied. No source was read or uploaded. Review draw permissions codex --mode hosted.');
+      throw new PermissionError('REJECTED: Draw source capture is denied. No source was read or uploaded. Review draw permissions codex.');
     }
   };
   denied();

@@ -40,6 +40,17 @@ export async function choosePermissionSet(modes: readonly PermissionMode[], opti
     const saved = readPermissions(mode);
     return { mode, editable: !saved || !!options.reconfigure, record: { ...saved, permissions: { ...(saved?.permissions ?? DEFAULT_PERMISSIONS) } } };
   });
+  // Merge old split choices without widening access; uploads only apply to hosted Draw.
+  let changed = false;
+  for (const key of ['boards', 'conversation', 'snippets'] as const) {
+    const values = entries.map(entry => entry.record.permissions[key]);
+    const value = values.includes('deny') ? 'deny' : values.includes('ask') ? 'ask' : 'allow';
+    for (const entry of entries) {
+      changed ||= entry.record.permissions[key] !== value;
+      Object.assign(entry.record.permissions, { [key]: value });
+    }
+  }
+  if (changed || entries.some(entry => entry.editable)) for (const entry of entries) entry.editable = true;
   if (options.defaults || entries.every(entry => !entry.editable)) return entries;
   if (!process.stdin.isTTY || !process.stderr.isTTY) throw new Error('REJECTED: review Draw permissions in a terminal, or use --permissions-defaults (Allow boards/chat; Deny source reads/uploads).');
   const color = (code: number, text: string) => process.env.NO_COLOR === undefined ? `\x1b[${code}m${text}\x1b[0m` : text;
@@ -50,19 +61,12 @@ export async function choosePermissionSet(modes: readonly PermissionMode[], opti
     ['snippets', 'Read repository source'],
     ['uploads', 'Upload source to hosted Draw (whole files)'],
   ];
-  const groups = (editable: boolean) => fields.flatMap(([key, title]) => {
-    const rows = new Map<string, typeof entries>();
-    for (const entry of entries.filter(entry => (!editable || entry.editable) && (key !== 'uploads' || entry.mode === 'hosted'))) {
-      const value = entry.record.permissions[key];
-      rows.set(value, [...(rows.get(value) ?? []), entry]);
-    }
-    return [...rows.values()].map(group => ({ key, title, group, scope: group.map(entry => entry.mode).join(' + ') }));
-  });
+  const groups = fields.map(([key, title]) => ({ key, title, group: entries.filter(entry => key !== 'uploads' || entry.mode === 'hosted') })).filter(row => row.group.length);
   const terminal = createInterface({ input: process.stdin, output: process.stderr });
   const summary = () => {
     process.stderr.write(`\n${color(1, 'Draw permissions')}\n\n`);
-    for (const { key, title, group, scope } of groups(false)) {
-      process.stderr.write(`  ${title.padEnd(43)} ${label(group[0].record.permissions[key])}  ${color(2, `(${scope})`)}\n`);
+    for (const { key, title, group } of groups) {
+      process.stderr.write(`  ${title.padEnd(43)} ${label(group[0].record.permissions[key])}\n`);
     }
   };
   try {
@@ -77,10 +81,10 @@ export async function choosePermissionSet(modes: readonly PermissionMode[], opti
       process.stderr.write('Choose yes or no.\n');
     }
     if (customize) {
-      for (const { key, title, group, scope } of groups(true)) {
+      for (const { key, title, group } of groups) {
         const choices = key === 'boards' || key === 'conversation' ? ['ask', 'allow'] : ['ask', 'deny'];
         for (;;) {
-          const answer = (await terminal.question(`\n${color(1, title)} ${color(2, `(${scope})`)}\n  ${choices.join('/')} [${group[0].record.permissions[key]}]: `)).trim().toLowerCase();
+          const answer = (await terminal.question(`\n${color(1, title)}\n  ${choices.join('/')} [${group[0].record.permissions[key]}]: `)).trim().toLowerCase();
           if (!answer) break;
           if (choices.includes(answer)) {
             for (const entry of group) Object.assign(entry.record.permissions, { [key]: answer });
@@ -115,5 +119,5 @@ export function enforceToolPermissions(name: string, mode: PermissionMode, args?
   const denied = permissions.boards === 'deny' ? 'board access'
     : ['attach_conversation', 'start_chat'].includes(name) && permissions.conversation === 'deny' ? 'conversation attachment'
     : source && permissions.snippets === 'deny' ? 'source code access' : undefined;
-  if (denied) throw new PermissionError(`REJECTED: Draw ${denied} is denied. Review it with draw permissions codex --mode ${mode}.`);
+  if (denied) throw new PermissionError(`REJECTED: Draw ${denied} is denied. Review it with draw permissions codex.`);
 }

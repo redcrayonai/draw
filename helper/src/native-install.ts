@@ -102,15 +102,15 @@ export function activateNativePlugin(source: string, target: string, install: ()
 
 function parseOptions(args: string[], permissionsOnly = false) {
   const [agent, ...rest] = args;
-  const usage = `REJECTED: usage: draw ${permissionsOnly ? 'permissions codex [--mode local|hosted]' : 'install <codex|claude-code|pi>'} [--permissions-defaults] (permissions are Codex only)`;
+  const usage = `REJECTED: usage: draw ${permissionsOnly ? 'permissions codex' : 'install <codex|claude-code|pi>'} [--permissions-defaults] (permissions are Codex only)`;
   if (!(permissionsOnly ? ['codex'] : ['codex', 'claude-code', 'pi']).includes(agent)) throw new Error(usage);
-  let mode: Mode = 'local', defaults = false, explicitMode = false;
+  let defaults = false, explicitMode = false;
   for (let i = 0; i < rest.length; i++) {
-    if (rest[i] === '--mode' && !explicitMode && ['local', 'hosted'].includes(rest[i + 1])) { mode = rest[++i] as Mode; explicitMode = true; }
+    if (rest[i] === '--mode' && !explicitMode && ['local', 'hosted'].includes(rest[i + 1])) { i++; explicitMode = true; }
     else if (rest[i] === '--permissions-defaults' && agent === 'codex' && !defaults) defaults = true;
     else throw new Error(usage);
   }
-  return { agent: agent as Agent, mode, defaults, explicitMode };
+  return { agent: agent as Agent, defaults };
 }
 
 async function setCodexPermissions(modes: readonly Mode[], defaults: boolean, reconfigure = false) {
@@ -122,8 +122,8 @@ async function setCodexPermissions(modes: readonly Mode[], defaults: boolean, re
 }
 
 export async function runNativePermissions(args: string[]) {
-  const { mode, defaults, explicitMode } = parseOptions(args, true);
-  await setCodexPermissions(explicitMode ? [mode] : ['local', 'hosted'], defaults, true);
+  const { defaults } = parseOptions(args, true);
+  await setCodexPermissions(['local', 'hosted'], defaults, true);
   process.stderr.write('Draw permissions saved for Codex. Restart Codex to load updated tool approval settings.\n');
   return 0;
 }
