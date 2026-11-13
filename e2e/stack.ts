@@ -179,11 +179,15 @@ export async function withStack(use: (stack: {
     await run('bash', ['scripts/stdb-test.sh', 'start']);
     await publish(env.STDB_TEST_DB, '--yes', '--delete-data=always');
     await buildClient();
-    preview = start('pnpm', ['exec', 'vite', 'preview', '--host', '127.0.0.1', '--port', String(appPort), '--strictPort', '--outDir', join(root, 'assets')], join(repo, 'client'));
+    const serve = () => start('pnpm', ['exec', 'vite', 'preview', '--host', '127.0.0.1', '--port', String(appPort), '--strictPort', '--outDir', join(root, 'assets')], join(repo, 'client'));
+    preview = serve();
     const deadline = Date.now() + 15_000;
     while (true) {
       if (await fetch(url).then(r => r.ok, () => false)) break;
-      if (preview.exitCode !== null || Date.now() > deadline) throw new Error(`Canvas did not start; see ${logPath}`);
+      if (Date.now() > deadline) throw new Error(`Canvas did not start; see ${logPath}`);
+      // The port was free when freePort picked it, and it is not held since: a local connection can
+      // take the number as its source port for a moment ("Port ... is already in use"). Serve again.
+      if (preview.exitCode !== null) preview = serve();
       await new Promise(resolve => setTimeout(resolve, 100));
     }
     await use({
