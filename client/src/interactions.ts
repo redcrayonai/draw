@@ -71,6 +71,8 @@ type Mode =
       hitId: bigint;
       wasSelected: boolean;
       shift: boolean;
+      /** ⌥-drag: the selection stays put and a copy lands where it is let go. */
+      copy?: { dx: number; dy: number };
     }
   // press and side: a handle pressed and let go where it was is a click, which opens quick add on that side.
   | { kind: 'drawEdge'; fromId: bigint; cur: { x: number; y: number }; press: { x: number; y: number }; side: Side }
@@ -899,6 +901,16 @@ export class Editor {
           height: String(Math.abs(cur.y - start.y)),
         })
       );
+    } else if (this.mode.kind === 'dragNodes' && this.mode.copy && this.mode.moved) {
+      const { orig, copy } = this.mode;
+      for (const n of this.deps.getNodes()) {
+        if (!orig.has(n.id)) continue;
+        const r = this.rect(n);
+        layer.append(el('rect', {
+          class: 'copy-ghost',
+          x: String(n.x + copy.dx), y: String(n.y + copy.dy), width: String(r.w), height: String(r.h),
+        }));
+      }
     } else if (this.mode.kind === 'drawEdge') {
       const from = this.deps.getNodes().find(n => n.id === (this.mode as any).fromId);
       if (from) {
@@ -1183,6 +1195,7 @@ export class Editor {
           hitId: node.id,
           wasSelected,
           shift: false,
+          copy: evt.altKey && !this.topologyReadOnly ? { dx: 0, dy: 0 } : undefined,
         };
         try { svg.setPointerCapture(evt.pointerId); } catch { /* synthetic pointer */ }
         this.deps.rerender();
@@ -1251,6 +1264,15 @@ export class Editor {
           const dy = snap(w.y - this.mode.start.y);
           if (Math.abs(w.x - this.mode.start.x) + Math.abs(w.y - this.mode.start.y) > 3) {
             this.mode.moved = true;
+          }
+          if (this.mode.copy) {
+            // Clamped like a move: no copy lands left of or above the origin. Copies are
+            // made from the stored rows, so the clamp and the ghost read those, not a glide frame.
+            const orig = this.mode.orig;
+            const rows = this.deps.getNodes().filter(n => orig.has(n.id));
+            this.mode.copy = { dx: Math.max(dx, -Math.min(...rows.map(n => n.x))), dy: Math.max(dy, -Math.min(...rows.map(n => n.y))) };
+            this.deps.rerender();
+            return;
           }
           this.overrides = new Map(
             [...this.mode.orig].map(([id, o]) => [
@@ -1366,6 +1388,12 @@ export class Editor {
             if (mode.wasSelected && this.selection.size > 1) {
               this.setSelection([mode.hitId]);
             }
+            this.deps.rerender();
+            return;
+          }
+          if (mode.copy) {
+            const { dx, dy } = mode.copy;
+            if (dx !== 0 || dy !== 0) this.duplicateNodes(mode.orig.keys(), { dx, dy });
             this.deps.rerender();
             return;
           }
@@ -1612,19 +1640,7 @@ export class Editor {
       }
       if (meta && evt.key.toLowerCase() === 'd') {
         evt.preventDefault();
-        if (this.topologyReadOnly) return;
-        const duplicatedBoard = this.deps.boardId;
-        const sel = this.deps.getNodes().filter(n => this.selection.has(n.id));
-        if (sel.length > 0) {
-          void this.deps.ops
-            .duplicateNodesAction(sel)
-            .then(ids => {
-              if (this.deps.boardId !== duplicatedBoard) return;
-              this.setSelection(ids);
-              this.deps.rerender();
-            })
-            .catch(err => showError((err as Error).message));
-        }
+        this.duplicateNodes(this.selection);
         return;
       }
       if (evt.key === 'Delete' || evt.key === 'Backspace') {
@@ -1783,6 +1799,23 @@ export class Editor {
     // driven explicitly from rerender() rather than a mutation observer.
     this.syncRail();
     void conn;
+  }
+
+  /** ⌘D and ⌥-drag: copy these nodes by an offset, then select the copies. */
+  private duplicateNodes(ids: Iterable<bigint>, offset?: { dx: number; dy: number }): void {
+    if (this.topologyReadOnly) return;
+    const duplicatedBoard = this.deps.boardId;
+    const wanted = new Set(ids);
+    const sel = this.deps.getNodes().filter(n => wanted.has(n.id));
+    if (sel.length === 0) return;
+    void this.deps.ops
+      .duplicateNodesAction(sel, offset)
+      .then(ids => {
+        if (this.deps.boardId !== duplicatedBoard) return;
+        this.setSelection(ids);
+        this.deps.rerender();
+      })
+      .catch(err => showError((err as Error).message));
   }
 
   private deleteSelection(): void {
@@ -1987,7 +2020,7 @@ export class Editor {
     this.deps.rerender();
 
     let done = false;
-    const finish = (commit: boolean) => {
+    const finish = (commit: boolean): Promise<void> | undefined => {
       if (done) {
         return;
       }
@@ -2016,7 +2049,7 @@ export class Editor {
       if (value === (field === 'label' ? fresh.label : fresh.sublabel)) {
         return;
       }
-      void this.deps.ops
+      return this.deps.ops
         .updateNodeAction(fresh.id, field === 'label' ? { label: value } : { sublabel: value })
         .catch(err => showError((err as Error).message));
     };
@@ -2040,6 +2073,10 @@ export class Editor {
       if (evt.key === 'Enter') {
         evt.preventDefault();
         finish(true);
+      } else if ((evt.metaKey || evt.ctrlKey) && evt.key.toLowerCase() === 'd') {
+        // ⌘D while naming: save the name, then copy this node with it (the selection may have moved on).
+        evt.preventDefault();
+        void (finish(true) ?? Promise.resolve()).then(() => this.duplicateNodes([node.id]));
       } else if (evt.key === 'Escape') {
         finish(false);
       }

@@ -911,13 +911,13 @@ export class Ops {
   }
 
   /** Duplicate nodes offset on the grid; focal is never copied. */
-  async duplicateNodesAction(nodes: Node[]): Promise<bigint[]> {
+  async duplicateNodesAction(nodes: Node[], offset = { dx: 16, dy: 16 }): Promise<bigint[]> {
     const fields: NodeFields[] = nodes.map(n => ({
       boardId: n.boardId,
       label: n.label,
       sublabel: n.sublabel,
-      x: n.x + 16,
-      y: n.y + 16,
+      x: n.x + offset.dx,
+      y: n.y + offset.dy,
       w: n.w,
       h: n.h,
       token: n.token,
@@ -947,7 +947,7 @@ export class Ops {
         // A chart copies through create_chart with its data. Focal is never
         // copied; the source (even 'sample') travels with the data.
         if (nodes[i].kind === 'chart') {
-          await this.copyChart(nodes[i], chartRows.get(nodes[i].id), 16, false, created);
+          await this.copyChart({ ...nodes[i], x: fields[i].x, y: fields[i].y }, chartRows.get(nodes[i].id), 0, false, created);
         } else {
           created(await this.createNode(fields[i]));
         }
