@@ -182,9 +182,7 @@ export function showBoardUnavailable(boardsHref: string | undefined, newBoardHre
   panel.focus();
 }
 
-// Non-destructive overlay while waiting out the reconnect backoff; the page
-// reloads when the timer fires, so this only needs to inform.
-export function showReconnect(reason: string, delayMs: number): void {
+export function showReconnect(reason: string, delayMs: number, backup?: () => void): void {
   finishBoardLoading();
   let panel = document.getElementById('reconnect') as HTMLDivElement | null;
   if (!panel) {
@@ -192,13 +190,22 @@ export function showReconnect(reason: string, delayMs: number): void {
     panel.id = 'reconnect';
     document.body.append(panel);
   }
-  panel.textContent = `We’re having trouble connecting. Retrying in ${Math.round(delayMs / 1000)}s…`;
+  panel.textContent = backup
+    ? 'Reconnect paused to protect unsaved edits. Download a backup before reloading.'
+    : `We’re having trouble connecting. Retrying in ${Math.round(delayMs / 1000)}s…`;
   panel.setAttribute('role', 'status');
   const retry = document.createElement('button');
   retry.className = 'ctl';
-  retry.textContent = 'Retry now';
+  retry.textContent = backup ? 'Reload anyway' : 'Retry now';
   retry.addEventListener('click', () => location.reload());
   panel.append(document.createElement('br'), retry);
+  if (backup) {
+    const download = document.createElement('button');
+    download.className = 'ctl';
+    download.textContent = 'Download unsaved edits';
+    download.addEventListener('click', backup);
+    panel.append(download);
+  }
   console.warn('Connection interrupted:', reason);
   setLive(false, 'Connection interrupted');
 }

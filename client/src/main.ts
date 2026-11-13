@@ -63,6 +63,7 @@ import { canStartGuest, claimForBoard, guestReturnUrl } from './journey';
 import { boardHref } from '../../shared/board-link';
 import { signInWithGuestBoard } from './guest-handoff';
 import { trackBoardWrites } from './save-status';
+import { protectUnsavedEdits } from './unsaved-edits';
 import { readAnonymousToken, saveAnonymousToken, clearAnonymousToken } from './anonymous-identity';
 import {
   buildRefsIndex,
@@ -338,8 +339,7 @@ async function connect(): Promise<void> {
   currentConn = builder.build();
 }
 
-// Fields that can hold a typed draft; a slider, switch, select or read-only field holds none.
-const TYPED_TEXT = 'textarea, input:not([type=checkbox]):not([type=radio]):not([type=range]):not([readonly]), [contenteditable]:not([contenteditable="false"])';
+let unsavedEdits: ReturnType<typeof protectUnsavedEdits> | undefined;
 
 // Reconnect by reloading the page rather than rebuilding in place: boot()
 // wires DOM listeners with no teardown path, so a clean page is the only
@@ -354,12 +354,15 @@ function scheduleReconnect(reason: string): void {
   const attempt = Number(sessionStorage.getItem(RECONNECT_ATTEMPT_KEY) ?? '0') + 1;
   sessionStorage.setItem(RECONNECT_ATTEMPT_KEY, String(attempt));
   const delayMs = Math.min(1000 * 2 ** (attempt - 1), 30_000);
-  showReconnect(reason, delayMs);
-  // No draft survives a reload, so hold it while someone types; 'Retry now' still reloads.
-  // shortcut: text committed after the drop is queued on the dead socket and lost on the
-  // reload, persist drafts or hold while save-status is pending if this is reported.
+  unsavedEdits?.disconnect();
+  let paused = Boolean(unsavedEdits?.blocked());
+  showReconnect(reason, delayMs, paused ? unsavedEdits?.download : undefined);
   const reload = (): void => {
-    if (document.activeElement?.matches(TYPED_TEXT)) setTimeout(reload, 1000);
+    if (unsavedEdits?.blocked()) {
+      if (!paused) showReconnect(reason, delayMs, unsavedEdits.download);
+      paused = true;
+      setTimeout(reload, 1000);
+    }
     else location.reload();
   };
   setTimeout(reload, delayMs);
@@ -373,7 +376,7 @@ async function boot(conn: DbConnection, identityHex: string, signedIn: boolean):
   (window as any).myIdentityHex = identityHex;
   let activeBoardId: bigint | undefined;
   const boardsHref = dashboardLink();
-  trackBoardWrites(conn, setSaveStatus);
+  unsavedEdits = protectUnsavedEdits(trackBoardWrites(conn, setSaveStatus));
   // The person's bearer token for the Live channel and canvas plugins: the account's when signed in, else this browser's guest token.
   const liveToken = async (): Promise<string | null> => {
     if (auth?.hasSession()) return auth.freshToken().catch(() => null);
