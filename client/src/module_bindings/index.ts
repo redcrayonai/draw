@@ -172,6 +172,7 @@ import * as CaptureBoardVersionProcedure from "./capture_board_version_procedure
 import * as CreateBoardItemsProcedure from "./create_board_items_procedure";
 import * as ReadBoardSnapshotProcedure from "./read_board_snapshot_procedure";
 import * as RestoreBoardVersionProcedure from "./restore_board_version_procedure";
+import * as ServiceLoadProcedure from "./service_load_procedure";
 
 // Import all table schema definitions
 import EmbeddedBoardRow from "./embedded_board_table";
@@ -843,6 +844,7 @@ const proceduresSchema = __procedures(
   __procedureSchema("create_board_items", CreateBoardItemsProcedure.params, CreateBoardItemsProcedure.returnType),
   __procedureSchema("read_board_snapshot", ReadBoardSnapshotProcedure.params, ReadBoardSnapshotProcedure.returnType),
   __procedureSchema("restore_board_version", RestoreBoardVersionProcedure.params, RestoreBoardVersionProcedure.returnType),
+  __procedureSchema("service_load", ServiceLoadProcedure.params, ServiceLoadProcedure.returnType),
 );
 
 /** The remote SpacetimeDB module schema, both runtime and type information. */

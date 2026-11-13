@@ -88,23 +88,17 @@ describe('the Demo reset', () => {
 describe('the database load', () => {
   afterEach(() => (vi.restoreAllMocks(), vi.unstubAllGlobals()));
   const now = Date.UTC(2026, 9, 21, 12);
-  const at = (msAgo: number) => ({ microsSinceUnixEpoch: BigInt(now - msAgo) * 1000n });
-  const rows = [
-    { kind: 'human', connections: 2, lastSeenAt: at(0) },
-    { kind: 'human', connections: 0, lastSeenAt: at(0) },
-    { kind: 'agent', connections: 0, lastSeenAt: at(60_000) },
-    { kind: 'agent', connections: 0, lastSeenAt: at(2 * 3_600_000) },
-  ];
-  const read = async <T>() => rows as T[];
+  const counts = { participants: 4, online: 1, connections: 2, agents: 1 };
+  const procedure = async <T>() => counts as T;
   const otlp = { DB_NAME: 'redcrayon', SERVICE_NAME: 'redcrayon-mcp-staging', OTLP_METRICS_URL: 'https://otlp.example.com/otlp/v1/metrics', OTLP_METRICS_AUTH: 'Basic c2VjcmV0' };
 
   it('logs participants, online senders, connections and agents seen this hour, and pushes no metrics without OTLP settings', async () => {
     const log = vi.spyOn(console, 'log').mockImplementation(() => {});
     const fetch = vi.fn();
     vi.stubGlobal('fetch', fetch);
-    const queries: string[] = [];
-    await dbLoad({ read: async <T>(q: { text: string }) => (queries.push(q.text), rows as T[]) }, { DB_NAME: 'redcrayon', OTLP_METRICS_URL: otlp.OTLP_METRICS_URL }, now);
-    expect(queries).toEqual(['SELECT kind, connections, last_seen_at FROM visible_participant']);
+    const calls: unknown[] = [];
+    await dbLoad({ procedure: async <T>(name: string, args: unknown[]) => (calls.push([name, args]), counts as T) }, { DB_NAME: 'redcrayon', OTLP_METRICS_URL: otlp.OTLP_METRICS_URL }, now);
+    expect(calls).toEqual([['service_load', []]]);
     expect(JSON.parse(log.mock.calls[0][0])).toEqual({ event: 'db.load', db: 'redcrayon', participants: 4, online: 1, connections: 2, agents: 1 });
     expect(fetch).not.toHaveBeenCalled();
   });
@@ -113,7 +107,7 @@ describe('the database load', () => {
     vi.spyOn(console, 'log').mockImplementation(() => {});
     const fetch = vi.fn(async (_url: string, _init: RequestInit) => new Response('{}'));
     vi.stubGlobal('fetch', fetch);
-    await dbLoad({ read }, otlp, now);
+    await dbLoad({ procedure }, otlp, now);
     const [url, init] = fetch.mock.calls[0];
     expect(url).toBe('https://otlp.example.com/otlp/v1/metrics');
     expect(init.headers).toEqual({ authorization: 'Basic c2VjcmV0', 'content-type': 'application/json' });
@@ -133,7 +127,7 @@ describe('the database load', () => {
     vi.spyOn(console, 'log').mockImplementation(() => {});
     const error = vi.spyOn(console, 'error').mockImplementation(() => {});
     vi.stubGlobal('fetch', vi.fn(async () => new Response('authentication error: invalid token', { status: 401 })));
-    await dbLoad({ read }, otlp, now);
+    await dbLoad({ procedure }, otlp, now);
     expect(error.mock.calls.map(c => JSON.parse(c[0]))).toEqual([{ event: 'metrics.push_failed', db: 'redcrayon', error: 'Error: HTTP 401 authentication error: invalid token' }]);
     expect(JSON.stringify(error.mock.calls)).not.toContain('c2VjcmV0');
   });
@@ -142,7 +136,7 @@ describe('the database load', () => {
     const error = vi.spyOn(console, 'error').mockImplementation(() => {});
     const fetch = vi.fn();
     vi.stubGlobal('fetch', fetch);
-    await dbLoad({ read: async () => Promise.reject(new Error('the database answered 503 to sql: down')) }, otlp, now);
+    await dbLoad({ procedure: async () => Promise.reject(new Error('the database answered 503 to sql: down')) }, otlp, now);
     expect(JSON.parse(error.mock.calls[0][0])).toEqual({ event: 'db.load_failed', db: 'redcrayon', error: 'Error: the database answered 503 to sql: down' });
     expect(fetch).not.toHaveBeenCalled();
   });

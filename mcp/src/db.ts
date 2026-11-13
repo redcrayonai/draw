@@ -87,7 +87,7 @@ export function database(env: Env, token: () => Promise<string>, stats: Stats = 
     stats,
     http,
     token,
-    async procedure<T>(name: 'read_board_snapshot' | 'create_board_items', args: unknown[], signal?: AbortSignal): Promise<T> {
+    async procedure<T>(name: 'read_board_snapshot' | 'create_board_items' | 'service_load', args: unknown[], signal?: AbortSignal): Promise<T> {
       const t = await token();
       return parseProcedureJson(JSON.parse(await timed(() => http.procedureAs(t, name, args, signalFor(signal))))) as T;
     },

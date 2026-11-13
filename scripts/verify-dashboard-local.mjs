@@ -843,3 +843,23 @@ test('M4 service calls leave no participant row', async () => {
   const rows = (await sql(OWNER, 'SELECT * FROM participant')).filter(r => hexOf(r.identity) === svc.identity);
   assert.deepEqual(rows, []);
 });
+
+test('service_load returns only aggregate metrics and refuses non-service callers', async () => {
+  const svc = await mint(), guest = await mint(), agent = await mint();
+  await ok(agent.token, 'join_board', ['load-agent', 'agent']);
+  await sql(OWNER, `INSERT INTO service_account (identity, label) VALUES (0x${svc.identity}, 'metrics-test')`);
+  const refused = await call(guest.token, 'service_load');
+  assert.equal(refused.status, 500); // Procedures report thrown errors as 500, unlike reducers' 530.
+  assert.match(refused.text, /service account only/);
+  const result = await call(svc.token, 'service_load');
+  assert.equal(result.status, 200, result.text);
+  const counts = JSON.parse(JSON.parse(result.text));
+  const rows = await sql(svc.token, 'SELECT * FROM visible_participant');
+  const hourAgo = (Date.now() - 3_600_000) * 1000;
+  assert.deepEqual(counts, {
+    participants: rows.length,
+    online: rows.filter(r => r.connections > 0).length,
+    connections: rows.reduce((sum, r) => sum + r.connections, 0),
+    agents: rows.filter(r => r.kind === 'agent' && micros(r.lastSeenAt) > hourAgo).length,
+  });
+});

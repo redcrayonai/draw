@@ -1,5 +1,5 @@
 import type { EmbedGraph, EmbedScene } from './embed-contracts';
-import { schema, table, t, SenderError, type ModuleExport } from 'spacetimedb/server';
+import { schema, table, t, SenderError, type ModuleExport, Range } from 'spacetimedb/server';
 import { Timestamp } from 'spacetimedb';
 import { checkEvidencePrefix, evidenceClass, parseCoverage } from './health-rules';
 import { validateGraph, edgeKey, graphSignature, proposalSatisfied, type Graph } from './architecture';
@@ -64,7 +64,7 @@ import { workspaceServiceAccountTables, workspaceApiKeyExpiry, workspaceServiceA
 import { roleRank, strongestRole } from './workspace-policy';
 import { parseTraceSpans } from './trace';
 import { backfillSlugs, newSlug } from './slug';
-import { FEED_SIZE, KEEP_PER_BOARD, activityLayer, beyondKeep, newestFirst } from './activity-feed';
+import { FEED_SIZE, KEEP_PER_BOARD, activityLayer, beyondKeep, newestFirst, oldestBatch } from './activity-feed';
 import {
   claimable,
   replyRefusal,
@@ -582,8 +582,8 @@ const tables = {
       // RC-528: participant rows are durable per stable OIDC identity.
       // Defaults let pre-existing rows migrate (same rule as stage 9).
       // connections counts live connections; 0 means offline, row kept.
-      connections: t.u32().default(0),
-      lastSeenAt: t.timestamp().default(Timestamp.UNIX_EPOCH),
+      connections: t.u32().default(0).index('btree'),
+      lastSeenAt: t.timestamp().default(Timestamp.UNIX_EPOCH).index('btree'),
       // Raw `iss` claim of the caller's JWT, for audit/attribution only.
       // NOT an auth discriminator: anonymous connections carry the host's
       // local issuer ('localhost' on a hosted server), CLI tokens carry
@@ -1719,6 +1719,23 @@ function markBoardIds(ctx: any): Set<bigint> {
 function viewBoardIds(ctx: any): Set<bigint> {
   return openBoardIds(ctx) ?? readableBoardIds(ctx);
 }
+
+// A one-shot metrics read avoids retaining a reactive view over every historical participant.
+export const serviceLoad = spacetimedb.procedure({}, t.string(), ctx =>
+  procedureJson(ctx.withTx(tx => {
+    assertService(tx);
+    const counts = { participants: Number(tx.db.participant.count()), online: 0, connections: 0, agents: 0 };
+    for (const p of tx.db.participant.connections.filter(new Range({ tag: 'excluded', value: 0 }))) {
+      counts.online += 1;
+      counts.connections += p.connections;
+    }
+    const hourAgo = new Timestamp(ctx.timestamp.microsSinceUnixEpoch - 3_600_000_000n);
+    for (const p of tx.db.participant.lastSeenAt.filter(new Range({ tag: 'excluded', value: hourAgo }))) {
+      if (p.kind === 'agent') counts.agents += 1;
+    }
+    return counts;
+  }))
+);
 
 // One consistent read with the same visibility and redactions as the public views.
 export const readBoardSnapshot = spacetimedb.procedure({ boardId: t.u64() }, t.string(), (ctx, { boardId }) =>
@@ -4305,10 +4322,11 @@ export const claimMarks = spacetimedb.reducer(
       }
     }
     const leaseUntil = new Timestamp(now + LEASE_MICROS);
-    renewLeases(ctx, boardId, owner);
     // shortcut: scans every mark on the board per call; index by status if answered history grows large.
     for (const m of [...ctx.db.mark.boardId.filter(boardId)]) {
-      if (claimable({ ...m, leaseUntil: m.leaseUntil.microsSinceUnixEpoch, sentAt: m.sentAt.microsSinceUnixEpoch }, now, hex)) {
+      if (m.status === 'claimed' && m.claimedBy === owner) {
+        ctx.db.mark.id.update({ ...m, leaseUntil });
+      } else if (claimable({ ...m, leaseUntil: m.leaseUntil.microsSinceUnixEpoch, sentAt: m.sentAt.microsSinceUnixEpoch }, now, hex)) {
         ctx.db.mark.id.update({ ...m, status: 'claimed', claimedBy: owner, leaseUntil, claimGen: m.claimGen + 1 });
       }
     }
@@ -5912,11 +5930,8 @@ export const serviceOutbox = spacetimedb.view(
     if (!ctx.db.serviceAccount.identity.find(ctx.sender)) {
       return [];
     }
-    // ponytail: whole-outbox scan + sort per drain; drains ack what they read,
-    // so the outbox stays small. Index on id ranges if it ever is not.
-    return [...ctx.db.activityOutbox.iter()]
-      .sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0))
-      .slice(0, OUTBOX_BATCH);
+    // shortcut: still scans the backlog; use indexed paging if scan costs dominate after bounding the sort.
+    return oldestBatch(ctx.db.activityOutbox.iter(), OUTBOX_BATCH);
   }
 );
 

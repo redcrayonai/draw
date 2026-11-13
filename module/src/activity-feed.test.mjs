@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { activityLayer, beyondKeep, newestFirst } from './activity-feed.ts';
+import { activityLayer, beyondKeep, newestFirst, oldestBatch } from './activity-feed.ts';
 
 test('activityLayer puts code-ref and threat events behind their board layer', () => {
   assert.equal(activityLayer('coderef.added'), 'code');
@@ -27,4 +27,16 @@ test('beyondKeep drops only what falls past the newest `keep`', () => {
 test('a merged burst that moved forward survives over newer-but-quieter rows', () => {
   // row 1 was inserted first but its burst kept going (lastAt moved forward)
   assert.deepEqual(beyondKeep([row(1, 90), row(2, 60), row(3, 70)], 2).map(r => r.id), [2n]);
+});
+
+
+test('oldestBatch matches a full sort for unordered, sparse, large ids and all batch sizes', () => {
+  const rows = Array.from({ length: 1200 }, (_, i) => ({ id: 2n ** 60n + BigInt((i * 719) % 1200) * 19n }));
+  for (const input of [rows, [...rows].sort((a, b) => a.id < b.id ? -1 : 1), [...rows].sort((a, b) => a.id > b.id ? -1 : 1)]) {
+    for (const limit of [0, 1, 500, 1200, 1300]) {
+      const expected = [...input].sort((a, b) => a.id < b.id ? -1 : 1).slice(0, limit);
+      assert.deepEqual(oldestBatch(input.values(), limit), expected);
+    }
+  }
+  assert.deepEqual(oldestBatch([], 500), []);
 });

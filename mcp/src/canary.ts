@@ -154,7 +154,6 @@ export async function scheduled(fetch: Fetch, env: CanaryEnv, state: { get(): Pr
   }
 }
 
-type Participant = { kind: string; connections: number; lastSeenAt: { microsSinceUnixEpoch: bigint } };
 type Counts = { participants: number; online: number; connections: number; agents: number };
 type LoadEnv = Pick<CanaryEnv, 'DB_NAME' | 'SERVICE_NAME' | 'OTLP_METRICS_URL' | 'OTLP_METRICS_AUTH'>;
 
@@ -166,17 +165,10 @@ const message = (err: unknown) => (err instanceof Error ? `${err.name}: ${err.me
  * Also pushed as OTLP gauges when OTLP_METRICS_URL and OTLP_METRICS_AUTH are set.
  * A failure is one error line, never an alert.
  */
-export async function dbLoad(db: Pick<Database, 'read'>, env: LoadEnv, now = Date.now()): Promise<void> {
+export async function dbLoad(db: Pick<Database, 'procedure'>, env: LoadEnv, now = Date.now()): Promise<void> {
   let counts: Counts;
   try {
-    const rows = await db.read<Participant>(sql`SELECT kind, connections, last_seen_at FROM visible_participant`);
-    const hourAgo = BigInt(now - 3_600_000) * 1000n;
-    counts = {
-      participants: rows.length,
-      online: rows.filter(r => r.connections > 0).length,
-      connections: rows.reduce((s, r) => s + r.connections, 0),
-      agents: rows.filter(r => r.kind === 'agent' && r.lastSeenAt.microsSinceUnixEpoch > hourAgo).length,
-    };
+    counts = await db.procedure<Counts>('service_load', []);
   } catch (err) {
     console.error(JSON.stringify({ event: 'db.load_failed', db: env.DB_NAME, error: message(err) }));
     return;
