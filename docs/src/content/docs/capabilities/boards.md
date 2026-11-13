@@ -50,10 +50,12 @@ Click (do not drag) a handle on a node's side. **Add connected node** puts a
 new node on that side, joined by an edge. **Link a board…** adds a node that
 opens another board you can open.
 
-Double-click the linked node, or click its glyph, to open that board. The
-browser's back button returns. A link grants no access: each reader still needs
-their own access to the target, and a reader without it sees `private` instead
-of the board's name. To remove a link, select the node and run **Remove the
+Double-click the linked node, or click its glyph, to open that board. The trail
+on the canvas adds the board you came from, with the frame you were in, marked
+with the layers icon. Click a level, press **Esc** with nothing selected, or use
+the browser's back button to return. A link grants no access: each reader still
+needs their own access to the target, and a reader without it sees `private`
+instead of the board's name. To remove a link, select the node and run **Remove the
 board link** from the command palette. The node stays.
 
 ## Sharing
