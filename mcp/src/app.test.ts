@@ -623,11 +623,12 @@ describe('GET /marks/wait', () => {
   }
   const wait = (token?: string) => get('/marks/wait', token ? { authorization: `Bearer ${token}` } : {});
   // Token signing runs off the event loop, so a single advance can pass before the next sleep is set: step until it answers.
+  // The clock moves only while a sleep is set. Stepping it during the signing made the wait look longer on a slow machine.
   async function settle(pending: Promise<Response>): Promise<Response> {
     let done = false;
     void pending.then(() => (done = true));
     while (!done) {
-      await vi.advanceTimersByTimeAsync(500);
+      if (vi.getTimerCount() > 0) await vi.advanceTimersByTimeAsync(500);
       await new Promise(r => setImmediate(r));
     }
     return pending;
