@@ -202,6 +202,35 @@ describe('routeEdges: nesting and pills', () => {
     expect(r.points).toEqual([{ x: 300, y: 160 }, { x: 300, y: 0 }]);
     expect(r.seg.len).toBe(160);
   });
+  for (const shape of ['ellipse', 'pill']) {
+    it.each([
+      ['top', R(140, 100, 40, 40)],
+      ['right', R(500, 120, 40, 40)],
+      ['bottom', R(140, 280, 40, 40)],
+      ['left', R(60, 120, 40, 40)],
+    ] as const)(`lands nested edges on the ${shape} outline at the %s`, (side, inner) => {
+      const rs = rects([1, outer], [2, inner]);
+      const shapes = new Map([[1n, shape]]);
+      const up = routeEdges(edge(2, 1), rs, shapes).get(1n)!;
+      const down = routeEdges(edge(1, 2), rs, shapes).get(1n)!;
+      expect(up.points).toHaveLength(2);
+      expect(down.points).toEqual([...up.points].reverse());
+      const [p, q] = up.points;
+      if (side === 'top' || side === 'bottom') {
+        expect(q.x).toBeCloseTo(p.x);
+        expect(side === 'top' ? q.y < p.y : q.y > p.y).toBe(true);
+      } else {
+        expect(q.y).toBeCloseTo(p.y);
+        expect(side === 'left' ? q.x < p.x : q.x > p.x).toBe(true);
+      }
+      if (shape === 'ellipse') {
+        expect(((q.x - 300) / 300) ** 2 + ((q.y - 200) / 200) ** 2).toBeCloseTo(1);
+      } else {
+        const capX = Math.max(200, Math.min(400, q.x));
+        expect(Math.hypot(q.x - capX, q.y - 200)).toBeCloseTo(200);
+      }
+    });
+  }
   it('gives partial overlaps with coincident centres a non-zero straight segment', () => {
     const r = routeEdges(edge(1, 2), rects([1, R(0, 0, 200, 100)], [2, R(40, -20, 120, 140)]), noShapes).get(1n)!;
     expect(r.points).toHaveLength(2);
