@@ -50,6 +50,7 @@ import CreateArchitectureHistoryReducer from "./create_architecture_history_redu
 import CreateArchitectureProposalReducer from "./create_architecture_proposal_reducer";
 import CreateBoardReducer from "./create_board_reducer";
 import CreateChartReducer from "./create_chart_reducer";
+import CreateConnectedNodeReducer from "./create_connected_node_reducer";
 import CreateEdgeReducer from "./create_edge_reducer";
 import CreateIconNodeReducer from "./create_icon_node_reducer";
 import CreateNodeReducer from "./create_node_reducer";
@@ -71,6 +72,7 @@ import GrantAgentBoardReducer from "./grant_agent_board_reducer";
 import GrantHostedAgentBoardReducer from "./grant_hosted_agent_board_reducer";
 import JoinBoardReducer from "./join_board_reducer";
 import LinkHostedAgentReducer from "./link_hosted_agent_reducer";
+import LinkNodeBoardReducer from "./link_node_board_reducer";
 import MarkChangeNoteReviewedReducer from "./mark_change_note_reviewed_reducer";
 import MarkCheckpointReducer from "./mark_checkpoint_reducer";
 import MarkRepliesReadReducer from "./mark_replies_read_reducer";
@@ -150,6 +152,7 @@ import StopLinkShareReducer from "./stop_link_share_reducer";
 import SubmitArchitectureProposalReducer from "./submit_architecture_proposal_reducer";
 import UnanchorChartReducer from "./unanchor_chart_reducer";
 import UnlinkAgentReducer from "./unlink_agent_reducer";
+import UnlinkNodeBoardReducer from "./unlink_node_board_reducer";
 import UnshareBoardFromTeamReducer from "./unshare_board_from_team_reducer";
 import UpdateChangeNoteReducer from "./update_change_note_reducer";
 import UpdateCodeRefReducer from "./update_code_ref_reducer";
@@ -180,6 +183,7 @@ import MyActivityRow from "./my_activity_table";
 import MyAgentGrantsRow from "./my_agent_grants_table";
 import MyAgentLinksRow from "./my_agent_links_table";
 import MyArchitectureHistoriesRow from "./my_architecture_histories_table";
+import MyBoardAccessRow from "./my_board_access_table";
 import MyBoardCreationsRow from "./my_board_creations_table";
 import MyBoardEmbedsRow from "./my_board_embeds_table";
 import MyBoardPermissionsRow from "./my_board_permissions_table";
@@ -230,6 +234,7 @@ import VisibleMarkReadRow from "./visible_mark_read_table";
 import VisibleMarkWaiterRow from "./visible_mark_waiter_table";
 import VisibleNodeRow from "./visible_node_table";
 import VisibleNodeIconRow from "./visible_node_icon_table";
+import VisibleNodeLinkRow from "./visible_node_link_table";
 import VisibleParticipantRow from "./visible_participant_table";
 import VisibleRepoFileRow from "./visible_repo_file_table";
 import VisibleRouteEventRow from "./visible_route_event_table";
@@ -286,6 +291,13 @@ const tablesSchema = __schema({
     constraints: [
     ],
   }, MyArchitectureHistoriesRow),
+  myBoardAccess: __table({
+    name: 'my_board_access',
+    indexes: [
+    ],
+    constraints: [
+    ],
+  }, MyBoardAccessRow),
   myBoardCreations: __table({
     name: 'my_board_creations',
     indexes: [
@@ -636,6 +648,13 @@ const tablesSchema = __schema({
     constraints: [
     ],
   }, VisibleNodeIconRow),
+  visibleNodeLink: __table({
+    name: 'visible_node_link',
+    indexes: [
+    ],
+    constraints: [
+    ],
+  }, VisibleNodeLinkRow),
   visibleParticipant: __table({
     name: 'visible_participant',
     indexes: [
@@ -719,6 +738,7 @@ const reducersSchema = __reducers(
   __reducerSchema("create_architecture_proposal", CreateArchitectureProposalReducer),
   __reducerSchema("create_board", CreateBoardReducer),
   __reducerSchema("create_chart", CreateChartReducer),
+  __reducerSchema("create_connected_node", CreateConnectedNodeReducer),
   __reducerSchema("create_edge", CreateEdgeReducer),
   __reducerSchema("create_icon_node", CreateIconNodeReducer),
   __reducerSchema("create_node", CreateNodeReducer),
@@ -740,6 +760,7 @@ const reducersSchema = __reducers(
   __reducerSchema("grant_hosted_agent_board", GrantHostedAgentBoardReducer),
   __reducerSchema("join_board", JoinBoardReducer),
   __reducerSchema("link_hosted_agent", LinkHostedAgentReducer),
+  __reducerSchema("link_node_board", LinkNodeBoardReducer),
   __reducerSchema("mark_change_note_reviewed", MarkChangeNoteReviewedReducer),
   __reducerSchema("mark_checkpoint", MarkCheckpointReducer),
   __reducerSchema("mark_replies_read", MarkRepliesReadReducer),
@@ -819,6 +840,7 @@ const reducersSchema = __reducers(
   __reducerSchema("submit_architecture_proposal", SubmitArchitectureProposalReducer),
   __reducerSchema("unanchor_chart", UnanchorChartReducer),
   __reducerSchema("unlink_agent", UnlinkAgentReducer),
+  __reducerSchema("unlink_node_board", UnlinkNodeBoardReducer),
   __reducerSchema("unshare_board_from_team", UnshareBoardFromTeamReducer),
   __reducerSchema("update_change_note", UpdateChangeNoteReducer),
   __reducerSchema("update_code_ref", UpdateCodeRefReducer),

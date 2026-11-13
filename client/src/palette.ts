@@ -107,6 +107,8 @@ export interface PaletteDeps {
   commands: () => Command[];
   /** Badge above the input, e.g. "4 nodes selected". Empty hides it. */
   context: () => string;
+  /** After the palette closes, however it closed. */
+  onClose?: () => void;
 }
 
 export class CommandPalette {
@@ -172,6 +174,7 @@ export class CommandPalette {
     this.root.hidden = true;
     // A hidden input keeps focus until the next frame and would swallow a quick ⌘K.
     this.input?.blur();
+    this.deps.onClose?.();
   }
 
   toggle(): void {

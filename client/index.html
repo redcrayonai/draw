@@ -157,6 +157,13 @@
         <g id="world"></g>
       </svg>
 
+      <!-- Depth trail (depth.ts): which frame of this board the view is inside. On the canvas, not in
+           the header: the header names the board, this names the place on it. Filled by main.ts. -->
+      <nav id="depth-trail" aria-label="Depth on this board" hidden></nav>
+
+      <!-- Quick add (quick-add.ts): what a click on a node's side handle offers to put on that side. -->
+      <div id="quick-add" role="menu" aria-label="Add on this side" hidden></div>
+
       <aside id="rail">
         <div class="rail-head">
           <h2 class="rail-title">Board</h2>
@@ -296,6 +303,8 @@
             <div class="tb-popover-row tb-node-control"><span>Focus</span><button id="tb-focal" title="Toggle focal" aria-pressed="false">focal</button></div>
           </div>
         </details>
+        <button id="tb-step-in" class="tb-node-control" title="Step inside · &#8629;" aria-keyshortcuts="Enter" hidden>Step inside</button>
+        <button id="tb-open-board" class="tb-node-control" aria-keyshortcuts="Enter" hidden></button>
         <span class="tb-sep" aria-hidden="true"></span>
         <button id="tb-library" class="tb-node-control" title="Add to library · ⇧L" aria-label="Add to library" aria-keyshortcuts="Shift+L">
           <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 2.5h8v11L8 10.75 4 13.5z" /><path d="M8 5v3.5M6.25 6.75h3.5" /></svg>
@@ -442,12 +451,16 @@
           <tr><td>space-drag / middle-drag</td><td>pan</td></tr>
           <tr><td>scroll</td><td>pan</td></tr>
           <tr><td>ctrl/&#8984;-scroll, pinch</td><td>zoom (cursor-anchored)</td></tr>
+          <tr><td>double-click a frame, or click its layers glyph</td><td>step inside it (a frame is a node with nodes drawn inside it); &#8629; does the same for the selected one</td></tr>
+          <tr><td>esc</td><td>step out one level, when nothing is selected</td></tr>
           <tr><td>shift-1</td><td>fit to content</td></tr>
           <tr><td>ctrl/&#8984;-0</td><td>reset zoom</td></tr>
           <tr><td>ctrl/&#8984;-plus / minus</td><td>zoom in / out</td></tr>
           <tr><td>double-click canvas</td><td>new node</td></tr>
           <tr><td>double-click label</td><td>edit text inline</td></tr>
           <tr><td>drag border handle</td><td>draw edge to another node</td></tr>
+          <tr><td>click border handle</td><td>add a connected node on that side, or link a board there</td></tr>
+          <tr><td>double-click a board link, or click its glyph</td><td>open the board it links (&#8629; too); the browser's back returns</td></tr>
           <tr><td>ctrl/&#8984;-d</td><td>duplicate selection</td></tr>
           <tr><td>f</td><td>toggle focal</td></tr>
           <tr><td>delete</td><td>delete selection</td></tr>
