@@ -109,7 +109,7 @@ test('the owner sees the Rename board tooltip on the header title', async ({ acc
   await openBoard(owner, `${stack.url}?new=1`);
   await drawNode(owner, 'svc');
   await expect(title(owner)).toHaveClass(/renamable/);
-  await expect(title(owner)).toHaveAttribute('title', 'Rename board');
+  await expect(title(owner)).toHaveAttribute('title', 'Rename board', { timeout: 2_000 });
 });
 
 test('⌘K Rename board opens the same modal', async ({ account, stack }) => {
@@ -419,7 +419,7 @@ test('the owner deletes a branch that has served its purpose', async ({ account,
   await expect.poll(() => boardIdOf(stack, owner)).not.toBe(B);
   const branch = await boardIdOf(stack, owner);
   await palette(owner, 'delete this board');
-  await expect(owner.locator('#palette-list')).toContainText('Delete this board');
+  await expect(owner.locator('#palette-list')).toContainText('Delete this board', { timeout: 2_000 });
   await owner.keyboard.press('Enter');
   await confirmBoardDelete(owner);
   await expect.poll(() => stack.sql(`SELECT id FROM board WHERE id = ${branch}`)).toEqual([]);

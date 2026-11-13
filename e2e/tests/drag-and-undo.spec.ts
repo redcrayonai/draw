@@ -559,5 +559,5 @@ test('an undone edge delete keeps its style when the new edge id equals a node i
   await undo(page);
   await expect(edges(page)).toHaveCount(1);
   test.skip(Number((await edgeRows(stack, B))[0].id) !== web, 'id sequences did not line up');
-  await expect(line(page)).toHaveAttribute('marker-end', 'url(#mk-c-purple-bold)');
+  await expect(line(page)).toHaveAttribute('marker-end', 'url(#mk-c-purple-bold)', { timeout: 2_000 });
 });

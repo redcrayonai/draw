@@ -330,7 +330,7 @@ test('an edit-link visitor with Threats included is not offered contain', async 
   await marker(editor).click();
   await expect(editor.locator('#inspector .tc')).toBeVisible();
   await expect(stack.callReducer(editorToken, 'set_threat_contained', [await threatId(stack, B), true])).rejects.toThrow(MEMBERS_RULE);
-  await expect(editor.locator('#inspector .tc-contain')).toHaveCount(0);
+  await expect(editor.locator('#inspector .tc-contain')).toHaveCount(0, { timeout: 2_000 });
   await expect(await threatCommands(editor)).not.toContainText('Mark threat contained');
 });
 

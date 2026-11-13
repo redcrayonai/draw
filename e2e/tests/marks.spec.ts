@@ -300,7 +300,7 @@ test('a guest on an edit link gets no marks', async ({ account, guest, stack }) 
   await expect(anon.locator('#world')).toContainText('api');
   await expect(anon.locator('#tool-crayon')).toHaveAttribute('title', 'Sign in to mark');
   await expect(anon.locator('#act-review')).toBeHidden();
-  await expect.soft(anon.locator('#mark-banner')).toBeHidden();
+  await expect.soft(anon.locator('#mark-banner')).toBeHidden({ timeout: 2_000 });
   expect.soft(await marksHeld(anon)).toBe(0);
 });
 

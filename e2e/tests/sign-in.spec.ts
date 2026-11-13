@@ -215,7 +215,7 @@ test('signing out after a refused claim returns to the guest drawing', async ({ 
   const { g, r, guestHex, url } = await refusedClaim(guest, stack);
   await accountBarSignOut(g);
   await expect.poll(() => g.evaluate(() => Object.entries(localStorage).find(([key]) => key.startsWith('account_seen:'))?.[1] ?? null)).toBeNull(); // the sign-out ran
-  await expect(g.locator('#world')).toContainText('Recover me');
+  await expect(g.locator('#world')).toContainText('Recover me', { timeout: 2_000 });
   await expect(g).toHaveURL(url);
   await expect(g.locator('#account-name')).toHaveCount(0);
   await expect(g.locator('#act-share')).toBeVisible();
