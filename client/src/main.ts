@@ -38,6 +38,8 @@ import { LIVE_CHART_SOURCE, LiveSession, liveCsv, liveUrl, recordLive, resolveLi
 import { formatWindow, mountWindowBrush, zoomOut, type TimeWindow } from './time-window';
 import { Glide, type XY } from './glide';
 import { Viewport, chromeInsets } from './viewport';
+import { framesAround, isFrame, surviving, within } from './depth';
+import { openQuickAdd, placeBeside, type Side } from './quick-add';
 import { History, Ops, type ChartPatch } from './ops';
 import { Editor, TEXT_ENTRY } from './interactions';
 import { LibraryPopover, type TemplatePick } from './library-popover';
@@ -53,7 +55,7 @@ import { initAuth, SignedOutError, type Auth } from './auth';
 import { runBootWithRecovery } from './connection-recovery';
 import { mountCanvasPlugins, type CanvasHost } from './plugin-mounts';
 import { CANVAS_PARTS } from './plugins.generated';
-import { openBoards, subscribeBoard, subscribeLists } from './subscribe';
+import { boardAccess, openBoards, subscribeBoard, subscribeLists } from './subscribe';
 import { selectBoard, hasBoardLink, shouldOpenDashboard, viewOnly, opensNewShareLink } from './board-select';
 import { shareTokenOf } from '../../shared/share-link';
 import { openBoardRename } from './board-rename';
@@ -399,7 +401,7 @@ async function boot(conn: DbConnection, identityHex: string, signedIn: boolean):
     if (button) button.disabled = true;
     try {
       const loaded = await loadAuth();
-      const guestBoard = [...conn.db.myBoards.iter()].find(row => row.boardId === activeBoardId && row.access === 'owner' && !row.isSession);
+      const guestBoard = boardAccess(conn).find(row => row.boardId === activeBoardId && row.access === 'owner' && !row.isSession);
       const architecture = [...conn.db.visibleArchitectureVersion.iter()].some(row => row.boardId === activeBoardId);
       // Sign-in returns to this page's #b=<slug>; the stored claim carries the slug to match it (claimForBoard).
       const slug = activeBoardId === undefined ? '' : conn.db.visibleBoard.id.find(activeBoardId)?.slug ?? '';
@@ -513,7 +515,7 @@ async function boot(conn: DbConnection, identityHex: string, signedIn: boolean):
     subscribeLists(conn, () => resolve(true), ctx => { boardFailed(ctx); resolve(false); }, (signedIn || !config.accounts) && config.mcpUrl !== undefined, signedIn && CANVAS_PARTS.length > 0));
   if (!listed) return;
   const picked = guestBoardId === undefined
-    ? selectBoard(conn.db.visibleBoard.iter(), location.search, location.hash, conn.db.myBoards.iter())
+    ? selectBoard(conn.db.visibleBoard.iter(), location.search, location.hash, boardAccess(conn))
     : conn.db.visibleBoard.id.find(guestBoardId) ?? 'Your board has not arrived. Please reload.';
   if (typeof picked === 'string') {
     showBoardUnavailable(boardsHref, newBoardHref(), shareToken !== null ? LINK_GONE : undefined);
@@ -585,7 +587,7 @@ async function boot(conn: DbConnection, identityHex: string, signedIn: boolean):
       let boardId = board.id;
       activeBoardId = boardId;
       if (shareToken !== null) linkBoardId = boardId;
-      const myRow = () => [...conn.db.myBoards.iter()].find(row => row.boardId === boardId);
+      const myRow = () => boardAccess(conn).find(row => row.boardId === boardId);
       const permission = () => [...(conn.db.myBoardPermissions?.iter() ?? [])].find(row => row.boardId === boardId);
       const publicExample = () => viewOnly(myRow(), signedIn, permission());
       const canManage = () => permission()?.canManage ?? myRow()?.access === 'owner';
@@ -1284,6 +1286,24 @@ async function boot(conn: DbConnection, identityHex: string, signedIn: boolean):
       // hidden rows stay in the database but not on the canvas; hiding a node
       // implicitly hides its edges
       const getNodes = () => getAllNodes().filter(n => !n.hidden);
+      /* ---- depth: the frame of this board the view is inside (depth.ts). Per tab, never saved. ---- */
+      // The frames above the view, outermost first, ending with the one it is inside; empty on the whole board.
+      let depthTrail: bigint[] = [];
+      let depthInside: ReadonlySet<bigint> = new Set();
+      const depthFrame = (): bigint | null => depthTrail[depthTrail.length - 1] ?? null;
+      /* ---- board links: nodes that point at another board (visible_node_link). `open` is false, and the
+         target unnamed, for a board this reader cannot open. ---- */
+      let links = new Map<bigint, { open: boolean; target: bigint; name: string }>();
+      const rebuildLinks = () => {
+        links = new Map([...(conn.db.visibleNodeLink?.iter() ?? [])].filter(row => row.boardId === boardId)
+          .map(row => [row.nodeId, { open: row.targetBoardId !== 0n, target: row.targetBoardId, name: row.name }]));
+      };
+      /** A link node with no sublabel of its own is drawn with its board's name there, for this reader:
+       *  the name when they can open the board, "private" when they cannot. Nothing is stored. */
+      const linkedNodes = (nodes: Node[]): Node[] => (links.size === 0 ? nodes : nodes.map(n => {
+        const link = n.sublabel === '' ? links.get(n.id) : undefined;
+        return link ? { ...n, sublabel: link.open ? link.name : 'private' } : n;
+      }));
       const getEdges = () => {
         const visible = new Set(getNodes().map(n => n.id));
         return getAllEdges().filter(
@@ -1575,7 +1595,7 @@ async function boot(conn: DbConnection, identityHex: string, signedIn: boolean):
         const ghostIds = new Set(ghosts.map(n => n.id));
         const ghostSetNames = new Map(ghosts.map(n => [n.id, setNameOf('node', n.id)]));
         const removedNodes = showDiff ? comparison?.removedNodes.filter(n => !n.hidden) ?? [] : [];
-        const renderNodes = [...getNodes(), ...ghosts, ...removedNodes];
+        const renderNodes = [...linkedNodes(getNodes()), ...ghosts, ...removedNodes];
         const renderable = new Set(renderNodes.map(n => n.id));
         const extraEdges = ghostEdgesFor(renderable);
         // Badge inputs are O(nodes) per frame: everything that needs a ref
@@ -1629,6 +1649,8 @@ async function boot(conn: DbConnection, identityHex: string, signedIn: boolean):
           edgeMotions,
           icons,
           focus: focusOf(editor.hoverId, editor.selection),
+          depth: depthFrame() === null ? null : { frame: depthFrame()!, inside: depthInside },
+          links,
           notes: changeNotes,
           threatMarkers,
           blast,
@@ -1738,11 +1760,23 @@ async function boot(conn: DbConnection, identityHex: string, signedIn: boolean):
           if (openThreat !== null && !(editor.selection.size === 1 && editor.selection.has(openThreat.anchorId) && editor.selectedEdges.size === 0)) closeThreat();
           publishSelection();
           canvasPlugins?.selectionChanged();
+          syncStepIn();
         },
         placeTemplate,
         toggleLibrary: () => library.toggle(),
         addToLibrary: () => addSelectionToLibrary(),
         crayon: crayonUi.crayon,
+        outside: id => depthFrame() !== null && id !== depthFrame() && !depthInside.has(id),
+        stepOut: () => stepOut(),
+        // A node can be a frame and a link at once. Its layers glyph steps in and its link glyph opens the
+        // board; Enter and a double-click step in when there is something to step into, else follow the link.
+        stepIn: (id, glyph) => (glyph === 'layers' ? stepInto(id) : glyph === 'link' ? openLinked(id) : stepInto(id) || openLinked(id)),
+        edgeOutside: id => {
+          if (depthFrame() === null) return false;
+          const edge = getEdges().find(e => e.id === id);
+          return edge !== undefined && !(depthInside.has(edge.fromNode) && depthInside.has(edge.toNode));
+        },
+        quickAdd: (nodeId, side, at) => quickAdd(nodeId, side, at),
       });
       // Chart hover: select mode only, never during a gesture or an edit.
       bindChartTooltip(svg, wrap, () => editor.hoverReady);
@@ -1766,6 +1800,159 @@ async function boot(conn: DbConnection, identityHex: string, signedIn: boolean):
         table.onDelete(() => canvasPlugins?.refresh());
       }
       const report = (err: unknown): void => showError((err as Error).message);
+
+      /* ---- depth: step inside a frame, the trail on the canvas, step out ---- */
+      const depthTrailEl = document.getElementById('depth-trail') as HTMLElement;
+      const stepInButton = document.getElementById('tb-step-in') as HTMLButtonElement;
+      const nameOf = (node: { label: string }) => node.label.trim() || 'Untitled';
+      /** The one selected node, when it is a frame the view is not already inside. */
+      const frameToEnter = (): Node | undefined => {
+        const sel = selectedNodes();
+        return sel.length === 1 && editor.selectedEdges.size === 0 && sel[0].id !== depthFrame() && isFrame(sel[0], getNodes()) ? sel[0] : undefined;
+      };
+      const openBoardButton = document.getElementById('tb-open-board') as HTMLButtonElement;
+      /** The board link of the one selected node. */
+      const selectedLink = () => {
+        const sel = selectedNodes();
+        return sel.length === 1 && editor.selectedEdges.size === 0 ? links.get(sel[0].id) : undefined;
+      };
+      const syncStepIn = () => {
+        stepInButton.hidden = !frameToEnter();
+        const link = selectedLink();
+        openBoardButton.hidden = !link;
+        openBoardButton.textContent = !link ? '' : link.open ? `Open ${link.name}` : 'A board you cannot open';
+        openBoardButton.title = !link ? '' : link.open ? `Open ${link.name} · \u21b5 · back returns here` : 'This node links a board that is not shared with you';
+      };
+      let depthPainted = '';
+      const paintDepthTrail = () => {
+        const byId = new Map(getNodes().map(n => [n.id, n]));
+        // Every table change comes through here: rebuild only when a level or a name changed, so a crumb keeps its focus and hover.
+        const levelsNow = depthTrail.length === 0 ? '' : JSON.stringify([board.name, ...depthTrail.map(id => [String(id), nameOf(byId.get(id)!), byId.get(id)!.color])]);
+        if (levelsNow === depthPainted) return;
+        depthPainted = levelsNow;
+        depthTrailEl.hidden = depthTrail.length === 0;
+        if (depthTrailEl.hidden) { depthTrailEl.replaceChildren(); return; }
+        const list = document.createElement('ol');
+        // The whole board first, then each frame stepped through; the last is where the view is.
+        // Each frame's dot is the colour its node is drawn in ('' draws as ink); the board itself has none.
+        const levels: { name: string; to: bigint | null; color: string }[] = [
+          { name: board.name, to: null, color: '' },
+          ...depthTrail.map(id => ({ name: nameOf(byId.get(id)!), to: id, color: ['blue', 'red', 'green', 'purple', 'gray'].includes(byId.get(id)!.color) ? byId.get(id)!.color : 'ink' })),
+        ];
+        levels.forEach((level, depth) => {
+          const current = depth === levels.length - 1;
+          const crumb = document.createElement(current ? 'span' : 'button');
+          crumb.className = current ? 'depth-crumb current' : 'depth-crumb';
+          const dot = document.createElement('i');
+          dot.className = 'depth-dot';
+          if (level.color) dot.style.setProperty('--level-color', `var(--c-${level.color})`);
+          const label = document.createElement('span');
+          label.className = 'depth-name';
+          label.textContent = level.name;
+          crumb.append(dot, label);
+          crumb.title = current ? 'You are here · esc steps out' : `Step out to ${level.name}`;
+          if (current) crumb.setAttribute('aria-current', 'location');
+          else { (crumb as HTMLButtonElement).type = 'button'; crumb.addEventListener('click', () => stepTo(level.to)); }
+          const item = document.createElement('li');
+          item.append(crumb);
+          list.append(item);
+        });
+        depthTrailEl.replaceChildren(list);
+      };
+      /** After any change to the board: the view stays in its frame while that is still one, else steps out to the nearest. */
+      const syncDepth = () => {
+        const nodes = getNodes();
+        const frame = surviving(depthTrail, nodes);
+        const node = frame === null ? undefined : nodes.find(n => n.id === frame);
+        const before = depthFrame();
+        depthTrail = node ? [...framesAround(node, nodes).map(n => n.id), node.id] : [];
+        depthInside = new Set(node ? within(node, nodes).map(n => n.id) : []);
+        paintDepthTrail();
+        syncStepIn();
+        return before !== depthFrame();
+      };
+      const frameView = () => {
+        const frame = depthFrame(), node = frame === null ? undefined : getNodes().find(n => n.id === frame);
+        const reduced = typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches;
+        viewport.fit(node ? { minX: node.x, minY: node.y, maxX: node.x + node.w, maxY: node.y + node.h } : contentBounds(getNodes()), chromeInsets(wrap), reduced ? 0 : 360);
+      };
+      /** Move the view to a frame, or to the whole board (null). */
+      const stepTo = (id: bigint | null) => {
+        depthTrail = id === null ? [] : [id]; // syncDepth fills in the frames above it
+        syncDepth();
+        editor.deselect();
+        frameView();
+        rerender();
+      };
+      const stepInto = (id: bigint): boolean => {
+        const node = getNodes().find(n => n.id === id);
+        if (!node || id === depthFrame() || !isFrame(node, getNodes())) return false;
+        stepTo(id);
+        return true;
+      };
+      const stepOut = (): boolean => {
+        if (depthTrail.length === 0) return false;
+        stepTo(depthTrail[depthTrail.length - 2] ?? null);
+        return true;
+      };
+      stepInButton.addEventListener('click', () => { const frame = frameToEnter(); if (frame) stepInto(frame.id); });
+
+      /* ---- board links and quick add (quick-add.ts) ---- */
+      /** Follow a node's link. True when the node links a board, opened or not. */
+      const openLinked = (id: bigint): boolean => {
+        const link = links.get(id);
+        if (!link) return false;
+        if (!link.open) { showError('This node links a board that is not shared with you.'); return true; }
+        // A history entry for where we are, so the browser's back comes back to this board.
+        history.pushState(null, '', location.href);
+        switchBoard(link.target);
+        return true;
+      };
+      openBoardButton.addEventListener('click', () => { const node = selectedNodes()[0]; if (node && selectedLink()) openLinked(node.id); });
+      const canDraw = () => role() !== 'viewer' && !factual() && !publicExample();
+      // The palette doubles as the board picker: its list, search and keys, with boards for commands.
+      let palettePick: { context: string; commands: Command[] } | null = null;
+      const pickBoard = (onPick: (target: { id: bigint; name: string }) => void) => {
+        const boards = [...conn.db.visibleBoard.iter()].filter(b => b.id !== boardId).sort((a, b) => a.name.localeCompare(b.name));
+        if (boards.length === 0) { showError('There is no other board to link yet.'); return; }
+        palettePick = {
+          context: 'Link a board',
+          commands: boards.map(b => ({ id: `link-board:${b.id}`, group: 'Boards you can open', title: b.name, hint: 'the link shares nothing: each person still needs access to that board', run: () => onPick({ id: b.id, name: b.name }) })),
+        };
+        palette.open();
+      };
+      /** A new node on `side` of `from`, joined to it by an edge: a plain one, or one that links `target`. */
+      const addBeside = async (fromId: bigint, side: Side, target?: { id: bigint; name: string }) => {
+        const size = { w: 160, h: 80 };
+        const here = boardId, writes = ops;
+        // Read the node now, not when the menu opened: someone may have moved it, or deleted it, since.
+        const from = getNodes().find(n => n.id === fromId);
+        if (!from) return;
+        try {
+          // A link node is stored as plain "Board": the board's name is never written onto this board,
+          // where everyone who reads it would see it. Each reader is shown the name from their own link
+          // row (linkedNodes below), which carries it only for a board they can open.
+          const id = await writes.createConnectedAction({
+            boardId: here, label: target ? 'Board' : 'Service', sublabel: target ? '' : 'svc',
+            ...placeBeside(from, side, size, getNodes()), ...size, token: 'ink', focal: false, kind: target ? 'external' : 'service',
+          }, from.id, target?.id);
+          if (boardId !== here) return;
+          editor.selectNodes([id]);
+          rerender();
+          // A plain node is named next; a board link shows its board's name.
+          const node = target ? undefined : getNodes().find(n => n.id === id);
+          if (node) editor.startInlineEdit(node, 'label');
+        } catch (err) { report(err); }
+      };
+      const quickAddEl = document.getElementById('quick-add') as HTMLElement;
+      let closeQuickAdd = () => {};
+      const quickAdd = (nodeId: bigint, side: Side, at: { x: number; y: number }) => {
+        if (!getNodes().some(n => n.id === nodeId) || !canDraw()) return;
+        closeQuickAdd = openQuickAdd(quickAddEl, at, [
+          { label: 'Add connected node', hint: 'a new node on this side, joined by an edge', run: () => { void addBeside(nodeId, side); } },
+          { label: 'Link a board\u2026', hint: 'a node on this side that opens another board', run: () => pickBoard(target => { void addBeside(nodeId, side, target); }) },
+        ]);
+      };
       // Managers can rename and delete; versioned boards are named by their history.
       const canRename = () => !getVersion() && canManage();
       const renameBoard = () => {
@@ -1789,6 +1976,22 @@ async function boot(conn: DbConnection, identityHex: string, signedIn: boolean):
         const sel = selectedNodes();
         const boxes = asBoxes(sel);
         const commands: Command[] = [];
+
+        const linked = selectedLink();
+        if (linked?.open) commands.push({ id: 'open-linked', group: 'View', title: `Open ${linked.name}`, hint: 'the board this node links; back returns here', keys: '\u21b5', keywords: ['link', 'board', 'go', 'follow'], run: () => { openLinked(sel[0].id); } });
+        if (sel.length === 1 && editor.selectedEdges.size === 0 && canDraw() && ['service', 'datastore', 'external', 'boundary'].includes(sel[0].kind)) {
+          const node = sel[0];
+          commands.push({ id: 'link-board', group: 'Selection', title: linked ? 'Link a different board\u2026' : 'Link this node to a board\u2026', hint: 'the node opens that board', keywords: ['link', 'board', 'connect', 'open'], run: () => pickBoard(target => { void conn.reducers.linkNodeBoard({ nodeId: node.id, targetBoardId: target.id }).catch(report); }) });
+          if (linked) commands.push({ id: 'unlink-board', group: 'Selection', title: 'Remove the board link', hint: 'the node stays', keywords: ['link', 'board', 'unlink'], run: () => { void conn.reducers.unlinkNodeBoard({ nodeId: node.id }).catch(report); } });
+        }
+        const frame = frameToEnter();
+        if (frame) commands.push({ id: 'step-in', group: 'View', title: `Step inside ${nameOf(frame)}`, hint: 'frame the view on it and dim the rest', keys: '\u21b5', keywords: ['focus', 'zoom', 'enter', 'inside', 'depth', 'drill'], run: () => { stepInto(frame.id); } });
+        if (depthTrail.length > 0) {
+          const above = depthTrail[depthTrail.length - 2];
+          const parent = above === undefined ? undefined : getNodes().find(n => n.id === above);
+          commands.push({ id: 'step-out', group: 'View', title: `Step out to ${parent ? nameOf(parent) : board.name}`, keys: 'Esc', keywords: ['focus', 'zoom', 'back', 'up', 'depth'], run: () => { stepOut(); } });
+          if (depthTrail.length > 1) commands.push({ id: 'step-out-all', group: 'View', title: `Step out to the whole board`, keywords: ['focus', 'zoom', 'top', 'depth'], run: () => stepTo(null) });
+        }
 
         if (sel.length >= 2) {
           commands.push({
@@ -2033,8 +2236,10 @@ async function boot(conn: DbConnection, identityHex: string, signedIn: boolean):
       };
 
       const palette = new CommandPalette({
-        commands: paletteCommands,
+        commands: () => palettePick?.commands ?? paletteCommands(),
+        onClose: () => { palettePick = null; },
         context: () => {
+          if (palettePick) return palettePick.context;
           const n = editor.selection.size;
           const e = editor.selectedEdges.size;
           if (n > 0) {
@@ -2318,6 +2523,7 @@ async function boot(conn: DbConnection, identityHex: string, signedIn: boolean):
         rebuildCharts();
         rebuildEdgeWeights();
         rebuildIcons();
+        rebuildLinks();
         rebuildIncident();
         rebuildRoute();
         syncCodeOverlay();
@@ -2328,6 +2534,8 @@ async function boot(conn: DbConnection, identityHex: string, signedIn: boolean):
         renderCounts();
         renderSession();
         paintReview(); // a node removed under a row stops its pan
+        // A frame deleted, hidden or emptied under the view steps it out to the nearest frame left.
+        if (syncDepth()) { frameView(); rerender(); }
         rerender();
       };
       let refreshPending = false;
@@ -2338,6 +2546,8 @@ async function boot(conn: DbConnection, identityHex: string, signedIn: boolean):
       };
       for (const table of [
         conn.db.visibleBoard,
+        conn.db.visibleNodeLink,
+        conn.db.myBoardAccess,
         conn.db.myBoards,
         ...(conn.db.myBoardPermissions ? [conn.db.myBoardPermissions] : []),
         conn.db.myLinkIncludes,
@@ -2463,6 +2673,8 @@ async function boot(conn: DbConnection, identityHex: string, signedIn: boolean):
         ops = new Ops(conn, identityHex, new History());
         editor.switchBoard(id, ops);
         crayonUi.crayon.clear(); // drafts belong to the board they were drawn on
+        depthTrail = []; // a depth is a place on one board
+        closeQuickAdd();
         resetChartDraft();
         pointer = null;
         revealedSets.clear();
@@ -2602,7 +2814,7 @@ async function boot(conn: DbConnection, identityHex: string, signedIn: boolean):
           location.reload();
           return;
         }
-        const target = selectBoard(conn.db.visibleBoard.iter(), location.search, location.hash, conn.db.myBoards.iter());
+        const target = selectBoard(conn.db.visibleBoard.iter(), location.search, location.hash, boardAccess(conn));
         if (typeof target !== 'string') switchBoard(target.id);
       });
 
@@ -2670,7 +2882,7 @@ async function boot(conn: DbConnection, identityHex: string, signedIn: boolean):
             });
             if (live?.here) return null;
             if (live) return { board: live.board, href: hrefOf(live.slug), live: true };
-            const sessions = [...conn.db.myBoards.iter()].filter(b => b.isSession).sort((x, y) => (x.boardId < y.boardId ? 1 : -1));
+            const sessions = boardAccess(conn).filter(b => b.isSession).sort((x, y) => (x.boardId < y.boardId ? 1 : -1));
             const latest = sessions[0] && conn.db.visibleBoard.id.find(sessions[0].boardId);
             return latest && latest.id !== boardId ? { board: latest.name, href: hrefOf(latest.slug), live: false } : null;
           },
@@ -2680,7 +2892,7 @@ async function boot(conn: DbConnection, identityHex: string, signedIn: boolean):
           chat.setAvailable([...conn.db.myAgentLinks.iter()].some(l => l.owner.toHexString() === identityHex));
           chat.refresh();
         };
-        for (const table of [conn.db.myAgentLinks, conn.db.visibleParticipant, conn.db.visibleSelection, conn.db.visibleBoard, conn.db.myBoards]) {
+        for (const table of [conn.db.myAgentLinks, conn.db.visibleParticipant, conn.db.visibleSelection, conn.db.visibleBoard, conn.db.myBoardAccess, conn.db.myBoards]) {
           table.onInsert(refreshChat);
           table.onUpdate(refreshChat);
           table.onDelete(refreshChat);

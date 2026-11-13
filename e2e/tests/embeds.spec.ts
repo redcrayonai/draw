@@ -130,13 +130,13 @@ test('a chart capability cannot read or write its board, neighboring charts, or 
       DbConnection.builder().withUri(stack.databaseUrl).withDatabaseName(stack.databaseName)
         .onConnect(connection => resolve(connection)).onConnectError((_ctx, error) => reject(error)).build();
     });
-    const queries = ['embedded_chart', 'embedded_board', 'my_board_embeds', 'visible_board', 'visible_node', 'visible_edge', 'visible_chart', 'visible_code_ref', 'visible_threat', 'visible_change_note', 'visible_session', 'visible_repo_file', 'my_boards', 'my_chart_embeds'];
+    const queries = ['embedded_chart', 'embedded_board', 'my_board_embeds', 'visible_board', 'visible_node', 'visible_edge', 'visible_chart', 'visible_code_ref', 'visible_threat', 'visible_change_note', 'visible_session', 'visible_repo_file', 'my_boards', 'my_board_access', 'visible_node_link', 'my_chart_embeds'];
     await new Promise<void>((resolve, reject) => conn!.subscriptionBuilder().onApplied(() => resolve()).onError(ctx => reject(ctx.event)).subscribe(queries.map(q => `SELECT * FROM ${q}`)));
     const normalViews = {
       visibleBoard: conn.db.visibleBoard, visibleNode: conn.db.visibleNode, visibleEdge: conn.db.visibleEdge,
       visibleChart: conn.db.visibleChart, visibleCodeRef: conn.db.visibleCodeRef, visibleThreat: conn.db.visibleThreat,
       visibleChangeNote: conn.db.visibleChangeNote, visibleSession: conn.db.visibleSession, visibleRepoFile: conn.db.visibleRepoFile,
-      myBoards: conn.db.myBoards, myChartEmbeds: conn.db.myChartEmbeds, myBoardEmbeds: conn.db.myBoardEmbeds, embeddedBoard: conn.db.embeddedBoard,
+      myBoards: conn.db.myBoards, myBoardAccess: conn.db.myBoardAccess, visibleNodeLink: conn.db.visibleNodeLink, myChartEmbeds: conn.db.myChartEmbeds, myBoardEmbeds: conn.db.myBoardEmbeds, embeddedBoard: conn.db.embeddedBoard,
     };
     expect([...conn.db.visibleBoard.iter()]).toContainEqual(expect.objectContaining({ id: publicBoardId }));
     expect([...conn.db.visibleBoard.iter()]).not.toContainEqual(expect.objectContaining({ id: BigInt(fixture.boardId) }));

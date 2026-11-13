@@ -487,6 +487,7 @@ table in neither list):
 | `cursor`, `selection`, `open_board`, `mark_waiter` | Live presence. |
 | `mark_read` | Each person's read position. |
 | `node_touch` | Routes new marks to the agent that last edited a node: agent access. |
+| `node_link` | A node's link to another board. The restored board is a new one; its nodes link no other board. |
 | `board_stats` | Derived; recomputed. |
 | `board_lifetime` | A restored board lasts, whatever the saved one was. |
 | `incident` | Belongs to its live alert group. A restored copy must not catch that group's next notification. |
@@ -503,6 +504,8 @@ table in neither list):
   its old base, and a restored import snapshot is an ordinary editable board.
   `sourceKey` and `relation` stay, so it can be branched again.
 - `board_embed.comparisonBoardId` is share state and is left out.
+- `node_link.targetBoardId` (a node that links another board) is left out: the restored
+  node is an ordinary node. Link it again from the canvas.
 - Board links inside text (node docs, labels, chart CSV) are kept as text. Opening
   them checks access then.
 - Ids that only record history may name rows that no longer exist: a mark's node,
