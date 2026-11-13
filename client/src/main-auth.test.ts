@@ -25,11 +25,15 @@ beforeEach(() => {
   sessionStorage.clear();
   document.body.innerHTML = '<div id="error-strip" hidden><span id="error-text"></span></div>';
   vi.spyOn(window, 'addEventListener');
+  vi.spyOn(document, 'addEventListener');
 });
 afterEach(() => {
   // Each test imports main.ts afresh on the same window; drop its startup listeners.
   for (const [type, listener] of vi.mocked(window.addEventListener).mock.calls) {
-    if (type === 'hashchange') window.removeEventListener(type, listener);
+    if (type === 'hashchange' || type === 'beforeunload') window.removeEventListener(type, listener);
+  }
+  for (const [type, listener] of vi.mocked(document.addEventListener).mock.calls) {
+    if (type === 'input') document.removeEventListener(type, listener);
   }
   history.replaceState(null, '', '/');
   vi.useRealTimers();
@@ -217,7 +221,7 @@ describe('canvas startup after authentication', () => {
     });
   });
 
-  it('holds the reconnect reload while someone is typing', async () => {
+  it.each(['disconnect', 'connectError'] as const)('protects a draft before boot after %s, even when focus leaves the editor', async event => {
     vi.useFakeTimers();
     const { builder, on } = guestBuilder();
     await import('./main');
@@ -226,13 +230,16 @@ describe('canvas startup after authentication', () => {
     const reload = vi.fn();
     vi.stubGlobal('location', { ...location, reload });
     // Spied, not focused: earlier imports' popover listeners throw on a focusin in this bare DOM.
-    const focused = vi.spyOn(document, 'activeElement', 'get').mockReturnValue(document.createElement('textarea'));
-    on.disconnect!({});
+    const draft = document.createElement('textarea');
+    draft.value = 'Keep this draft';
+    const focused = vi.spyOn(document, 'activeElement', 'get').mockReturnValue(draft);
+    on[event]!({}, new Error('offline before boot'));
     await vi.advanceTimersByTimeAsync(60_000);
     expect(reload).not.toHaveBeenCalled();
     focused.mockReturnValue(document.body);
     await vi.advanceTimersByTimeAsync(1000);
-    expect(reload).toHaveBeenCalledTimes(1);
+    expect(reload).not.toHaveBeenCalled();
+    expect(document.getElementById('reconnect')?.textContent).toContain('Download unsaved edits');
   });
 
   // A timeline slider, a switch or the read-only share link holds no draft.

@@ -340,7 +340,8 @@ async function connect(): Promise<void> {
   currentConn = builder.build();
 }
 
-let unsavedEdits: ReturnType<typeof protectUnsavedEdits> | undefined;
+let readUnsavedWrites: ReturnType<typeof trackBoardWrites> = () => [];
+const unsavedEdits = protectUnsavedEdits(() => readUnsavedWrites());
 
 // Reconnect by reloading the page rather than rebuilding in place: boot()
 // wires DOM listeners with no teardown path, so a clean page is the only
@@ -355,11 +356,11 @@ function scheduleReconnect(reason: string): void {
   const attempt = Number(sessionStorage.getItem(RECONNECT_ATTEMPT_KEY) ?? '0') + 1;
   sessionStorage.setItem(RECONNECT_ATTEMPT_KEY, String(attempt));
   const delayMs = Math.min(1000 * 2 ** (attempt - 1), 30_000);
-  unsavedEdits?.disconnect();
-  let paused = Boolean(unsavedEdits?.blocked());
-  showReconnect(reason, delayMs, paused ? unsavedEdits?.download : undefined);
+  unsavedEdits.disconnect();
+  let paused = unsavedEdits.blocked();
+  showReconnect(reason, delayMs, paused ? unsavedEdits.download : undefined);
   const reload = (): void => {
-    if (unsavedEdits?.blocked()) {
+    if (unsavedEdits.blocked()) {
       if (!paused) showReconnect(reason, delayMs, unsavedEdits.download);
       paused = true;
       setTimeout(reload, 1000);
@@ -377,7 +378,7 @@ async function boot(conn: DbConnection, identityHex: string, signedIn: boolean):
   (window as any).myIdentityHex = identityHex;
   let activeBoardId: bigint | undefined;
   const boardsHref = dashboardLink();
-  unsavedEdits = protectUnsavedEdits(trackBoardWrites(conn, setSaveStatus));
+  readUnsavedWrites = trackBoardWrites(conn, setSaveStatus);
   // The person's bearer token for the Live channel and canvas plugins: the account's when signed in, else this browser's guest token.
   const liveToken = async (): Promise<string | null> => {
     if (auth?.hasSession()) return auth.freshToken().catch(() => null);
