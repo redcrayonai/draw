@@ -194,11 +194,15 @@ describe('share popover with Embed', () => {
     expect(shown()).toEqual([false, true, false]);
     expect([$('share-tab-link').getAttribute('aria-pressed'), $('act-embed').getAttribute('aria-pressed')]).toEqual(['false', 'true']);
 
-    // no link to manage (a factual board): Share stays for the embed, and the header keeps Export
+    // no link to manage (a snapshot): the button stays for the embed and says so, and the header keeps Export
     paint(null);
     expect($('act-share').hidden).toBe(false);
+    expect($('act-share').textContent).toBe('Embed');
     expect($('act-export').hidden).toBe(false);
     expect(shown()).toEqual([true, true, false]);
+    paint(link);
+    expect($('act-share').textContent).toBe('Share');
+    paint(null);
 
     // neither
     $('act-embed').hidden = true;

@@ -49,7 +49,7 @@ export function setupShare(deps: ShareDeps): (state: ShareState | null) => void 
   };
   const paint = (): void => {
     if (exportBtn) exportBtn.hidden = state !== null;
-    // An owner who cannot share by link (a factual board) still embeds: the button stays, on Embed alone.
+    // An owner who cannot share by link (a snapshot) still embeds: the button stays, as Embed.
     const canEmbed = Boolean(embedTab && embedPane && !embedTab.hidden);
     btn.hidden = state === null && !canEmbed;
     if (btn.hidden) setOpen(false);
@@ -59,8 +59,12 @@ export function setupShare(deps: ShareDeps): (state: ShareState | null) => void 
     if (embedPane) embedPane.hidden = !embed;
     linkTab?.setAttribute('aria-pressed', String(!embed));
     embedTab?.setAttribute('aria-pressed', String(embed));
+    // With no link to offer, the button says what is left: nobody reads "Share" on a board that cannot be shared.
+    const title = pop.querySelector('.eyebrow');
+    if (title) title.textContent = state === null ? 'Embed' : 'Share';
+    btn.title = state === null ? 'Embed this board' : 'Share this board';
     if (state === null) {
-      btn.textContent = 'Share';
+      btn.textContent = 'Embed';
       btn.classList.remove('shared');
       return;
     }

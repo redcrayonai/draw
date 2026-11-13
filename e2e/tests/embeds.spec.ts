@@ -339,8 +339,8 @@ test('architecture comparison is opt-in, plays before/after changes and loses re
   try {
     await page.goto(`${stack.url}#b=${board.slug}`);
     await expect(page.locator('#world .node')).toHaveCount(2);
-    // a snapshot has no link to share: Share opens on the embed alone
-    await page.getByRole('button', { name: 'Share', exact: true }).click();
+    // a snapshot has no link to share: its button is Embed, and opens on the embed alone
+    await page.getByRole('button', { name: 'Embed', exact: true }).click();
     await page.getByRole('switch', { name: 'Enable embed access' }).check();
     await expect(page.locator('#embed-url')).toHaveValue(/kind=board.*#e=/);
     const url = await page.locator('#embed-url').inputValue();

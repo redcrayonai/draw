@@ -10,7 +10,7 @@ changes and uses its own access link. Board sharing can stay off.
 
 ## Publish a chart or board
 
-1. As the board owner, choose **Share**, then **Embed**.
+1. As the board owner, choose **Share**, then **Embed**. On a board that has no link to share, the button reads **Embed**.
 2. Under **Content**, select **Selected chart** for the chart you selected on the board, or **Whole board / diagram**.
 3. Inspect the disclosure of what the embed publishes.
 4. Enable **Enable embed access**.

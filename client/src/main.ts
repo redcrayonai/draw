@@ -2473,8 +2473,6 @@ async function boot(conn: DbConnection, identityHex: string, signedIn: boolean):
           ? { mode: row.linkMode as ShareState['mode'], token: row.linkToken, ...linkIncludes(), counts: { threats: threats.open + threats.contained, code: liveRefCount } }
           : null;
       };
-      const syncShare = () => paintShare(shareState());
-      syncShare();
       const paintEmbed = setupChartEmbed({
         base: location.href, db: config.db, home: config.defaultDb,
         enable: (nodeId, token) => conn.reducers.enableChartEmbed({ nodeId, token }),
@@ -2482,7 +2480,9 @@ async function boot(conn: DbConnection, identityHex: string, signedIn: boolean):
         enableBoard: (boardId, token, threats, comparisonBoardId) => conn.reducers.enableBoardEmbed({ boardId, token, threats, comparisonBoardId }),
         disableBoard: boardId => conn.reducers.disableBoardEmbed({ boardId }),
       });
-      syncEmbed = () => {
+      // Embed first, every time: Share shows or drops its Embed pane with the owner's right to embed,
+      // so a board that stops being theirs cannot leave the button behind.
+      const syncShare = () => {
         const nodes = selectedNodes();
         const node = nodes.length === 1 && editor.selectedEdges.size === 0 && nodes[0].kind === 'chart' ? nodes[0] : undefined;
         const link = node && [...conn.db.myChartEmbeds.iter()].find(row => row.nodeId === node.id);
@@ -2493,9 +2493,10 @@ async function boot(conn: DbConnection, identityHex: string, signedIn: boolean):
           myRow()?.access === 'owner' ? { boardId, title: conn.db.visibleBoard.id.find(boardId)?.name ?? 'Board',
             token: boardLink?.token ?? '', threats: boardLink?.threats ?? false, comparisonBoardId: boardLink?.comparisonBoardId ?? 0n,
             previousBoardId: previous ?? 0n } : null);
-        syncShare(); // Share shows or drops its Embed pane with the owner's right to embed
+        paintShare(shareState());
       };
-      syncEmbed();
+      syncEmbed = syncShare;
+      syncShare();
       conn.db.myChartEmbeds.onInsert(syncEmbed);
       conn.db.myChartEmbeds.onDelete(syncEmbed);
       conn.db.myChartEmbeds.onUpdate(syncEmbed);
@@ -2592,6 +2593,7 @@ async function boot(conn: DbConnection, identityHex: string, signedIn: boolean):
         const current = conn.db.visibleBoard.id.find(boardId);
         if (!current) {
           player.close(); // the board is gone or no longer readable: nothing left to walk through
+          paintEmbed(null, null); // before Share: an embed pane left behind would keep its button
           paintShare(null);
           syncRenamable();
           showBoardUnavailable(boardsHref, newBoardHref(), linkGone());
