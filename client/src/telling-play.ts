@@ -117,6 +117,7 @@ export function createTellingPlayer(deps: TellingPlayerDeps): TellingPlayer {
     close,
     refresh() {
       if (!t || !clock) return;
+      if (clock.playing && deps.reduced()) clock.pause(); // the preference turned on mid-run: nothing moves by itself
       const list = deps.tellings();
       const i = list.findIndex(x => x.id === t!.id);
       if (i < 0) { close(); return; }

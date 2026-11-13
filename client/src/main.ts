@@ -746,6 +746,8 @@ async function boot(conn: DbConnection, identityHex: string, signedIn: boolean):
       };
       tellButton.addEventListener('click', openTelling);
       document.addEventListener('visibilitychange', () => player.setBlocked(document.hidden));
+      // Reduced motion turned on while a walk-through plays: refresh pauses it.
+      window.matchMedia?.('(prefers-reduced-motion: reduce)').addEventListener('change', () => player.refresh());
       // Capture phase, ahead of the editor's Space-pan and Esc (tellingKeyRoute decides).
       document.addEventListener('keydown', evt => {
         const route = tellingKeyRoute(evt, player.isOpen);
@@ -2552,6 +2554,7 @@ async function boot(conn: DbConnection, identityHex: string, signedIn: boolean):
       const onTableChange = () => {
         const current = conn.db.visibleBoard.id.find(boardId);
         if (!current) {
+          player.close(); // the board is gone or no longer readable: nothing left to walk through
           paintShare(null);
           syncRenamable();
           showBoardUnavailable(boardsHref, newBoardHref(), linkGone());

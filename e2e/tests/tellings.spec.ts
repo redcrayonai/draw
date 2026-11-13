@@ -153,6 +153,21 @@ test('a view-link visitor sees the walk-through and plays it to step 2', async (
   await expect.poll(() => litIds(visitor)).toEqual([id.B]);
 });
 
+test('a walk-through closes when the board stops being readable', async ({ account, guest, stack }) => {
+  const { token, page, B, id } = await seededBoard(stack, account);
+  await twoTellings(stack, token, B, id);
+  const link = await shareBoard(page, 'view');
+  const visitor = await guest();
+  await openBoard(visitor, link);
+  await visitor.locator('#act-tell').click();
+  await visitor.keyboard.press(' ');
+  await expect(button(visitor, 'play')).toHaveText('Play');
+  await expect(visitor.locator('#world')).toHaveClass(/telling-on/);
+  await stack.callReducer(token, 'stop_link_share', [B]);
+  await expect(visitor.locator('#telling-bar')).toBeHidden();
+  await expect(visitor.locator('#canvas-wrap')).not.toHaveClass(/telling-open/);
+});
+
 test('with reduced motion Play is disabled and Next still steps', async ({ account, stack }) => {
   const { token, page, B, id } = await seededBoard(stack, account, { reducedMotion: 'reduce' });
   await twoTellings(stack, token, B, id);

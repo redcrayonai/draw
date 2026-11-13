@@ -117,6 +117,18 @@ describe('telling player', () => {
     expect(bar()!.playing).toBe(false);
   });
 
+  it('stops advancing when motion becomes reduced while it plays', () => {
+    const { player, state, bar } = setup();
+    player.open();
+    expect(bar()!.playing).toBe(true);
+    state.reduced = true;
+    player.refresh(); // main.ts calls this when the preference changes
+    tick(20000);
+    expect(bar()).toMatchObject({ at: 0, playing: false, reduced: true });
+    bar()!.onNext();
+    expect(bar()).toMatchObject({ at: 1, playing: false });
+  });
+
   it('restarts at step 1 when the open telling changes', () => {
     const { player, state, bar } = setup();
     player.open();

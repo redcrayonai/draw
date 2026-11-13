@@ -1,7 +1,7 @@
 ---
 name: make-it-make-sense
-description: Use when the user types /draw:make-it-make-sense [board link | session-name] [what to explain, and for whom], or asks to explain, simplify or walk someone through a system, a change, an incident or a decision for a named audience such as product, leadership, customers or new engineers.
-argument-hint: [board link | session-name] [what to explain, and for whom]
+description: Use when the user types /draw:make-it-make-sense [board link] [what to explain, and for whom], or asks to explain, simplify or walk someone through a system, a change, an incident or a decision for a named audience such as product, leadership, customers or new engineers.
+argument-hint: [board link] [what to explain, and for whom]
 allowed-tools: mcp__draw__*, mcp__plugin_draw_draw__*, Bash(git:*), Read
 ---
 
