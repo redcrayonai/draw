@@ -411,7 +411,11 @@ test('my_board_access lists the boards my_boards lists, with the same access, te
 // write refreshes), and a board switch worked out the role on every listed board: about 0.35 ms and
 // 0.25 ms per listed board here, with five viewers.
 test('200 more listed boards cost a canvas nothing on a content write or a board switch', async t => {
+  // The writer is a service account: it makes 200 boards and a few hundred nodes in under a minute,
+  // past the write budget and the board limit a person's identity has under the deployed variants.
+  // What is measured is the five viewers, who are ordinary identities and write nothing.
   const owner = await mint();
+  await sql(operator, `INSERT INTO service_account (identity, label) VALUES (0x${owner.identity}, '${name('scope-writer')}')`);
   const viewers = [];
   for (let i = 0; i < 5; i++) viewers.push(await mint());
   const share = async ids => {
