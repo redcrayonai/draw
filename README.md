@@ -80,7 +80,7 @@ Codex app server. If chat cannot attach, continue in Codex; drawing still works.
 The upcoming native executable installs one Draw plugin with
 `draw install codex`. Ask "create a draw board" to start locally, or explicitly
 ask for a hosted board. Existing board links keep their backend. Local and
-hosted access have separate Ask/Deny choices.
+hosted access have separate permission choices.
 [Native setup, defaults, and permission changes](plugin/README.md#codex-permissions-in-the-native-integration).
 
 </details>

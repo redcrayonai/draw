@@ -5,12 +5,12 @@ import { homedir, tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { activateNativePlugin, prepareNativePlugin, runNativeInstall, runNativePermissions } from './native-install';
-import { choosePermissions, permissionPath, savePermissions } from './permissions';
+import { choosePermissionSet, permissionPath, savePermissions } from './permissions';
 import { configureCodexPermissions, disableLegacyCodexIntegrations } from './codex-permissions';
 import { installLocalCodex } from './local-install';
 vi.mock('./codex-permissions', () => ({ configureCodexPermissions: vi.fn(), disableLegacyCodexIntegrations: vi.fn() }));
 vi.mock('./local-install', () => ({ installLocalCodex: vi.fn() }));
-vi.mock('./permissions', async original => ({ ...await original<typeof import('./permissions')>(), choosePermissions: vi.fn(), savePermissions: vi.fn() }));
+vi.mock('./permissions', async original => ({ ...await original<typeof import('./permissions')>(), choosePermissionSet: vi.fn(), savePermissions: vi.fn() }));
 vi.mock('node:os', async original => ({ ...await original<typeof import('node:os')>(), homedir: vi.fn() }));
 vi.mock('node:fs', async original => {
   const fs = await original<typeof import('node:fs')>();
@@ -27,7 +27,7 @@ beforeEach(() => {
   directory = mkdtempSync(join(tmpdir(), 'draw-install-test-')); root = join(directory, 'assets'); destination = join(directory, 'prepared');
   executable = join(directory, "native tools' folder", 'draw $(never-execute)');
   vi.mocked(homedir).mockReturnValue(directory);
-  vi.mocked(choosePermissions).mockReset().mockResolvedValue({ permissions: { boards: 'ask', conversation: 'ask', snippets: 'deny', uploads: 'deny' }, managedDisabledTools: ['old_tool'] });
+  vi.mocked(choosePermissionSet).mockReset().mockImplementation(async modes => modes.map(mode => ({ mode, editable: true, record: { permissions: { boards: 'ask', conversation: 'ask', snippets: 'deny', uploads: 'deny' }, managedDisabledTools: ['old_tool'] } })));
   vi.mocked(configureCodexPermissions).mockReset().mockResolvedValue(['read_code']);
   vi.mocked(installLocalCodex).mockReset();
   write(executable, '#!/bin/sh\nprintf "%s\\n" "$@"\n'); chmodSync(executable, 0o755);
@@ -98,7 +98,7 @@ it.each([
   ['codex', '--permissions-defaults', '--mode', 'hosted'],
 ])('reconfigures permissions without reinstalling (%j)', async (...args) => {
   expect(await runNativePermissions(args)).toBe(0);
-  expect(choosePermissions).toHaveBeenCalledWith('hosted', { defaults: true, reconfigure: true });
+  expect(choosePermissionSet).toHaveBeenCalledWith(['hosted'], { defaults: true, reconfigure: true });
   expect(configureCodexPermissions).toHaveBeenCalledWith('hosted', expect.objectContaining({ snippets: 'deny' }), ['old_tool']);
   expect(savePermissions).toHaveBeenCalledWith('hosted', { permissions: { boards: 'ask', conversation: 'ask', snippets: 'deny', uploads: 'deny' }, managedDisabledTools: ['read_code'] });
   expect(installLocalCodex).not.toHaveBeenCalled();
@@ -108,14 +108,14 @@ it.each([
 it('does not mutate installation or saved choices when policy configuration fails', async () => {
   vi.mocked(configureCodexPermissions).mockRejectedValueOnce(new Error('configuration failed'));
   await expect(runNativeInstall(['codex', '--permissions-defaults'], '1.2.3')).rejects.toThrow('configuration failed');
-  expect(choosePermissions).toHaveBeenCalledWith('local', { defaults: true, reconfigure: false });
+  expect(choosePermissionSet).toHaveBeenCalledWith(['local', 'hosted'], { defaults: true, reconfigure: false });
   expect(savePermissions).not.toHaveBeenCalled();
   expect(installLocalCodex).not.toHaveBeenCalled();
   expect(existsSync(join(directory, '.redcrayon'))).toBe(false);
 });
 
 it('aborts before policy configuration or installation if consent is unavailable', async () => {
-  vi.mocked(choosePermissions).mockRejectedValueOnce(new Error('consent required'));
+  vi.mocked(choosePermissionSet).mockRejectedValueOnce(new Error('consent required'));
   await expect(runNativeInstall(['codex'], '1.2.3')).rejects.toThrow('consent required');
   expect(configureCodexPermissions).not.toHaveBeenCalled();
   expect(savePermissions).not.toHaveBeenCalled();
@@ -140,7 +140,7 @@ it.each([
   ['pi', '--permissions-defaults'], ['claude-code', '--permissions-defaults'],
 ])('rejects malformed install options before mutation (%j)', async (...args) => {
   await expect(runNativeInstall(args, '1.2.3')).rejects.toThrow('usage:');
-  expect(choosePermissions).not.toHaveBeenCalled();
+  expect(choosePermissionSet).not.toHaveBeenCalled();
   expect(configureCodexPermissions).not.toHaveBeenCalled();
   expect(cpSync).not.toHaveBeenCalled();
 });

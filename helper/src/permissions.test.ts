@@ -3,7 +3,7 @@ import { mkdirSync, mkdtempSync, readdirSync, rmSync, statSync, writeFileSync } 
 import { homedir, tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { createInterface } from 'node:readline/promises';
-import { choosePermissions, DEFAULT_PERMISSIONS, enforceToolPermissions, PermissionError, permissionPath, readPermissions, runtimePermissions, savePermissions } from './permissions';
+import { choosePermissionSet, choosePermissions, DEFAULT_PERMISSIONS, enforceToolPermissions, PermissionError, permissionPath, readPermissions, runtimePermissions, savePermissions } from './permissions';
 
 vi.mock('node:os', async original => ({ ...await original<typeof import('node:os')>(), homedir: vi.fn() }));
 vi.mock('node:readline/promises', () => ({ createInterface: vi.fn() }));
@@ -76,12 +76,12 @@ it('reconfiguration requires a terminal even with existing settings', async () =
 it.each(['local', 'hosted'] as const)('prompts for %s choices, retries invalid answers, and preserves ownership', async mode => {
   tty(true);
   savePermissions(mode, { permissions: DEFAULT_PERMISSIONS, managedDisabledTools: ['read_code'] });
-  question.mockResolvedValueOnce('allow').mockResolvedValueOnce(' DENY ').mockResolvedValueOnce('').mockResolvedValueOnce('ask').mockResolvedValueOnce('ask');
+  question.mockResolvedValueOnce('no').mockResolvedValueOnce('deny').mockResolvedValueOnce(' ASK ').mockResolvedValueOnce('').mockResolvedValueOnce('ask').mockResolvedValueOnce('ask');
   expect(await choosePermissions(mode, { reconfigure: true })).toEqual({
-    permissions: { boards: 'deny', conversation: 'ask', snippets: 'ask', uploads: mode === 'hosted' ? 'ask' : 'deny' },
+    permissions: { boards: 'ask', conversation: 'allow', snippets: 'ask', uploads: mode === 'hosted' ? 'ask' : 'deny' },
     managedDisabledTools: ['read_code'],
   });
-  expect(question).toHaveBeenCalledTimes(mode === 'hosted' ? 5 : 4);
+  expect(question).toHaveBeenCalledTimes(mode === 'hosted' ? 6 : 5);
   expect(close).toHaveBeenCalledOnce();
   expect(readPermissions(mode)?.permissions).toEqual(DEFAULT_PERMISSIONS);
 });
@@ -133,4 +133,40 @@ it.each([
   vi.stubEnv('DRAW_PERMISSION_FILE', permissionPath(mode));
   savePermissions(mode, { permissions: { boards: 'ask', conversation: 'ask', snippets: 'ask', uploads: 'ask', [field]: 'deny' } });
   expect(() => enforceToolPermissions(tool, mode)).toThrow(message);
+});
+
+it('accepts both backends with one confirmation and never permits source Allow', async () => {
+  tty(true); question.mockResolvedValueOnce('');
+  const entries = await choosePermissionSet(['local', 'hosted']);
+  expect(entries.map(entry => entry.record.permissions)).toEqual([DEFAULT_PERMISSIONS, DEFAULT_PERMISSIONS]);
+  expect(question).toHaveBeenCalledOnce();
+  expect(readPermissions('local')).toBeUndefined();
+});
+it('customizes shared defaults once, with Ask/Deny only for source', async () => {
+  tty(true);
+  question.mockResolvedValueOnce('n').mockResolvedValueOnce('ask').mockResolvedValueOnce('allow')
+    .mockResolvedValueOnce('allow').mockResolvedValueOnce('ask').mockResolvedValueOnce('deny');
+  const entries = await choosePermissionSet(['local', 'hosted']);
+  for (const entry of entries) expect(entry.record.permissions).toEqual({ boards: 'ask', conversation: 'allow', snippets: 'ask', uploads: 'deny' });
+  expect(question).toHaveBeenCalledTimes(6);
+});
+it('preserves old denials and mode-specific choices when accepting the summary', async () => {
+  tty(true); question.mockResolvedValueOnce('yes');
+  const local = { permissions: { ...DEFAULT_PERMISSIONS, boards: 'deny' as const, snippets: 'ask' as const } };
+  savePermissions('local', local);
+  const entries = await choosePermissionSet(['local', 'hosted'], { reconfigure: true });
+  expect(entries[0].record).toEqual(local);
+  expect(entries[1].record.permissions).toEqual(DEFAULT_PERMISSIONS);
+  expect(question).toHaveBeenCalledOnce();
+});
+it('uses terminal color and respects NO_COLOR without losing labels', async () => {
+  tty(true); vi.stubEnv('NO_COLOR', undefined); question.mockResolvedValue('yes');
+  await choosePermissionSet(['local', 'hosted']);
+  let text = vi.mocked(process.stderr.write).mock.calls.map(call => call[0]).join('');
+  expect(text).toContain('\x1b[1mDraw permissions');
+  expect(text).toContain('\x1b[32mAllow'); expect(text).toContain('\x1b[31mDeny');
+  vi.mocked(process.stderr.write).mockClear(); vi.stubEnv('NO_COLOR', '1');
+  await choosePermissionSet(['local', 'hosted']);
+  text = vi.mocked(process.stderr.write).mock.calls.map(call => call[0]).join('');
+  expect(text).not.toContain('\x1b['); expect(text).toContain('Allow'); expect(text).toContain('Deny');
 });

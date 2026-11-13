@@ -1,6 +1,6 @@
 import { spawn } from 'node:child_process';
+import type { DrawPermissions } from './permissions';
 
-type Policy = { boards: 'ask' | 'deny'; conversation: 'ask' | 'deny'; snippets: 'ask' | 'deny'; uploads: 'ask' | 'deny' };
 type Frame = Record<string, any>;
 const localTools = ['list_boards', 'open_board', 'read_board', 'apply_board', 'attach_conversation', 'read_code'];
 const hostedTools = [
@@ -94,9 +94,10 @@ async function writeConfig(rpc: Rpc, user: Frame, edits: Frame[]) {
 
 /** Returns only denials owned by this installer; independent user denials must survive policy edits. */
 export async function configureCodexPermissions(
-  mode: 'local' | 'hosted', policy: Policy, previousManagedDisabledTools: string[] = [],
+  mode: 'local' | 'hosted', policy: DrawPermissions, previousManagedDisabledTools: string[] = [],
 ): Promise<string[]> {
-  if (!['local', 'hosted'].includes(mode) || ['boards', 'conversation', 'snippets', 'uploads'].some(key => !['ask', 'deny'].includes(policy[key as keyof Policy]))) throw unavailable();
+  if (!['local', 'hosted'].includes(mode) ||
+    (['boards', 'conversation', 'snippets', 'uploads'] as const).some(key => !(key === 'boards' || key === 'conversation' ? ['ask', 'allow', 'deny'] : ['ask', 'deny']).includes(policy[key]))) throw unavailable();
   disabledTools(previousManagedDisabledTools);
   return withCodexConfig(async (read, user, rpc) => {
     const plugin = 'draw@draw-binary';
@@ -118,6 +119,15 @@ export async function configureCodexPermissions(
     const disabled = [...new Set([...existing].filter(tool => !previous.has(tool)).concat(requested))];
     const tools = { ...object(saved.tools), ...object(effective.tools) };
     for (const [tool, settings] of Object.entries(tools)) tools[tool] = { ...object(settings), approval_mode: 'prompt' };
+    if (policy.boards === 'allow') {
+      const sourceTools = mode === 'local' ? ['read_code'] : ['add_code_ref', 'mark_checkpoint', 'arrive', 'create_edge', 'apply_board'];
+      const conversationTool = mode === 'local' ? 'attach_conversation' : 'start_chat';
+      for (const tool of mode === 'local' ? localTools : hostedTools) {
+        // Mixed source operations still prompt; future tools keep the prompt default.
+        const prompt = sourceTools.includes(tool) || (tool === conversationTool && policy.conversation !== 'allow');
+        tools[tool] = { ...object(tools[tool]), approval_mode: prompt ? 'prompt' : 'approve' };
+      }
+    }
     const prefix = `plugins.${plugin}.mcp_servers.${server}`;
     const edits = Object.entries({ default_tools_approval_mode: 'prompt', disabled_tools: disabled, ...(Object.keys(tools).length ? { tools } : {}) })
       .map(([key, value]) => ({ keyPath: `${prefix}.${key}`, value, mergeStrategy: 'replace' }));

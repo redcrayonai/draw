@@ -12,7 +12,7 @@ may include the plugin name. Do not use hosted `start_session`, captures,
 checkpoints, or sign-in for this workflow. Local board slugs are strings, and
 node, edge, and note IDs are stable strings, not hosted board IDs.
 
-Native Codex installs have Ask/Deny choices for boards, conversation attachment,
+Native Codex installs have permission choices for boards, conversation attachment,
 and source reads. Respect denied tools; do not bypass a denial with the terminal
 or another connection. The user can review choices with
 `draw permissions codex --mode local`, then restart Codex. Do not change those

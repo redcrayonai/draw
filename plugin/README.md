@@ -76,11 +76,16 @@ capture service. Production sign-in was not verified in this change.
 
 ### Codex permissions in the native integration
 
-`draw install codex` asks you to choose **Ask** or **Deny** separately for local
-and hosted board access, conversation attachment, and source-code access.
-Hosted setup also asks about source uploads. The suggested
-choices are Ask for boards/chat and Deny for source code/uploads. Ask uses
-Codex tool approval; Deny blocks the operation without prompting. Hosted source
+`draw install codex` shows one permission summary for local and hosted Draw:
+board access/edits and conversation attachment default to **Allow**; repository
+source reads and hosted uploads default to **Deny**. Accept once to continue,
+or choose **No** to customize. Board and chat choices are Ask/Allow; source
+reads and uploads are Ask/Deny. Existing saved denials are preserved.
+
+**Allow** skips routine tool prompts, **Ask** requests approval when used, and
+**Deny** blocks the operation. Source-capable tools retain approval checks.
+The terminal uses spaced rows and colored status labels; `NO_COLOR` disables
+color. Hosted source
 uploads set to Ask additionally open a browser approval page before reading or
 uploading files. Only you may choose **Allow once** there. Uploads can include
 whole cited files, not just the lines displayed on a board.

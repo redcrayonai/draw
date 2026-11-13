@@ -37,7 +37,7 @@ draw install claude-code
 draw install pi
 ```
 
-One Draw plugin contains both local and hosted workflows. Restart the agent after installation, then ask **"create a draw board"** (or use `/draw:navigate`). New boards are local by default. Codex setup reviews separate local and hosted Ask/Deny choices and disables older competing Draw integrations while preserving their settings and credentials.
+One Draw plugin contains both local and hosted workflows. Restart the agent after installation, then ask **"create a draw board"** (or use `/draw:navigate`). New boards are local by default. Codex setup reviews separate local and hosted permission choices and disables older competing Draw integrations while preserving their settings and credentials.
 
 You can also run `draw` directly in your repository to open the browser; `draw --no-open` only prints the URL. Running `draw` again opens the existing server. Keep the terminal serving the board open; Ctrl-C stops it without deleting boards. Keep the executable in place after installing an integration, or rerun the install command if you move it. Existing boards retain their storage.
 

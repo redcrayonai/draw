@@ -6,7 +6,7 @@ import { fileURLToPath } from 'node:url';
 import { homedir } from 'node:os';
 import { installLocalCodex } from './local-install';
 import { localClaudeSettings } from './local-claude-hook';
-import { choosePermissions, permissionPath, savePermissions } from './permissions';
+import { choosePermissionSet, permissionPath, savePermissions } from './permissions';
 import { configureCodexPermissions, disableLegacyCodexIntegrations } from './codex-permissions';
 import { disableLegacyClaudePlugins, disableLegacyPiIntegrations } from './native-agent-migration';
 
@@ -113,22 +113,24 @@ function parseOptions(args: string[], permissionsOnly = false) {
   return { agent: agent as Agent, mode, defaults, explicitMode };
 }
 
-async function setCodexPermissions(mode: Mode, defaults: boolean, reconfigure = false) {
-  const record = await choosePermissions(mode, { defaults, reconfigure });
-  const managedDisabledTools = await configureCodexPermissions(mode, record.permissions, record.managedDisabledTools);
-  savePermissions(mode, { ...record, managedDisabledTools });
+async function setCodexPermissions(modes: readonly Mode[], defaults: boolean, reconfigure = false) {
+  const choices = await choosePermissionSet(modes, { defaults, reconfigure });
+  for (const { mode, record } of choices) {
+    const managedDisabledTools = await configureCodexPermissions(mode, record.permissions, record.managedDisabledTools);
+    savePermissions(mode, { ...record, managedDisabledTools });
+  }
 }
 
 export async function runNativePermissions(args: string[]) {
   const { mode, defaults, explicitMode } = parseOptions(args, true);
-  for (const scope of explicitMode ? [mode] : ['local', 'hosted'] as const) await setCodexPermissions(scope, defaults, true);
+  await setCodexPermissions(explicitMode ? [mode] : ['local', 'hosted'], defaults, true);
   process.stderr.write('Draw permissions saved for Codex. Restart Codex to load updated tool approval settings.\n');
   return 0;
 }
 
 export async function runNativeInstall(args: string[], version: string) {
   const { agent, defaults } = parseOptions(args);
-  if (agent === 'codex') for (const mode of ['local', 'hosted'] as const) await setCodexPermissions(mode, defaults);
+  if (agent === 'codex') await setCodexPermissions(['local', 'hosted'], defaults);
   const root = dirname(fileURLToPath(import.meta.url));
   const directory = join(homedir(), '.redcrayon', 'plugins');
   const prepared = prepareNativePlugin(root, directory, process.execPath, version, agent);

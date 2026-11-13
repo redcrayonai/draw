@@ -78,6 +78,50 @@ describe('Draw plugin permissions in Codex', () => {
     expect(s.write().edits[0].keyPath).toBe('plugins.draw@draw-binary.mcp_servers.draw.default_tools_approval_mode');
   });
 
+  it.each(['local', 'hosted'] as const)('allows known %s board/chat tools while retaining prompts for source and future tools', async mode => {
+    const s = server({ disabled_tools: ['custom'], tools: { future_tool: { approval_mode: 'approve', output_token_limit: 50 } } }, mode);
+    await configureCodexPermissions(mode, { boards: 'allow', conversation: 'allow', snippets: 'ask', uploads: 'deny' });
+    const edits = s.write().edits;
+    expect(edits[0].value).toBe('prompt');
+    expect(edits[1].value).toEqual(['custom']);
+    const tools = edits[2].value;
+    expect(tools[mode === 'local' ? 'open_board' : 'start_session'].approval_mode).toBe('approve');
+    expect(tools[mode === 'local' ? 'attach_conversation' : 'start_chat'].approval_mode).toBe('approve');
+    for (const name of mode === 'local' ? ['read_code'] : ['add_code_ref', 'mark_checkpoint', 'arrive', 'create_edge', 'apply_board']) {
+      expect(tools[name].approval_mode).toBe('prompt');
+    }
+    expect(tools.future_tool).toEqual({ approval_mode: 'prompt', output_token_limit: 50 });
+  });
+
+  it.each(['local', 'hosted'] as const)('can keep %s conversation on Ask while allowing boards', async mode => {
+    const s = server({}, mode);
+    await configureCodexPermissions(mode, { ...policy, boards: 'allow' });
+    const tools = s.write().edits[2].value;
+    expect(tools[mode === 'local' ? 'attach_conversation' : 'start_chat'].approval_mode).toBe('prompt');
+    expect(tools[mode === 'local' ? 'read_board' : 'get_board'].approval_mode).toBe('approve');
+    expect(s.write().edits[1].value).toContain(mode === 'local' ? 'read_code' : 'add_code_ref');
+  });
+
+  it.each(['local', 'hosted'] as const)('restores prompts for every %s tool when boards change from Allow to Ask', async mode => {
+    const conversation = mode === 'local' ? 'attach_conversation' : 'start_chat';
+    const s = server({ tools: { [conversation]: { approval_mode: 'approve' }, get_board: { approval_mode: 'approve' } } }, mode);
+    await configureCodexPermissions(mode, { ...policy, conversation: 'allow' });
+    expect(s.write().edits[0].value).toBe('prompt');
+    expect(Object.values(s.write().edits[2].value).every((tool: any) => tool.approval_mode === 'prompt')).toBe(true);
+  });
+
+  it('preserves legacy and manual denials when board/chat access becomes Allow', async () => {
+    const s = server({ disabled_tools: ['read_code', 'attach_conversation', 'manual'], tools: { read_code: { approval_mode: 'approve' } } });
+    expect(await configureCodexPermissions('local', { ...policy, boards: 'allow', conversation: 'allow' }, ['attach_conversation'])).toEqual([]);
+    expect(s.write().edits[1].value).toEqual(['read_code', 'manual']);
+    expect(s.write().edits[2].value.read_code.approval_mode).toBe('prompt');
+  });
+
+  it.each(['snippets', 'uploads'])('rejects Allow for %s before opening Codex', async key => {
+    await expect(configureCodexPermissions('local', { ...policy, [key]: 'allow' } as any)).rejects.toThrow('UNAVAILABLE');
+    expect(spawn).not.toHaveBeenCalled();
+  });
+
   it('disables every hosted board tool when board access is denied', async () => {
     const s = server({}, 'hosted');
     await configureCodexPermissions('hosted', { ...policy, boards: 'deny' });

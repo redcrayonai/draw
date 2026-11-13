@@ -5,17 +5,17 @@ import { createInterface } from 'node:readline/promises';
 
 export type PermissionMode = 'local' | 'hosted';
 export type Decision = 'ask' | 'deny';
-export type DrawPermissions = Record<'boards' | 'conversation' | 'snippets' | 'uploads', Decision>;
+export type DrawPermissions = { boards: Decision | 'allow'; conversation: Decision | 'allow'; snippets: Decision; uploads: Decision };
 export type PermissionRecord = { permissions: DrawPermissions; managedDisabledTools?: string[] };
 export class PermissionError extends Error {}
-export const DEFAULT_PERMISSIONS: DrawPermissions = { boards: 'ask', conversation: 'ask', snippets: 'deny', uploads: 'deny' };
+export const DEFAULT_PERMISSIONS: DrawPermissions = { boards: 'allow', conversation: 'allow', snippets: 'deny', uploads: 'deny' };
 export const permissionPath = (mode: PermissionMode) => join(homedir(), '.redcrayon', 'permissions', `codex-${mode}.json`);
 
 export function readPermissions(mode: PermissionMode, path = permissionPath(mode)): PermissionRecord | undefined {
   if (!existsSync(path)) return undefined;
   try {
     const record = JSON.parse(readFileSync(path, 'utf8'));
-    if (!record || Object.keys(DEFAULT_PERMISSIONS).some(key => !['ask', 'deny'].includes(record.permissions?.[key]))) throw new Error();
+    if (!record || Object.keys(DEFAULT_PERMISSIONS).some(key => !(key === 'boards' || key === 'conversation' ? ['ask', 'allow', 'deny'] : ['ask', 'deny']).includes(record.permissions?.[key]))) throw new Error();
     if (record.managedDisabledTools !== undefined && (!Array.isArray(record.managedDisabledTools) || record.managedDisabledTools.some((name: unknown) => typeof name !== 'string'))) throw new Error();
     return record;
   } catch { throw new PermissionError('REJECTED: Draw permission settings are invalid; restore valid settings before using this integration.'); }
@@ -28,32 +28,71 @@ export function savePermissions(mode: PermissionMode, record: PermissionRecord, 
   renameSync(temporary, path);
 }
 
-export async function choosePermissions(mode: PermissionMode, options: { reconfigure?: boolean; defaults?: boolean } = {}): Promise<PermissionRecord> {
-  const saved = readPermissions(mode);
-  if (saved && !options.reconfigure) return saved;
-  if (options.defaults) return saved ?? { permissions: { ...DEFAULT_PERMISSIONS } };
-  if (!process.stdin.isTTY || !process.stderr.isTTY) throw new Error('REJECTED: review Draw permissions in a terminal, or use --permissions-defaults (Ask for boards/chat; Deny for source code).');
-  const permissions = { ...(saved?.permissions ?? DEFAULT_PERMISSIONS) };
+type PermissionOptions = { reconfigure?: boolean; defaults?: boolean };
+
+export async function choosePermissions(mode: PermissionMode, options: PermissionOptions = {}): Promise<PermissionRecord> {
+  return (await choosePermissionSet([mode], options))[0].record;
+}
+
+/** Review both backends together, before changing either saved policy. */
+export async function choosePermissionSet(modes: readonly PermissionMode[], options: PermissionOptions = {}) {
+  const entries = modes.map(mode => {
+    const saved = readPermissions(mode);
+    return { mode, editable: !saved || !!options.reconfigure, record: { ...saved, permissions: { ...(saved?.permissions ?? DEFAULT_PERMISSIONS) } } };
+  });
+  if (options.defaults || entries.every(entry => !entry.editable)) return entries;
+  if (!process.stdin.isTTY || !process.stderr.isTTY) throw new Error('REJECTED: review Draw permissions in a terminal, or use --permissions-defaults (Allow boards/chat; Deny source reads/uploads).');
+  const color = (code: number, text: string) => process.env.NO_COLOR === undefined ? `\x1b[${code}m${text}\x1b[0m` : text;
+  const label = (value: DrawPermissions[keyof DrawPermissions]) => color(value === 'allow' ? 32 : value === 'ask' ? 33 : 31, value[0].toUpperCase() + value.slice(1));
+  const fields: [keyof DrawPermissions, string][] = [
+    ['boards', 'Board access and edits (including deletion)'],
+    ['conversation', 'Connect conversation to board chat'],
+    ['snippets', 'Read repository source'],
+    ['uploads', 'Upload source to hosted Draw (whole files)'],
+  ];
+  const groups = (editable: boolean) => fields.flatMap(([key, title]) => {
+    const rows = new Map<string, typeof entries>();
+    for (const entry of entries.filter(entry => (!editable || entry.editable) && (key !== 'uploads' || entry.mode === 'hosted'))) {
+      const value = entry.record.permissions[key];
+      rows.set(value, [...(rows.get(value) ?? []), entry]);
+    }
+    return [...rows.values()].map(group => ({ key, title, group, scope: group.map(entry => entry.mode).join(' + ') }));
+  });
   const terminal = createInterface({ input: process.stdin, output: process.stderr });
-  process.stderr.write(`Draw ${mode} permissions for this Codex integration. Ask requests approval when used; Deny blocks without prompting.\n`);
-  process.stderr.write('These settings cover Draw tools and source captures, not Codex terminal/file access or arbitrary text copied into a board.\n');
+  const summary = () => {
+    process.stderr.write(`\n${color(1, 'Draw permissions')}\n\n`);
+    for (const { key, title, group, scope } of groups(false)) {
+      process.stderr.write(`  ${title.padEnd(43)} ${label(group[0].record.permissions[key])}  ${color(2, `(${scope})`)}\n`);
+    }
+  };
   try {
-    const labels: [keyof DrawPermissions, string][] = [
-      ['boards', 'Access boards, edit diagrams and notes, including deletion'],
-      ['conversation', 'Connect this conversation to board chat'],
-      ['snippets', 'Read repository source for code references'],
-      ...(mode === 'hosted' ? [['uploads', 'Upload source files to hosted Draw (whole files, not just cited lines)'] as [keyof DrawPermissions, string]] : []),
-    ];
-    for (const [key, label] of labels) {
-      for (;;) {
-        const answer = (await terminal.question(`${label}? [ask/deny] (${permissions[key]}): `)).trim().toLowerCase();
-        if (!answer) break;
-        if (answer === 'ask' || answer === 'deny') { permissions[key] = answer; break; }
-        process.stderr.write('Choose ask or deny.\n');
+    summary();
+    process.stderr.write('\nAllow: routine tools run without prompting. Ask: approve when used. Deny: blocked.\n');
+    process.stderr.write(color(2, 'Covers Draw only, not general Codex file access or text pasted onto boards.') + '\n\n');
+    let customize = false;
+    for (;;) {
+      const answer = (await terminal.question(color(1, 'Use these settings? [Y/n] '))).trim().toLowerCase();
+      if (['', 'y', 'yes'].includes(answer)) break;
+      if (['n', 'no'].includes(answer)) { customize = true; break; }
+      process.stderr.write('Choose yes or no.\n');
+    }
+    if (customize) {
+      for (const { key, title, group, scope } of groups(true)) {
+        const choices = key === 'boards' || key === 'conversation' ? ['ask', 'allow'] : ['ask', 'deny'];
+        for (;;) {
+          const answer = (await terminal.question(`\n${color(1, title)} ${color(2, `(${scope})`)}\n  ${choices.join('/')} [${group[0].record.permissions[key]}]: `)).trim().toLowerCase();
+          if (!answer) break;
+          if (choices.includes(answer)) {
+            for (const entry of group) Object.assign(entry.record.permissions, { [key]: answer });
+            break;
+          }
+          process.stderr.write(`Choose ${choices.join(' or ')}.\n`);
+        }
       }
+      summary();
     }
   } finally { terminal.close(); }
-  return { ...saved, permissions };
+  return entries;
 }
 
 /** Explicit plugin launchers enforce their policy; Codex terminal fallbacks use the same saved policy. */

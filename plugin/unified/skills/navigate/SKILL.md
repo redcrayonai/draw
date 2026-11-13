@@ -61,13 +61,14 @@ entry point governs routing and preserves the user's existing board.
 
 ## Respect access choices
 
-Local and hosted Ask/Deny choices are separate. Respect denied tools, source
+Local and hosted permission choices are separate. Respect denied tools, source
 reads, captures, uploads, and conversation attachment. Do not bypass a denial
 through another server, a terminal command, or a browser. The user can review
 their policy with `draw permissions codex --mode local` or `--mode hosted`, then
 restart Codex. Do not change their choices for them.
 
-Ask uses the agent's approval controls. If Draw opens a browser approval page,
+Board and chat choices are Ask/Allow; source reads and uploads are Ask/Deny.
+Allow skips routine tool prompts; Ask uses the agent's approval controls. If Draw opens a browser approval page,
 only the human may choose **Allow once**; never submit or approve it
 programmatically. Opening a board does not authorize attaching a conversation
 or uploading source files. Follow the selected workflow's explicit attachment

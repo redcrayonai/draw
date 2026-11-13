@@ -25,7 +25,7 @@ if (process.argv.includes('--start') || process.argv.includes('--resume')) {
       if (runtimePermissions('hosted')) {
         enforceToolPermissions('start_chat', 'hosted');
         if (typeof input.tool_name !== 'string' || !input.tool_name.endsWith('__start_chat')) {
-          process.stdout.write(JSON.stringify({ systemMessage: 'The board is open. Call start_chat to request approval before connecting this conversation to board chat.' }));
+          process.stdout.write(JSON.stringify({ systemMessage: 'The board is open. Call start_chat to connect this conversation to board chat under your saved permissions.' }));
           process.exit(0);
         }
       }

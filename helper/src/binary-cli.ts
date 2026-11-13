@@ -15,7 +15,7 @@ else if (args[0] === '--help' || args[0] === '-h') console.log(
   '  draw capture | chat | tap | marks | doctor      Hosted helper commands\n' +
   '  draw live --board slug --map mapping.json       Local piped activity\n\n' +
   'One Draw integration: new boards are local; request hosted explicitly or use a hosted link.\n' +
-  'Codex --permissions-defaults: Ask for boards/chat; Deny for source code.\n' +
+  'Codex --permissions-defaults: Allow boards/chat; Deny source reads/uploads.\n' +
   'Hosted source uploads set to Ask require browser approval before reading files.\n' +
   'Set DRAW_NO_UPDATE_CHECK=1 to disable automatic update checks.'
 );

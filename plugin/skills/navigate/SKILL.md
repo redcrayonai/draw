@@ -28,7 +28,7 @@ takes `board`: the `id` that `start_session` returned, as a string of digits
 
 ## Preflight — before anything else
 
-Native Codex installs enforce Ask/Deny choices. Respect denied tools and source
+Native Codex installs enforce permission choices. Respect denied tools and source
 captures; do not bypass them with a terminal command or another connection.
 The user can review choices with `draw permissions codex --mode hosted`, then
 restart Codex. Source uploads set to Ask open a browser approval page before

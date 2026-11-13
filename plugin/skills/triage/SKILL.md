@@ -22,7 +22,7 @@ takes `board`: the `id` that `start_session` returned, as a string of digits.
 
 ## Preflight — before anything else
 
-Respect native Codex Ask/Deny settings; do not bypass a denied operation with
+Respect native Codex permission settings; do not bypass a denied operation with
 another connection or a terminal command. The user can review them with
 `draw permissions codex --mode hosted`, then restart Codex. Source uploads set
 to Ask open a browser approval page. Never submit its form programmatically:
