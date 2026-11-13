@@ -251,6 +251,9 @@ test('a link followed from inside a frame: one trail across both boards, and a l
   await pick(page, 'Payments');
   await page.keyboard.press('Enter');
   await expect(crumbs(page)).toHaveText([name, 'Payments']);
+  // The view eases into the frame: read where the node is once it has stopped moving.
+  let prev = '';
+  await expect.poll(async () => { const now = JSON.stringify(await node(page, 'ledger').boundingBox()); const still = now === prev; prev = now; return still; }).toBe(true);
   const left = (await node(page, 'ledger').boundingBox())!;
   await follow();
   await expect(title).toHaveText(other);
@@ -278,6 +281,34 @@ test('a link followed from inside a frame: one trail across both boards, and a l
   await page.goBack();
   await expect(title).toHaveText(name);
   await expect(trail(page)).toBeHidden();
+
+  // A second click before the board has opened is the same step: one history entry, not two.
+  await node(page, 'ledger').locator('.node-link').dblclick();
+  await expect(title).toHaveText(other);
+  await page.goBack();
+  await expect(title).toHaveText(name);
+  await page.goBack(); // a second entry for the same step would leave us on this board here
+  await expect(page).toHaveURL('about:blank');
+  await page.goForward();
+  await expect(nodes(page)).toHaveCount(9);
+
+  // A frame deleted while away: coming back steps out to the nearest frame left and frames that, not the view the deeper one was left at.
+  const [handler] = await stack.sql(`SELECT id FROM node WHERE board_id = ${board} AND label = 'handler'`);
+  await stack.callReducer(token, 'link_node_board', [Number(handler.id), Number(target.id)]);
+  await pick(page, 'Payments');
+  await page.keyboard.press('Enter');
+  await pick(page, 'checkout-api');
+  await page.keyboard.press('Enter');
+  await expect(crumbs(page)).toHaveText([name, 'Payments', 'checkout-api']);
+  await expect(node(page, 'Payments')).not.toBeInViewport({ ratio: 1 }); // the deeper frame is framed closer, so the outer one overflows
+  await node(page, 'handler').locator('.node-link').click();
+  await expect(title).toHaveText(other);
+  const [inner] = await stack.sql(`SELECT id FROM node WHERE board_id = ${board} AND label = 'checkout-api'`);
+  await stack.callReducer(token, 'delete_node', [Number(inner.id)]);
+  await page.keyboard.press('Escape');
+  await expect(title).toHaveText(name);
+  await expect(crumbs(page)).toHaveText([name, 'Payments']);
+  await expect(node(page, 'Payments')).toBeInViewport({ ratio: 1 }); // framed on Payments, not left at the deleted frame's view
 });
 
 test('two boards that link each other: a second Esc does not go back twice, and a level of the board on screen moves the trail', async ({ stack, account }) => {

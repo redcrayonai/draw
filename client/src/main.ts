@@ -1988,6 +1988,8 @@ async function boot(conn: DbConnection, identityHex: string, signedIn: boolean):
         if (!link) return false;
         // shortcut: says only that the board is private. When people can ask its owner to share it, offer that here.
         if (!link.open) { showError('This board is private.'); return true; }
+        // A board already on its way, or this very board: switchBoard would refuse, and the history entry below would lead nowhere.
+        if (switchTo !== undefined || link.target === boardId) return true;
         // A history entry for where we are, so the browser's back comes back to this board; the trail leaves by it too.
         history.pushState(null, '', location.href);
         const byId = new Map(getNodes().map(n => [n.id, n]));
@@ -2768,6 +2770,7 @@ async function boot(conn: DbConnection, identityHex: string, signedIn: boolean):
         crayonUi.crayon.clear(); // drafts belong to the board they were drawn on
         boardTrail = arrival?.left ?? [];
         depthTrail = arrival?.frames ?? []; // a depth is a place on one board; syncDepth drops frames that are gone
+        const asked = depthTrail.join();
         closeQuickAdd();
         resetChartDraft();
         pointer = null;
@@ -2783,10 +2786,10 @@ async function boot(conn: DbConnection, identityHex: string, signedIn: boolean):
         enter = false;
         onTableChange();
         enter = true;
-        if (arrival) {
-          // The view is not carried over from the board left: a board reached by a link is framed like a fresh open,
-          // and one come back to is put back as it was left, frame and all.
-          if (depthTrail.length > 0) syncDepth();
+        // The view is not carried over from the board left: a board reached by a link is framed like a fresh open, and one
+        // come back to is put back as it was left, frame and all. Unless a frame was deleted or emptied while away: the
+        // table change above has then stepped out and framed the nearest one, and the saved view no longer fits.
+        if (arrival && depthTrail.join() === asked) {
           if (arrival.view) { viewport.stopAnimation(); viewport.tx = arrival.view.tx; viewport.ty = arrival.view.ty; viewport.scale = arrival.view.scale; viewport.apply(); }
           else if (depthTrail.length > 0) frameView();
           else editor.fitView();
