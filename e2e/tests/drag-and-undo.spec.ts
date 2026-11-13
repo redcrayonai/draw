@@ -312,7 +312,7 @@ test('create, delete and two quick undos leave no node and no error, and redo re
   const B = await boardIdOf(stack, page);
   await page.keyboard.press('1');
   await page.locator('#board').click({ position: { x: 600, y: 300 } });
-  await page.keyboard.press('Escape');
+  await page.locator('#inline-edit').press('Enter'); // a new node opens its name: keep the default
   await expect(nodes(page)).toHaveCount(1);
   await expect.poll(() => labelsOn(stack, B)).toEqual(['Service']);
   const [id] = await nodeIds(page);
