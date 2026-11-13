@@ -23,12 +23,13 @@ export interface Insets {
 
 const NO_INSETS: Insets = { left: 0, right: 0, top: 0, bottom: 0 };
 
-/** True when a floating panel is on screen (not hidden, not dismissed, takes space). */
-function shown(el: HTMLElement | null): el is HTMLElement {
-  if (el === null || el.hidden || el.classList.contains('collapsed')) return false;
+/** A floating panel's rect when it is on screen (not hidden, not dismissed, takes space), else null. */
+function shownRect(id: string): DOMRect | null {
+  const el = document.getElementById(id);
+  if (el === null || el.hidden || el.classList.contains('collapsed')) return null;
   // A display: none panel (the walk-through hides side panels so) has an all-zero rect.
   const r = el.getBoundingClientRect();
-  return r.width > 0 || r.height > 0;
+  return r.width > 0 || r.height > 0 ? r : null;
 }
 
 /**
@@ -40,18 +41,17 @@ function shown(el: HTMLElement | null): el is HTMLElement {
 export function chromeInsets(wrap: HTMLElement): Insets {
   const w = wrap.getBoundingClientRect();
   const insets = { ...NO_INSETS };
-  const rail = document.getElementById('rail');
-  if (shown(rail)) {
-    const r = rail.getBoundingClientRect();
-    if (r.width < w.width * 0.7) {
-      insets.left = r.right - w.left + PANEL_GAP;
+  const rail = shownRect('rail');
+  if (rail) {
+    if (rail.width < w.width * 0.7) {
+      insets.left = rail.right - w.left + PANEL_GAP;
     } else {
-      insets.top = r.bottom - w.top + PANEL_GAP;
+      insets.top = rail.bottom - w.top + PANEL_GAP;
     }
   }
-  const dock = document.getElementById('dock');
-  if (shown(dock)) {
-    insets.bottom = w.bottom - dock.getBoundingClientRect().top + PANEL_GAP;
+  const dock = shownRect('dock');
+  if (dock) {
+    insets.bottom = w.bottom - dock.top + PANEL_GAP;
   }
   // The depth trail sits top centre while the view is inside a frame: keep the frame clear of it.
   const trail = document.getElementById('depth-trail');
@@ -59,17 +59,16 @@ export function chromeInsets(wrap: HTMLElement): Insets {
     insets.top = Math.max(insets.top, trail.getBoundingClientRect().bottom - w.top);
   }
   // The walk-through bar replaces the dock while it plays; reserve from its top edge down.
-  const bar = document.getElementById('telling-bar');
-  if (shown(bar)) {
-    insets.bottom = Math.max(insets.bottom, w.bottom - bar.getBoundingClientRect().top + PANEL_GAP);
+  const bar = shownRect('telling-bar');
+  if (bar) {
+    insets.bottom = Math.max(insets.bottom, w.bottom - bar.top + PANEL_GAP);
   }
-  const inspector = document.getElementById('inspector');
-  if (shown(inspector)) {
-    const r = inspector.getBoundingClientRect();
-    if (r.width < w.width * 0.7) {
-      insets.right = w.right - r.left + PANEL_GAP;
+  const inspector = shownRect('inspector');
+  if (inspector) {
+    if (inspector.width < w.width * 0.7) {
+      insets.right = w.right - inspector.left + PANEL_GAP;
     } else {
-      insets.bottom = Math.max(insets.bottom, w.bottom - r.top + PANEL_GAP);
+      insets.bottom = Math.max(insets.bottom, w.bottom - inspector.top + PANEL_GAP);
     }
   }
   return insets;
