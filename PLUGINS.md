@@ -182,7 +182,7 @@ repo.
    In the first version, plugin data is not copied into versions or branches,
    and a restore or branch says which plugins' data it left out, never silently
    (copying it comes with a
-   version 2 bundle format).
+   later bundle format).
 12. *Back up before changing plugins.* The docs tell operators to take a backup
    of the database and their settings (the plugins file, `.env`) before adding,
    upgrading, retiring or removing a plugin.
