@@ -1,17 +1,123 @@
-# redcrayon
+# Draw
 
 redcrayon draws what your coding agent builds on a live board: the components it
 touched, the flows between them, each one citing a line the agent read, and code
 refs that point into the exact symbols. You read the board instead of a prose
 summary, and you find it again on your dashboard.
 
-This plugin adds the draw server, drawing skills, code refs, and private board
-chat. Claude Code and Codex connect their existing conversation automatically
-when they open a board. Other agents can draw through the same server URL.
+The native integration installs one **Draw** plugin with local and hosted tools,
+one drawing skill, code refs, and private board chat. Local boards are the
+default. The existing marketplace plugin described below uses hosted boards.
 
 **Server URL:** `http://localhost:8788/mcp`
 
-## Install
+## Shared executable and local boards
+
+The next native release uses one `@redcrayonai/draw` package for local and hosted
+boards. The executable embeds its runtime and UI and supports macOS and Linux
+with glibc, on arm64 and x64. Both `draw` and `redcrayon` remain available.
+
+**The native release is not published yet.** The registry currently serves the
+earlier Node helper. After the native release, install with either package manager:
+
+```sh
+npm install -g @redcrayonai/draw
+# Or:
+bun install -g @redcrayonai/draw
+```
+
+Keep optional dependencies enabled. Draw needs no Node or Bun after installation;
+git and your chosen agent remain prerequisites. Install that agent's integration:
+
+```sh
+draw install codex
+# Or:
+draw install claude-code
+draw install pi
+```
+
+Restart the agent and ask **"create a draw board"**, or run `/draw:navigate`.
+Draw opens a local repository board without an account. Ask explicitly for a
+**hosted board** to use the hosted connection, then sign in through your agent's
+Draw MCP controls when needed. There is no separate binary login step. Give an
+existing board link to continue there; Draw keeps its backend and does not
+silently create a replacement or upload a local board.
+
+Both backends ship in the same plugin, named `draw@draw-binary` in Claude Code
+and Codex. The MCP server names `draw-local` and `draw` identify its local and
+hosted tools; they are not separate plugins to install. The single
+`/draw:navigate` skill also handles board feedback, reconnects, and incidents
+from natural prompts. Legacy `--mode local|hosted` install flags remain accepted;
+both install the same unified plugin. Native installation replaces the older Draw
+integrations it manages and preserves saved permission choices. pi 1.4.0 was
+verified with the earlier native integration.
+
+Codex setup disables older Draw plugins and direct `draw`, `redcrayon`, and
+`draw-local` MCP entries without deleting their settings or credentials.
+Claude Code setup disables older Draw plugins. Pi setup disables the resources
+of earlier native local and npm Draw packages in global/current-project settings
+while keeping those packages installed. Custom installations and direct MCP
+configuration in Claude Code or pi may need separate cleanup.
+
+[Local Draw](../LOCAL_MODE.md#install-the-standalone-executable) describes current
+CI artifact downloads, source builds, local storage, and agent setup. Existing
+marketplace installs and Node helper entry points remain supported.
+
+Check for a native release with `draw update --check`; `draw update` installs its
+exact version through the detected npm or Bun installation. Use
+`--installer npm` or `--installer bun` to choose explicitly, or `--channel preview`
+for the `next` channel. Updates never restart running boards or conversations.
+If Draw reports stale integration files, rerun the appropriate `draw install`
+command, then restart the agent. Interactive local launches check at most daily;
+`DRAW_NO_UPDATE_CHECK=1` disables the checks. MCP and hook output stays silent.
+
+Native hosted flows were tested with real agents against a controlled relay and
+capture service. Production sign-in was not verified in this change.
+
+### Codex permissions in the native integration
+
+`draw install codex` shows one permission summary for local and hosted Draw:
+board access/edits and conversation attachment default to **Allow**; repository
+source reads and hosted uploads default to **Deny**. Accept once to continue,
+or choose **No** to customize. Board and chat choices are Ask/Allow; source
+reads and uploads are Ask/Deny. Existing saved denials are preserved.
+
+**Allow** skips routine tool prompts, **Ask** requests approval when used, and
+**Deny** blocks the operation. Source-capable tools retain approval checks.
+The terminal uses spaced rows and colored status labels; `NO_COLOR` disables
+color. Hosted source
+uploads set to Ask additionally open a browser approval page before reading or
+uploading files. Only you may choose **Allow once** there. Uploads can include
+whole cited files, not just the lines displayed on a board.
+
+Choices apply to both local and hosted Draw. Older differing choices combine
+using the more restrictive setting (Deny, then Ask, then Allow). Reinstalling
+preserves matching choices.
+To review or change them without reinstalling:
+
+```sh
+draw permissions codex
+```
+
+Restart Codex after installing or changing tool permissions. Connect board chat
+explicitly through `attach_conversation` locally or `start_chat` when hosted;
+opening a hosted board alone does not authorize conversation attachment.
+
+First setup without an interactive terminal stops unless you explicitly select
+the suggested choices with `draw install codex --permissions-defaults`.
+The same flag is available on `draw permissions codex`;
+saved choices are preserved, so it does not reset an existing policy.
+
+These settings cover the installed Draw integration. They do not restrict
+Codex's general terminal/file access or arbitrary text copied into board labels
+and notes. They do not erase code already stored on a board. Dashboard snippet
+storage consent remains a separate setting. Existing marketplace and source
+installers do not gain these native setup prompts automatically.
+
+## Existing hosted marketplace installation
+
+These instructions install the earlier hosted plugin. For the native release,
+use `draw install <agent>` above; do not install both methods together.
 
 ### Claude Code
 
@@ -35,8 +141,9 @@ when they open a board. Other agents can draw through the same server URL.
    opened: it charts measured evidence beside the hops it describes and leaves
    the suspects to you.
 
-Code refs and checkpoints need git and Node 20 or later on your PATH. Board chat
-needs Node 22 or later. Without Node, drawing still works. Automatic Claude Code
+The existing Node-based plugin needs git and Node 20+ for code refs and
+checkpoints, and Node 22+ for board chat. Its drawing tools work without Node.
+The native executable supplies its own runtime for these helper operations. Automatic Claude Code
 chat requires a version supporting `MessageDisplay` and `asyncRewake` hooks.
 
 ### Cursor
@@ -89,8 +196,9 @@ manual entry with `codex mcp remove draw` to avoid duplicate tools.
 ### Connected conversation
 
 The Claude Code and Codex plugins connect board chat when `start_session` opens
-a board. Open its link to continue the conversation. Board chat needs Node 22+.
-MCP-only installation provides drawing, without automatic chat.
+a board. Open its link to continue the conversation. The Node helper needs
+Node 22+ for chat; the native executable supplies its runtime. MCP-only
+installation provides drawing, without automatic chat.
 Codex chat attaches to the exact thread already loaded on its shared local
 app server. Standalone sessions and host-managed sessions without that connection
 remain available in their original interface; chat never starts a second agent.
@@ -157,6 +265,10 @@ The next call after a sign-out asks you to sign in again. Your boards stay as
 they are.
 
 ## What leaves your machine
+
+Local Draw stores boards on your machine and does not upload source to hosted
+Draw. Your coding agent keeps its own data handling policy. The following
+describes hosted boards; choosing local does not authorize these uploads.
 
 To check code refs, redcrayon uploads each file your agent cites and deletes it within 10 minutes. It keeps paths, line numbers, git hashes, hashes of the cited lines and the GitHub repo address. It keeps the cited lines themselves only if you turn on storing code.
 
@@ -247,9 +359,14 @@ so your agent draws boards without code refs or checkpoints.
 - For a plugin release, set the GitHub repository variable `PLUGIN_MCP_ORIGIN`
   to `https://mcp.<domain>`. The tag workflow configures the plugin and helper
   together; keep the committed defaults local.
-- `bin/redcrayon.mjs` is the helper, built and copied in by each release. The
-  plugin and the helper ship as one npm package, `@redcrayonai/draw`, so the
-  plugin pins its helper.
+- `bin/draw` launches the matching optional native package. The canonical
+  package pins all four platform packages to its exact version.
+- `bin/redcrayon.mjs` and `bin/chat-hook.mjs` remain for older plugin installers
+  and source checkouts; the launcher uses them when the native package is absent.
+- Release `plugin-v<version>` only after configuring npm trusted publishing for
+  the canonical package and all four `@redcrayonai/draw-<platform>-<architecture>`
+  packages. The workflow builds and tests each architecture before publishing.
+  Prereleases use `next` and GitHub prereleases; stable releases use `latest`.
 - Load a checkout of this plugin for one session with
   `claude --plugin-dir <path to this folder>`.
 - `REDCRAYON_MCP_URL` points the plugin's server and the helper at a server you

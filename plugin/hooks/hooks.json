@@ -6,7 +6,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "sh -c 'set -- \"$HOME\"/.redcrayon/chat/*.sock; [ -e \"$1\" ] || exit 0; command -v node >/dev/null || exit 0; exec node \"${CLAUDE_PLUGIN_ROOT}/bin/chat-hook.mjs\"'",
+            "command": "sh -c 'set -- \"$HOME\"/.redcrayon/chat/*.sock; [ -e \"$1\" ] || exit 0; exec \"${CLAUDE_PLUGIN_ROOT}/bin/draw\" chat-hook'",
             "timeout": 5
           }
         ]
@@ -17,7 +17,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "sh -c 'set -- \"$HOME\"/.redcrayon/chat/*.sock; [ -e \"$1\" ] || exit 0; command -v node >/dev/null || exit 0; exec node \"${CLAUDE_PLUGIN_ROOT}/bin/chat-hook.mjs\"'",
+            "command": "sh -c 'set -- \"$HOME\"/.redcrayon/chat/*.sock; [ -e \"$1\" ] || exit 0; exec \"${CLAUDE_PLUGIN_ROOT}/bin/draw\" chat-hook'",
             "timeout": 5
           }
         ]
@@ -28,12 +28,12 @@
         "hooks": [
           {
             "type": "command",
-            "command": "sh -c 'set -- \"$HOME\"/.redcrayon/chat/*.sock; [ -e \"$1\" ] || exit 0; command -v node >/dev/null || exit 0; exec node \"${CLAUDE_PLUGIN_ROOT}/bin/chat-hook.mjs\"'",
+            "command": "sh -c 'set -- \"$HOME\"/.redcrayon/chat/*.sock; [ -e \"$1\" ] || exit 0; exec \"${CLAUDE_PLUGIN_ROOT}/bin/draw\" chat-hook'",
             "timeout": 5
           },
           {
             "type": "command",
-            "command": "sh -c 'set -- \"$HOME\"/.redcrayon/chat/*.sock; [ -e \"$1\" ] || exit 0; command -v node >/dev/null || exit 0; exec node \"${CLAUDE_PLUGIN_ROOT}/bin/chat-hook.mjs\" --wait'",
+            "command": "sh -c 'set -- \"$HOME\"/.redcrayon/chat/*.sock; [ -e \"$1\" ] || exit 0; exec \"${CLAUDE_PLUGIN_ROOT}/bin/draw\" chat-hook --wait'",
             "asyncRewake": true,
             "timeout": 43200
           }
@@ -45,7 +45,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "sh -c 'set -- \"$HOME\"/.redcrayon/chat/*.sock; [ -e \"$1\" ] || exit 0; command -v node >/dev/null || exit 0; exec node \"${CLAUDE_PLUGIN_ROOT}/bin/chat-hook.mjs\"'",
+            "command": "sh -c 'set -- \"$HOME\"/.redcrayon/chat/*.sock; [ -e \"$1\" ] || exit 0; exec \"${CLAUDE_PLUGIN_ROOT}/bin/draw\" chat-hook'",
             "timeout": 5
           }
         ]
@@ -57,12 +57,12 @@
         "hooks": [
           {
             "type": "command",
-            "command": "sh -c 'set -- \"$HOME\"/.redcrayon/chat/*.sock; [ -e \"$1\" ] || exit 0; command -v node >/dev/null || exit 0; exec node \"${CLAUDE_PLUGIN_ROOT}/bin/chat-hook.mjs\"'",
+            "command": "sh -c 'set -- \"$HOME\"/.redcrayon/chat/*.sock; [ -e \"$1\" ] || exit 0; exec \"${CLAUDE_PLUGIN_ROOT}/bin/draw\" chat-hook'",
             "timeout": 5
           },
           {
             "type": "command",
-            "command": "sh -c 'set -- \"$HOME\"/.redcrayon/chat/*.sock; [ -e \"$1\" ] || exit 0; command -v node >/dev/null || exit 0; exec node \"${CLAUDE_PLUGIN_ROOT}/bin/chat-hook.mjs\" --wait'",
+            "command": "sh -c 'set -- \"$HOME\"/.redcrayon/chat/*.sock; [ -e \"$1\" ] || exit 0; exec \"${CLAUDE_PLUGIN_ROOT}/bin/draw\" chat-hook --wait'",
             "asyncRewake": true,
             "timeout": 43200
           }
@@ -73,7 +73,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "sh -c 'command -v node >/dev/null || exit 0; exec node \"${CLAUDE_PLUGIN_ROOT}/bin/redcrayon.mjs\" hook'",
+            "command": "sh -c 'exec \"${CLAUDE_PLUGIN_ROOT}/bin/draw\" hook'",
             "timeout": 45
           }
         ]
@@ -85,7 +85,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "sh -c 'set -- \"$HOME\"/.redcrayon/chat/*.sock; [ -e \"$1\" ] || exit 0; command -v node >/dev/null || exit 0; exec node \"${CLAUDE_PLUGIN_ROOT}/bin/chat-hook.mjs\"'",
+            "command": "sh -c 'set -- \"$HOME\"/.redcrayon/chat/*.sock; [ -e \"$1\" ] || exit 0; exec \"${CLAUDE_PLUGIN_ROOT}/bin/draw\" chat-hook'",
             "timeout": 5
           }
         ]
@@ -95,7 +95,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "sh -c 'command -v node >/dev/null || exit 0; exec node \"${CLAUDE_PLUGIN_ROOT}/bin/redcrayon.mjs\" hook'",
+            "command": "sh -c 'exec \"${CLAUDE_PLUGIN_ROOT}/bin/draw\" hook'",
             "timeout": 45
           }
         ]
@@ -105,12 +105,12 @@
         "hooks": [
           {
             "type": "command",
-            "command": "sh -c 'command -v node >/dev/null || exit 0; exec node \"${CLAUDE_PLUGIN_ROOT}/bin/chat-hook.mjs\" --start'",
+            "command": "sh -c 'exec \"${CLAUDE_PLUGIN_ROOT}/bin/draw\" chat-hook --start'",
             "timeout": 8
           },
           {
             "type": "command",
-            "command": "sh -c 'command -v node >/dev/null || exit 0; exec node \"${CLAUDE_PLUGIN_ROOT}/bin/chat-hook.mjs\" --wait'",
+            "command": "sh -c 'exec \"${CLAUDE_PLUGIN_ROOT}/bin/draw\" chat-hook --wait'",
             "asyncRewake": true,
             "timeout": 43200
           }
@@ -123,7 +123,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "sh -c 'set -- \"$HOME\"/.redcrayon/chat/*.sock; [ -e \"$1\" ] || exit 0; command -v node >/dev/null || exit 0; exec node \"${CLAUDE_PLUGIN_ROOT}/bin/chat-hook.mjs\"'",
+            "command": "sh -c 'set -- \"$HOME\"/.redcrayon/chat/*.sock; [ -e \"$1\" ] || exit 0; exec \"${CLAUDE_PLUGIN_ROOT}/bin/draw\" chat-hook'",
             "timeout": 5
           }
         ]
@@ -135,12 +135,12 @@
         "hooks": [
           {
             "type": "command",
-            "command": "sh -c 'command -v node >/dev/null || exit 0; exec node \"${CLAUDE_PLUGIN_ROOT}/bin/chat-hook.mjs\" --resume'",
+            "command": "sh -c 'exec \"${CLAUDE_PLUGIN_ROOT}/bin/draw\" chat-hook --resume'",
             "timeout": 8
           },
           {
             "type": "command",
-            "command": "sh -c 'command -v node >/dev/null || exit 0; exec node \"${CLAUDE_PLUGIN_ROOT}/bin/chat-hook.mjs\" --wait'",
+            "command": "sh -c 'exec \"${CLAUDE_PLUGIN_ROOT}/bin/draw\" chat-hook --wait'",
             "asyncRewake": true,
             "timeout": 43200
           }
@@ -152,7 +152,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "sh -c 'set -- \"$HOME\"/.redcrayon/chat/*.sock; [ -e \"$1\" ] || exit 0; command -v node >/dev/null || exit 0; exec node \"${CLAUDE_PLUGIN_ROOT}/bin/chat-hook.mjs\"'",
+            "command": "sh -c 'set -- \"$HOME\"/.redcrayon/chat/*.sock; [ -e \"$1\" ] || exit 0; exec \"${CLAUDE_PLUGIN_ROOT}/bin/draw\" chat-hook'",
             "timeout": 2
           }
         ]
@@ -164,7 +164,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "sh -c 'set -- \"$HOME\"/.redcrayon/chat/*.sock; [ -e \"$1\" ] || exit 0; command -v node >/dev/null || exit 0; exec node \"${CLAUDE_PLUGIN_ROOT}/bin/chat-hook.mjs\"'",
+            "command": "sh -c 'set -- \"$HOME\"/.redcrayon/chat/*.sock; [ -e \"$1\" ] || exit 0; exec \"${CLAUDE_PLUGIN_ROOT}/bin/draw\" chat-hook'",
             "timeout": 125
           }
         ]

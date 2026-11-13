@@ -1,11 +1,12 @@
 {
   "name": "@redcrayonai/draw",
   "version": "1.0.2",
-  "description": "Live architecture boards and connected agent chat for Claude Code and Codex.",
+  "description": "Architecture boards for Codex, Claude Code, and pi, locally or hosted.",
   "license": "Apache-2.0",
   "type": "module",
   "bin": {
-    "redcrayon": "bin/redcrayon.mjs"
+    "draw": "bin/draw",
+    "redcrayon": "bin/draw"
   },
   "files": [
     ".claude-plugin",
@@ -18,11 +19,10 @@
     "README.md",
     "LICENSE",
     ".codex-plugin",
-    "codex"
+    "codex",
+    "bin/draw",
+    "pi"
   ],
-  "engines": {
-    "node": ">=20"
-  },
   "repository": {
     "type": "git",
     "url": "git+https://github.com/redcrayonai/draw.git",
@@ -30,5 +30,22 @@
   },
   "publishConfig": {
     "access": "public"
+  },
+  "drawRuntime": {
+    "protocol": 1
+  },
+  "optionalDependencies": {
+    "@redcrayonai/draw-darwin-arm64": "1.0.2",
+    "@redcrayonai/draw-darwin-x64": "1.0.2",
+    "@redcrayonai/draw-linux-arm64": "1.0.2",
+    "@redcrayonai/draw-linux-x64": "1.0.2"
+  },
+  "pi": {
+    "extensions": [
+      "./pi/extension.mjs"
+    ],
+    "skills": [
+      "./skills"
+    ]
   }
 }

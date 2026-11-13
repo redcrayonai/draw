@@ -37,9 +37,10 @@ redcrayon plugin fills it in before each call runs.
   git checkout, no network). Do what the line says, such as cite another file.
 - `REJECTED: <tool> needs a capture of your local file. …` (or `… of your local
   checkout`) means nothing filled the capture in: the plugin is not installed, or
-  Node 20+ is missing. Run the `npx -y @redcrayonai/draw@1 capture …` command the text
-  names, in the project, and call again with `capture` set to the `cap_…` id it
-  prints. If the command fails, tell the user its line and go on drawing without
+  its helper could not run. If `draw` is installed, run the named `capture …`
+  arguments with `draw` in the project. Otherwise use the
+  `npx -y @redcrayonai/draw@1 capture …` command the text names. Call again with
+  `capture` set to the `cap_…` id it prints. If the command fails, tell the user its line and go on drawing without
   refs.
 - A capture works once, within 10 minutes. On `capture cap_… expired or was
   already used`, or a text that names another capture command (a checkpoint that

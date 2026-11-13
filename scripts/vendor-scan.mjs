@@ -20,7 +20,7 @@
 // Prints file:line per hit and exits 1 on any. Source exceptions below never
 // apply to bundles, images or user-facing text. --enforce is an explicit alias
 // for the default, fail-closed behavior.
-// --hosted-plugin permits the public MCP endpoint only in three release slots
+// --hosted-plugin permits the public MCP endpoint only in four release slots
 // (RC-600's plugin/helper integration exception); it cannot be used with --public.
 import { execFileSync } from 'node:child_process';
 import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
@@ -51,6 +51,7 @@ export const HOSTED_PLUGIN_ALLOW = [
   ['plugin/.mcp.json', `"draw": { "type": "http", "url": "\${REDCRAYON_MCP_URL:-${HOSTED_PLUGIN_ORIGIN}/mcp}" }`, 'hosted plugin server entry must advertise its public MCP endpoint'],
   ['plugin/README.md', `**Server URL:** \`${HOSTED_PLUGIN_ORIGIN}/mcp\``, 'hosted plugin install instructions must match its server entry'],
   ['plugin/bin/redcrayon.mjs', helperDefault, 'bundled capture helper must use the plugin server by default'],
+  ['plugin/pi/extension.mjs', helperDefault, 'bundled pi integration must use the same plugin server by default'],
 ];
 const MAP_COMMENT = /^\s*\/\/[#@] sourceMappingURL=/;
 const PRIVATE_HIT = ': private word: ';
@@ -92,7 +93,7 @@ export function scan(targetsFile, root = process.cwd(), { hostedPlugin = false }
     }
     const manifest = hostedPlugin && kind === 'tree' && existsSync(join(path, 'package.json'))
       ? JSON.parse(readFileSync(join(path, 'package.json'), 'utf8')) : null;
-    const pluginPackage = manifest?.name === '@redcrayonai/draw' && manifest.bin?.redcrayon === 'bin/redcrayon.mjs';
+    const pluginPackage = manifest?.name === '@redcrayonai/draw' && ['bin/redcrayon.mjs', 'bin/draw'].includes(manifest.bin?.redcrayon);
     for (const file of files(path)) {
       if (kind === 'bundle' && file.endsWith('.map')) hits.push(`${file}: source map in a deployable`);
       if (kind === 'bundle') for (const f of readdirSync(dirname(file))) if (f.endsWith('.map')) hits.push(`${join(dirname(file), f)}: source map in a deployable`);

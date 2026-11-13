@@ -1,0 +1,11 @@
+{
+  "name": "draw-local-dev",
+  "owner": { "name": "Red Crayon" },
+  "plugins": [
+    {
+      "name": "draw-local",
+      "source": { "source": "local", "path": "." },
+      "description": "Standalone local Draw built from this checkout."
+    }
+  ]
+}

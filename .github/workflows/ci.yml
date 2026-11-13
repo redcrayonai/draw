@@ -36,7 +36,7 @@ jobs:
           go-version: '1.26'
           cache: false
       - name: Workflow contracts
-        run: node --test scripts/ci-workflows.test.mjs scripts/eval-lib.test.mjs scripts/vendor-scan.test.mjs scripts/plugin.test.mjs scripts/plugin-build.test.mjs scripts/plugin-lock.test.mjs scripts/plugin-api-types.test.mjs scripts/plugin-schema.test.mjs scripts/builder.test.mjs scripts/live-drift.test.mjs scripts/check-wire-compat.test.mjs scripts/module-env.test.mjs scripts/board-links.test.mjs scripts/release-labels.test.mjs
+        run: node --test scripts/ci-workflows.test.mjs scripts/eval-lib.test.mjs scripts/vendor-scan.test.mjs scripts/plugin.test.mjs scripts/plugin-build.test.mjs scripts/plugin-lock.test.mjs scripts/plugin-api-types.test.mjs scripts/plugin-schema.test.mjs scripts/builder.test.mjs scripts/live-drift.test.mjs scripts/check-wire-compat.test.mjs scripts/module-env.test.mjs scripts/board-links.test.mjs scripts/release-labels.test.mjs scripts/native-packages.test.mjs
       - name: Validate GitHub Actions workflows
         run: go run github.com/rhysd/actionlint/cmd/actionlint@v1.7.12
 

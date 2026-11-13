@@ -1,0 +1,76 @@
+<!doctype html>
+<html lang="en" data-theme="material-light">
+<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Draw · Local</title></head>
+<body class="local-mode">
+  <header id="local-header" class="topbar">
+    <div class="tb-left"><button id="rail-toggle" class="icon-btn" aria-expanded="true" title="Toggle the board panel">
+          <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+            <rect x="1.75" y="2.75" width="12.5" height="10.5" rx="2" stroke="currentColor" stroke-width="1.3" />
+            <line x1="6.25" y1="2.75" x2="6.25" y2="13.25" stroke="currentColor" stroke-width="1.3" />
+          </svg>
+        </button>
+        <nav class="crumb" aria-label="Breadcrumb"><span class="crumb-root">Boards</span><span class="crumb-sep" aria-hidden="true">/</span><select id="boards" aria-label="Board"></select></nav><button id="new-board" class="icon-btn" aria-label="New board" title="New board">+</button></div>
+    <div class="header-actions"><span id="status" role="status">Connecting…</span><span class="live" title="Stored on this machine"><span class="live-dot" aria-hidden="true"></span>Local</span><span class="tb-div" aria-hidden="true"></span><button id="review-toggle" class="icon-btn" aria-label="Review" title="Review" aria-expanded="false" aria-controls="local-review"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round" aria-hidden="true"><path d="M2.75 13.25V11l7.5-7.5 2.25 2.25-7.5 7.5Z M10.25 3.5l1.5-1.5 2.25 2.25-1.5 1.5"/></svg></button><button id="act-theme" class="icon-btn" title="Theme" aria-label="Theme" aria-expanded="false" aria-controls="theme-pop">
+          <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+            <path d="M8 1.75a6.25 6.25 0 1 0 6.25 6.25A4.9 4.9 0 0 1 8 1.75Z" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round" />
+          </svg>
+        </button>
+        <!-- chrome.ts setupTheme fills this from shared/themes.ts -->
+        <div id="theme-pop" role="group" aria-label="Theme" hidden></div>
+        <button id="conversation-toggle" class="ctl" aria-label="Conversation" aria-expanded="false" aria-controls="local-conversation"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3" aria-hidden="true"><path d="M5 1v4m6-4v4M4 5h8v3a4 4 0 0 1-8 0Zm4 7v3"/></svg><span>Conversation</span></button></div>
+  </header>
+  <main id="canvas-wrap">
+    <svg id="canvas" aria-label="Board canvas" tabindex="0"><g id="world"></g></svg>
+    <aside id="rail" aria-label="Board panel"><div class="rail-head"><h2 class="rail-title">Board</h2><div class="local-history"><button id="undo" class="icon-btn" aria-label="Undo" title="Undo">↶</button><button id="redo" class="icon-btn" aria-label="Redo" title="Redo">↷</button></div></div><p id="access-line">Local board · saved on this machine</p><div id="local-activity"></div><p id="rail-hint">Choose a tool below to draw. Select a node to edit it.</p><div id="local-panel"><form id="edit" hidden><label>Label<input name="label"></label><label>Description<textarea name="description"></textarea></label><div id="geometry"><label>X<input name="x" type="number" step="any"></label><label>Y<input name="y" type="number" step="any"></label><label>Width<input name="w" type="number" step="any" min="16"></label><label>Height<input name="h" type="number" step="any" min="16"></label></div><button>Save</button><button type="button" id="delete">Delete</button></form></div></aside>
+    <div id="dock" role="toolbar" aria-label="Tools">
+        <button id="tool-select" class="tool armed" aria-label="Select" aria-pressed="true" title="Select &middot; esc">
+          <svg width="17" height="17" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
+            <path d="M2.4 1.4 2.4 12.6 5.4 9.8 7.4 14.2 9.1 13.4 7.1 9.1 11.2 9.1Z" />
+          </svg>
+          <span class="tool-key">esc</span>
+        </button>
+        <button id="tool-hand" class="tool" aria-label="Hand" aria-pressed="false" title="Hand &middot; drag to pan &middot; h">
+          <svg width="17" height="17" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M5 7.5V4a1 1 0 0 1 2 0v3M7 7V3a1 1 0 0 1 2 0v4M9 7.5V4.5a1 1 0 0 1 2 0V9c0 2.8-1.8 4.5-4 4.5S3.6 12.2 3 10.6l-.9-2.2a1 1 0 0 1 1.7-1L5 9" />
+          </svg>
+          <span class="tool-key">h</span>
+        </button>
+        <span class="dock-div" aria-hidden="true"></span>
+        <button class="add-row tool" data-kind="service" title="Service &middot; 1">
+          <span class="add-icon icon-service" aria-hidden="true"><svg width="20" height="20" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="1.5" y="4" width="13" height="8" rx="2" /></svg></span>
+          <span class="add-name">Service</span>
+          <span class="add-key tool-key">1</span>
+        </button>
+        <button class="add-row tool" data-kind="datastore" title="Datastore &middot; 2">
+          <span class="add-icon icon-datastore" aria-hidden="true"><svg width="20" height="20" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="1.5" y="4" width="13" height="8" rx="2" /><path d="M1.5 6a2 2 0 0 1 2-2h1v8h-1a2 2 0 0 1-2-2z" fill="currentColor" stroke="none" /></svg></span>
+          <span class="add-name">Datastore</span>
+          <span class="add-key tool-key">2</span>
+        </button>
+        <button class="add-row tool" data-kind="external" title="External &middot; 3">
+          <span class="add-icon icon-external" aria-hidden="true"><svg width="20" height="20" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="1.5" y="4" width="13" height="8" rx="2" stroke-dasharray="2.75 2.5" /></svg></span>
+          <span class="add-name">External</span>
+          <span class="add-key tool-key">3</span>
+        </button>
+        <button class="add-row tool" data-kind="boundary" title="Boundary &middot; 4">
+          <span class="add-icon icon-boundary" aria-hidden="true"><svg width="20" height="20" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="1" y="2.5" width="14" height="11" rx="2" /><path d="M3.5 5.5h4" /></svg></span>
+          <span class="add-name">Boundary</span>
+          <span class="add-key tool-key">4</span>
+        </button>
+        <button class="add-row tool" data-kind="note" title="Note &middot; 5">
+          <span class="add-icon icon-note" aria-hidden="true"><svg width="20" height="20" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 6.5h12" /><path d="M2 9.5h8" opacity="0.55" /></svg></span>
+          <span class="add-name">Note</span>
+          <span class="add-key tool-key">5</span>
+        </button>
+        <button class="add-row tool" data-kind="text" title="Text &middot; T">
+          <span class="add-icon icon-text" aria-hidden="true"><svg width="20" height="20" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 3.5h10M8 3.5v9" /></svg></span>
+          <span class="add-name">Text</span>
+          <span class="add-key tool-key">T</span>
+        </button>
+        <span class="dock-div" aria-hidden="true"></span>
+        <button id="add-edge" class="tool" aria-label="Connect selected" title="Connect selected nodes"><svg width="18" height="18" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3" aria-hidden="true"><path d="M2 12 13 3M7 3h6v6"/></svg><span class="tool-key">Link</span></button></div>
+    <div class="zoom-cluster"><button id="zoom-out" aria-label="Zoom out">−</button><button id="hud-zoom" aria-label="Reset zoom">100%</button><button id="zoom-in" aria-label="Zoom in">+</button><span class="zoom-div" aria-hidden="true"></span><button id="fit" aria-label="Fit">fit</button></div>
+    <aside id="local-review" class="local-float" aria-labelledby="review-title" hidden><div class="rail-head"><h2 id="review-title" class="rail-title">Review</h2><button class="icon-btn" data-close="review" aria-label="Close review">×</button></div><p>Select a node or connection to leave a note.</p><form id="note"><label>Note on selection<textarea name="text" required></textarea></label><button>Add note</button></form><div id="notes"></div></aside>
+    <aside id="local-conversation" class="local-float" aria-label="Conversation" hidden><div class="rail-head"><h2 class="rail-title">Conversation</h2><button class="icon-btn" data-close="conversation" aria-label="Close conversation">×</button></div></aside>
+  </main>
+  <script type="module" src="/src/local-main.ts"></script>
+</body></html>

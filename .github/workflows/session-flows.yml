@@ -83,3 +83,6 @@ jobs:
 
       - name: The mcp Worker's tools on a real DB (both client eras)
         run: scripts/stdb-test.sh mcp
+
+  local-binary:
+    uses: ./.github/workflows/native-packages.yml

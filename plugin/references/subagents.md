@@ -13,7 +13,8 @@ the board id, the node), in every delegation:
 > `targetId: "<node id>"` (<label>), `path`, `symbol` (`Class.member` or a
 > top-level name; a range only for non-TypeScript files), and
 > `author: "<your name>"`. Leave `capture` empty; if the answer names an
-> `npx -y @redcrayonai/draw@1 capture …` command, run it in the project and call again
+> `npx -y @redcrayonai/draw@1 capture …` command, prefer `draw capture …` with the same arguments if Draw is installed;
+> otherwise run the named command in the project. Call again
 > with `capture` set to the id it prints. If the committed range is not
 > the symbol you meant, call `<prefix>remove_code_ref` with `board` and `refId`
 > set to that id and add the right one. On `UNCONFIRMED: …`, call

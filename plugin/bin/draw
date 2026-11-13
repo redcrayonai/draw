@@ -1,0 +1,46 @@
+#!/bin/sh
+set -eu
+
+# Package managers symlink bins; resolve those before locating the optional package.
+source=$0
+while [ -L "$source" ]; do
+  directory=$(CDPATH= cd -- "${source%/*}" && pwd)
+  source=$(/usr/bin/readlink "$source")
+  case "$source" in /*) ;; *) source="$directory/$source" ;; esac
+done
+directory=$(CDPATH= cd -- "${source%/*}" && pwd)
+case "$(/usr/bin/uname -s)" in
+  Darwin) platform=darwin ;;
+  Linux) platform=linux ;;
+  *) platform=unsupported ;;
+esac
+case "$(/usr/bin/uname -m)" in
+  arm64|aarch64) arch=arm64 ;;
+  x86_64|amd64) arch=x64 ;;
+  *) arch=unsupported ;;
+esac
+package="@redcrayonai/draw-$platform-$arch"
+architectures=$arch
+# A package installed by x64 Node under Rosetta can later run from an arm64 shell.
+case "$platform-$arch" in
+  darwin-arm64) architectures='arm64 x64' ;;
+  darwin-x64) architectures='x64 arm64' ;;
+esac
+for candidate in $architectures; do
+  for executable in "$directory/../node_modules/@redcrayonai/draw-$platform-$candidate/draw" "$directory/../../draw-$platform-$candidate/draw"; do
+    if [ -x "$executable" ]; then
+      export DRAW_EXECUTABLE="$executable"
+      exec "$executable" "$@"
+    fi
+  done
+done
+# Source checkouts and older plugin installers may omit optional native packages.
+if command -v node >/dev/null 2>&1 && [ -f "$directory/redcrayon.mjs" ]; then
+  if [ "${1-}" = chat-hook ]; then
+    shift
+    exec node "$directory/chat-hook.mjs" "$@"
+  fi
+  exec node "$directory/redcrayon.mjs" "$@"
+fi
+echo "UNAVAILABLE: missing $package. Reinstall @redcrayonai/draw with optional dependencies enabled." >&2
+exit 1

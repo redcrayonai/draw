@@ -262,7 +262,8 @@ export function buildCapture(kind: CaptureKind, opts: CaptureOpts, deadline?: nu
   const { root, state } = checkout(opts.cwd, deadline);
   const objectFormat = gitObjectFormat(root, remainingMs(deadline));
   const remote = githubRemote(gitRemoteUrl(root, remainingMs(deadline)));
-  const common = { v: CAPTURE_VERSION, helper: HELPER_VERSION, toplevel: root, objectFormat, head: gitHead(root, remainingMs(deadline)), ...(remote === undefined ? {} : { remote }) } as const;
+  // Hosted validators accept only the numeric compatibility version, including for preview builds.
+  const common = { v: CAPTURE_VERSION, helper: HELPER_VERSION.split(/[-+]/)[0], toplevel: root, objectFormat, head: gitHead(root, remainingMs(deadline)), ...(remote === undefined ? {} : { remote }) } as const;
   if (kind === 'start') return { ...common, kind };
 
   if (kind === 'ref' || kind === 'cite') {

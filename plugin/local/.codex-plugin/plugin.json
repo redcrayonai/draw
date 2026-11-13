@@ -1,0 +1,7 @@
+{
+  "name": "draw-local",
+  "version": "0.1.0",
+  "description": "Local repository architecture boards and feedback in your current Codex conversation.",
+  "skills": "./skills/",
+  "mcpServers": "./mcp.json"
+}
