@@ -100,14 +100,21 @@ legacy() {
   SPACETIME_ROOT_DIR="$ROOT" SPACETIME_SERVER="$URL" SPACETIME_DB="$DB" "$REPO/scripts/verify-module-local.sh"
 }
 
+# The name of the one case in verify-dashboard-local.mjs that acks every outbox row.
+DRAINS_OUTBOX='^M3 service_outbox: service only'
+
 suite() {
   # verify-access-local.mjs forks a board through importer/src/fork-board.ts.
   [ -d "$REPO/importer/node_modules" ] || pnpm --dir "$REPO/importer" install --frozen-lockfile
   # First and alone: its timing case needs a database no other suite has used yet.
   STDB_URL="$URL" STDB_DB="$DB" STDB_OWNER_TOKEN="$(cat "$ROOT/owner-token")" \
     node --test "$REPO/scripts/verify-board-scope-local.mjs"
+  # Alone, before the suites that share this database: this one case drains every board's
+  # outbox, and those suites assert that the events they just emitted are still in it.
   STDB_URL="$URL" STDB_DB="$DB" STDB_OWNER_TOKEN="$(cat "$ROOT/owner-token")" \
-    node --test "$@" "$REPO/scripts/verify-dashboard-local.mjs" "$REPO/scripts/verify-access-local.mjs" "$REPO/scripts/verify-issuers-local.mjs" \
+    node --test --test-name-pattern="$DRAINS_OUTBOX" "$REPO/scripts/verify-dashboard-local.mjs"
+  STDB_URL="$URL" STDB_DB="$DB" STDB_OWNER_TOKEN="$(cat "$ROOT/owner-token")" \
+    node --test --test-skip-pattern="$DRAINS_OUTBOX" "$@" "$REPO/scripts/verify-dashboard-local.mjs" "$REPO/scripts/verify-access-local.mjs" "$REPO/scripts/verify-issuers-local.mjs" \
       "$REPO/scripts/verify-change-notes-local.mjs" "$REPO/scripts/verify-threats-local.mjs" "$REPO/scripts/verify-icons-local.mjs" \
       "$REPO/scripts/verify-code-consent-local.mjs" "$REPO/scripts/verify-deletion-local.mjs" "$REPO/scripts/verify-incidents-local.mjs"
   # After, and alone: it serves the test issuer on the port verify-issuers-local.mjs serves it on.
