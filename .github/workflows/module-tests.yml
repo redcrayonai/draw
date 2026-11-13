@@ -6,6 +6,7 @@
 # Public wire compatibility is compared with main in the local variant.
 # Local, staging and production run the integration suites; the committed
 # none variant must refuse every sender (scripts/stdb-test.sh failclosed).
+# The outside variant runs only the outside-plugin builder, beside the suites.
 # Only staging and production refuse senders and budget writes (RC-571), so
 # their runs are the ones that test both.
 
@@ -22,7 +23,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        variant: [local, staging, production, none]
+        variant: [local, staging, production, none, outside]
     steps:
       - uses: actions/checkout@v7
         with:
@@ -65,7 +66,7 @@ jobs:
 
       # Add, upgrade, refuse, skip, retire and roll back the test plugin outside this repo.
       - name: Outside plugins
-        if: matrix.variant == 'local'
+        if: matrix.variant == 'outside'
         run: scripts/stdb-test.sh outside
 
       - name: The committed issuers are the none variant
@@ -78,7 +79,7 @@ jobs:
           }
 
       - name: Access, dashboard, architecture, chart, issuer and mark suites (${{ matrix.variant }})
-        if: matrix.variant != 'none'
+        if: matrix.variant != 'none' && matrix.variant != 'outside'
         env:
           MODULE_ENV: ${{ matrix.variant }}
           # every suite runs under the storage limits where a deployment would turn them on
