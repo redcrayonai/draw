@@ -9,8 +9,9 @@ export interface ChatSession {
   id: string;
   agent: string;
   name: string;
-  /** `reset`: the person can start the conversation over ("New chat"). */
-  capabilities: { stop: 'interrupt' | 'step' | 'none'; approvals: boolean; reset?: boolean };
+  /** `reset`: the person can start the conversation over ("New chat"). `end`: they can end
+   *  board chat from the board; the agent goes on in its own conversation ("End chat"). */
+  capabilities: { stop: 'interrupt' | 'step' | 'none'; approvals: boolean; reset?: boolean; end?: boolean };
 }
 
 export type ChatEvent =

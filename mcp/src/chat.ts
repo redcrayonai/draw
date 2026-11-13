@@ -42,7 +42,7 @@ export const CHAT_REAUTH_MS = 30_000;
 const ACCESS_TTL_MS = CHAT_VIEWER_TTL_MS;
 export const CHAT_CLOSE = { auth: 4001, replaced: 4009, abuse: 4008 } as const;
 const AGENT_TYPES = new Set(['snapshot', 'state', 'queue', 'delivered', 'text', 'user', 'tool', 'notice', 'approval']);
-const PERSON_TYPES = new Set(['send', 'receipt', 'delete', 'stop', 'resume', 'approval']);
+const PERSON_TYPES = new Set(['send', 'receipt', 'delete', 'stop', 'resume', 'approval', 'end']);
 const json = (v: unknown) => JSON.stringify(v);
 const bytes = (v: string) => new TextEncoder().encode(v).byteLength;
 const bounded = (v: unknown, max: number): v is string => typeof v === 'string' && v.trim().length > 0 && bytes(v) <= max && !/[\u0000-\u001f\u007f]/.test(v);
@@ -53,7 +53,7 @@ function sessionDescriptor(value: unknown): ChatSession | null {
   const s = value as ChatSession;
   if (!bounded(s.id, 256) || !bounded(s.agent, 80) || !bounded(s.name, 160) || !s.capabilities ||
       !['interrupt', 'step', 'none'].includes(s.capabilities.stop) || typeof s.capabilities.approvals !== 'boolean') return null;
-  return { id: s.id, agent: s.agent, name: s.name, capabilities: { stop: s.capabilities.stop, approvals: s.capabilities.approvals } };
+  return { id: s.id, agent: s.agent, name: s.name, capabilities: { stop: s.capabilities.stop, approvals: s.capabilities.approvals, ...(s.capabilities.end === true ? { end: true } : {}) } };
 }
 
 export class ChatHub {

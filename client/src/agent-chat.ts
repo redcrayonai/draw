@@ -308,6 +308,8 @@ const ICON = {
   check: 'M3.5 8.5l3 3 6-7',
   down: 'M8 3v10M4 9l4 4 4-4',
   pencil: 'M2.75 13.25V11l7.5-7.5 2.25 2.25-7.5 7.5ZM10.25 3.5l1.5-1.5 2.25 2.25-1.5 1.5',
+  leave: 'M6.5 2.75H4a1.25 1.25 0 0 0-1.25 1.25v8A1.25 1.25 0 0 0 4 13.25h2.5M10.25 5.25 13 8l-2.75 2.75M13 8H6.5',
+  plus: 'M8 3.5v9M3.5 8h9',
 };
 
 export function mountAgentChat(chatButton: HTMLButtonElement, opts: AgentChatOpts) {
@@ -427,10 +429,19 @@ export function mountAgentChat(chatButton: HTMLButtonElement, opts: AgentChatOpt
   };
   renderSound();
   armChime();
-  const fresh = el('span');
-  fresh.append(el('span', 'ac-sep', ' · '), button('ac-sound', 'New chat', () => frame({ type: 'reset' })));
+  // The session's one action, by what it can do: the person's own agent is let go, a plugin's starts over.
+  // It has a row of its own under the look switch: named, and out of the way of Close.
+  const sessionAction = button('ac-end', '', () => {
+    if (!model.session?.capabilities.end) return void frame({ type: 'reset' });
+    if (!frame({ type: 'end' })) return;
+    // Their agent keeps the conversation; the panel goes back to how to connect one.
+    model.items = [];
+    model.queue = [];
+    render();
+  });
+  sessionAction.hidden = true;
   const statusLine = el('div', 'ac-private');
-  statusLine.append(statusText, el('span', 'ac-sep', ' · '), sound, fresh);
+  statusLine.append(statusText, el('span', 'ac-sep', ' · '), sound);
   const name = el('div', 'ac-name');
   const agentName = el('span', undefined, 'Your agent');
   name.append(dot, agentName);
@@ -458,7 +469,7 @@ export function mountAgentChat(chatButton: HTMLButtonElement, opts: AgentChatOpt
   close.append(icon(ICON.close));
   close.setAttribute('aria-label', 'Close chat');
   const head = el('div', 'ac-head');
-  head.append(id, seg, close);
+  head.append(id, seg, close, sessionAction);
 
   const log = el('div', 'ac-log');
   log.setAttribute('role', 'log');
@@ -798,7 +809,15 @@ export function mountAgentChat(chatButton: HTMLButtonElement, opts: AgentChatOpt
     const awaitingApproval = model.online && model.items.some(i => i.kind === 'approval' && i.status === 'pending');
     statusText.textContent = `${awaitingApproval ? 'Needs approval' : state} · private to you`;
     agentName.textContent = model.session?.name || 'Your agent';
-    fresh.hidden = !model.online || !model.session?.capabilities.reset || model.items.length + model.queue.length === 0;
+    const ends = Boolean(model.session?.capabilities.end);
+    const label = ends ? 'End chat' : 'New chat';
+    if (sessionAction.dataset.label !== label) {
+      sessionAction.dataset.label = label;
+      sessionAction.replaceChildren(icon(ends ? ICON.leave : ICON.plus), label);
+      sessionAction.title = ends ? 'Disconnect your agent from this board. It carries on in its own conversation.' : 'Start this conversation over';
+    }
+    sessionAction.hidden = !model.online || (!ends && (!model.session?.capabilities.reset || model.items.length + model.queue.length === 0));
+    head.toggleAttribute('data-action', !sessionAction.hidden);
     sessions.hidden = model.sessions.length < 2;
     const options = JSON.stringify(model.sessions.map(s => [s.id, s.name]));
     if (sessions.dataset.options !== options) {

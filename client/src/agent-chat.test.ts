@@ -588,8 +588,9 @@ describe('mountAgentChat', () => {
     expect(panel().querySelector('.ac-name')!.textContent).toBe('Agent');
     expect(panel().textContent).toContain('Ready');
     expect([...panel().querySelectorAll('.ac-suggest button')].map(b => b.textContent)).toEqual(['Explain this board']);
-    const newChat = [...panel().querySelectorAll('button')].find(b => b.textContent === 'New chat')!;
-    expect(newChat.parentElement!.hidden).toBe(true);
+    const newChat = panel().querySelector<HTMLButtonElement>('.ac-end')!;
+    expect(newChat.textContent).toBe('New chat');
+    expect(newChat.hidden).toBe(true);
 
     const input = panel().querySelector('textarea')!;
     input.value = 'What is this?';
@@ -604,7 +605,7 @@ describe('mountAgentChat', () => {
     expect(chat.online).toBe(false);
     expect(chat.prepareMessage('I sent 1 red-crayon mark.')).toBeUndefined();
 
-    expect(newChat.parentElement!.hidden).toBe(false);
+    expect(newChat.hidden).toBe(false);
     newChat.click();
     await flush();
     expect(panel().textContent).not.toContain('A checkout flow.');
@@ -615,5 +616,29 @@ describe('mountAgentChat', () => {
     chat.setAvailable(false);
     expect(button.hidden).toBe(true);
     expect(panel().hidden).toBe(true);
+  });
+
+  it('End chat shows only for an agent that can be let go; it sends end and puts the panel back to connecting one', async () => {
+    const { button, socket } = await mount();
+    const able = (end: boolean) => ({ id: 'one', agent: 'claude-code', name: 'Claude Code', capabilities: { stop: 'step', approvals: true, ...(end ? { end: true } : {}) } });
+    const slot = () => panel().querySelector<HTMLButtonElement>('.ac-end')!;
+    const head = () => panel().querySelector<HTMLElement>('.ac-head')!;
+    button.click();
+    socket.frame({ type: 'snapshot', session: able(false), events: [{ type: 'user', id: 'u', text: 'Earlier' }], queue: [], state: 'idle' });
+    expect(slot().hidden).toBe(true); // an older helper: nothing to offer
+    expect(head().hasAttribute('data-action')).toBe(false);
+
+    socket.frame({ type: 'snapshot', session: able(true), events: [{ type: 'user', id: 'u', text: 'Earlier' }], queue: [], state: 'idle' });
+    expect(slot().textContent).toBe('End chat');
+    expect(slot().hidden).toBe(false);
+    expect(head().hasAttribute('data-action')).toBe(true);
+    slot().click();
+    expect(socket.sent[socket.sent.length - 1]).toEqual({ type: 'end', session: 'one' });
+    socket.frame({ type: 'sessions', sessions: [], selected: 'one' });
+    socket.frame({ agent: 'gone' });
+    expect(panel().textContent).not.toContain('Earlier');
+    expect(panel().textContent).toContain('No agent connected');
+    expect(panel().textContent).toContain('Copy prompt for agent');
+    expect(slot().hidden).toBe(true);
   });
 });

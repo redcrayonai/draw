@@ -415,4 +415,23 @@ it('refreshes unchanged access without rebuilding history, while replacement sti
   replacement.sent.length = 0;
   await hub.message(person, JSON.stringify({ auth: 'ada', sync: true }));
   expect(traffic(replacement)).toEqual([{ type: 'joined' }]);
+
+});
+
+it('passes End chat to the selected agent, and tells the person only what an agent declared it can do', async () => {
+  const { hub, open } = setup();
+  const descriptor = { id: 'claude-code:1', agent: 'claude-code', name: 'Claude Code', capabilities: { stop: 'step', approvals: true, end: true, reset: true, other: 1 } };
+  const agent = await open('tok-agent-ada', 'agent', descriptor);
+  const person = await open('ada', 'person');
+  // Only `end` is an agent's to declare; anything else it sends is dropped.
+  expect((person.sent.find(f => f.type === 'sessions') as any).sessions[0].capabilities).toEqual({ stop: 'step', approvals: true, end: true });
+  agent.sent.length = 0;
+  await hub.message(person, JSON.stringify({ type: 'end', session: 'claude-code:1' }));
+  expect(traffic(agent)).toEqual([{ type: 'end', session: 'claude-code:1' }]);
+
+  // Someone who is not linked to that agent cannot end its chat.
+  const bob = await open('bob', 'person');
+  agent.sent.length = 0;
+  await hub.message(bob, JSON.stringify({ type: 'end' }));
+  expect(traffic(agent)).toEqual([]);
 });

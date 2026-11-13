@@ -287,7 +287,7 @@ export async function connectCodex(options: {
     }
     buffered = [];
     if (closed) throw new Error('UNAVAILABLE: the terminal connection closed while connecting.');
-    const session: ChatSession = { id: `codex:${threadId}`, agent: 'codex', name: 'Codex', capabilities: { stop: 'interrupt', approvals: true } };
+    const session: ChatSession = { id: `codex:${threadId}`, agent: 'codex', name: 'Codex', capabilities: { stop: 'interrupt', approvals: true, end: true } };
     return {
       session,
       send(prompt) {
