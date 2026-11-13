@@ -32,6 +32,8 @@ export const EDGE_MOTION_TABLES = ['visible_edge_motion'];
 export const CODE_LINK_TABLES = ['visible_session_remote', 'visible_code_ref_hash', 'visible_edge_evidence_hash'];
 /** Incident triage: chart pins, the shared time window, lifetime flags and incident state. Optional, like charts. */
 export const INCIDENT_TABLES = ['visible_chart_anchor', 'visible_board_window', 'visible_board_lifetime', 'visible_incident'];
+/** Nodes that link another board (quick add's "Link a board"). Optional, like charts: a module without them draws plain nodes. */
+export const NODE_LINK_TABLES = ['visible_node_link'];
 /** The caller's saved library (one owner-filtered view). Optional, like charts. */
 export const LIBRARY_VIEWS = ['my_library'];
 /**
@@ -56,7 +58,13 @@ export const EMBED_VIEWS = ['my_chart_embeds', 'my_board_embeds'];
  * picking the board to open. The board tables return only the boards this
  * connection opened (open_boards, RC-605), so the list comes first.
  */
-export const LIST_TABLES = ['visible_board', 'my_boards'];
+export const LIST_TABLES = ['visible_board', 'my_board_access'];
+/**
+ * my_board_access with every board's stats, which the canvas never reads. A content write
+ * refreshes its board's stats, and that re-ran this view (a walk over every board the reader
+ * lists) for each open canvas. Subscribed only on a module from before my_board_access.
+ */
+export const LEGACY_LIST_VIEWS = ['my_boards'];
 /** Every other table in module_bindings; the test keeps the lists in step with it. */
 export const CORE_TABLES = ['visible_cursor', 'visible_edge', 'visible_hide_set', 'visible_hide_set_member', 'visible_node', 'visible_participant', 'visible_selection'];
 /**
@@ -65,6 +73,16 @@ export const CORE_TABLES = ['visible_cursor', 'visible_edge', 'visible_hide_set'
  * visible_repo_file, which only agents read, service_demo_reset, the mcp cron's, and the stored-code setting (RC-690), which the dashboard and agents read.
  */
 export const NOT_SUBSCRIBED = ['my_workspaces', 'my_workspace_members', 'my_workspace_teams', 'my_workspace_team_members', 'my_workspace_board_grants', 'my_workspace_team_grants', 'my_workspace_invites', 'my_workspace_service_accounts', 'my_workspace_api_keys', 'service_workspace_api_keys', 'my_guest_board', 'my_board_creations', 'my_board_slugs', 'my_activity', 'service_outbox', 'service_demo_reset', 'my_architecture_histories', 'my_agent_grants', 'visible_repo_file', 'visible_board_people', 'my_code_consent', 'visible_board_code_consent', 'embedded_chart', 'embedded_board', 'my_board_versions', 'my_incidents'];
+
+/** What the canvas reads of a board list row: my_board_access, and the same columns of my_boards. */
+export interface BoardAccess { boardId: bigint; access: string; sharedWith: string[]; linkMode: string; linkToken: string; isSession: boolean }
+interface ListTable { iter(): Iterable<BoardAccess>; }
+
+/** The caller's board list, from whichever view this connection subscribed to (subscribeLists). */
+export function boardAccess(conn: { db: { myBoardAccess?: ListTable; myBoards?: ListTable } }): BoardAccess[] {
+  const rows = [...(conn.db.myBoardAccess?.iter() ?? [])];
+  return rows.length > 0 ? rows : [...(conn.db.myBoards?.iter() ?? [])];
+}
 
 interface Builder {
   onApplied(cb: () => void): Builder;
@@ -82,7 +100,15 @@ export function subscribeLists(
   agentLinks = false,
   plugins = false
 ): void {
-  conn.subscriptionBuilder().onApplied(onApplied).onError(onError).subscribe(all(LIST_TABLES));
+  let listed = false;
+  conn.subscriptionBuilder()
+    .onApplied(() => { listed = true; onApplied(); })
+    .onError(ctx => {
+      // Only a module without the view; a list that fails later, or for another reason, fails the board.
+      if (listed || !String((ctx.event as Error | undefined)?.message ?? ctx.event).includes('my_board_access')) { onError(ctx); return; }
+      conn.subscriptionBuilder().onApplied(onApplied).onError(onError).subscribe(all(['visible_board', ...LEGACY_LIST_VIEWS]));
+    })
+    .subscribe(all(LIST_TABLES));
   conn.subscriptionBuilder()
     .onError(ctx => console.warn('architecture history unavailable:', ctx.event))
     .subscribe(all(ARCHITECTURE_TABLES));
@@ -172,4 +198,7 @@ export function subscribeBoard(
   conn.subscriptionBuilder()
     .onError(ctx => console.warn('incident tables unavailable (module predates them):', ctx.event))
     .subscribe(all(INCIDENT_TABLES));
+  conn.subscriptionBuilder()
+    .onError(ctx => console.warn('board links unavailable (module predates them):', ctx.event))
+    .subscribe(all(NODE_LINK_TABLES));
 }

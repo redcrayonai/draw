@@ -3306,6 +3306,44 @@ body.plugin-dock-resizing {
   pointer-events: none;
 }
 
+/* A frame's layers glyph (render.ts makeLayers): quiet until the view is inside that frame, then it takes the accent. */
+.node-layers {
+  fill: none;
+  stroke: var(--muted);
+  stroke-width: 1.25;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  cursor: pointer;
+}
+
+/* The glyphs are pressed to go in (interactions.ts): an unpainted target a little larger than the drawing. */
+.node-glyph-hit {
+  fill: transparent;
+  stroke: none;
+  pointer-events: all;
+}
+
+.node-layers:hover {
+  stroke: var(--ink);
+}
+
+.node-layers:hover .node-layers-top {
+  fill: var(--ink);
+}
+
+.node-layers-top {
+  fill: var(--muted);
+  fill-opacity: 0.35;
+}
+
+#world .node.depth-frame .node-layers {
+  stroke: var(--depth-glow);
+}
+
+#world .node.depth-frame .node-layers-top {
+  fill: var(--depth-glow);
+}
+
 /* colour fills (declared later, equal specificity) still win over the tint */
 .node.focal .node-rect {
   fill: var(--accent-soft);
@@ -6031,6 +6069,185 @@ button:disabled { cursor: default; opacity: 0.45; }
   }
 }
 @keyframes edge-flow { to { stroke-dashoffset: -10; } }
+/* ---- Depth: stepped inside a frame of the board (depth.ts) ----
+   The accent is white on dark themes, where it reads as light coming off the frame, and the
+   theme's ink on light ones, where white would not show. */
+#depth-trail,
+#world {
+  --depth-glow: #fff;
+}
+
+@supports (color: light-dark(#000, #fff)) {
+  #depth-trail,
+  #world {
+    --depth-glow: light-dark(var(--ink), #fff);
+  }
+}
+
+/* Everything outside the frame steps back; the frame's own border carries the accent. */
+#world .node.depth-out,
+#world .edge.depth-out,
+#world .edge-labels.depth-out { opacity: 0.1; }
+
+#world .node.depth-frame .node-rect {
+  stroke: var(--depth-glow);
+  stroke-opacity: 0.85;
+  stroke-dasharray: none;
+  filter: drop-shadow(0 0 10px color-mix(in srgb, var(--depth-glow) 60%, transparent));
+}
+
+/* The trail sits on the canvas, top centre: the header names the board, this names the place on it.
+   Bare text with a > between levels, no bar behind it; a halo in the canvas colour keeps it legible
+   over whatever is drawn underneath. */
+#depth-trail {
+  position: absolute;
+  top: 18px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 13;
+  max-width: calc(100% - 32px);
+  font: 500 13px/1 var(--sans);
+  color: var(--muted);
+  text-shadow: 0 0 4px var(--paper), 0 0 10px var(--paper);
+}
+
+#depth-trail[hidden] {
+  display: none;
+}
+
+#depth-trail ol {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+#depth-trail li {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+}
+
+#depth-trail li + li::before {
+  content: '>';
+  margin: 0 10px;
+  color: var(--faint);
+}
+
+.depth-crumb {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  min-width: 0;
+  padding: 4px 0;
+  font: inherit;
+  color: var(--muted);
+  transition: color var(--dur) var(--ease);
+}
+
+.depth-name {
+  max-width: 24ch;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* The level's colour: its node's, or a quiet neutral for the board itself. */
+.depth-dot {
+  flex: none;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--level-color, var(--muted));
+}
+
+button.depth-crumb:hover {
+  color: var(--ink);
+}
+
+/* Where the view is: the one lit level. */
+.depth-crumb.current {
+  color: var(--depth-glow);
+  font-weight: 600;
+  /* A filter, not a text-shadow: the name clips its overflow for the ellipsis, and that would cut the glow square.
+     It lights the dot with the name. */
+  text-shadow: none;
+  filter:
+    drop-shadow(0 0 5px color-mix(in srgb, var(--depth-glow) 70%, transparent))
+    drop-shadow(0 0 14px color-mix(in srgb, var(--depth-glow) 40%, transparent));
+}
+
+#tb-step-in,
+#tb-open-board {
+  color: var(--ink);
+  white-space: nowrap;
+}
+
+#tb-open-board {
+  display: block;
+  max-width: 28ch;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* #toolbar button sets display, which would show a hidden button. */
+#tb-step-in[hidden],
+#tb-open-board[hidden] {
+  display: none;
+}
+
+/* ---- Quick add: the menu a click on a node's side handle opens (quick-add.ts) ---- */
+#quick-add {
+  position: absolute;
+  z-index: 15;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 190px;
+  padding: 5px;
+  background: var(--panel-2);
+  border: 1px solid var(--border);
+  border-radius: var(--r-lg);
+  box-shadow: var(--shadow-lg);
+}
+
+#quick-add[hidden] {
+  display: none;
+}
+
+#quick-add button {
+  height: 32px;
+  padding: 0 10px;
+  border-radius: var(--r-md);
+  font: 500 13px/1 var(--sans);
+  color: var(--ink);
+  text-align: left;
+  white-space: nowrap;
+  transition: background var(--dur) var(--ease);
+}
+
+#quick-add button:hover,
+#quick-add button:focus-visible {
+  background: var(--panel-hi);
+  outline: none;
+}
+
+/* A node that links another board (render.ts makeLinkGlyph), in the corner the layers glyph uses. */
+.node-link {
+  fill: none;
+  stroke: var(--sel);
+  stroke-width: 1.4;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  cursor: pointer;
+}
+
+.node-link-private {
+  stroke: var(--muted);
+}
+
 /* Blast radius (threats): the open threat's reach. It owns the dimming (no focus-dim while blast-on).
    #world-prefixed so these out-specify .color-* and the overlay edge rules. */
 #world .node.blast-src .node-rect { stroke: var(--c-red); stroke-width: 1.5; }

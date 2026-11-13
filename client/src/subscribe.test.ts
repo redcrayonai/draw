@@ -26,6 +26,7 @@ import {
   openBoards,
   subscribeBoard,
   subscribeLists,
+  LEGACY_LIST_VIEWS, NODE_LINK_TABLES, boardAccess,
 } from './subscribe';
 
 type Sub = { queries: string[]; onError?: (c: { event?: unknown }) => void; onApplied?: () => void };
@@ -50,7 +51,7 @@ describe('board subscription', () => {
   it('list + core + companion + route tables + the unsubscribed dashboard views are exactly the tables in module_bindings', () => {
     const inBindings = [...bindings.matchAll(/^ {4}name: '(\w+)',$/gm)].map(m => m[1]).sort();
     expect(
-      [...LIST_TABLES, ...CORE_TABLES, ...COMPANION_TABLES, ...ROUTE_TABLES, ...ARCHITECTURE_TABLES, ...CHART_TABLES, ...ICON_TABLES, ...LIBRARY_VIEWS, ...TRACE_TABLES, ...CHANGE_NOTE_TABLES, ...THREAT_TABLES, ...MARK_TABLES, ...EDGE_WEIGHT_TABLES, ...EDGE_MOTION_TABLES, ...CODE_LINK_TABLES, ...INCIDENT_TABLES, ...AGENT_LINK_VIEWS, ...SHARE_VIEWS, ...EMBED_VIEWS, ...PERMISSION_VIEWS, ...PLUGIN_VIEWS, ...NOT_SUBSCRIBED].sort()
+      [...LIST_TABLES, ...CORE_TABLES, ...COMPANION_TABLES, ...ROUTE_TABLES, ...ARCHITECTURE_TABLES, ...CHART_TABLES, ...ICON_TABLES, ...LIBRARY_VIEWS, ...TRACE_TABLES, ...CHANGE_NOTE_TABLES, ...THREAT_TABLES, ...MARK_TABLES, ...EDGE_WEIGHT_TABLES, ...EDGE_MOTION_TABLES, ...CODE_LINK_TABLES, ...INCIDENT_TABLES, ...NODE_LINK_TABLES, ...AGENT_LINK_VIEWS, ...SHARE_VIEWS, ...EMBED_VIEWS, ...PERMISSION_VIEWS, ...PLUGIN_VIEWS, ...LEGACY_LIST_VIEWS, ...NOT_SUBSCRIBED].sort()
     ).toEqual(inBindings);
   });
 
@@ -89,7 +90,7 @@ describe('board subscription', () => {
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
     subscribeLists(conn, () => {}, failed);
     expect(conn.subs.map(s => s.queries)).toEqual([
-      ['SELECT * FROM visible_board', 'SELECT * FROM my_boards'],
+      ['SELECT * FROM visible_board', 'SELECT * FROM my_board_access'],
       ['SELECT * FROM visible_architecture_history', 'SELECT * FROM visible_architecture_version'],
       ['SELECT * FROM my_library'],
       ['SELECT * FROM my_link_includes'],
@@ -107,6 +108,40 @@ describe('board subscription', () => {
     conn.subs[0].onError!({ event: new Error('lost') });
     expect(failed).toHaveBeenCalledTimes(1);
     warn.mockRestore();
+  });
+
+  it('a module from before my_board_access gets my_boards instead, and any other list failure still fails the board', () => {
+    const conn = fakeConn();
+    const applied = vi.fn(), failed = vi.fn();
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    subscribeLists(conn, applied, failed);
+    conn.subs[0].onError!({ event: new Error('no such table: `my_board_access`') });
+    expect(failed).not.toHaveBeenCalled();
+    const legacy = conn.subs[conn.subs.length - 1];
+    expect(legacy.queries).toEqual(['SELECT * FROM visible_board', 'SELECT * FROM my_boards']);
+    legacy.onApplied!();
+    expect(applied).toHaveBeenCalledTimes(1);
+    legacy.onError!({ event: new Error('lost') });
+    expect(failed).toHaveBeenCalledTimes(1);
+
+    // Once the list is applied, an error naming the view is a real failure, not an old module.
+    const live = fakeConn();
+    const liveFailed = vi.fn();
+    subscribeLists(live, () => {}, liveFailed);
+    live.subs[0].onApplied!();
+    const before = live.subs.length;
+    live.subs[0].onError!({ event: new Error('my_board_access: connection reset') });
+    expect(liveFailed).toHaveBeenCalledTimes(1);
+    expect(live.subs).toHaveLength(before);
+    warn.mockRestore();
+  });
+
+  it('reads the board list from whichever view the connection got', () => {
+    const row = (boardId: bigint, access: string) => ({ boardId, access, sharedWith: [], linkMode: '', linkToken: '', isSession: false });
+    const table = (rows: ReturnType<typeof row>[]) => ({ iter: () => rows.values() });
+    expect(boardAccess({ db: { myBoardAccess: table([row(1n, 'owner')]), myBoards: table([]) } }).map(r => r.boardId)).toEqual([1n]);
+    expect(boardAccess({ db: { myBoardAccess: table([]), myBoards: table([row(2n, 'link')]) } }).map(r => r.access)).toEqual(['link']);
+    expect(boardAccess({ db: {} })).toEqual([]);
   });
 
   it('a failing companion subscription does not reach the board error path', () => {
@@ -133,7 +168,8 @@ describe('board subscription', () => {
     const crash = vi.fn();
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
     subscribeBoard(conn, () => {}, crash);
-    expect(conn.subs).toHaveLength(13);
+    expect(conn.subs).toHaveLength(14);
+    expect(conn.subs[13].queries).toEqual(['SELECT * FROM visible_node_link']);
     expect(conn.subs[3].queries).toEqual(['SELECT * FROM visible_chart']);
     expect(conn.subs[4].queries).toEqual(['SELECT * FROM visible_node_icon']);
     expect(conn.subs[5].queries).toEqual(['SELECT * FROM visible_trace_playback']);

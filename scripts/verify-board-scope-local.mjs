@@ -173,7 +173,7 @@ test('two public boards: A is sent none of B\'s node, edge, cursor, selection or
     // The switcher and ⌘K still list every board A can read.
     for (const id of [A, B]) {
       assert.ok(tabA.db.visibleBoard.id.find(id), `visible_board lists ${id}`);
-      assert.ok([...tabA.db.myBoards.iter()].some(row => row.boardId === id), `my_boards lists ${id}`);
+      assert.ok([...tabA.db.myBoardAccess.iter()].some(row => row.boardId === id), `my_board_access lists ${id}`);
     }
   } finally { tabA.disconnect(); tabB.disconnect(); }
 });
@@ -339,4 +339,186 @@ test('an open link board sends code and threats only while the owner includes th
     assert.equal([...pub.db.visibleCodeRef.iter()].length, 1, 'a public board keeps its code');
     assert.equal([...pub.db.visibleThreat.iter()].length, 0, 'and never its threats');
   } finally { pub.disconnect(); }
+});
+
+// One person of each kind of access, and one board each kind reaches: own, team, an agent's grant,
+// a linked agent's own board, public, an opened link, a session.
+async function everyAccess() {
+  const owner = await mint(), member = await mint(), agent = await mint(), visitor = await mint(), stranger = await mint(), service = await mint();
+  await sql(operator, `INSERT INTO service_account (identity, label) VALUES (0x${service.identity}, '${name('scope-test')}')`);
+  const mine = await board(owner), team = await board(owner), shared = await board(owner), linked = await board(owner), open = await board(owner, { isPublic: true });
+  const sessionName = name('scope-session');
+  await ok(owner, 'start_session', [sessionName, `/tmp/${sessionName}`, 'a'.repeat(40)]);
+  const session = BigInt((await sql(operator, `SELECT * FROM board WHERE name = '${sessionName}'`))[0].id);
+  const org = name('scope-org');
+  await ok(service, 'set_org_memberships', [{ __identity__: `0x${member.identity}` }, [org], ['member']]);
+  await ok(service, 'set_org_memberships', [{ __identity__: `0x${owner.identity}` }, [org], ['admin']]);
+  await ok(owner, 'share_board_with_team', [team, org]);
+  const code = randomBytes(32).toString('base64url');
+  await ok(agent, 'offer_agent_link', [code]);
+  await ok(owner, 'redeem_agent_link', [code]);
+  await ok(owner, 'grant_agent_board', [shared, { __identity__: `0x${agent.identity}` }]);
+  await sql(operator, `INSERT INTO board_grant (id, board_id, grantee, role) VALUES (0, ${linked}, 0x${agent.identity}, 'owner')`);
+  const token = randomBytes(16).toString('hex');
+  await ok(owner, 'set_link_share', [shared, 'view', token]);
+  await ok(owner, 'set_link_share_includes', [shared, true, false]); // the link carries threats, not code
+  await ok(visitor, 'open_shared_link', [token]);
+  return { people: { owner, member, agent, visitor, stranger, service }, boards: { mine, team, shared, linked, open, session } };
+}
+
+// A canvas's board views answer from its open boards (memberBoardIds and linkLayerBoardIds with `only`);
+// a sender with nothing open walks every board it reaches. The two must agree, or a tab would read rows
+// its person cannot, or lose rows it can.
+test('members-only rows are the same with a board open as with none, for every kind of access', async () => {
+  const { people, boards } = await everyAccess();
+  for (const B of Object.values(boards)) {
+    await draw(people.owner, B);
+    const [a] = await sql(operator, `SELECT * FROM node WHERE board_id = ${B}`);
+    await ok(people.owner, 'add_repo_files', [B, ['src/auth.ts']]);
+    await ok(people.owner, 'add_threat', [B, a.id, 'vulnerable', 'high', 'openssl RCE', 'Heap overflow.', '9.8', 'openssl@3.0.1', '3.0.7', '["cve"]', '', 'agent']);
+  }
+  const LAYERS = ['visible_threat', 'visible_repo_file'];
+  // First, before any of them opens a board: an identity that has opened one reads through it from then on.
+  const walked = {};
+  for (const [who, person] of Object.entries(people)) {
+    for (const [which, B] of Object.entries(boards)) {
+      walked[`${who}/${which}`] = await Promise.all(LAYERS.map(async view => (await sql(person, `SELECT * FROM ${view} WHERE board_id = ${B}`)).length));
+    }
+  }
+  assert.deepEqual(walked['owner/mine'], [1, 1], 'the owner reads both layers');
+  assert.deepEqual(walked['visitor/shared'], [1, 0], 'the link carries threats and no file list');
+  assert.deepEqual(walked['stranger/mine'], [0, 0], 'a stranger reads neither');
+  for (const [who, person] of Object.entries(people)) {
+    for (const [which, B] of Object.entries(boards)) {
+      let opened = [0, 0];
+      const tab = await canvas(person, [B], LAYERS.map(view => `SELECT * FROM ${view}`)).catch(() => null); // open_boards refuses an unreadable board
+      if (tab) {
+        opened = [[...tab.db.visibleThreat.iter()].filter(row => row.boardId === B).length, [...tab.db.visibleRepoFile.iter()].filter(row => row.boardId === B).length];
+        tab.disconnect();
+      }
+      assert.deepEqual(opened, walked[`${who}/${which}`], `${who} on the ${which} board: open ${opened}, walked ${walked[`${who}/${which}`]}`);
+    }
+  }
+});
+
+// The canvas lists its boards from my_board_access; the dashboard keeps my_boards. Same boards, same access.
+test('my_board_access lists the boards my_boards lists, with the same access, team, link and session', async () => {
+  const { people } = await everyAccess();
+  const rows = async (who, view) => Object.fromEntries((await sql(who, `SELECT * FROM ${view}`))
+    .map(row => [row.board_id, JSON.stringify([row.access, row.shared_with, row.link_mode, row.link_token, row.is_session])]));
+  for (const [who, person] of Object.entries(people)) {
+    const full = await rows(person, 'my_boards'), slim = await rows(person, 'my_board_access');
+    assert.deepEqual(slim, full, `${who}'s board list`);
+    if (who !== 'stranger') assert.ok(Object.keys(slim).length > 0, `${who} lists a board`);
+  }
+  assert.ok(Object.values(await rows(people.owner, 'my_board_access')).some(row => JSON.parse(row)[4] === true), 'the session board is listed as one');
+});
+
+// Before my_board_access a content write re-ran every open canvas's my_boards (it reads the stats the
+// write refreshes), and a board switch worked out the role on every listed board: about 0.35 ms and
+// 0.25 ms per listed board here, with five viewers.
+test('200 more listed boards cost a canvas nothing on a content write or a board switch', async t => {
+  // The writer is a service account: it makes 200 boards and a few hundred nodes in under a minute,
+  // past the write budget and the board limit a person's identity has under the deployed variants.
+  // What is measured is the five viewers, who are ordinary identities and write nothing.
+  const owner = await mint();
+  await sql(operator, `INSERT INTO service_account (identity, label) VALUES (0x${owner.identity}, '${name('scope-writer')}')`);
+  const viewers = [];
+  for (let i = 0; i < 5; i++) viewers.push(await mint());
+  const share = async ids => {
+    const values = ids.flatMap(B => viewers.map(v => `(0, ${B}, 0x${v.identity}, 'owner')`));
+    for (let i = 0; i < values.length; i += 500) await sql(operator, `INSERT INTO board_grant (id, board_id, grantee, role) VALUES ${values.slice(i, i + 500).join(', ')}`);
+  };
+  const P = await board(owner), B = await board(owner);
+  await share([P, B]);
+  const tabs = [];
+  for (const viewer of viewers) tabs.push(await canvas(viewer, [P]));
+  const writer = await canvas(owner, [B]);
+  const median = async call => {
+    const times = [];
+    for (let i = 0; i < 40; i++) {
+      const start = performance.now();
+      await call(i);
+      times.push(performance.now() - start);
+    }
+    return times.sort((x, y) => x - y)[20];
+  };
+  const write = i => writer.reducers.createNode({ boardId: B, label: `n${i}`, sublabel: '', x: 0, y: 0, w: 160, h: 80, token: 'ink', focal: false, kind: undefined, doc: undefined, imported: undefined, shape: undefined, color: undefined, strokeStyle: undefined, size: undefined });
+  const hop = i => tabs[0].reducers.openBoards({ boardIds: [i % 2 ? P : B] });
+  try {
+    await median(write); await median(hop); // warm up
+    const before = { write: await median(write), hop: await median(hop) };
+    const more = [];
+    for (let i = 0; i < 200; i++) more.push(await board(owner));
+    await share(more);
+    await waitFor(() => [...tabs[0].db.myBoardAccess.iter()].length >= 202, 'the viewers list the new boards');
+    const after = { write: await median(write), hop: await median(hop) };
+    t.diagnostic(`content write ${before.write.toFixed(2)} ms, then ${after.write.toFixed(2)} ms; board switch ${before.hop.toFixed(2)} ms, then ${after.hop.toFixed(2)} ms at 200 more listed boards`);
+    assert.ok(after.write < before.write * 2 + 4, `a content write slowed from ${before.write.toFixed(2)} ms to ${after.write.toFixed(2)} ms`);
+    assert.ok(after.hop < before.hop * 2 + 4, `a board switch slowed from ${before.hop.toFixed(2)} ms to ${after.hop.toFixed(2)} ms`);
+  } finally {
+    for (const conn of [...tabs, writer]) conn.disconnect();
+  }
+});
+
+// Board links ("Link a board"): a node that points at another board. The link grants nothing and
+// names its target only to a reader who can open it, so sharing a board never tells who it links.
+test('a board link names its target only to a reader who can open it, and cannot be used to find boards', async () => {
+  const owner = await mint(), friend = await mint(), editor = await mint(), visitor = await mint(), stranger = await mint();
+  const A = await board(owner), T = await board(owner);
+  await draw(owner, A);
+  const [node] = await sql(operator, `SELECT * FROM node WHERE board_id = ${A}`);
+  const targetRow = (await sql(operator, `SELECT * FROM board WHERE id = ${T}`))[0];
+  await ok(owner, 'link_node_board', [node.id, T]);
+  // friend is on both boards; editor can edit A and not open T; the visitor holds a view link to A alone.
+  await sql(operator, `INSERT INTO board_grant (id, board_id, grantee, role) VALUES (0, ${A}, 0x${friend.identity}, 'owner'), (0, ${T}, 0x${friend.identity}, 'owner'), (0, ${A}, 0x${editor.identity}, 'owner')`);
+  const token = randomBytes(16).toString('hex');
+  await ok(owner, 'set_link_share', [A, 'view', token]);
+  await ok(visitor, 'open_shared_link', [token]);
+  const linkSeenBy = async who => (await sql(who, `SELECT * FROM visible_node_link WHERE node_id = ${node.id}`))
+    .map(row => [BigInt(row.target_board_id), row.name, row.slug]);
+  const named = [[T, targetRow.name, targetRow.slug]], blank = [[0n, '', '']];
+  assert.deepEqual(await linkSeenBy(owner), named);
+  assert.deepEqual(await linkSeenBy(friend), named);
+  assert.deepEqual(await linkSeenBy(visitor), blank, 'a reader of the board alone learns that it links something, not what');
+  assert.deepEqual(await linkSeenBy(editor), blank, 'and so does someone who can edit it');
+  assert.deepEqual(await linkSeenBy(stranger), [], 'a stranger reads no link at all');
+  assert.equal((await call(visitor, 'update_cursor', [T, 0, 0])).status !== 200, true, 'the link did not open the target to the visitor');
+
+  // One refusal for a board that is private, one that does not exist, and the node's own board.
+  const refusal = async (who, target) => (await call(who, 'link_node_board', [node.id, target])).text;
+  const privateBoard = await refusal(editor, T);
+  assert.match(privateBoard, /link rule: link a node to another board that you can open/);
+  assert.equal(await refusal(editor, 987654321n), privateBoard, 'a missing board answers exactly as a private one');
+  assert.equal(await refusal(owner, A), privateBoard);
+  assert.match(await refusal(stranger, T), /not authorized/, 'someone who cannot open the board cannot link from it');
+  assert.match(await refusal(visitor, T), /not authorized/, 'nor can a reader of it');
+  assert.deepEqual(await linkSeenBy(owner), named, 'no refused call changed the link');
+
+  // Quick add makes node, edge and link in one transaction: a link it may not make leaves no node and no edge.
+  const counts = async () => [(await sql(operator, `SELECT * FROM node WHERE board_id = ${A}`)).length, (await sql(operator, `SELECT * FROM edge WHERE board_id = ${A}`)).length];
+  const beside = target => call(editor, 'create_connected_node', [A, 'Board', '', 320, 0, 160, 80, 'ink', false, ...Array(7).fill(NONE), node.id, '', `human:${editor.identity}`, target]);
+  const start = await counts();
+  assert.match((await beside({ some: T })).text, /link rule/);
+  assert.deepEqual(await counts(), start, 'the refused link took its node and edge with it');
+  assert.equal((await beside({ some: A })).status !== 200, true, 'nor to the board it is on');
+  assert.deepEqual(await counts(), start);
+  assert.equal((await beside(NONE)).status, 200, 'without a link it is a node and its edge');
+  assert.deepEqual(await counts(), [start[0] + 1, start[1] + 1]);
+  const [added] = await sql(operator, `SELECT * FROM node WHERE board_id = ${A} AND label = 'Board'`);
+  await ok(owner, 'delete_node', [added.id]);
+
+  // Access to the target taken away: the name goes with it.
+  await sql(operator, `DELETE FROM board_grant WHERE board_id = ${T} AND grantee = 0x${friend.identity}`);
+  assert.deepEqual(await linkSeenBy(friend), blank);
+
+  // The target deleted: the link goes, the node stays. The node deleted: so does its link.
+  const T2 = await board(owner);
+  const [, other] = await sql(operator, `SELECT * FROM node WHERE board_id = ${A}`);
+  await ok(owner, 'link_node_board', [other.id, T2]);
+  await ok(owner, 'delete_board', [T]);
+  assert.deepEqual(await sql(operator, `SELECT * FROM node_link WHERE node_id = ${node.id}`), []);
+  assert.equal((await sql(operator, `SELECT * FROM node WHERE id = ${node.id}`)).length, 1);
+  await ok(owner, 'delete_node', [other.id]);
+  assert.deepEqual(await sql(operator, `SELECT * FROM node_link WHERE board_id = ${A}`), []);
 });

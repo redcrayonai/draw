@@ -64,6 +64,7 @@ export const LEFT_OUT: Record<string, string> = {
   workspace: NOT_BOARD, workspaceAccount: NOT_BOARD, workspaceMember: NOT_BOARD, workspaceTeam: NOT_BOARD, workspaceTeamMember: NOT_BOARD,
   workspaceServiceAccount: NOT_BOARD, workspaceApiKey: NOT_BOARD, workspaceMachineIdentity: NOT_BOARD, workspaceApiKeyExpiry: NOT_BOARD,
   workspacePlugin: NOT_BOARD, boardItemReceipt: 'short-lived create retry receipts',
+  nodeLink: 'a link to another board: the restored board is a new one, and its nodes point at no other board',
   ...Object.fromEntries(Object.entries(PLUGIN_TABLES).map(([table, metadata]) => [table, metadata.why])),
 };
 

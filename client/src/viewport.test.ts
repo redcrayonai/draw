@@ -81,6 +81,49 @@ describe('Viewport.stopAnimation (G7)', () => {
     }
   });
 
+  it('a timed fit zooms to the same view an instant fit jumps to, and a gesture stops it on the way', () => {
+    const frames = new Map<number, FrameRequestCallback>();
+    let next = 0;
+    vi.stubGlobal('requestAnimationFrame', (cb: FrameRequestCallback) => { frames.set(++next, cb); return next; });
+    vi.stubGlobal('cancelAnimationFrame', (id: number) => { frames.delete(id); });
+    const flush = (t: number) => { const due = [...frames.values()]; frames.clear(); for (const cb of due) cb(t); };
+    try {
+      const frame = { minX: 2000, minY: 1000, maxX: 2600, maxY: 1300 };
+      const jumped = mkViewport();
+      jumped.fit(frame, NONE);
+      const vp = mkViewport();
+      const t0 = performance.now();
+      vp.fit(frame, NONE, 360);
+      expect([vp.tx, vp.ty, vp.scale]).toEqual([0, 0, 1]); // nothing moves before the first frame
+      flush(t0 + 60);
+      expect(vp.scale).toBeGreaterThan(1);
+      expect(vp.scale).toBeLessThan(jumped.scale);
+      flush(t0 + 400);
+      expect(vp.scale).toBeCloseTo(jumped.scale, 6);
+      expect(vp.tx).toBeCloseTo(jumped.tx, 6);
+      expect(vp.ty).toBeCloseTo(jumped.ty, 6);
+      expect(frames.size).toBe(0);
+
+      vp.fit(bounds, NONE, 360);
+      flush(performance.now() + 60);
+      const mid = vp.scale;
+      vp.stopAnimation();
+      flush(performance.now() + 400);
+      expect(vp.scale).toBe(mid);
+
+      // A fit to nothing (the board emptied under the zoom) stops it too, where it is.
+      vp.fit(frame, NONE, 360);
+      flush(performance.now() + 60);
+      const partway = vp.scale;
+      vp.fit(null, NONE, 360);
+      expect(frames.size).toBe(0);
+      flush(performance.now() + 400);
+      expect(vp.scale).toBe(partway);
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
   it('is a no-op when nothing runs', () => {
     const vp = mkViewport();
     vp.stopAnimation();
