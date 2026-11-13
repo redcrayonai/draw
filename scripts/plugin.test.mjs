@@ -11,6 +11,7 @@ import { basename, join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { HOSTED_PLUGIN_ORIGIN, INTERNALS, VENDOR, scan } from './vendor-scan.mjs';
 import { PLACEHOLDER, configure, domainOf, hostedUrl } from './plugin-config.mjs';
+import { parseTellingSteps } from '../module/src/tellings.ts';
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');
 const read = rel => readFileSync(join(root, rel), 'utf8');
@@ -257,6 +258,43 @@ test('triage skill: links only shared modules, names only registered tools, and 
   assert.match(triageMd, /Do not set or\s+clear `focal`/);
   assert.doesNotMatch(triageMd, VENDOR);
   assert.doesNotMatch(triageMd, INTERNALS);
+});
+
+// ---- the make-it-make-sense skill ----
+
+const senseMd = read('plugin/skills/make-it-make-sense/SKILL.md');
+
+test('make-it-make-sense skill: frontmatter, the same allowed-tools, preflight and link handling', () => {
+  const head = senseMd.match(/^---\n([^]*?)\n---\n/)[1];
+  assert.match(head, /^name: make-it-make-sense$/m);
+  assert.match(head, /^description: Use when /m);
+  assert.match(head, /^allowed-tools: mcp__draw__\*, mcp__plugin_draw_draw__\*, Bash\(git:\*\), Read$/m);
+  assert.ok(senseMd.includes(PREFLIGHT));
+  assert.match(senseMd, /`\{ "link": "<the word>" \}`/);
+  assert.match(senseMd.replace(/\s+/g, ' '), /`REJECTED: no board at <link>\. …`, relay that text word for word and stop/);
+});
+
+test('make-it-make-sense skill: links only shared modules, names only registered tools, no vendor words', () => {
+  for (const [, f] of senseMd.matchAll(/\]\(\.\.\/\.\.\/references\/([\w-]+\.md)\)/g)) assert.ok(modules.includes(f), f);
+  const words = new Set(senseMd.replace(/mcp__[\w-]*?__/g, ' ').match(/\b[a-z]+(?:_[a-z]+)+\b/g));
+  for (const w of words) assert.ok(TOOL_NAMES.includes(w), `make-it-make-sense names ${w}, which mcp/src/tools.ts does not register`);
+  for (const t of ['start_session', 'get_board', 'create_node', 'save_telling', 'remove_telling', 'reply_to_mark']) assert.ok(words.has(t), t);
+  assert.doesNotMatch(senseMd, VENDOR);
+  assert.doesNotMatch(senseMd, INTERNALS);
+});
+
+test('make-it-make-sense skill: its example obeys its own rules and the board rules', () => {
+  const example = JSON.parse(senseMd.match(/```json\n([^]*?)\n```/)[1]);
+  const checked = parseTellingSteps(JSON.stringify(example.steps), () => true);
+  assert.equal(checked.ok, true, checked.error);
+  assert.ok(example.steps.length >= 3 && example.steps.length <= 7);
+  assert.equal(example.steps[0].nodes.length, 1, 'the first step is one box the reader knows');
+  for (const step of example.steps) {
+    assert.ok(step.body.trim().split(/\s+/).length <= 25, `over 25 words: ${step.body}`);
+    assert.equal(step.body.split(/[.!?]+(?:\s|$)/).filter(Boolean).length, 1, `not one sentence: ${step.body}`);
+    assert.equal(step.source, undefined, 'an outside audience gets no source');
+  }
+  assert.equal(example.steps.filter(s => s.body.startsWith('Think of it as')).length, 1, 'exactly one analogy');
 });
 
 // ---- the README ----
