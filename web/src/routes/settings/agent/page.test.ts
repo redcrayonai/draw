@@ -51,6 +51,8 @@ describe('agent setup page', () => {
       'Other',
     ]);
     const codes = [...container.querySelectorAll('code')].map(c => c.textContent);
+    expect(codes).toContain('npm install -g @redcrayonai/draw && draw install claude-code');
+    expect(codes).toContain('npm install -g @redcrayonai/draw && draw install codex');
     expect(codes).toContain('claude plugin marketplace add redcrayonai/draw && claude plugin install draw@redcrayonai');
     expect(codes).toContain('codex plugin marketplace add redcrayonai/draw && codex plugin add draw@redcrayonai');
     expect(codes).toContain("REDCRAYON_MCP_URL='https://mcp.example.com/mcp' codex");

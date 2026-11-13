@@ -1,6 +1,6 @@
 ---
 title: Connect your agent
-description: Install the Draw plugin for Claude Code or Codex, or connect another MCP client.
+description: Install Draw for Claude Code, Codex or pi, or connect another MCP client.
 ---
 
 **Server URL**
@@ -12,9 +12,34 @@ https://mcp.redcrayon.ai/mcp
 Every client signs in once, in the browser. Your agent then shows on the board
 as `agent of <your name>`, and the boards it draws are yours.
 
+## One install for Claude Code, Codex and pi
+
+On macOS and Linux, one command installs Draw and one more adds the plugin to
+your agent:
+
+```sh
+npm install -g @redcrayonai/draw
+draw install claude-code   # or: draw install codex, draw install pi
+```
+
+Restart the agent. The plugin includes drawing skills, automatic code refs and
+board chat, and it needs no Node. It draws [local boards](/local/) unless you
+ask for a hosted one, so start with:
+
+```text
+Open a hosted Draw board for this task and draw what you build on it as you go.
+```
+
+Sign in when your agent asks: in Claude Code, `/mcp`, choose **draw**, then
+**Authenticate**. A board link you paste opens that board where it lives.
+
+Do not also install from the marketplace below. `draw install` turns off an
+older Draw plugin and keeps its settings and sign-in. On Windows, or to use
+hosted boards only, use the marketplace plugin.
+
 ## Claude Code
 
-The plugin includes the server connection, drawing skills, automatic code refs,
+The marketplace plugin includes the server connection, drawing skills, automatic code refs,
 and private board chat. Inside
 Claude Code you can also run `/plugin marketplace add redcrayonai/draw`, then
 `/plugin install draw@redcrayonai`.
@@ -52,7 +77,7 @@ approve in the browser.
 
 ## Codex
 
-Install the plugin to get drawing skills, automatic code refs, and board chat
+Install the marketplace plugin to get drawing skills, automatic code refs, and board chat
 support together. Use a Codex version with plugin support:
 
 ```sh
@@ -89,8 +114,21 @@ is not listed twice.
 
 ## Chat beside your board
 
-Chat is private to the person linked to the agent; sharing a board does not
-share control of that agent. Select a node or edge to attach it to your message.
+The spark button opens the board's one chat panel. Chat is private to the
+person linked to the agent; sharing a board does not share control of that
+agent. Select a node or edge to attach it to your message.
+
+When no agent is connected, the panel offers **Copy prompt for agent**. Paste
+it into your coding agent to connect chat to the board on screen. In Claude
+Code, `/draw:handoff` with no argument reconnects the last board shared in
+that conversation.
+
+**End chat** disconnects your agent from the board. The agent carries on in its
+own conversation, and you can reconnect later.
+
+If your workspace turned on a plugin with an agent, that agent uses the same
+panel. Your own agent comes first; the plugin's agent answers when yours is not
+connected.
 
 With chat open, the pencil **Draw** button temporarily reveals the drawing tools.
 **Back to chat** restores your conversation and unfinished message. Sending
@@ -133,7 +171,7 @@ Open a Draw board for this task and draw what you build on it as you go.
 
 ## Code refs outside Claude Code
 
-The Claude Code and Codex plugins capture code refs through hooks. With an
+The Claude Code, Codex and pi plugins capture code refs through hooks. With an
 MCP-only connection, when a tool needs a capture of your checkout, it tells the agent the exact
 command, and the agent runs it. Nothing to install; Node 20+ and git on your
 PATH. To check your setup:

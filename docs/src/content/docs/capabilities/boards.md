@@ -36,6 +36,26 @@ unverified claims.
 Use the [red crayon](/use-cases/feedback/) to send feedback on a node.
 Use a [branch](/capabilities/branches/) to propose a different design.
 
+## Step inside a frame
+
+A node with other nodes drawn inside it is a frame. Double-click it, click its
+layers glyph, or select it and press **Enter** to step inside. The rest of the
+board dims and cannot be selected. A trail on the canvas names each level;
+click a level to go back, or press **Esc** with nothing selected to step out
+one level. Nothing is stored: depth follows where the nodes are drawn.
+
+## Link another board
+
+Click (do not drag) a handle on a node's side. **Add connected node** puts a
+new node on that side, joined by an edge. **Link a board…** adds a node that
+opens another board you can open.
+
+Double-click the linked node, or click its glyph, to open that board. The
+browser's back button returns. A link grants no access: each reader still needs
+their own access to the target, and a reader without it sees `private` instead
+of the board's name. To remove a link, select the node and run **Remove the
+board link** from the command palette. The node stays.
+
 ## Sharing
 
 A personal board starts private. Workspace boards follow their
