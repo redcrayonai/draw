@@ -11,6 +11,7 @@ const hostedTools = [
   'plan_route', 'arrive', 'reroute', 'remove_code_ref', 'add_change_note', 'update_change_note',
   'remove_change_note', 'add_threat', 'wait_for_marks', 'watch_marks', 'start_chat', 'reply_to_mark',
   'list_marks', 'update_threat', 'remove_threat', 'set_node_doc', 'set_selection', 'apply_board',
+  'save_telling', 'remove_telling',
 ];
 const unavailable = () => new Error('UNAVAILABLE: could not configure Draw permissions in Codex. Check Codex settings and try again.');
 function object(value: unknown): Frame {
