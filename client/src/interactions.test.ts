@@ -30,6 +30,7 @@ function setup(factual = false, readOnly = false) {
   const updateNodeAction = vi.fn().mockResolvedValue(undefined);
   const deleteNodesAction = vi.fn().mockResolvedValue(undefined);
   const createNodeAction = vi.fn().mockResolvedValue(2n);
+  const duplicateNodesAction = vi.fn().mockResolvedValue([3n]);
   let editor: Editor;
   const rerender = () => renderBoard(world, [node], [], {
     selection: editor.selection, selectedEdges: editor.selectedEdges, overrides: editor.overrides,
@@ -38,7 +39,7 @@ function setup(factual = false, readOnly = false) {
   });
   editor = new Editor({ conn: {} as DbConnection, boardId: 1n, svg,
     wrap: document.getElementById('canvas-wrap')!, viewport,
-    ops: { resizeNodeAction, history, updateNodeAction, deleteNodesAction, createNodeAction } as unknown as Ops, getNodes: () => [node], getEdges: () => [], rerender,
+    ops: { resizeNodeAction, history, updateNodeAction, deleteNodesAction, createNodeAction, duplicateNodesAction } as unknown as Ops, getNodes: () => [node], getEdges: () => [], rerender,
     topologyReadOnly: () => factual,
     readOnly: () => readOnly,
   });
@@ -49,7 +50,7 @@ function setup(factual = false, readOnly = false) {
     pointer(world.querySelector('.resize-handle[data-corner="nw"]')!, 'pointerdown', node.x, node.y);
     pointer(svg, 'pointermove', node.x + dx, node.y + dy);
   };
-  return { node, svg, editor, viewport, resizeNodeAction, history, updateNodeAction, deleteNodesAction, createNodeAction, pointer, drag };
+  return { node, svg, editor, viewport, resizeNodeAction, history, updateNodeAction, deleteNodesAction, createNodeAction, duplicateNodesAction, pointer, drag };
 }
 
 describe('placing', () => {
@@ -62,6 +63,34 @@ describe('placing', () => {
     expect(editor.armedKind).toBeNull();
     await vi.waitFor(() => expect(document.getElementById('inline-edit')).not.toBeNull());
     expect([...editor.selection]).toEqual([node.id]);
+  });
+});
+
+describe('duplicating', () => {
+  it('an ⌥-drag leaves the node where it is and drops a copy where it is let go', async () => {
+    const { node, svg, editor, duplicateNodesAction } = setup();
+    const press = (type: string, x: number, y: number) =>
+      svg.dispatchEvent(new MouseEvent(type, { bubbles: true, button: 0, altKey: true, clientX: x, clientY: y }));
+    press('pointerdown', node.x + 20, node.y + 20);
+    press('pointermove', node.x + 120, node.y + 60);
+    expect(editor.overrides.size).toBe(0);
+    editor.drawTransient();
+    const ghost = svg.querySelector('#transient .copy-ghost')!;
+    expect([ghost.getAttribute('x'), ghost.getAttribute('y')]).toEqual([String(node.x + 100), String(node.y + 40)]);
+    press('pointerup', node.x + 120, node.y + 60);
+    expect(duplicateNodesAction).toHaveBeenCalledWith([node], { dx: 100, dy: 40 });
+    await vi.waitFor(() => expect([...editor.selection]).toEqual([3n]));
+  });
+
+  it('⌘D while naming saves the name, then copies the node', async () => {
+    const { node, editor, updateNodeAction, duplicateNodesAction } = setup();
+    editor.startInlineEdit(node, 'label');
+    const input = document.getElementById('inline-edit') as HTMLTextAreaElement;
+    input.value = 'db-primary';
+    input.dispatchEvent(new KeyboardEvent('keydown', { key: 'd', metaKey: true, bubbles: true }));
+    expect(updateNodeAction).toHaveBeenCalledWith(node.id, { label: 'db-primary' });
+    await vi.waitFor(() => expect(duplicateNodesAction).toHaveBeenCalledWith([node], undefined));
+    expect(document.getElementById('inline-edit')).toBeNull();
   });
 });
 

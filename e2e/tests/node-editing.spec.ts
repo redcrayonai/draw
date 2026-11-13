@@ -260,6 +260,18 @@ test('styles survive duplicate and delete-undo', async ({ account, stack }) => {
   await expect(nodes(page)).toHaveCount(2);
   await expect.poll(() => read(' AND focal = false')).toEqual([styled(Number(orig.x) + 16, Number(orig.y) + 16, false)]);
   await expect.poll(() => read(' AND focal = true')).toEqual([styled(orig.x, orig.y, true)]);
+
+  // ⌥-drag: the focal original stays put and a plain copy lands where the pointer lets go.
+  await page.keyboard.press('Escape'); // no copy handles near the grab point
+  const box = (await nodes(page).first().boundingBox())!;
+  await page.keyboard.down('Alt');
+  await page.mouse.move(box.x + 8, box.y + 8);
+  await page.mouse.down();
+  await page.mouse.move(box.x + 8, box.y + 248, { steps: 5 });
+  await page.mouse.up();
+  await page.keyboard.up('Alt');
+  await expect(nodes(page)).toHaveCount(3);
+  await expect.poll(() => read(' AND focal = true')).toEqual([styled(orig.x, orig.y, true)]);
 });
 
 test('each kind draws its own mark, and the kind cycle reaches a collaborator', async ({ guest, stack }) => {

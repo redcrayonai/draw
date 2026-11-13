@@ -3648,6 +3648,16 @@ body.plugin-dock-resizing {
   pointer-events: none;
 }
 
+.copy-ghost {
+  fill: var(--sel);
+  fill-opacity: 0.08;
+  stroke: var(--sel);
+  stroke-width: 1;
+  stroke-dasharray: 4 4;
+  vector-effect: non-scaling-stroke;
+  pointer-events: none;
+}
+
 /* ---------- inline text editing ---------- */
 
 #inline-edit {
