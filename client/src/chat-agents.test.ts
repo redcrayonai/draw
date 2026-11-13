@@ -114,6 +114,24 @@ describe('joinAgents', () => {
     expect(model).toMatchObject({ items: [], queue: [], state: 'idle', online: true });
   });
 
+  it('a conversation that calls done() from inside stop() or reset() does not start the next message', async () => {
+    const sent: string[] = [];
+    let reply!: AgentReply;
+    const agent: BoardAgent = { id: 'eager', name: 'Agent', open(r) { reply = r; return { send: text => { sent.push(text); }, stop: () => reply.done(), reset: () => reply.done() }; } };
+    const { model, send } = joined([agent], false);
+    await send({ type: 'send', id: 'b1', text: 'one' });
+    await send({ type: 'send', id: 'b2', text: 'two' });
+    await send({ type: 'stop' });
+    expect(sent).toEqual(['one']);
+    expect(model).toMatchObject({ state: 'stopped', paused: true, queue: [{ id: 'b2' }] });
+    await send({ type: 'resume' });
+    expect(sent).toEqual(['one', 'two']);
+    await send({ type: 'send', id: 'b3', text: 'three' });
+    await send({ type: 'reset' });
+    expect(sent).toEqual(['one', 'two']);
+    expect(model).toMatchObject({ items: [], queue: [], state: 'idle' });
+  });
+
   it('an agent that throws shows a sentence and leaves the panel working', async () => {
     const agent: BoardAgent = { id: 'bad', name: 'Agent', open: () => ({ send() { throw new Error('boom'); }, stop() {} }) };
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});

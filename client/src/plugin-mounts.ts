@@ -100,8 +100,9 @@ export function mountCanvasPlugins(deps: CanvasHostDeps): CanvasHost {
       settings: Object.freeze({ ...plugin.settings }),
     };
   };
-  // Selection listeners of the agents' conversations; an agent's failures are caught where it is called.
-  const agentListeners = new Set<() => void>();
+  // Selection listeners of each plugin agent's current conversation. A new conversation replaces the last one's,
+  // and a board switch or the plugin going away drops them: an ended conversation hears nothing more.
+  const agentListeners = new Map<string, Set<() => void>>();
 
   const mount = (plugin: CanvasPlugin): Mounted => {
     const existing = mounted.get(plugin.id);
@@ -235,6 +236,7 @@ export function mountCanvasPlugins(deps: CanvasHostDeps): CanvasHost {
     close,
     refresh,
     boardChanged() {
+      agentListeners.clear();
       const was = active;
       for (const id of [...mounted.keys()]) unmount(id);
       active = undefined;
@@ -245,11 +247,18 @@ export function mountCanvasPlugins(deps: CanvasHostDeps): CanvasHost {
     agents: () => all.filter(p => p.canvas.agent && available(p)).map(plugin => ({
       id: plugin.id,
       name: plugin.canvas.agent!.name,
-      open: reply => plugin.canvas.agent!.open(canvasFor(plugin, agentListeners), reply),
+      open: reply => {
+        const listeners = new Set<() => void>();
+        agentListeners.set(plugin.id, listeners);
+        return plugin.canvas.agent!.open(canvasFor(plugin, listeners), reply);
+      },
     })),
     selectionChanged() {
-      for (const listener of [...agentListeners]) {
-        try { listener(); } catch (error) { console.warn('plugin.canvas_failed', error); }
+      for (const [id, listeners] of agentListeners) {
+        if (!all.some(p => p.id === id && available(p))) { agentListeners.delete(id); continue; }
+        for (const listener of [...listeners]) {
+          try { listener(); } catch (error) { console.warn('plugin.canvas_failed', id, error); }
+        }
       }
       for (const plugin of parts) {
         const entry = mounted.get(plugin.id);

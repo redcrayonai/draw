@@ -233,8 +233,23 @@ describe('canvas plugin panels', () => {
     api.selectionChanged();
     expect(heard).toHaveBeenCalledTimes(1);
 
+    // A new conversation replaces the last one's listeners; a board switch or the plugin going away drops them.
+    api.agents()[0].open({ text() {}, step() {}, done() {} });
+    const next = vi.fn();
+    opened[1].onSelectionChange(next);
+    api.selectionChanged();
+    expect([heard.mock.calls.length, next.mock.calls.length]).toEqual([1, 1]);
+    api.boardChanged();
+    api.selectionChanged();
+    expect(next).toHaveBeenCalledTimes(1);
+    api.agents()[0].open({ text() {}, step() {}, done() {} });
+    const last = vi.fn();
+    opened[2].onSelectionChange(last);
+
     on.clear();
     expect(api.agents()).toEqual([]);
+    api.selectionChanged();
+    expect(last).not.toHaveBeenCalled();
     on.add('chat');
     board = { id: 2n, workspaceId: undefined, link: 'https://draw.example/#b=mine' };
     expect(api.agents()).toEqual([]);

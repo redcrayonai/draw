@@ -777,9 +777,12 @@ export function mountAgentChat(chatButton: HTMLButtonElement, opts: AgentChatOpt
     }
     const syncing = model.connection === 'syncing';
     card.append(el('h4', undefined, syncing ? 'Restoring your conversation' : model.connection === 'waiting' ? 'No agent connected' : model.connection === 'reconnecting' ? 'Reconnecting to your agent' : 'Connecting to your agent'));
-    card.append(el('p', undefined, syncing ? 'Your messages will appear here in a moment.' : model.connection === 'waiting' ? 'Paste this prompt into your coding agent to chat with it here. You can keep a draft meanwhile.' : 'Your conversation and draft will stay here while we reconnect.'));
+    // A share link (#s=) is a secret: it never goes into a prompt. Only the board's own #b= link does.
+    const hash = new URLSearchParams(location.hash.slice(1));
+    const promptable = model.connection === 'waiting' && hash.has('b') && !hash.has('s');
+    card.append(el('p', undefined, syncing ? 'Your messages will appear here in a moment.' : promptable ? 'Paste this prompt into your coding agent to chat with it here. You can keep a draft meanwhile.' : model.connection === 'waiting' ? 'Ask your agent to reconnect board chat. You can keep a draft here.' : 'Your conversation and draft will stay here while we reconnect.'));
     // Labeled with who it goes to: the prompt names this board, so the agent joins it and not its last one.
-    if (model.connection === 'waiting') card.append(copyButton('Copy prompt for agent', `Reconnect board chat on this board: ${location.href}`, 'ac-action primary'));
+    if (promptable) card.append(copyButton('Copy prompt for agent', `Reconnect board chat on this board: ${location.href}`, 'ac-action primary'));
     return card;
   }
 
@@ -1069,6 +1072,7 @@ export function mountAgentChat(chatButton: HTMLButtonElement, opts: AgentChatOpt
   }
 
   /** Connects to the agents this board has now: the person's own, and any a plugin provides. */
+  // shortcut: a link gained or lost, or a plugin switched, restarts the connection and drops a plugin agent's transcript; keep it across the restart if that shows up mid-conversation.
   function sync(): void {
     if (switchingBoard) return;
     const agents = opts.agents?.() ?? [];

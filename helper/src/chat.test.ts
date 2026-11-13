@@ -99,6 +99,22 @@ describe('the blocking queue', () => {
   });
 });
 
+describe('End chat', () => {
+  it('ends only a session that declared it can be ended', () => {
+    const end = vi.fn();
+    const core = new ChatCore({ send: () => {}, wake: () => {}, killCommand: () => {}, end });
+    core.person({ type: 'end' }); // the fallback listener has no session, and declared nothing
+    core.session = { id: 'claude-code:1', agent: 'claude-code', name: 'Claude Code', capabilities: { stop: 'step', approvals: true } };
+    core.person({ type: 'end', session: 'claude-code:1' });
+    expect(end).not.toHaveBeenCalled();
+    core.session = { ...core.session, capabilities: { ...core.session.capabilities, end: true } };
+    core.person({ type: 'end', session: 'another' });
+    expect(end).not.toHaveBeenCalled();
+    core.person({ type: 'end', session: 'claude-code:1' });
+    expect(end).toHaveBeenCalledTimes(1);
+  });
+});
+
 describe('Stop', () => {
   it('denies a late permission request after Stop, including after the stop hook settles', () => {
     const { core, sent } = setup();

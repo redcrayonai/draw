@@ -338,7 +338,8 @@ export class ChatCore {
     if (msg.session && this.session && msg.session !== this.session.id) return;
     if (msg.type === 'viewers' && typeof msg.count === 'number' && Number.isSafeInteger(msg.count) && msg.count >= 0) return this.setViewers(msg.count);
     if (msg.type === 'joined') return this.deps.send(this.snapshot());
-    if (msg.type === 'end') return this.deps.end?.();
+    // Only a session that said it can be ended: the relay passes the frame on whatever the session declared.
+    if (msg.type === 'end') return this.session?.capabilities.end ? this.deps.end?.() : undefined;
     if (msg.type === 'send' || msg.type === 'receipt') {
       if (typeof msg.text !== 'string' || !msg.text.trim() || typeof msg.id !== 'string') return;
       if (msg.id.length > 200 || msg.text.length > CHAT_PERSON_MAX_CHARS || this.queue.length >= 100 || this.queue.some(m => m.id === msg.id) || this.events.some(e => e.type === 'delivered' && e.id === msg.id)) return;

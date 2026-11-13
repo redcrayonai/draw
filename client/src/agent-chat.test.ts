@@ -134,6 +134,7 @@ describe('mountAgentChat', () => {
     vi.stubGlobal('matchMedia', (q: string) => ({ matches: !q.includes('reduced-motion') }));
   });
   afterEach(() => {
+    location.hash = '';
     panel()?.remove();
     document.querySelectorAll('#chat-draw').forEach(node => node.remove());
     document.documentElement.removeAttribute('data-agent-chat');
@@ -154,6 +155,7 @@ describe('mountAgentChat', () => {
   }
 
   it('an agent drawing elsewhere calls the panel over; with no agent anywhere the panel waits, then hands over a prompt for this board', async () => {
+    location.hash = '#b=checkout';
     const none = await mount();
     none.socket.frame({ agent: 'gone' });
     none.chat.refresh();
@@ -165,7 +167,19 @@ describe('mountAgentChat', () => {
     vi.stubGlobal('navigator', { clipboard: { writeText } });
     [...panel().querySelectorAll('button')].find(b => b.textContent === 'Copy prompt for agent')!.click();
     expect(writeText).toHaveBeenCalledWith(`Reconnect board chat on this board: ${location.href}`);
+    expect(location.href).toContain('#b=checkout');
     panel().remove();
+
+    // A share link is a secret: no prompt carries it.
+    FakeSocket.all = [];
+    location.hash = '#s=secret-share-token';
+    const shared = await mount();
+    shared.socket.frame({ agent: 'gone' });
+    shared.button.click();
+    expect(panel().textContent).toContain('Ask your agent to reconnect board chat');
+    expect([...panel().querySelectorAll('button')].some(b => b.textContent === 'Copy prompt for agent')).toBe(false);
+    panel().remove();
+    location.hash = '';
 
     FakeSocket.all = [];
     const live = await mount({ board: 'now', href: '#b=now' });
@@ -619,6 +633,7 @@ describe('mountAgentChat', () => {
   });
 
   it('End chat shows only for an agent that can be let go; it sends end and puts the panel back to connecting one', async () => {
+    location.hash = '#b=checkout';
     const { button, socket } = await mount();
     const able = (end: boolean) => ({ id: 'one', agent: 'claude-code', name: 'Claude Code', capabilities: { stop: 'step', approvals: true, ...(end ? { end: true } : {}) } });
     const slot = () => panel().querySelector<HTMLButtonElement>('.ac-end')!;

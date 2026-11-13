@@ -70,9 +70,11 @@ function pluginSession(agent: BoardAgent, emit: (frame: ChatFrame) => void) {
   }
   const stop = () => {
     if (state !== 'working') return;
-    try { conversation.stop(); } catch (error) { console.warn('plugin.canvas_failed', agent.id, error); }
     // As with the person's own agent: what was queued waits for them.
     paused = queue.length > 0;
+    // Not working from here on: a conversation that calls done() from inside stop() must not start the next message.
+    state = 'stopping';
+    try { conversation.stop(); } catch (error) { console.warn('plugin.canvas_failed', agent.id, error); }
     finish(undefined, 'stopped');
     sendQueue();
   };
@@ -105,8 +107,10 @@ function pluginSession(agent: BoardAgent, emit: (frame: ChatFrame) => void) {
       } else if (frame.type === 'stop') stop();
       else if (frame.type === 'reset') {
         let problem: string | undefined;
+        const working = state === 'working';
+        state = 'stopping'; // as in stop(): nothing the conversation says from here belongs to a reply
         try {
-          if (state === 'working') conversation.stop();
+          if (working) conversation.stop();
           conversation.reset?.();
         } catch (error) { problem = broke(error); }
         events = problem ? [{ type: 'notice', text: problem, tone: 'attention' }] : [];
