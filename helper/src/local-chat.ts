@@ -106,7 +106,9 @@ export class LocalChat {
       if (event.type === 'approval') { if (event.status === 'pending') connection.approvals.set(event.id, event); else connection.approvals.delete(event.id); }
       if (event.type === 'text' && connection.active) {
         const current = this.store.read(board).feedback.find(f => f.id === connection.active)!;
-        this.store.updateFeedback(board, current.id, { reply: current.reply + event.delta, ...(event.final ? { state: 'answered' as const } : {}) });
+        const reply = current.reply + event.delta;
+        if (reply.length > 256000) connection.error = 'UNAVAILABLE: reply exceeds the board limit; read the full response in the terminal.';
+        this.store.updateFeedback(board, current.id, { reply: reply.slice(0, 256000), ...(event.final ? { state: 'answered' as const } : {}) });
       }
     } catch { connection.error = 'UNAVAILABLE: reply could not be saved. Check the terminal conversation.'; }
     this.publish(board);

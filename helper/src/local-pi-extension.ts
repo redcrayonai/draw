@@ -68,10 +68,14 @@ export default function localPi(pi: Pi, helper = piHelperCommand(), beforeAttach
     if (typeof board?.slug === 'string' && board.slug !== active?.board && /^[A-Za-z0-9_-]{1,200}$/.test(board.slug)) await attach(board.slug, context);
   });
   pi.on('agent_start', () => active?.event({ type: 'state', state: 'working' }));
-  pi.on('message_end', message => {
+  pi.on('message_end', async message => {
     if (message.message?.role !== 'assistant') return;
     const text = (message.message.content ?? []).filter((part: any) => part.type === 'text').map((part: any) => part.text).join('\n');
-    if (text) return active?.event({ type: 'text', message: `pi-${++sequence}`, delta: text + '\n\n', final: false });
+    const connection = active, id = `pi-${++sequence}`, reply = text ? text + '\n\n' : '';
+    // Bound each JSON request even when control characters expand to six bytes.
+    for (let offset = 0; offset < reply.length && active === connection; offset += 64000) {
+      await connection?.event({ type: 'text', message: id, delta: reply.slice(offset, offset + 64000), final: false });
+    }
   });
   pi.on('agent_settled', event => active?.event({ type: 'state', state: event.aborted ? 'stopped' : 'idle' }));
   pi.on('session_shutdown', detach);

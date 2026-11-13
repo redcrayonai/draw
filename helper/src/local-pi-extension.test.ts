@@ -62,3 +62,24 @@ it('does not revive local chat when a pending attachment finishes after switchin
   expect(localCall).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({ action: 'disconnect_local_agent', board: 'local-board' }), undefined);
   expect(vi.mocked(localCall).mock.calls.some(([, input]) => (input as any).action === 'poll_local_agent')).toBe(false);
 });
+
+it('splits large and escaped replies into bounded requests without disconnecting', async () => {
+  vi.stubEnv('DRAW_LOCAL_BOARD', 'board');
+  const handlers = new Map<string, Function>(), notify = vi.fn();
+  vi.mocked(localCall).mockImplementation(async (_endpoint, value, signal) => {
+    if ((value as any).action !== 'poll_local_agent') return {};
+    return new Promise((_resolve, reject) => signal!.addEventListener('abort', () => reject(new Error('aborted')), { once: true }));
+  });
+  localPi({ on: (name, fn) => { handlers.set(name, fn); }, registerMcpServer: vi.fn(), sendUserMessage: vi.fn() });
+  const context = { cwd: process.cwd(), isIdle: () => true, abort: vi.fn(), sessionManager: { getSessionId: () => 'long' }, ui: { notify } };
+  await handlers.get('session_start')!({}, context);
+  const text = String.fromCharCode(0).repeat(300000);
+  await handlers.get('message_end')!({ message: { role: 'assistant', content: [{ type: 'text', text }] } });
+  const calls = vi.mocked(localCall).mock.calls.map(([, input]) => input as any).filter(input => input.event?.type === 'text');
+  expect(calls.length).toBeGreaterThan(1);
+  expect(calls.map(input => input.event.delta).join('')).toBe(text + '\n\n');
+  for (const input of calls) expect(Buffer.byteLength(JSON.stringify(input))).toBeLessThan(1024 * 1024);
+  expect(notify).not.toHaveBeenCalled();
+  expect(vi.mocked(localCall).mock.calls.some(([, input]) => (input as any).action === 'disconnect_local_agent')).toBe(false);
+  await handlers.get('session_shutdown')!();
+});

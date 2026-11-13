@@ -140,3 +140,26 @@ it('allows a new board instruction after stopping the previous turn', async () =
   hook.acknowledge(delivery.id); await sent;
   expect(store.read(board.slug).feedback[0].state).toBe('delivered');
 });
+
+it.each(['pi', 'claude-code'] as const)('reports %s hooks as connected and routes stop to the hook', async agent => {
+  const { board, chat } = setup();
+  const status = await chat.attach(board.slug, 'thread', undefined, agent, board.repo);
+  expect(status.connected).toBe(true);
+  expect(status.session?.capabilities.stop).toBe(agent === 'pi' ? 'interrupt' : 'step');
+  const hook = chat.hook(board.slug, `${agent}:thread`);
+  hook.event({ type: 'state', state: 'working' });
+  await chat.stop(board.slug);
+  if (agent === 'pi') expect(await hook.poll()).toEqual({ type: 'stop' });
+  else expect(hook.claudeHook({ hook_event_name: 'PreToolUse' })).toMatchObject({ continue: false });
+});
+it('keeps long replies connected and shows the storage limit explicitly', async () => {
+  const { board, chat, store } = setup();
+  await chat.attach(board.slug, 'thread', undefined, 'pi', board.repo);
+  const hook = chat.hook(board.slug, 'pi:thread');
+  const sent = chat.send(board.slug, 'long', 'Explain', []);
+  const delivery = await hook.poll() as { id: string }; hook.acknowledge(delivery.id); await sent;
+  for (let i = 0; i < 5; i++) hook.event({ type: 'text', message: 'long', delta: 'a'.repeat(64000), final: false });
+  hook.event({ type: 'state', state: 'idle' });
+  expect(chat.status(board.slug)).toMatchObject({ connected: true, error: expect.stringContaining('read the full response in the terminal') });
+  expect(store.read(board.slug).feedback[0]).toMatchObject({ state: 'answered', reply: 'a'.repeat(256000) });
+});
