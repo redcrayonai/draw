@@ -166,3 +166,47 @@ describe('share popover', () => {
     expect(chip.getAttribute('aria-expanded')).toBe('false');
   });
 });
+
+describe('share popover with Embed', () => {
+  it('switches between the link and the embed, and stays for an owner who can only embed', () => {
+    // fresh nodes: the listeners of the cases above stay on the old ones
+    document.body.innerHTML = `
+      <button id="act-share" hidden aria-expanded="false">Share</button><button id="act-export">Export SVG</button>
+      <div id="share-pop" hidden>
+        <div id="share-tabs" hidden><button id="share-tab-link"></button><button id="act-embed" hidden></button></div>
+        <div id="share-link-pane"><input id="share-on" type="checkbox"><div id="share-detail"></div><input id="share-url"><button id="share-copy"></button>
+          <p id="share-hint"></p><p id="share-error"></p><input id="share-threats" type="checkbox"><input id="share-code" type="checkbox"><small id="share-code-note"></small></div>
+        <div id="embed-pop" hidden></div>
+      </div>`;
+    const { paint } = setup();
+    const link = { mode: '' as const, token: '', threats: false, code: false };
+    const shown = () => [$('share-tabs').hidden, $('share-link-pane').hidden, $('embed-pop').hidden];
+
+    // may share, may not embed: the link alone, no switch
+    paint(link);
+    expect(shown()).toEqual([true, false, true]);
+
+    // an owner has both; Embed takes the pane and says so
+    $('act-embed').hidden = false;
+    paint(link);
+    expect(shown()).toEqual([false, false, true]);
+    $('act-embed').click();
+    expect(shown()).toEqual([false, true, false]);
+    expect([$('share-tab-link').getAttribute('aria-pressed'), $('act-embed').getAttribute('aria-pressed')]).toEqual(['false', 'true']);
+
+    // no link to manage (a snapshot): the button stays for the embed and says so, and the header keeps Export
+    paint(null);
+    expect($('act-share').hidden).toBe(false);
+    expect($('act-share').textContent).toBe('Embed');
+    expect($('act-export').hidden).toBe(false);
+    expect(shown()).toEqual([true, true, false]);
+    paint(link);
+    expect($('act-share').textContent).toBe('Share');
+    paint(null);
+
+    // neither
+    $('act-embed').hidden = true;
+    paint(null);
+    expect($('act-share').hidden).toBe(true);
+  });
+});

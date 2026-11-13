@@ -92,6 +92,12 @@
         <div id="review-pop" role="group" aria-label="Review" hidden></div>
         <div id="share-pop" role="group" aria-label="Share" hidden>
           <p class="eyebrow">Share</p>
+          <!-- two ways out of the board; share.ts shows the switch when the person has both -->
+          <div id="share-tabs" role="group" aria-label="Share as" hidden>
+            <button id="share-tab-link" type="button" aria-pressed="true">Link</button>
+            <button id="act-embed" type="button" aria-pressed="false" hidden>Embed</button>
+          </div>
+          <div id="share-link-pane">
           <label class="share-row"><span>Share with link</span><input id="share-on" type="checkbox" role="switch"></label>
           <div id="share-detail" hidden>
             <div class="share-seg" role="group" aria-label="Link access">
@@ -110,6 +116,28 @@
           <p id="share-error" class="share-error" role="alert" hidden></p>
           <!-- owners export from here; share.ts hides the header's Export while Share shows -->
           <div class="share-export"><span>Download a copy</span><button id="share-export" class="ctl">Export SVG</button></div>
+          </div>
+          <!-- chart-embed-menu.ts: owners publish one chart or the whole board -->
+          <div id="embed-pop" hidden>
+            <label class="embed-field"><span>Content</span><select id="embed-scope"><option value="chart">Selected chart</option><option value="board">Whole board / diagram</option></select></label>
+            <label class="share-row"><span>Enable embed access</span><input id="embed-on" type="checkbox" role="switch"></label>
+            <p class="share-hint" id="embed-access-hint"></p>
+            <div id="embed-board-options" hidden>
+              <label class="share-row"><span>Include threat playback</span><input id="embed-threats" type="checkbox"></label>
+              <label class="share-row" id="embed-comparison-row" hidden><span>Include previous architecture snapshot</span><input id="embed-comparison" type="checkbox"></label>
+              <p class="share-hint">Publishes visible node labels, connections and chart data. Threats publish titles, severity and propagation. A comparison also publishes the previous snapshot’s diagram.</p>
+            </div>
+            <div id="embed-detail" hidden>
+              <label class="embed-field"><span>Theme</span><select id="embed-theme"><option value="auto">System</option><option value="light">Light</option><option value="dark">Dark</option></select></label>
+              <label class="embed-label" for="embed-url">URL · paste into Notion’s /embed block</label>
+              <div class="share-link"><input id="embed-url" readonly aria-label="Embed URL"><button id="embed-copy-url" class="btn-primary">Copy</button></div>
+              <label class="embed-label" for="embed-snippet">Iframe · paste into your webpage</label>
+              <textarea id="embed-snippet" readonly rows="4" aria-label="Iframe snippet"></textarea>
+              <button id="embed-copy-snippet" class="ctl">Copy iframe</button>
+            </div>
+            <p class="share-hint">Turn off to revoke this link, including open embeds. Enabling again creates a new link.</p>
+            <p id="embed-error" class="share-error" role="alert" hidden></p>
+          </div>
         </div>
         <button id="act-rescan" class="icon-btn" hidden title="Re-scan repository" aria-label="Re-scan repository">
           <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
@@ -124,28 +152,6 @@
           <span class="act-label">Connect an agent</span>
         </button>
         <button id="act-share" class="btn-primary" hidden title="Share this board" aria-haspopup="dialog" aria-controls="share-pop" aria-expanded="false">Share</button>
-        <button id="act-embed" hidden aria-haspopup="dialog" aria-controls="embed-pop" aria-expanded="false">Embed chart</button>
-        <div id="embed-pop" class="embed-pop" role="dialog" aria-label="Embed chart" hidden>
-          <p class="eyebrow">EMBED</p>
-          <label class="embed-theme-label">Content <select id="embed-scope"><option value="chart">Selected chart</option><option value="board">Whole board / diagram</option></select></label>
-          <label class="share-row"><span>Enable embed access</span><input id="embed-on" type="checkbox" role="switch"></label>
-          <p class="share-hint" id="embed-access-hint"></p>
-          <div id="embed-board-options" hidden>
-            <label class="share-row"><span>Include threat playback</span><input id="embed-threats" type="checkbox"></label>
-            <label class="share-row" id="embed-comparison-row" hidden><span>Include previous architecture snapshot</span><input id="embed-comparison" type="checkbox"></label>
-            <p class="share-hint">Publishes visible node labels, connections and chart data. Threats publish titles, severity and propagation. A comparison also publishes the previous snapshot’s diagram.</p>
-          </div>
-          <div id="embed-detail" hidden>
-            <label class="embed-theme-label">Theme <select id="embed-theme"><option value="auto">System</option><option value="light">Light</option><option value="dark">Dark</option></select></label>
-            <label for="embed-url">URL · paste into Notion’s /embed block</label>
-            <div class="share-link"><input id="embed-url" readonly aria-label="Embed URL"><button id="embed-copy-url">Copy</button></div>
-            <label for="embed-snippet">Iframe · paste into your webpage</label>
-            <textarea id="embed-snippet" readonly rows="4" aria-label="Iframe snippet"></textarea>
-            <button id="embed-copy-snippet">Copy</button>
-          </div>
-          <p class="share-hint">Turn off to revoke this link, including open embeds. Enabling again creates a new link.</p>
-          <p id="embed-error" class="share-error" role="alert" hidden></p>
-        </div>
         <button id="act-export" class="btn-primary">Export SVG</button>
         <button id="act-tell" class="btn-primary" type="button" hidden>Play walk-through</button>
       </div>
@@ -476,14 +482,18 @@
 
       <aside id="inspector" hidden tabindex="0" aria-label="Inspector"></aside>
 
-      <!-- Canvas plugin panels (plugin-mounts.ts): a labeled button per plugin, one dock on the right. -->
+      <!-- The one way to an agent. With several to choose between, the button opens the list above it:
+           the agents in the chat (agent-chat.ts), then a button per plugin panel (plugin-mounts.ts). -->
       <div id="canvas-launcher">
+        <div id="launcher-menu" role="group" aria-label="Agents">
+          <div id="chat-options"></div>
+          <div id="plugin-launcher" hidden></div>
+        </div>
         <button id="act-chat" type="button" hidden aria-label="Chat with agent" aria-expanded="false" aria-controls="agent-chat" title="Chat with agent">
-          <!-- draw's own spark: taller than wide, tilted, one flat colour. Not another product's mark. -->
-          <svg class="ac-spark" width="22" height="22" viewBox="0 0 24 24" aria-hidden="true"><path transform="rotate(12 12 12)" d="M12 2Q13.6 10.4 20 12Q13.6 13.6 12 22Q10.4 13.6 4 12Q10.4 10.4 12 2Z" fill="currentColor" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/></svg>
+          <!-- the bot head an agent has everywhere: presence chips, the library's Agent icon (node-icons.ts) -->
+          <svg class="ac-bot" width="20" height="20" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 2.5v2.5M3.5 5h9a1 1 0 0 1 1 1v6a1 1 0 0 1-1 1h-9a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1ZM6 8.5v1M10 8.5v1" /></svg>
           <span class="ac-dot" aria-hidden="true"></span>
         </button>
-        <div id="plugin-launcher" hidden></div>
       </div>
       <aside id="plugin-dock" hidden aria-labelledby="plugin-dock-title">
         <div id="plugin-dock-resize" role="separator" aria-orientation="vertical" aria-label="Resize the panel" tabindex="0"></div>

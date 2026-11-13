@@ -656,4 +656,40 @@ describe('mountAgentChat', () => {
     expect(panel().textContent).toContain('Copy prompt for agent');
     expect(slot().hidden).toBe(true);
   });
+
+  it('the launcher opens the chat at once with one agent, and a list to choose from with several', async () => {
+    document.body.insertAdjacentHTML('beforeend', '<div id="launcher-menu"><div id="chat-options"></div><div id="plugin-launcher"></div></div>');
+    const menu = document.getElementById('launcher-menu')!;
+    try {
+      const { chat, socket, button } = await mount();
+      const options = () => [...menu.querySelectorAll<HTMLButtonElement>('#chat-options > button')];
+      const listed = () => menu.hasAttribute('data-open');
+      socket.frame({ type: 'sessions', sessions: [session('one')], selected: 'one' });
+      socket.frame(snapshot());
+      chat.close();
+      expect(options().map(b => b.textContent)).toEqual(['Agent one']);
+      button.click();
+      expect([listed(), panel().hidden]).toEqual([false, false]);
+      chat.close();
+
+      socket.frame({ type: 'sessions', sessions: [session('one'), session('two')], selected: 'one' });
+      button.click();
+      expect([listed(), panel().hidden]).toEqual([true, true]);
+      expect(options().map(b => b.textContent)).toEqual(['Agent one', 'Agent two']);
+      expect(document.activeElement).toBe(options()[0]);
+      // a press elsewhere, or Escape, puts the list away
+      document.dispatchEvent(new Event('pointerdown'));
+      expect(listed()).toBe(false);
+      button.click();
+      menu.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+      expect(listed()).toBe(false);
+
+      button.click();
+      options()[1].click();
+      expect(socket.sent).toContainEqual({ type: 'select', session: 'two' });
+      expect([listed(), panel().hidden]).toEqual([false, false]);
+    } finally {
+      menu.remove();
+    }
+  });
 });

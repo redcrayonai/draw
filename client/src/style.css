@@ -1,24 +1,5 @@
 @import './themes.css';
 
-.embed-pop {
-  position: absolute; z-index: 50; right: 24px; top: 58px;
-  width: min(380px, calc(100vw - 32px)); max-height: calc(100dvh - 80px); overflow: auto;
-  padding: 20px; border: 1px solid var(--hairline); border-radius: 12px;
-  background: var(--panel); box-shadow: var(--shadow-lg); font-size: 12px;
-}
-.embed-pop .eyebrow { margin: 0 0 12px; }
-.embed-pop label { display: block; margin: 12px 0 6px; color: var(--muted); }
-.embed-pop .share-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; color: var(--ink); }
-.embed-pop .share-row input { accent-color: var(--sel); width: 16px; height: 16px; }
-.embed-pop .share-hint { margin: 12px 0 0; font-size: 12px; line-height: 1.5; color: var(--faint); }
-.embed-pop .share-link { display: flex; align-items: stretch; gap: 8px; }
-.embed-pop #embed-url { flex: 1; min-width: 0; padding: 8px; font: 11px var(--mono); border: 1px solid var(--hairline); border-radius: 6px; background: var(--inset); color: var(--muted); }
-.header-actions .embed-pop button { padding: 6px 10px; border: 1px solid var(--hairline); border-radius: 6px; background: var(--panel-hi); color: var(--ink); white-space: nowrap; }
-.embed-pop .share-error { color: var(--accent); margin-top: 12px; }
-#act-embed { white-space: nowrap; }
-.embed-pop textarea { width: 100%; resize: vertical; margin: 0 0 8px; padding: 8px; font: 11px var(--mono); background: var(--inset); color: var(--ink); border: 1px solid var(--hairline); border-radius: 6px; }
-.embed-pop select { margin-left: 8px; padding: 4px; background: var(--inset); color: var(--ink); border: 1px solid var(--hairline); border-radius: 6px; }
-
 /* Redcrayon Canvas — dark-first design system.
 
    Dark is the base (:root); light is an override. The original token names
@@ -996,8 +977,34 @@ svg[viewBox='0 0 16 16'] * {
   padding: var(--space-3);
   box-shadow: var(--shadow-lg);
   z-index: 30;
+  /* Embed with its link on is taller than a laptop's canvas */
+  max-height: calc(100dvh - var(--topbar-h) - 2 * var(--space-4));
+  overflow-y: auto;
 }
-#share-pop[hidden], #share-detail[hidden], #share-error[hidden] { display: none; }
+#share-pop[hidden], #share-detail[hidden], #share-error[hidden],
+#share-tabs[hidden], #share-link-pane[hidden], #embed-pop[hidden], #embed-pop [hidden] { display: none; }
+/* Link and Embed: one pane at a time, switched by #share-tabs (share.ts). */
+#share-link-pane, #embed-pop, #embed-detail, #embed-board-options { display: flex; flex-direction: column; gap: var(--space-2); }
+/* The switch is the popover's heading: text tabs on a rule, so it does not read as a second "Can view / Can edit". */
+#share-tabs { display: flex; gap: var(--space-4); margin: calc(-1 * var(--space-1)) calc(-1 * var(--space-3)) var(--space-1);
+  padding: 0 var(--space-3); border-bottom: 1px solid var(--border); }
+#share-tabs button { height: 32px; margin-bottom: -1px; border-bottom: 2px solid transparent; border-radius: 0;
+  font: 600 13px/1 var(--sans); color: var(--muted); transition: color var(--dur) var(--ease); }
+#share-tabs button:hover { color: var(--ink); }
+#share-tabs button[aria-pressed='true'] { color: var(--ink); border-bottom-color: var(--ink); }
+#share-tabs button:focus-visible { outline-offset: -2px; }
+#share-tabs button[hidden], #share-pop .eyebrow:has(+ #share-tabs:not([hidden])) { display: none; }
+#embed-pop .embed-field { display: flex; align-items: center; justify-content: space-between; gap: var(--space-2); color: var(--ink); }
+#embed-pop select { max-width: 60%; font: 500 12px/1 var(--sans); color: var(--ink); background: var(--inset);
+  border: 1px solid var(--border); border-radius: var(--r-sm); padding: 5px 6px; }
+#embed-pop .share-row input { accent-color: var(--sel); }
+#embed-pop .embed-label { margin-top: var(--space-1); font: 500 12px/1.3 var(--sans); color: var(--muted); }
+#embed-pop #embed-url, #embed-snippet { font: 11px/1.5 var(--mono); color: var(--muted); background: var(--inset);
+  border: 1px solid var(--border); border-radius: var(--r-md); padding: 7px 8px; }
+#embed-pop #embed-url { flex: 1; min-width: 0; line-height: 1; text-overflow: ellipsis; }
+#embed-snippet { width: 100%; resize: vertical; overflow-wrap: anywhere; }
+#embed-copy-snippet { align-self: flex-end; }
+#embed-pop .share-hint { line-height: 1.5; }
 #share-pop .share-row { display: flex; align-items: center; justify-content: space-between; gap: var(--space-2); color: var(--ink); }
 #share-pop .share-seg { display: flex; padding: 2px; border: 1px solid var(--border); border-radius: var(--r-md); background: var(--app); margin-bottom: var(--space-2); }
 #share-pop .share-seg button { flex: 1; height: 28px; border-radius: var(--r-sm); color: var(--muted); }
@@ -2424,9 +2431,9 @@ body.lib-dragging #board {
   right: var(--space-4);
   top: var(--space-4);
   width: 320px;
-  /* Ends a --space-3 gap above the Shortcuts pill (bottom --space-5), so the
-     pill never covers the CODE section's last row (G8). */
-  max-height: calc(100% - var(--space-4) - var(--space-5) - var(--shortcuts-h) - var(--space-3));
+  /* Ends a --space-3 gap above the Shortcuts pill (bottom --space-5), or above the
+     agent launcher when it shows, so neither covers the CODE section's last row (G8). */
+  max-height: calc(100% - var(--space-4) - var(--space-5) - var(--shortcuts-h) - var(--space-3) - var(--canvas-launcher-h, 0px));
   overflow-y: auto;
   border: 1px solid var(--border);
   border-radius: var(--r-lg);
@@ -2453,38 +2460,89 @@ body.lib-dragging #board {
   right: var(--space-4);
   bottom: calc(var(--space-5) + var(--shortcuts-h) + var(--space-3) + var(--canvas-launcher-lift, 0px));
   display: flex;
-  align-items: center;
+  flex-direction: column;
+  align-items: flex-end;
   gap: var(--space-2);
   z-index: 17;
 }
 
-#plugin-launcher { display: flex; gap: var(--space-2); }
+/* The list opens upward from the button: the launcher is anchored at its bottom. */
+#launcher-menu {
+  display: none;
+  flex-direction: column;
+  min-width: 176px;
+  max-width: min(280px, calc(100vw - 2 * var(--space-4)));
+  padding: var(--space-1);
+  border: 1px solid var(--hairline);
+  border-radius: var(--r-lg);
+  background: var(--panel-2);
+  box-shadow: var(--shadow-lg);
+  transform-origin: bottom right;
+  animation: launcher-up var(--dur) var(--ease);
+}
 
-/* Leave the red-crayon Send button reachable while marks are pending. */
-body:has(.mark-send:not([hidden])) { --canvas-launcher-lift: 48px; }
+@keyframes launcher-up {
+  from { opacity: 0; transform: translateY(6px) scale(0.98); }
+}
 
-@media (min-width: 721px) {
-  body.plugin-dock-open #canvas-launcher { right: calc(var(--plugin-dock-w) + var(--space-4)); }
+#launcher-menu[data-open] {
+  display: flex;
 }
 
 #plugin-launcher[hidden] {
   display: none;
 }
 
+#chat-options,
+#plugin-launcher {
+  display: flex;
+  flex-direction: column;
+}
+
+/* No chat button to open the list from (no agent, or the chat is open): plugin panels keep their buttons in view. */
+#canvas-launcher:has(> #act-chat[hidden]) > #launcher-menu:has(#plugin-launcher:not([hidden]) > button),
+:root[data-agent-chat] #launcher-menu:has(#plugin-launcher:not([hidden]) > button) {
+  display: flex;
+  animation: none;
+}
+
+#canvas-launcher:has(> #act-chat[hidden]) #chat-options,
+:root[data-agent-chat] #chat-options {
+  display: none;
+}
+
+.launch-option,
 .plugin-launch {
-  height: 36px;
-  padding: 0 14px;
-  border-radius: 999px;
-  border: 1px solid var(--hairline);
-  background: var(--panel-2);
+  flex-shrink: 0;
+  /* a 44px target each, as the dock's buttons */
+  min-height: 44px;
+  padding: 0 var(--space-3);
+  border-radius: var(--r-md);
   color: var(--ink);
-  font: 500 13px/1 var(--sans);
-  box-shadow: var(--shadow-lg);
+  font: 500 13px/1.3 var(--sans);
+  text-align: left;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
   transition: background var(--dur) var(--ease);
 }
 
+.launch-option:hover,
 .plugin-launch:hover {
   background: var(--panel-hi);
+}
+
+/* Leave the red-crayon Send button reachable while marks are pending. */
+body:has(.mark-send:not([hidden])) { --canvas-launcher-lift: 48px; }
+/* The inspector stops above the button: its 44px and the gap under it. */
+body:has(#canvas-launcher > #act-chat:not([hidden]), #plugin-launcher:not([hidden]) > button) { --canvas-launcher-h: calc(44px + var(--space-3)); }
+
+@media (min-width: 721px) {
+  body.plugin-dock-open #canvas-launcher { right: calc(var(--plugin-dock-w) + var(--space-4)); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  #launcher-menu { animation: none; }
 }
 
 #plugin-dock {
@@ -5843,7 +5901,7 @@ a.ctl {
 
 :root[data-theme='brutal'] :is(.topbar, #rail, #inspector, #toolbar, .tb-popover, #dock, .zoom-cluster,
   #shortcuts-toggle, #legend, #shortcuts, #presence-pop, #theme-pop, #palette-panel, .btn-primary, #chart-tip,
-  #plugin-dock, .plugin-launch,
+  #plugin-dock, #launcher-menu, #act-chat,
   #connect-panel, #act-connect, #act-share, #share-pop, #empty-connect) {
   border-width: 2px;
   border-color: var(--ink);
@@ -6585,30 +6643,31 @@ svg:not(.armed) #crayon .mark-chip { pointer-events: all; cursor: pointer; }
 
 /* ---------- agent chat (agent-chat.ts): the person's own agent, docked beside the board ---------- */
 
+/* The open panel has its own Close: the launcher is gone until then. */
 #act-chat {
   position: relative;
-  min-width: 44px;
-  height: 44px;
-  justify-content: center;
-  box-shadow: var(--shadow-lg);
   flex-shrink: 0;
   display: flex;
   align-items: center;
+  justify-content: center;
   gap: 7px;
-  white-space: nowrap;
-  font: 500 12px/1 var(--sans);
-  color: var(--ink);
-  background: var(--panel-hi);
+  min-width: 44px;
+  height: 44px;
+  padding: 0 11px;
   border: 1px solid var(--hairline);
   border-radius: var(--r-md);
-  padding: 8px 11px;
+  background: var(--panel-2);
+  box-shadow: var(--shadow-lg);
+  color: var(--ink);
+  font: 500 12px/1 var(--sans);
+  white-space: nowrap;
   transition: background var(--dur) var(--ease);
 }
-#act-chat:hover { background: color-mix(in srgb, var(--panel-hi) 80%, var(--tint)); }
-/* The open panel has its own Close: the launcher is gone until then. */
+#act-chat:hover { background: var(--panel-hi); }
 #act-chat[hidden], :root[data-agent-chat] #act-chat { display: none; }
 /* Presence colour, so the one way to reach an agent stands out from the grey chrome around it. */
-#act-chat .ac-spark { color: var(--accent); }
+#act-chat .ac-bot { color: var(--accent); flex: none; }
+#act-chat [hidden] { display: none; }
 #act-chat .ac-dot { position: absolute; right: 5px; top: 5px; background: var(--faint); }
 #act-chat[data-state='on'] .ac-dot { background: var(--ok); }
 #act-chat[data-state='busy'] .ac-dot { background: var(--accent); animation: ac-pulse 1.2s ease-in-out infinite; }
@@ -6665,7 +6724,6 @@ svg:not(.armed) #crayon .mark-chip { pointer-events: all; cursor: pointer; }
 
 /* Chat and drawing take turns; neither has to squeeze the full tool dock. */
 :root[data-agent-chat] #dock { display: none; }
-:root[data-agent-drawing] #act-chat { padding-inline: 14px; }
 #chat-draw {
   position: absolute;
   left: min(50vw, calc(100% - 22px - var(--space-4)));
@@ -6874,7 +6932,7 @@ svg:not(.armed) #crayon .mark-chip { pointer-events: all; cursor: pointer; }
 
 :root[data-theme='brutal'] .ac-panel { border-left: 2px solid var(--ink); }
 :root[data-theme='brutal'] .ac-box { border: 2px solid var(--ink); }
-:root[data-theme='brutal'] :is(.ac-send, .ac-stop, .ac-end, #act-chat) { border: 2px solid var(--ink); }
+:root[data-theme='brutal'] :is(.ac-send, .ac-stop, .ac-end) { border: 2px solid var(--ink); }
 
 @media (prefers-reduced-motion: reduce) {
   .ac-dot.busy, #act-chat[data-state='busy'] .ac-dot, .ac-spin { animation: none; }

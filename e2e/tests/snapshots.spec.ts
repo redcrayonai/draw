@@ -156,11 +156,16 @@ test('a snapshot cannot be link-shared, while a branch of it can', async ({ acco
   test.setTimeout(90_000);
   const { token, page, F } = await seedFact(stack, account);
   await expect(chipName(page)).toHaveText('main · aaaaaaa');
-  // New branch proves the owner row has loaded, so a hidden Share is a decision, not a late paint.
+  // New branch proves the owner row has loaded, so a missing Share is a decision, not a late paint.
   await chip(page).click();
   await expect(page.locator('#branch-pop .branch-new')).toBeVisible();
   await page.keyboard.press('Escape');
-  await expect(page.locator('#act-share')).toBeHidden();
+  // No link to share. The owner can still embed a snapshot, so the button stays, as Embed, with no link in it.
+  await expect(page.locator('#act-share')).toHaveText('Embed');
+  await page.locator('#act-share').click();
+  await expect(page.getByRole('switch', { name: 'Enable embed access' })).toBeVisible();
+  await expect(page.getByRole('switch', { name: 'Share with link' })).toBeHidden();
+  await page.keyboard.press('Escape');
   await expect(stack.callReducer(token, 'set_link_share', [F, 'view', 'ab'.repeat(16)])).rejects.toThrow(HISTORY_RULE);
   expect(await stack.sql(`SELECT * FROM link_share WHERE board_id = ${F}`)).toHaveLength(0);
 
@@ -213,11 +218,11 @@ test('a snapshot cannot be link-shared, while a branch of it can', async ({ acco
   // The editor's refused edits did not send the branch back to draft.
   expect((await stack.sql(`SELECT status FROM architecture_version WHERE board_id = ${branch}`))[0].status).toBe('accepted');
 
-  // Back on the snapshot, Share goes away again.
+  // Back on the snapshot, Share goes away again: only Embed is left.
   await chip(page).click();
   await page.locator('#branch-pop .branch-row').first().click();
   await expect(chipName(page)).toHaveText('main · aaaaaaa');
-  await expect(page.locator('#act-share')).toBeHidden();
+  await expect(page.locator('#act-share')).toHaveText('Embed');
 });
 
 test('the snapshot menu and timeline switch revisions in place, and Show changes diffs against the previous one', async ({ account, stack }) => {

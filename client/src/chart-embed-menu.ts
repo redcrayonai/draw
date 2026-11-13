@@ -1,9 +1,10 @@
-import { copyText, dismissible, flashLabel } from './chrome';
+import { copyText, flashLabel } from './chrome';
 import { newShareToken } from '../../shared/share-link';
 import { embedHref, embedSnippet, type EmbedTheme } from './embed-link';
 
 export interface ChartEmbedSelection { nodeId: bigint; title: string; token: string }
 export interface BoardEmbedSelection { boardId: bigint; title: string; token: string; threats: boolean; comparisonBoardId: bigint; previousBoardId: bigint }
+/** The Embed pane of the Share popover (share.ts owns the popover and which pane shows). */
 export function setupChartEmbed(deps: {
   base: string; db: string; home: string;
   enable(nodeId: bigint, token: string): Promise<void>;
@@ -12,7 +13,7 @@ export function setupChartEmbed(deps: {
   disableBoard(boardId: bigint): Promise<void>;
 }): (selection: ChartEmbedSelection | null, board: BoardEmbedSelection | null) => void {
   const el = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
-  const button = el<HTMLButtonElement>('act-embed'), pop = el('embed-pop');
+  const button = el<HTMLButtonElement>('act-embed');
   const on = el<HTMLInputElement>('embed-on'), detail = el('embed-detail'), error = el('embed-error');
   const theme = el<HTMLSelectElement>('embed-theme'), url = el<HTMLInputElement>('embed-url'), snippet = el<HTMLTextAreaElement>('embed-snippet');
   const scope = el<HTMLSelectElement>('embed-scope');
@@ -20,14 +21,10 @@ export function setupChartEmbed(deps: {
   let selection: ChartEmbedSelection | null = null;
   let board: BoardEmbedSelection | null = null;
   let pending = false;
-  const close = () => { pop.hidden = true; button.setAttribute('aria-expanded', 'false'); };
   const paint = () => {
     button.hidden = !board;
-    if (!board) close();
     const whole = scope.value === 'board';
     const target = whole ? board : selection;
-    button.textContent = whole ? 'Embed board' : 'Embed chart';
-    pop.setAttribute('aria-label', whole ? 'Embed board' : 'Embed chart');
     el('embed-access-hint').textContent = `Anyone with this link can view this ${whole ? 'board' : 'chart'} and its published data without signing in. Private Notion page permissions do not protect the embed URL.`;
     el('embed-board-options').hidden = !whole;
     el('embed-comparison-row').hidden = !board?.previousBoardId;
@@ -42,10 +39,6 @@ export function setupChartEmbed(deps: {
     url.value = href;
     snippet.value = href ? embedSnippet(href, target!.title) : '';
   };
-  button.addEventListener('click', () => {
-    pop.hidden = !pop.hidden;
-    button.setAttribute('aria-expanded', String(!pop.hidden));
-  });
   const change = async (includes = false) => {
     const whole = scope.value === 'board';
     const current = whole ? board : selection;
@@ -73,11 +66,11 @@ export function setupChartEmbed(deps: {
   theme.addEventListener('change', paint);
   for (const [id, input] of [['embed-copy-url', url], ['embed-copy-snippet', snippet]] as const) {
     const copy = el<HTMLButtonElement>(id);
-    copy.addEventListener('click', async () => flashLabel(copy, await copyText(input.value), 'Copy', 'Copied ✓'));
+    const label = copy.textContent ?? 'Copy';
+    copy.addEventListener('click', async () => flashLabel(copy, await copyText(input.value), label, 'Copied ✓'));
   }
-  dismissible(pop, button, close);
   return (next, nextBoard) => {
-    if (next?.nodeId !== selection?.nodeId) { close(); error.hidden = true; }
+    if (next?.nodeId !== selection?.nodeId) error.hidden = true;
     if (next?.nodeId !== selection?.nodeId) scope.value = next ? 'chart' : 'board';
     scope.querySelector<HTMLOptionElement>('[value="chart"]')!.disabled = !next;
     selection = next;

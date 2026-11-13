@@ -38,8 +38,9 @@ Read [Boards and sharing](/capabilities/boards/#sharing) before enabling an edit
 
 ## Publish only a chart or diagram
 
-As the owner, choose **Embed chart** for a selected chart, or **Embed board**
-for the diagram. Enable **Enable embed access**, then copy the URL or iframe HTML.
+As the owner, choose **Share**, then **Embed**. Under **Content**, select the
+chart you selected on the board, or the whole diagram. Enable **Enable embed access**,
+then copy the URL or iframe HTML.
 
 A chart embed publishes its complete CSV and source, not only the points visible
 in the plot. A board embed publishes visible labels, connections and charts,

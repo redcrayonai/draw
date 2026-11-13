@@ -149,7 +149,10 @@ export function mountCanvasPlugins(deps: CanvasHostDeps): CanvasHost {
     const was = active;
     active = undefined;
     show(false);
-    launcher.querySelector<HTMLElement>(`[data-plugin="${was}"]`)?.focus();
+    const button = launcher.querySelector<HTMLElement>(`[data-plugin="${was}"]`);
+    button?.focus();
+    // Its button sits in the launcher's closed list: back to the button that opens the list.
+    if (document.activeElement !== button) document.getElementById('act-chat')?.focus();
   };
 
   const refresh = () => {
