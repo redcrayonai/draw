@@ -1,5 +1,5 @@
 import { closeSync, existsSync, fsyncSync, mkdirSync, openSync, readFileSync, realpathSync, renameSync, unlinkSync, writeFileSync } from 'node:fs';
-import { isAbsolute, join } from 'node:path';
+import { dirname, isAbsolute, join } from 'node:path';
 import { randomUUID } from 'node:crypto';
 import type { LocalBoard, LocalEdge, LocalFeedback, LocalNode, LocalOperation, LocalRef } from '../../shared/local';
 
@@ -117,6 +117,7 @@ function validateStoredBoard(board: LocalBoard) {
 export class LocalStore {
   private data: StoreData = { version: 1, boards: [] };
   private closed = false;
+  private failed = false;
   private readonly file: string;
   private readonly lock: string;
   constructor(readonly directory: string, private readonly persist = atomicWrite) {
@@ -193,10 +194,12 @@ export class LocalStore {
   }
   private commit(data: StoreData) {
     if (this.closed) reject('store is closed');
+    if (this.failed) reject('previous save failed; restart the local server before editing');
     const serialized = JSON.stringify(data);
     if (data.boards.some(board => Buffer.byteLength(JSON.stringify(board)) > 2 * 1024 * 1024)) reject('board size limit reached (2 MB)');
     if (Buffer.byteLength(serialized) > 32 * 1024 * 1024) reject('local store size limit reached');
-    this.persist(this.file, serialized);
+    try { this.persist(this.file, serialized); }
+    catch (error) { this.failed = true; throw error; }
     this.data = data;
   }
   close() { if (!this.closed) { this.closed = true; unlinkSync(this.lock); } }
@@ -207,6 +210,7 @@ export function atomicWrite(file: string, contents: string) {
   try {
     const fd = openSync(temporary, 'wx', 0o600);
     try { writeFileSync(fd, contents); fsyncSync(fd); } finally { closeSync(fd); }
-    renameSync(temporary, file);
+    const directory = openSync(dirname(file), 'r');
+    try { renameSync(temporary, file); fsyncSync(directory); } finally { closeSync(directory); }
   } finally { if (existsSync(temporary)) unlinkSync(temporary); }
 }
