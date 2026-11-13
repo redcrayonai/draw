@@ -136,6 +136,7 @@ use `draw install <agent>` above; do not install both methods together.
    `/draw:navigate <board link>` draws on a board you already have.
    Open that link to continue the same conversation beside the diagram. Chat
    connects automatically; `/draw:handoff` is available for explicit reconnects.
+   With no argument it uses the last board shared in the conversation.
 
    During an incident, `/draw:triage <board link>` works the board an alert
    opened: it charts measured evidence beside the hops it describes and leaves

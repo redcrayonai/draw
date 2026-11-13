@@ -225,6 +225,15 @@ test('skill: captures — the plugin fills them; otherwise the command the text 
   assert.ok(flat.includes('Otherwise use the `npx -y @redcrayonai/draw@1 capture …` command the text names'));
 });
 
+// ---- the handoff skill ----
+
+test('handoff skill: no argument picks the last opened board without asking', () => {
+  const handoff = read('plugin/skills/handoff/SKILL.md').replace(/\s+/g, ' ');
+  assert.match(handoff, /With no argument, use the last board shared in this conversation: the newest board that `start_session` opened here/);
+  assert.match(handoff, /Do not ask which board; say which one you chose\./);
+  assert.match(handoff, /never name a board `HEAD`/);
+});
+
 // ---- the triage skill ----
 
 const triageMd = read('plugin/skills/triage/SKILL.md');
