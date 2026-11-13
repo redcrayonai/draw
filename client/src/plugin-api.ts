@@ -34,5 +34,34 @@ export type CanvasPanel = {
   mount(el: HTMLElement, canvas: Canvas): void | (() => void);
 };
 
+/** An agent people talk to in the board's chat panel. The core owns the panel: the transcript, the
+ *  message box, the queue, Stop and the launcher. The plugin only carries messages to its agent and back. */
+export type CanvasAgent = {
+  /** Its name in the chat panel. */
+  name: string;
+  /** Starts the conversation for the board on screen. A board switch stops it and opens another. */
+  open(canvas: Canvas, reply: AgentReply): AgentConversation;
+};
+
+/** How a conversation reports the reply to the message it was last sent. */
+export type AgentReply = {
+  /** More of the reply's text. */
+  text(delta: string): void;
+  /** What the agent is doing now, in a few words. The step before it counts as done. */
+  step(summary: string): void;
+  /** The reply ended. Pass a sentence when it failed or was cut short; the panel shows it. */
+  done(problem?: string): void;
+};
+
+export type AgentConversation = {
+  /** One message at a time: the next comes only after `done`. `about` is what the person attached
+   *  from their selection, in words. */
+  send(text: string, about?: string): void;
+  /** Ends the reply under way. Call nothing on `reply` for it afterwards. */
+  stop(): void;
+  /** Forgets the conversation. Leave it out and the panel offers no "New chat". */
+  reset?(): void;
+};
+
 /** What a plugin's client/index.ts exports. */
-export type CanvasPart = { panel?: CanvasPanel };
+export type CanvasPart = { panel?: CanvasPanel; agent?: CanvasAgent };

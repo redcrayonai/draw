@@ -217,4 +217,26 @@ describe('canvas plugin panels', () => {
     edge.dispatchEvent(new MouseEvent('dblclick', { bubbles: true }));
     expect(document.body.style.getPropertyValue('--plugin-dock-w')).toBe('320px');
   });
+
+  it('a plugin\'s agent gets no button or dock: it is offered to the chat panel under the same rules, with the board and settings', () => {
+    const opened: Canvas[] = [];
+    const agent = { name: 'Agent', open: (canvas: Canvas) => { opened.push(canvas); return { send() {}, stop() {} }; } };
+    const { api, launcher } = host([{ id: 'chat', name: 'chat', settings: { CHAT_URL: 'https://agent.example' }, canvas: { agent } }]);
+    expect(launcher.hidden).toBe(true);
+    const [offered] = api.agents();
+    expect(offered).toMatchObject({ id: 'chat', name: 'Agent' });
+    offered.open({ text() {}, step() {}, done() {} });
+    expect(opened[0].board).toEqual({ id: 1n, workspaceId: 7n, link: 'https://draw.example/#b=checkout' });
+    expect(opened[0].settings).toEqual({ CHAT_URL: 'https://agent.example' });
+    const heard = vi.fn();
+    opened[0].onSelectionChange(heard);
+    api.selectionChanged();
+    expect(heard).toHaveBeenCalledTimes(1);
+
+    on.clear();
+    expect(api.agents()).toEqual([]);
+    on.add('chat');
+    board = { id: 2n, workspaceId: undefined, link: 'https://draw.example/#b=mine' };
+    expect(api.agents()).toEqual([]);
+  });
 });

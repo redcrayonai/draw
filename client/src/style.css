@@ -6573,8 +6573,10 @@ svg:not(.armed) #crayon .mark-chip { pointer-events: all; cursor: pointer; }
   transition: background var(--dur) var(--ease);
 }
 #act-chat:hover { background: color-mix(in srgb, var(--panel-hi) 80%, var(--tint)); }
-#act-chat[hidden] { display: none; }
-#act-chat[aria-expanded='true'] { background: var(--sel-soft); border-color: var(--sel); }
+/* The open panel has its own Close: the launcher is gone until then. */
+#act-chat[hidden], :root[data-agent-chat] #act-chat { display: none; }
+/* Presence colour, so the one way to reach an agent stands out from the grey chrome around it. */
+#act-chat .ac-spark { color: var(--accent); }
 #act-chat .ac-dot { position: absolute; right: 5px; top: 5px; background: var(--faint); }
 #act-chat[data-state='on'] .ac-dot { background: var(--ok); }
 #act-chat[data-state='busy'] .ac-dot { background: var(--accent); animation: ac-pulse 1.2s ease-in-out infinite; }

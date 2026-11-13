@@ -2,6 +2,8 @@
 // plugin and one dock on the right. The core owns the button, the dock's frame, Close,
 // Escape and width; a plugin's panel only fills its body. Each panel sits behind an error
 // boundary and shows only on workspace boards whose workspace turned the plugin on.
+// A plugin's agent has no button or dock of its own: it joins the board's chat panel (chat-agents.ts).
+import type { BoardAgent } from './chat-agents';
 import { CANVAS_PARTS } from './plugins.generated';
 import type { Canvas, CanvasNode, CanvasPart } from './plugin-api';
 
@@ -19,7 +21,15 @@ export type CanvasHostDeps = {
   storage?: Storage;
 };
 
-export type CanvasHost = { readonly isOpen: boolean; close(): void; refresh(): void; boardChanged(): void; selectionChanged(): void };
+export type CanvasHost = {
+  readonly isOpen: boolean;
+  close(): void;
+  refresh(): void;
+  boardChanged(): void;
+  selectionChanged(): void;
+  /** The agents plugins provide for the board on screen, under the same rules as their panels. */
+  agents(): BoardAgent[];
+};
 
 const WIDTH_KEY = 'plugin-dock-width';
 const WIDTH_DEFAULT = 320;
@@ -31,7 +41,8 @@ const clampWidth = (w: number) => Math.max(WIDTH_MIN, Math.min(widthMax(), Math.
 type Mounted = { el: HTMLElement; cleanup?: () => void; listeners: Set<() => void>; failed: boolean };
 
 export function mountCanvasPlugins(deps: CanvasHostDeps): CanvasHost {
-  const parts = (deps.parts ?? CANVAS_PARTS).filter(p => p.canvas.panel);
+  const all = deps.parts ?? CANVAS_PARTS;
+  const parts = all.filter(p => p.canvas.panel);
   const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
   const launcher = $<HTMLElement>('plugin-launcher');
   const dock = $<HTMLElement>('plugin-dock');
@@ -75,6 +86,23 @@ export function mountCanvasPlugins(deps: CanvasHostDeps): CanvasHost {
     entry.el.replaceChildren(card);
   };
 
+  /** What a plugin's part gets of the board on screen. */
+  const canvasFor = (plugin: CanvasPlugin, listeners: Set<() => void>): Canvas => {
+    const board = workspaceOf()!;
+    return {
+      board: { id: board.id, workspaceId: board.workspaceId, link: board.link },
+      selectedNodes: () => deps.selectedNodes(),
+      onSelectionChange(listener) {
+        listeners.add(listener);
+        return () => { listeners.delete(listener); };
+      },
+      token: () => deps.token(),
+      settings: Object.freeze({ ...plugin.settings }),
+    };
+  };
+  // Selection listeners of the agents' conversations; an agent's failures are caught where it is called.
+  const agentListeners = new Set<() => void>();
+
   const mount = (plugin: CanvasPlugin): Mounted => {
     const existing = mounted.get(plugin.id);
     if (existing) return existing;
@@ -84,19 +112,8 @@ export function mountCanvasPlugins(deps: CanvasHostDeps): CanvasHost {
     body.append(el);
     const entry: Mounted = { el, listeners: new Set(), failed: false };
     mounted.set(plugin.id, entry);
-    const board = workspaceOf()!;
-    const canvas: Canvas = {
-      board: { id: board.id, workspaceId: board.workspaceId, link: board.link },
-      selectedNodes: () => deps.selectedNodes(),
-      onSelectionChange(listener) {
-        entry.listeners.add(listener);
-        return () => { entry.listeners.delete(listener); };
-      },
-      token: () => deps.token(),
-      settings: Object.freeze({ ...plugin.settings }),
-    };
     try {
-      const cleanup = plugin.canvas.panel!.mount(el, canvas);
+      const cleanup = plugin.canvas.panel!.mount(el, canvasFor(plugin, entry.listeners));
       if (typeof cleanup === 'function') entry.cleanup = cleanup;
     } catch (error) { fail(plugin, error); }
     return entry;
@@ -225,7 +242,15 @@ export function mountCanvasPlugins(deps: CanvasHostDeps): CanvasHost {
       const again = parts.find(p => p.id === was);
       if (again && available(again)) open(again, false);
     },
+    agents: () => all.filter(p => p.canvas.agent && available(p)).map(plugin => ({
+      id: plugin.id,
+      name: plugin.canvas.agent!.name,
+      open: reply => plugin.canvas.agent!.open(canvasFor(plugin, agentListeners), reply),
+    })),
     selectionChanged() {
+      for (const listener of [...agentListeners]) {
+        try { listener(); } catch (error) { console.warn('plugin.canvas_failed', error); }
+      }
       for (const plugin of parts) {
         const entry = mounted.get(plugin.id);
         if (!entry || entry.failed) continue;

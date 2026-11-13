@@ -9,7 +9,8 @@ export interface ChatSession {
   id: string;
   agent: string;
   name: string;
-  capabilities: { stop: 'interrupt' | 'step' | 'none'; approvals: boolean };
+  /** `reset`: the person can start the conversation over ("New chat"). */
+  capabilities: { stop: 'interrupt' | 'step' | 'none'; approvals: boolean; reset?: boolean };
 }
 
 export type ChatEvent =

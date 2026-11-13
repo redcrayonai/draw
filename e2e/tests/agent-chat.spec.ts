@@ -82,9 +82,10 @@ test('chat follows a linked agent when only its selection moves to another board
   await expect(link).toBeVisible();
 });
 
-test('the latest inactive session never links back to an older session', async ({ account, stack }) => {
+test('with no agent connected, an older session board offers a prompt for itself and no link to a newer one', async ({ account, stack }) => {
   const token = stack.accountToken();
   const page = await account(token);
+  await page.context().grantPermissions(['clipboard-read', 'clipboard-write']);
   await page.routeWebSocket(/\/chat\/\d+$/, ws => {
     ws.onMessage(raw => {
       if (JSON.parse(String(raw)).role !== 'person') return;
@@ -100,14 +101,14 @@ test('the latest inactive session never links back to an older session', async (
     await stack.callReducer(token, 'start_session', [name, '/tmp/chat-navigation-e2e', 'a'.repeat(40)]);
     ids.push(Number((await stack.sql(`SELECT id FROM board WHERE name = '${name}'`))[0].id));
   }
-  await openBoard(page, await boardLink(stack, ids[0]));
+  const older = await boardLink(stack, ids[0]);
+  await openBoard(page, older);
   await page.getByRole('button', { name: 'Chat with agent' }).click();
-  await page.getByRole('link', { name: `Open ${names[1]}`, exact: true }).click();
-  await expect(page.locator('#board-title')).toHaveText(names[1]);
-  await page.getByRole('button', { name: 'Chat with agent' }).click();
-  await expect(page.locator('#agent-chat')).toBeVisible();
-  await expect(page.locator('#agent-chat')).toContainText('Ask your agent to reconnect board chat');
+  await expect(page.locator('#agent-chat')).toContainText('No agent connected');
   await expect(page.locator('#agent-chat .ac-empty a')).toHaveCount(0);
+  await page.getByRole('button', { name: 'Copy prompt for agent' }).click();
+  expect(await page.evaluate(() => navigator.clipboard.readText())).toBe(`Reconnect board chat on this board: ${page.url()}`);
+  expect(page.url()).toContain(new URL(older).hash);
 });
 
 test('the panel opens once when the agent connects, and stays closed once the person closes it', async ({ account, stack }) => {
@@ -528,7 +529,8 @@ test('a pairing link asks first, links on the button, and gives the agent this b
   expect(await links(stack, agent.identity)).toHaveLength(0);
 
   await linkAgent.click();
-  await expect(page.getByRole('button', { name: 'Chat with agent' })).toBeVisible();
+  // Chat is theirs now; its launcher stays out of the way while the panel is open.
+  await expect(page.locator('#act-chat')).toHaveJSProperty('hidden', false);
   await expect(linkAgent).toBeHidden();
   await expect.poll(async () => (await links(stack, agent.identity)).length).toBe(1);
   await expect.poll(async () => (await stack.sql(`SELECT * FROM agent_grant WHERE board_id = ${B} AND agent = 0x${agent.identity}`)).length).toBe(1);
@@ -550,7 +552,7 @@ test('Not now leaves everything as it was; a used link says you are linked alrea
   // The same code again, in the open tab: only the fragment changes.
   await page.evaluate(h => { location.hash = new URL(h).hash; }, href);
   await page.getByRole('button', { name: 'Link agent' }).click();
-  await expect(page.getByRole('button', { name: 'Chat with agent' })).toBeVisible();
+  await expect(page.locator('#act-chat')).toHaveJSProperty('hidden', false);
   await page.goto('about:blank');
   await page.goto(href);
   await page.getByRole('button', { name: 'Link agent' }).click();

@@ -153,18 +153,22 @@ describe('mountAgentChat', () => {
     return { chat, socket, button };
   }
 
-  it('an agent drawing elsewhere calls the panel over; an old session waits until the person opens it', async () => {
-    const old = await mount({ board: 'old', href: '#b=old', live: false });
-    old.socket.frame({ agent: 'gone' });
-    old.chat.refresh();
+  it('an agent drawing elsewhere calls the panel over; with no agent anywhere the panel waits, then hands over a prompt for this board', async () => {
+    const none = await mount();
+    none.socket.frame({ agent: 'gone' });
+    none.chat.refresh();
     expect(panel().hidden).toBe(true);
-    old.button.click();
-    expect(panel().textContent).toContain('Open old');
-    expect(panel().textContent).toContain('ask your agent to reconnect board chat if it is offline');
+    none.button.click();
+    expect(panel().textContent).toContain('No agent connected');
+    expect(panel().querySelector('.ac-empty a')).toBeNull();
+    const writeText = vi.fn(async () => {});
+    vi.stubGlobal('navigator', { clipboard: { writeText } });
+    [...panel().querySelectorAll('button')].find(b => b.textContent === 'Copy prompt for agent')!.click();
+    expect(writeText).toHaveBeenCalledWith(`Reconnect board chat on this board: ${location.href}`);
     panel().remove();
 
     FakeSocket.all = [];
-    const live = await mount({ board: 'now', href: '#b=now', live: true });
+    const live = await mount({ board: 'now', href: '#b=now' });
     live.socket.frame({ agent: 'gone' });
     live.chat.refresh();
     expect(panel().hidden).toBe(false);
@@ -565,4 +569,51 @@ describe('mountAgentChat', () => {
     expect(input().value).toBe('draft one');
   });
 
+  it('a plugin\'s agent shares the panel: no link needed, no opening by itself, New chat, and no red-crayon marks', async () => {
+    const sent: string[] = [];
+    let reply!: { text(delta: string): void; done(): void };
+    const button = document.createElement('button');
+    button.hidden = true;
+    let offered = true;
+    const chat = mountAgentChat(button, {
+      url: () => 'wss://x/chat/1', token: async () => 'tok', selection: () => '',
+      agents: () => (offered ? [{ id: 'helper', name: 'Agent', open(r) { reply = r; return { send: text => { sent.push(text); }, stop() {}, reset() {} }; } }] : []),
+    });
+    chat.setAvailable(false);
+    expect(button.hidden).toBe(false);
+    expect(FakeSocket.all).toHaveLength(0); // nobody linked: no relay to ask
+    expect(panel().hidden).toBe(true);
+
+    button.click();
+    expect(panel().querySelector('.ac-name')!.textContent).toBe('Agent');
+    expect(panel().textContent).toContain('Ready');
+    expect([...panel().querySelectorAll('.ac-suggest button')].map(b => b.textContent)).toEqual(['Explain this board']);
+    const newChat = [...panel().querySelectorAll('button')].find(b => b.textContent === 'New chat')!;
+    expect(newChat.parentElement!.hidden).toBe(true);
+
+    const input = panel().querySelector('textarea')!;
+    input.value = 'What is this?';
+    input.dispatchEvent(new Event('input'));
+    input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+    await flush();
+    expect(sent).toEqual(['What is this?']);
+    reply.text('A checkout flow.');
+    reply.done();
+    await vi.advanceTimersByTimeAsync(1000);
+    expect(panel().textContent).toContain('A checkout flow.');
+    expect(chat.online).toBe(false);
+    expect(chat.prepareMessage('I sent 1 red-crayon mark.')).toBeUndefined();
+
+    expect(newChat.parentElement!.hidden).toBe(false);
+    newChat.click();
+    await flush();
+    expect(panel().textContent).not.toContain('A checkout flow.');
+    expect(panel().textContent).toContain('Explain this board');
+
+    // The workspace turned the plugin off: nobody to chat with.
+    offered = false;
+    chat.setAvailable(false);
+    expect(button.hidden).toBe(true);
+    expect(panel().hidden).toBe(true);
+  });
 });

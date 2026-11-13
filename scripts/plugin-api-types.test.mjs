@@ -106,6 +106,6 @@ test('the canvas interface is checked with the client\'s compiler, CanvasPart in
   // draw hands Canvas to plugins: removing a member breaks them
   assert.match(run(current.replace(/  token\(\): Promise<string \| null>;\n/, '')).join('\n'), /'Canvas' changed incompatibly/);
   // plugins hand CanvasPart to draw: a new required member breaks plugins written for the old one
-  assert.match(run(current.replace('export type CanvasPart = { panel?: CanvasPanel };', 'export type CanvasPart = { panel?: CanvasPanel; toolbar: string };')).join('\n'), /'CanvasPart' changed incompatibly/);
+  assert.match(run(current.replace('export type CanvasPart = { panel?: CanvasPanel; agent?: CanvasAgent };', 'export type CanvasPart = { panel?: CanvasPanel; agent?: CanvasAgent; toolbar: string };')).join('\n'), /'CanvasPart' changed incompatibly/);
   for (const file of ['client/.api-base', 'client/api-compat.generated.ts', 'client/tsconfig.api.json']) assert.equal(existsSync(join(dir, file)), false, file);
 });

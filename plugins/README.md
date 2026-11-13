@@ -68,7 +68,7 @@ Each part has one public alias. The linked files define the exact exports.
 | `module/` | `@draw/module` | [module/src/plugin-api.ts](../module/src/plugin-api.ts): schema primitives, bundle helpers, hashes, workspace access, plugin switch, `ModuleApi`, `ModulePart`. |
 | `server/` | `@draw/server` | [web/src/lib/server/plugin-api.ts](../web/src/lib/server/plugin-api.ts): environment, HTTP responses, database calls, logs, `PluginRequest`, `ServerPart`. |
 | `web/` | `@draw/client` | [web/src/lib/plugin-api.ts](../web/src/lib/plugin-api.ts): stores, links, session token, `Button`, connection and version types, `BoardPanelProps`, `WebPart`. |
-| `client/` | `@draw/canvas` | [client/src/plugin-api.ts](../client/src/plugin-api.ts): `Canvas`, `CanvasBoard`, `CanvasNode`, `CanvasPanel`, `CanvasPart`. Types only. |
+| `client/` | `@draw/canvas` | [client/src/plugin-api.ts](../client/src/plugin-api.ts): `Canvas`, `CanvasBoard`, `CanvasNode`, `CanvasPanel`, `CanvasAgent`, `AgentReply`, `AgentConversation`, `CanvasPart`. Types only. |
 
 Non-test code imports only its own alias or relative files within its own part.
 This rule also covers re-exports, `require()`, and dynamic imports. Import paths
@@ -175,6 +175,40 @@ Each panel has an error boundary. An error thrown by `mount` or by a selection
 listener replaces that panel with an error card and leaves the board and other
 panels working; one thrown by the cleanup is logged. Errors in the panel's own
 event handlers reach the browser console and touch nothing else.
+
+### An agent in the chat panel
+
+A plugin that lets people talk to an agent exports `agent`, not a panel of its
+own. The board has one chat panel. The core owns all of it: the launcher, the
+transcript, the message box, the queue, Stop and the two looks. The plugin only
+carries a message to its agent and the reply back:
+
+```ts
+import type { CanvasAgent } from '@draw/canvas';
+
+export const agent: CanvasAgent = {
+  name: 'Example',                    // its name in the chat panel
+  open(canvas, reply) {               // once per board; a board switch stops it and opens another
+    return {
+      send(text, about) {             // one message at a time; `about` is the attached selection, in words
+        reply.step('Reading the board');
+        reply.text('The reply, ');    // as it streams
+        reply.text('piece by piece.');
+        reply.done();                 // or reply.done('A sentence about what went wrong.')
+      },
+      stop() { /* end the reply under way; call nothing on reply for it afterwards */ },
+      reset() { /* optional: forget the conversation. With it, the panel offers "New chat" */ },
+    };
+  },
+};
+```
+
+The agent follows the panel's rules above: workspace boards whose workspace
+turned the plugin on, with every canvas setting set. When the person also runs
+an agent of their own, both are in the panel and theirs comes first; the
+plugin's agent fills in when theirs is not connected. The panel never opens by
+itself for a plugin's agent. An error thrown by `open`, `send`, `stop` or
+`reset` shows as a line in the conversation and leaves the panel working.
 
 Style the panel with a CSS file imported from the part (`import './panel.css'`)
 and draw's theme variables (`--ink`, `--muted`, `--panel`, `--panel-2`,
