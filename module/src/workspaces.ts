@@ -57,18 +57,27 @@ export function humanBoardRole(ctx: any, boardId: bigint, identity = ctx.sender)
   return role;
 }
 
-export function humanBoardIds(ctx: any, identity = ctx.sender): Set<bigint> {
+// With `only` (a canvas's open boards) the answer is humanBoardIds ∩ only, found from those boards'
+// own rows: the same three ways in, read by board. A tab then pays for the boards it shows, where
+// walking every board the person can reach made each board switch cost all of them.
+export function humanBoardIds(ctx: any, identity = ctx.sender, only?: ReadonlySet<bigint>): Set<bigint> {
   if (isWorkspaceMachine(ctx, identity)) return new Set();
   const candidates = new Set<bigint>();
-  for (const grant of ctx.db.boardGrant.grantee.filter(identity)) candidates.add(grant.boardId);
+  if (!only) for (const grant of ctx.db.boardGrant.grantee.filter(identity)) candidates.add(grant.boardId);
   const orgs = new Set<string>();
   for (const member of ctx.db.orgMember.member.filter(identity)) if (!ctx.db.legacyWorkspace.orgId.find(member.orgId)) orgs.add(member.orgId);
   for (const member of ctx.db.workspaceMember.member.filter(identity)) {
-    for (const scope of ctx.db.boardWorkspace.workspaceId.filter(member.workspaceId)) candidates.add(scope.boardId);
+    if (!only) for (const scope of ctx.db.boardWorkspace.workspaceId.filter(member.workspaceId)) candidates.add(scope.boardId);
     const legacy = ctx.db.legacyWorkspace.workspaceId.find(member.workspaceId);
     if (legacy && member.role !== 'guest') orgs.add(legacy.orgId);
   }
-  for (const org of orgs) for (const grant of ctx.db.teamGrant.orgId.filter(org)) candidates.add(grant.boardId);
+  if (!only) for (const org of orgs) for (const grant of ctx.db.teamGrant.orgId.filter(org)) candidates.add(grant.boardId);
+  for (const id of only ?? []) {
+    const scope = ctx.db.boardWorkspace.boardId.find(id);
+    if ([...ctx.db.boardGrant.boardId.filter(id)].some((grant: any) => grant.grantee.isEqual(identity))
+      || (scope && membership(ctx, scope.workspaceId, identity))
+      || [...ctx.db.teamGrant.boardId.filter(id)].some((grant: any) => orgs.has(grant.orgId))) candidates.add(id);
+  }
   return new Set([...candidates].filter(id => roleRank(humanBoardRole(ctx, id, identity)) > 0));
 }
 

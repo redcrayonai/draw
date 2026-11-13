@@ -1,5 +1,6 @@
 import type { Node, Edge, Chart } from './module_bindings/types';
 import { symbolNeedle } from './refs';
+import { holds } from './depth';
 import { sizeTextCache, textEpoch, textWidth } from './node-text';
 import { drawTextBlock } from './text-block';
 import { layoutNodeText, ellipsize, labelFontSize, labelLineHeight, BADGE_GAP, BOUNDARY_ICON, iconPlacement, type NodeTextLayout } from './node-layout';
@@ -458,6 +459,10 @@ export interface RenderState {
   icons?: ReadonlyMap<bigint, string>;
   /** Neighbour focus: hovered node, else the single selected one. flow = from selection. */
   focus?: { id: bigint; flow: boolean } | null;
+  /** Nodes that link another board (visible_node_link); `open` is false when the reader cannot open it. */
+  links?: ReadonlyMap<bigint, { open: boolean }>;
+  /** The frame the reader stepped into (depth.ts) and the nodes inside it; everything else draws dimmed. */
+  depth?: { frame: bigint; inside: ReadonlySet<bigint> } | null;
   /** Change notes (spec 2026-10-16): anchor tags and schema cards, reader edges and pips. */
   notes?: NoteIndex;
   /** Hazard markers by anchor node (visible nodes only; the caller filters). */
@@ -744,6 +749,12 @@ interface NodeEntry {
   /** Datastore cylinder rim and external ↗ glyph, drawn only when they fit. */
   rim: SVGPathElement | null;
   glyph: SVGPathElement | null;
+  /** The layers glyph of a frame (a node with nodes drawn inside it), and the size it was placed for ('' = none). */
+  layers: SVGGElement | null;
+  layersKey: string;
+  /** The board-link glyph of a node that links another board, and what it was drawn for ('' = none). */
+  link: SVGGElement | null;
+  linkKey: string;
   /** Library icon (spec 2026-10-18), keyed on its id and placement ('' = none). */
   icon: SVGGElement | null;
   iconKey: string;
@@ -844,6 +855,8 @@ interface EdgeEntry {
   selected: boolean;
   /** Last-written focus-near state of g and labels. */
   near: boolean;
+  /** Last-written depth-out state of g and labels. */
+  depthOut: boolean;
   /** Last-written path data, and the route it came from. */
   d: string;
   route: Route | null;
@@ -963,6 +976,10 @@ function makeNodeEntry(n: Node): NodeEntry {
     rule: null,
     rim: null,
     glyph: null,
+    layers: null,
+    layersKey: '',
+    link: null,
+    linkKey: '',
     icon: null,
     iconKey: '',
     label: null,
@@ -1012,6 +1029,35 @@ function makeNodeEntry(n: Node): NodeEntry {
   };
 }
 
+const LAYERS_SIZE = 16;
+
+/** Three stacked sheets: this node has nodes drawn inside it. A generic layers glyph, drawn here. */
+function makeLayers(): SVGGElement {
+  const g = el('g', { class: 'node-layers', 'aria-hidden': 'true' });
+  const title = el('title', {});
+  title.textContent = 'Has nodes inside: click to step inside';
+  g.append(
+    title,
+    // A press on the glyph steps inside (interactions.ts): a target larger than the drawing.
+    el('rect', { class: 'node-glyph-hit', x: '-5', y: '-5', width: String(LAYERS_SIZE + 10), height: String(LAYERS_SIZE + 10) }),
+    el('path', { class: 'node-layers-top', d: 'M8,1.5 L14.5,5 L8,8.5 L1.5,5 Z' }),
+    el('path', { d: 'M1.5,8.25 L8,11.75 L14.5,8.25' }),
+    el('path', { d: 'M1.5,11.5 L8,15 L14.5,11.5' }),
+  );
+  return g;
+}
+
+/** This node links another board: a board with an arrow leaving it, or a padlock when the reader cannot open it. */
+function makeLinkGlyph(open: boolean): SVGGElement {
+  const g = el('g', { class: open ? 'node-link' : 'node-link node-link-private', 'aria-hidden': 'true' });
+  const title = el('title', {});
+  title.textContent = open ? 'Links another board: click to open it' : 'Links a board you cannot open';
+  g.append(title, el('rect', { class: 'node-glyph-hit', x: '-5', y: '-5', width: String(LAYERS_SIZE + 10), height: String(LAYERS_SIZE + 10) }), ...(open
+    ? [el('path', { d: 'M7,3.5 H4 A1.5,1.5 0 0 0 2.5,5 V12 A1.5,1.5 0 0 0 4,13.5 H11 A1.5,1.5 0 0 0 12.5,12 V9' }), el('path', { d: 'M9.5,2.5 H13.5 V6.5 M13.5,2.5 L7.5,8.5' })]
+    : [el('path', { d: 'M5,7.5 V5.5 A3,3 0 0 1 11,5.5 V7.5' }), el('rect', { x: '3.5', y: '7.5', width: '9', height: '6.5', rx: '1.5' })]));
+  return g;
+}
+
 /** Rebuild a node's inner DOM for its kind. Child positions that never change
  *  are set here; sizes and text are written by the patch pass (caches reset). */
 function buildInner(e: NodeEntry, kind: string): void {
@@ -1019,6 +1065,11 @@ function buildInner(e: NodeEntry, kind: string): void {
   e.rule = null;
   e.rim = null;
   e.glyph = null;
+  // replaceChildren dropped the layers glyph too: the patch pass re-adds it.
+  e.layers = null;
+  e.layersKey = '';
+  e.link = null;
+  e.linkKey = '';
   e.icon = null;
   e.iconKey = '';
   e.label = null;
@@ -1413,17 +1464,24 @@ export function renderBoard(
   const contains = (a: Rect, b: Rect) =>
     a.x <= b.x && a.y <= b.y && a.x + a.w >= b.x + b.w && a.y + a.h >= b.y + b.h;
   const containerIds = new Set<bigint>();
+  // Frames: the nodes the reader can step into, by depth.ts's own rule. Only nodes that are really on
+  // the board count, on either side: a ghost (hidden, shown faint) or a node the diff shows as removed
+  // is not something to step into, nor something that makes its boundary a frame. An empty boundary is
+  // a container and not a frame.
+  const frameIds = new Set<bigint>();
+  const real = nodes.map(n => !state.ghosts.has(n.id) && state.nodeDiff?.get(n.id) !== 'removed');
+  const boxes = nodes.map((n, i) => ({ id: n.id, ...rectList[i] }));
   for (let i = 0; i < nodes.length; i++) {
-    if (normalizeKind(nodes[i].kind) === 'boundary') {
-      containerIds.add(nodes[i].id);
-      continue;
-    }
+    if (normalizeKind(nodes[i].kind) === 'boundary') containerIds.add(nodes[i].id);
     const r = rectList[i];
     for (let j = 0; j < nodes.length; j++) {
-      if (j !== i && contains(r, rectList[j])) {
-        containerIds.add(nodes[i].id);
+      if (j === i || !contains(r, rectList[j])) continue;
+      containerIds.add(nodes[i].id);
+      if (real[i] && real[j] && holds(boxes[i], boxes[j])) {
+        frameIds.add(nodes[i].id);
         break;
       }
+      if (!real[i]) break; // a container already, and never a frame
     }
   }
 
@@ -1453,6 +1511,7 @@ export function renderBoard(
   const blastMoving = blast === null ? null : blastEdgeIds(blast, edges);
   world.classList.toggle('blast-on', blast !== null);
   world.classList.toggle('focus-dim', focusId !== null && blast === null);
+  const depth = state.depth ?? null;
   world.classList.toggle('focus-flow', focusId !== null && state.focus!.flow && blast === null);
 
   // --- nodes ---
@@ -1544,6 +1603,7 @@ export function renderBoard(
       (n.strokeStyle === 'dashed' ? ' stroke-dashed' : '') +
       (n.size && n.size !== 'm' ? ` size-${n.size}` : '') +
       (nearNodes.has(n.id) ? ' focus-near' : '') +
+      (!depth ? '' : n.id === depth.frame ? ' depth-frame' : depth.inside.has(n.id) ? '' : ' depth-out') +
       (blastHop === undefined ? '' : blastHop === 0 ? ' blast-src' : blastHop === -1 ? ' blast-clear' : blastHop === 1 ? ' blast-hop1' : ' blast-hopn') +
       (anchorNotes ? ` note-${anchorNotes[0].severity}` : '') +
       (schema ? ' schema-card' : '');
@@ -1686,6 +1746,35 @@ export function renderBoard(
       e.pip = pipKey === '' ? null : makeReaderPip(r.w);
       if (e.pip !== null) e.g.append(e.pip);
       e.pipKey = pipKey;
+    }
+
+    // Layers glyph: a frame says it holds more in its bottom right corner, the one corner nothing else uses.
+    const layersKey = frameIds.has(n.id) ? `${r.w}|${r.h}` : '';
+    if (layersKey !== e.layersKey) {
+      if (layersKey === '') {
+        e.layers?.remove();
+        e.layers = null;
+      } else {
+        if (e.layers === null) {
+          e.layers = makeLayers();
+          e.g.append(e.layers);
+        }
+        e.layers.setAttribute('transform', `translate(${r.w - LAYERS_SIZE - 10} ${r.h - LAYERS_SIZE - 10})`);
+      }
+      e.layersKey = layersKey;
+    }
+
+    // Board-link glyph: the same corner, left of the layers glyph when a node is both.
+    const linked = state.links?.get(n.id);
+    const linkKey = linked === undefined ? '' : `${linked.open}|${r.w}|${r.h}|${layersKey !== ''}`;
+    if (linkKey !== e.linkKey) {
+      e.link?.remove();
+      e.link = linked === undefined ? null : makeLinkGlyph(linked.open);
+      if (e.link !== null) {
+        e.link.setAttribute('transform', `translate(${r.w - LAYERS_SIZE - 10 - (layersKey === '' ? 0 : LAYERS_SIZE + 6)} ${r.h - LAYERS_SIZE - 10})`);
+        e.g.append(e.link);
+      }
+      e.linkKey = linkKey;
     }
 
     // Threat marker: the top right corner, 26 px left of whatever else sits there.
@@ -1842,6 +1931,7 @@ export function renderBoard(
         marker: '',
         selected: false,
         near: false,
+        depthOut: false,
         d: '',
         route: null,
         anchor: null,
@@ -1853,6 +1943,13 @@ export function renderBoard(
       e.g.classList.toggle('focus-near', near);
       e.labels.classList.toggle('focus-near', near);
       e.near = near;
+    }
+    // An edge is inside the frame when both its ends are.
+    const out = Boolean(depth) && !(depth!.inside.has(edge.fromNode) && depth!.inside.has(edge.toNode));
+    if (out !== e.depthOut) {
+      e.g.classList.toggle('depth-out', out);
+      e.labels.classList.toggle('depth-out', out);
+      e.depthOut = out;
     }
     // Past the dot cap an edge keeps its static dash: blast-still stops the flow.
     const blastCls = blast === null ? '' : blast.edges.has(edge.id) ? `blast-${blast.edges.get(edge.id)! >= 2 ? 'warm' : 'hot'}${blastMoving!.has(edge.id) ? '' : ' blast-still'}` : 'blast-clear';

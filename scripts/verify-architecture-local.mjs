@@ -157,6 +157,30 @@ test("a branch copies its base's edge motions, and a merge brings a branch edge'
   assert.deepEqual(await motions(boardId), [['dots', 'slow'], ['threat', 'fast']]);
 });
 
+test("a branch copies its base's board links, and a merge brings back a link added, changed or removed on the branch", async () => {
+  const user = await mint(), boardId = await plainBoard(user, 'links');
+  const billing = await plainBoard(user, 'links-billing'), search = await plainBoard(user, 'links-search');
+  for (const l of ['kept', 'relinked', 'unlinked', 'linked']) await ok(user.token, 'create_node', nodeArgs(boardId, l));
+  const on = async board => Object.fromEntries((await sql(OWNER, `SELECT * FROM node WHERE board_id = ${board}`)).map(n => [n.label, n.id]));
+  const links = async board => {
+    const label = Object.fromEntries(Object.entries(await on(board)).map(([l, id]) => [id, l]));
+    return Object.fromEntries((await sql(OWNER, `SELECT * FROM node_link WHERE board_id = ${board}`)).map(row => [label[row.nodeId], row.targetBoardId]));
+  };
+  const base = await on(boardId);
+  for (const l of ['kept', 'relinked', 'unlinked']) await ok(user.token, 'link_node_board', [base[l], billing]);
+  const v = await branchOf(user, boardId, 'links-branch');
+  assert.deepEqual(await links(v.boardId), { kept: billing, relinked: billing, unlinked: billing }, 'the branch starts with its base links');
+  const head = await on(v.boardId);
+  await ok(user.token, 'link_node_board', [head.relinked, search]);
+  await ok(user.token, 'unlink_node_board', [head.unlinked]);
+  await ok(user.token, 'link_node_board', [head.linked, search]);
+  // A node new on the branch brings its link with it.
+  await ok(user.token, 'create_connected_node', [...nodeArgs(v.boardId, 'added'), head.kept, '', '', { some: search }]);
+  await review(user, v);
+  await ok(user.token, 'merge_architecture_proposal', [v.boardId]);
+  assert.deepEqual(await links(boardId), { kept: billing, relinked: search, linked: search, added: search });
+});
+
 test('merge refuses a fact base and an agent caller', async () => {
   const user = await mint(), agent = await mint(), h = await history(user, 'factmerge'), base = await publish(h);
   const p = await proposal(user, base, 'fm'); await review(user, p);

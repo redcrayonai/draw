@@ -50,6 +50,11 @@ export function chromeInsets(wrap: HTMLElement): Insets {
   if (shown(dock)) {
     insets.bottom = w.bottom - dock.getBoundingClientRect().top + PANEL_GAP;
   }
+  // The depth trail sits top centre while the view is inside a frame: keep the frame clear of it.
+  const trail = document.getElementById('depth-trail');
+  if (shown(trail)) {
+    insets.top = Math.max(insets.top, trail.getBoundingClientRect().bottom - w.top);
+  }
   const inspector = document.getElementById('inspector');
   if (shown(inspector)) {
     const r = inspector.getBoundingClientRect();
@@ -208,8 +213,9 @@ export class Viewport {
    * Frame `bounds` with a margin inside the part of the canvas that floating
    * chrome leaves free (`insets`, see chromeInsets). Insets that would leave
    * less than MIN_FREE across (MIN_FREE / 2 down) are ignored on that axis.
+   * With `ms`, the view zooms there over that time (stepping into a frame and out).
    */
-  fit(bounds: Bounds | null, insets: Insets = NO_INSETS): void {
+  fit(bounds: Bounds | null, insets: Insets = NO_INSETS, ms = 0): void {
     if (!bounds) {
       return;
     }
@@ -237,9 +243,34 @@ export class Viewport {
       MAX_SCALE,
       Math.max(MIN_SCALE, Math.min((right - left) / w, (bottom - top) / h))
     );
-    this.scale = scale;
-    this.tx = left + (right - left - w * scale) / 2 - bounds.minX * scale;
-    this.ty = top + (bottom - top - h * scale) / 2 - bounds.minY * scale;
-    this.apply();
+    const tx = left + (right - left - w * scale) / 2 - bounds.minX * scale;
+    const ty = top + (bottom - top - h * scale) / 2 - bounds.minY * scale;
+    if (ms <= 0 || typeof requestAnimationFrame !== 'function') {
+      this.scale = scale;
+      this.tx = tx;
+      this.ty = ty;
+      this.apply();
+      return;
+    }
+    // Zoom about the middle of the free canvas: the world point under it glides from where it is
+    // to the bounds' centre while the scale steps evenly, so the target never swings off screen.
+    const cx = (left + right) / 2, cy = (top + bottom) / 2;
+    const fromScale = this.scale;
+    const fromX = (cx - this.tx) / fromScale, fromY = (cy - this.ty) / fromScale;
+    const toX = (cx - tx) / scale, toY = (cy - ty) / scale;
+    const t0 = performance.now();
+    const step = (now: number) => {
+      const k = easeOutExpo(Math.min(1, (now - t0) / ms));
+      this.scale = fromScale * Math.pow(scale / fromScale, k);
+      this.tx = cx - (fromX + (toX - fromX) * k) * this.scale;
+      this.ty = cy - (fromY + (toY - fromY) * k) * this.scale;
+      if (k < 1 && this.anim !== null) {
+        this.anim.raf = requestAnimationFrame(step);
+      } else {
+        this.anim = null;
+      }
+      this.apply();
+    };
+    this.anim = { raf: requestAnimationFrame(step), tx, ty };
   }
 }

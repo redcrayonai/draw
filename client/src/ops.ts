@@ -1,6 +1,7 @@
 import type { DbConnection } from './module_bindings/index';
 import type { Node, Edge, CodeRef, Chart } from './module_bindings/types';
 import { showError } from './chrome';
+import { boardAccess } from './subscribe';
 import { CHART_NOT_LOADED, type LibraryPayloadV1 } from './library';
 import { ICON_NODE_KINDS } from '../../module/src/node-icons';
 
@@ -362,6 +363,34 @@ export class Ops {
     return id;
   }
 
+  /**
+   * Quick add: a node, the edge to it from `from` and, with `targetBoardId`, its board link, made by
+   * one reducer in one transaction, and one undo step. Undo deletes the node (the server takes its
+   * edge and link with it); redo makes all three again.
+   */
+  async createConnectedAction(fields: NodeFields, from: bigint, targetBoardId?: bigint): Promise<bigint> {
+    const intent = this.conn.db.visibleArchitectureVersion?.boardId.find(fields.boardId)?.assertionMode === 'intent';
+    const make = () => captureInsert(
+      this.conn.db.visibleNode,
+      row => row.boardId === fields.boardId && row.label === fields.label && row.x === fields.x && row.y === fields.y && row.w === fields.w && row.h === fields.h,
+      () => this.conn.reducers.createConnectedNode({
+        boardId: fields.boardId, label: fields.label, sublabel: fields.sublabel, x: fields.x, y: fields.y, w: fields.w, h: fields.h,
+        token: fields.token, focal: fields.focal, kind: fields.kind, doc: fields.doc, imported: fields.imported,
+        shape: fields.shape, color: fields.color, strokeStyle: fields.strokeStyle, size: fields.size,
+        fromNode: this.cur('node', from), edgeLabel: '', evidence: intent ? '' : `human:${this.myIdentityHex}`, targetBoardId,
+      })
+    );
+    const id = await make();
+    this.history.push({
+      label: `create "${fields.label}"`,
+      undo: () => this.conn.reducers.deleteNode({ nodeId: this.cur('node', id) }),
+      redo: async () => {
+        this.link('node', id, await make());
+      },
+    });
+    return id;
+  }
+
   /** Create a chart: create_chart inserts the node and its chart row in one
    *  transaction. Only a node of kind 'chart' matches, so a plain node with
    *  the same label at the same spot is never taken for it. */
@@ -681,11 +710,11 @@ export class Ops {
     }
   }
 
-  /** A board member (module isBoardMember): any my_boards access but an opened
+  /** A board member (module isBoardMember): any board list access but an opened
    *  link. Only members cite code (U52). No row yet keeps the member path: a
    *  refused undo beats refs silently dropped. */
   private member(boardId: bigint): boolean {
-    return [...(this.conn.db.myBoards?.iter() ?? [])].find(r => r.boardId === boardId)?.access !== 'link';
+    return boardAccess(this.conn).find(r => r.boardId === boardId)?.access !== 'link';
   }
 
   /** A non-member's restore of a source:-cited edge would be refused (U52),

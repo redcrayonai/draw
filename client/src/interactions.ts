@@ -2,6 +2,7 @@ import type { DbConnection } from './module_bindings/index';
 import type { Node, Edge } from './module_bindings/types';
 import { showError } from './chrome';
 import { Viewport, chromeInsets, revealDelta, PANEL_GAP, MIN_FREE } from './viewport';
+import { sideOf, type Side } from './quick-add';
 import type { EdgeStyle, NodePatch } from './ops';
 import { DEFAULT_EDGE_STYLE, Ops } from './ops';
 import { contentBounds, nodeRect, el, renderedText, renderedEdgeAnchor, type Rect } from './render';
@@ -71,7 +72,8 @@ type Mode =
       wasSelected: boolean;
       shift: boolean;
     }
-  | { kind: 'drawEdge'; fromId: bigint; cur: { x: number; y: number } }
+  // press and side: a handle pressed and let go where it was is a click, which opens quick add on that side.
+  | { kind: 'drawEdge'; fromId: bigint; cur: { x: number; y: number }; press: { x: number; y: number }; side: Side }
   | {
       kind: 'resizeNode';
       nodeId: bigint;
@@ -122,6 +124,14 @@ export interface EditorDeps {
   /** Red crayon drafts (crayon.ts): a click on a node circles it, ⌘Z takes back the last.
    *  With the select tool, a loop's stroke or chip selects its mark; Delete removes it. */
   crayon?: Pick<Crayon, 'toggle' | 'undo' | 'drafts' | 'selected' | 'select' | 'remove'>;
+  /** A node outside the frame the reader stepped into (depth.ts): drawn dimmed, and not picked by a click. */
+  outside?: (id: bigint) => boolean;
+  /** Esc with nothing else to put down: step out one frame. False when the view is on the whole board. */
+  stepOut?: () => boolean;
+  /** Enter on one selected node: open the board it links, else step inside it. False when it does neither. */
+  stepIn?: (id: bigint) => boolean;
+  /** A click on a node's side handle (quick-add.ts): offer what to add on that side. `at` is in client pixels. */
+  quickAdd?: (nodeId: bigint, side: Side, at: { x: number; y: number }) => void;
 }
 
 /** Focus targets that take typed text: canvas shortcuts never fire there. */
@@ -180,6 +190,8 @@ export class Editor {
   // Pointer capture retargets pointerup, which suppresses native dblclick —
   // detect double-clicks manually from consecutive pointerdowns.
   private lastClick: { time: number; x: number; y: number; nodeId: bigint | null } | null = null;
+  /** A press that began on a node's layers or link glyph, until it is let go. */
+  private glyphPress: { nodeId: bigint; x: number; y: number } | null = null;
   /** Fingers on the canvas, by pointer id: a second one turns the gesture into a pinch. */
   private touches = new Map<number, { x: number; y: number }>();
 
@@ -568,6 +580,13 @@ export class Editor {
   }
 
   /** Drop ids that no longer exist (deleted remotely). */
+  /** Put the selection down, as Esc does (a step inside or out leaves nothing selected). */
+  deselect(): void {
+    if (this.selection.size === 0 && this.selectedEdges.size === 0) return;
+    this.selectedEdges.clear();
+    this.setSelection([]);
+  }
+
   pruneSelection(): void {
     const alive = new Set(this.deps.getNodes().map(n => n.id));
     let changed = false;
@@ -642,6 +661,7 @@ export class Editor {
     // Topmost = smallest area containing the point (containers render below).
     let best: Node | null = null;
     for (const n of this.deps.getNodes()) {
+      if (this.deps.outside?.(n.id)) continue;
       const r = this.rect(n);
       if (wx >= r.x && wx <= r.x + r.w && wy >= r.y && wy <= r.y + r.h) {
         if (!best || n.w * n.h < best.w * best.h) {
@@ -729,8 +749,8 @@ export class Editor {
     const resettable = edgeStyles.some(st => (Object.keys(DEFAULT_EDGE_STYLE) as (keyof EdgeStyle)[]).some(k => st[k] !== DEFAULT_EDGE_STYLE[k]));
     for (const button of this.toolbar.querySelectorAll<HTMLButtonElement>('button:not(#tb-more)')) {
       const disabled =
-        // Add to library writes only the caller's own library, so it stays on.
-        (readOnly && button.id !== 'tb-library') ||
+        // Add to library writes only the caller's own library; Step inside and Open board only move the view: all stay on.
+        (readOnly && button.id !== 'tb-library' && button.id !== 'tb-step-in' && button.id !== 'tb-open-board') ||
         (this.topologyReadOnly && (button === this.tbKind || button === this.tbDelete)) ||
         (chart && (button === this.tbKind || button.closest('#tb-shape') !== null)) ||
         (button === this.tbReset && !resettable) ||
@@ -907,6 +927,7 @@ export class Editor {
     const maxY = Math.max(start.y, cur.y);
     const hit = new Set<bigint>();
     for (const n of this.deps.getNodes()) {
+      if (this.deps.outside?.(n.id)) continue; // dimmed and at rest: a box drawn across it selects nothing there
       const r = this.rect(n);
       if (r.x < maxX && r.x + r.w > minX && r.y < maxY && r.y + r.h > minY) {
         hit.add(n.id);
@@ -1039,7 +1060,14 @@ export class Editor {
         return;
       }
 
-      if (evt.button === 0 && !this.panArmed && !evt.shiftKey) {
+      // A frame's layers glyph and a link's glyph are the way in. The press is remembered and goes on
+      // as any press on the node does (it can still start a drag); let go where it began, it is a click
+      // on the glyph (the second pointerup listener below).
+      const glyph = evt.button === 0 ? (evt.target as Element).closest('.node-layers, .node-link') : null;
+      const glyphNode = glyph?.closest<SVGGElement>('[data-id]')?.dataset.id;
+      this.glyphPress = glyphNode === undefined ? null : { nodeId: BigInt(glyphNode), x: evt.clientX, y: evt.clientY };
+      // A handle has its own click (quick add): two of them are never a double-click on the node under it.
+      if (evt.button === 0 && !this.panArmed && !evt.shiftKey && !(evt.target as Element).closest('.edge-handle')) {
         const node = this.nodeAt(w.x, w.y);
         const now = performance.now();
         const lc = this.lastClick;
@@ -1053,6 +1081,8 @@ export class Editor {
           : { time: now, x: evt.clientX, y: evt.clientY, nodeId: node?.id ?? null };
         if (isDouble) {
           evt.preventDefault();
+          // A double-click on a frame (or a board link) goes in; on its name it still edits the name.
+          if (node && (evt.target as Element).closest('text') === null && this.deps.stepIn?.(node.id)) return;
           if (node) {
             const field = (evt.target as Element).closest('text')?.classList.contains('node-sublabel')
               ? 'sublabel'
@@ -1100,7 +1130,9 @@ export class Editor {
       const handle = (evt.target as Element).closest<SVGCircleElement>('.edge-handle');
       if (handle?.dataset.nodeId) {
         if (this.topologyReadOnly) return;
-        this.mode = { kind: 'drawEdge', fromId: BigInt(handle.dataset.nodeId), cur: w };
+        const fromId = BigInt(handle.dataset.nodeId);
+        const from = this.deps.getNodes().find(n => n.id === fromId);
+        this.mode = { kind: 'drawEdge', fromId, cur: w, press: { x: evt.clientX, y: evt.clientY }, side: from ? sideOf(this.rect(from), w) : 'right' };
         try { svg.setPointerCapture(evt.pointerId); } catch { /* synthetic pointer */ }
         return;
       }
@@ -1290,6 +1322,15 @@ export class Editor {
       this.deps.rerender();
     });
 
+    // After the listener below has ended the press as any press on a node: a glyph pressed and let go
+    // in place goes in. Registered second, so it runs second.
+    const glyphClick = (evt: PointerEvent) => {
+      const press = this.glyphPress;
+      this.glyphPress = null;
+      if (press === null || Math.hypot(evt.clientX - press.x, evt.clientY - press.y) >= tapSlop(evt)) return;
+      if (this.deps.outside?.(press.nodeId)) return;
+      if (this.deps.stepIn?.(press.nodeId)) this.lastClick = null; // not the first half of a double-click
+    };
     svg.addEventListener('pointerup', evt => {
       this.touches.delete(evt.pointerId);
       if (this.mode.kind === 'pinch') {
@@ -1364,6 +1405,8 @@ export class Editor {
                 label: '',
               })
               .catch(err => showError((err as Error).message));
+          } else if (Math.hypot(evt.clientX - mode.press.x, evt.clientY - mode.press.y) < tapSlop(evt)) {
+            this.deps.quickAdd?.(mode.fromId, mode.side, { x: evt.clientX, y: evt.clientY });
           }
           return;
         }
@@ -1387,6 +1430,8 @@ export class Editor {
 
     // The system took the pointer (an edge swipe, a palm): the gesture stops
     // where it is and writes nothing.
+    svg.addEventListener('pointerup', glyphClick);
+
     svg.addEventListener('pointercancel', evt => {
       this.touches.delete(evt.pointerId);
       if (this.mode.kind === 'dragNodes' || this.mode.kind === 'resizeNode') {
@@ -1476,6 +1521,14 @@ export class Editor {
         this.toggleCodeOverlay();
         return;
       }
+      // Enter steps inside the one selected frame (depth.ts).
+      // Never from a control: after a click its focus stays, and Enter there is that control's own key
+      // (a button pressed again, a code ref expanded), whichever way the focus arrived.
+      if (evt.key === 'Enter' && !meta && !evt.altKey && !evt.shiftKey && this.selection.size === 1 && this.selectedEdges.size === 0
+        && !target?.closest(`${ACTIVATABLE}, ${KEY_PANELS}`)) {
+        if (this.deps.stepIn?.([...this.selection][0])) evt.preventDefault();
+        return;
+      }
       // L opens or closes the library; ⇧L saves the node selection to it.
       // preventDefault keeps the l out of the search field that opening focuses.
       // evt.key, not evt.code: on Dvorak or Colemak the key that types l is not KeyL.
@@ -1517,6 +1570,8 @@ export class Editor {
           this.selectedEdges.clear();
           this.setSelection([]);
           this.deps.rerender();
+        } else {
+          this.deps.stepOut?.();
         }
         return;
       }

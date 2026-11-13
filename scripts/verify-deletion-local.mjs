@@ -218,6 +218,9 @@ before(async () => {
   await ok(owner.token, 'enable_chart_embed', [embedChart, randomBytes(16).toString('hex')]);
   await ok(owner.token, 'enable_board_embed', [B, randomBytes(16).toString('hex'), false, 0]);
   await ok(owner.token, 'set_node_icon', [a, 'queue']);
+  const elsewhere = named('del-link-target');
+  await ok(owner.token, 'create_board', [elsewhere]);
+  await ok(owner.token, 'link_node_board', [b, await boardNamed(elsewhere)]);
   await ok(owner.token, 'set_edge_weight', [edge.id, 'bold']);
   await ok(owner.token, 'set_edge_motion', [edge.id, 'dots', 'fast']);
   await ok(owner.token, 'anchor_chart', [embedChart, 'edge', edge.id]);

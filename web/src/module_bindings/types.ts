@@ -648,6 +648,19 @@ export const MyBoard = __t.object("MyBoard", {
 });
 export type MyBoard = __Infer<typeof MyBoard>;
 
+export const MyBoardAccess = __t.object("MyBoardAccess", {});
+export type MyBoardAccess = __Infer<typeof MyBoardAccess>;
+
+export const MyBoardAccessRow = __t.object("MyBoardAccessRow", {
+  boardId: __t.u64(),
+  access: __t.string(),
+  sharedWith: __t.array(__t.string()),
+  linkMode: __t.string(),
+  linkToken: __t.string(),
+  isSession: __t.bool(),
+});
+export type MyBoardAccessRow = __Infer<typeof MyBoardAccessRow>;
+
 export const MyBoardCreations = __t.object("MyBoardCreations", {});
 export type MyBoardCreations = __Infer<typeof MyBoardCreations>;
 
@@ -798,6 +811,22 @@ export const NodeIcon = __t.object("NodeIcon", {
   icon: __t.string(),
 });
 export type NodeIcon = __Infer<typeof NodeIcon>;
+
+export const NodeLink = __t.object("NodeLink", {
+  nodeId: __t.u64(),
+  boardId: __t.u64(),
+  targetBoardId: __t.u64(),
+});
+export type NodeLink = __Infer<typeof NodeLink>;
+
+export const NodeLinkRow = __t.object("NodeLinkRow", {
+  nodeId: __t.u64(),
+  boardId: __t.u64(),
+  targetBoardId: __t.u64(),
+  name: __t.string(),
+  slug: __t.string(),
+});
+export type NodeLinkRow = __Infer<typeof NodeLinkRow>;
 
 export const NodeTouch = __t.object("NodeTouch", {
   nodeId: __t.u64(),
@@ -1039,6 +1068,9 @@ export type VisibleNode = __Infer<typeof VisibleNode>;
 
 export const VisibleNodeIcon = __t.object("VisibleNodeIcon", {});
 export type VisibleNodeIcon = __Infer<typeof VisibleNodeIcon>;
+
+export const VisibleNodeLink = __t.object("VisibleNodeLink", {});
+export type VisibleNodeLink = __Infer<typeof VisibleNodeLink>;
 
 export const VisibleParticipant = __t.object("VisibleParticipant", {});
 export type VisibleParticipant = __Infer<typeof VisibleParticipant>;

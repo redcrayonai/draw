@@ -1897,6 +1897,98 @@ describe('chart cards (kind chart)', () => {
   });
 });
 
+describe('depth: stepped inside a frame', () => {
+  // frame 1 holds 2 and 3; 4 is outside. Edge 10 is inside, edge 11 crosses the frame.
+  const nodes = [mkNode(1, { kind: 'boundary', x: 0, y: 0, w: 800, h: 400 }), mkNode(2, { x: 48, y: 96 }), mkNode(3, { x: 400, y: 96 }), mkNode(4, { x: 1200, y: 96 })];
+  const edges = [mkEdge(10, 2, 3, 'in'), mkEdge(11, 3, 4, 'across')];
+  const edgeG = (world: SVGGElement, id: number) => world.querySelector(`.edge-hit[data-edge-id="${id}"]`)!.parentElement!;
+  const cls = (world: SVGGElement, id: number, name: string) => world.querySelector(`[data-id="${id}"]`)!.classList.contains(name);
+  const depth = { frame: 1n, inside: new Set([2n, 3n]) };
+
+  it('lights the frame, leaves what is inside as drawn and dims the rest, edges that cross it included', () => {
+    const world = mkWorld();
+    renderBoard(world, nodes, edges, mkState({ depth }));
+    expect(cls(world, 1, 'depth-frame')).toBe(true);
+    expect([1, 2, 3, 4].map(id => cls(world, id, 'depth-out'))).toEqual([false, false, false, true]);
+    expect(edgeG(world, 10).classList.contains('depth-out')).toBe(false);
+    expect(edgeG(world, 11).classList.contains('depth-out')).toBe(true);
+  });
+
+  it('stepping out puts every class back, and a board never stepped into carries none', () => {
+    const world = mkWorld();
+    renderBoard(world, nodes, edges, mkState());
+    expect(world.querySelectorAll('.depth-out, .depth-frame')).toHaveLength(0);
+    renderBoard(world, nodes, edges, mkState({ depth }));
+    renderBoard(world, nodes, edges, mkState({ depth: null }));
+    expect(world.querySelectorAll('.depth-out, .depth-frame')).toHaveLength(0);
+  });
+
+  it('a node with nodes drawn inside it carries the layers glyph in its bottom right corner; emptied, it loses it', () => {
+    const world = mkWorld();
+    const glyph = (id: number) => world.querySelector(`[data-id="${id}"] .node-layers`);
+    renderBoard(world, nodes, edges, mkState());
+    expect([1, 2, 3, 4].map(id => glyph(id) !== null)).toEqual([true, false, false, false]);
+    expect(glyph(1)!.getAttribute('transform')).toBe('translate(774 374)'); // 800x400, 16 px glyph, 10 px in
+    // An empty boundary is a container, not a frame.
+    renderBoard(world, [nodes[0], nodes[3]], [], mkState());
+    expect(glyph(1)).toBeNull();
+    // A plain node drawn around another becomes one, and follows its size.
+    const big = mkNode(5, { x: 1100, y: 0, w: 480, h: 320 });
+    renderBoard(world, [nodes[0], nodes[3], big], [], mkState());
+    expect(glyph(5)!.getAttribute('transform')).toBe('translate(454 294)');
+    expect(glyph(4)).toBeNull();
+  });
+
+  it('a boundary whose only contents are ghosts, or nodes the diff shows removed, is not a frame; nor is a ghost', () => {
+    const world = mkWorld();
+    const glyph = (id: number) => world.querySelector(`[data-id="${id}"] .node-layers`);
+    const frame = mkNode(1, { kind: 'boundary', x: 0, y: 0, w: 800, h: 400 }), a = mkNode(2, { x: 48, y: 96 }), b = mkNode(3, { x: 400, y: 96 });
+    renderBoard(world, [frame, a, b], [], mkState({ ghosts: new Set([2n, 3n]) }));
+    expect(glyph(1)).toBeNull();
+    renderBoard(world, [frame, a, b], [], mkState({ ghosts: new Set([2n]), nodeDiff: new Map([[3n, 'removed' as const]]) }));
+    expect(glyph(1)).toBeNull();
+    renderBoard(world, [frame, a, b], [], mkState({ ghosts: new Set([2n]) })); // one real node inside is enough
+    expect(glyph(1)).not.toBeNull();
+    renderBoard(world, [frame, a, b], [], mkState({ ghosts: new Set([1n]) })); // a hidden boundary shown faint
+    expect(glyph(1)).toBeNull();
+  });
+
+  it('marks the same nodes depth.ts lets the reader step into, twins on one rectangle included', async () => {
+    const { isFrame } = await import('./depth');
+    const twin = mkNode(6, { kind: 'boundary', x: 0, y: 0, w: 800, h: 400 }); // exactly over node 1
+    const all = [...nodes, twin];
+    const world = mkWorld();
+    renderBoard(world, all, edges, mkState());
+    for (const n of all) {
+      expect(world.querySelector(`[data-id="${n.id}"] .node-layers`) !== null, `node ${n.id}`).toBe(isFrame(n, all));
+    }
+  });
+
+  it('a node that links a board carries the link glyph, a padlock when the reader cannot open it, beside the layers glyph when it is a frame too', () => {
+    const world = mkWorld();
+    const glyph = (id: number) => world.querySelector(`[data-id="${id}"] .node-link`);
+    renderBoard(world, nodes, edges, mkState({ links: new Map([[2n, { open: true }], [4n, { open: false }], [1n, { open: true }]]) }));
+    expect(glyph(2)!.classList.contains('node-link-private')).toBe(false);
+    expect(glyph(4)!.classList.contains('node-link-private')).toBe(true);
+    expect(glyph(3)).toBeNull();
+    expect(glyph(2)!.getAttribute('transform')).toBe('translate(134 54)'); // 160x80, the bottom right corner
+    expect(glyph(1)!.getAttribute('transform')).toBe('translate(752 374)'); // left of the frame's layers glyph
+    // Unlinked, it goes; access gained, the padlock becomes the link.
+    renderBoard(world, nodes, edges, mkState({ links: new Map([[4n, { open: true }]]) }));
+    expect(glyph(2)).toBeNull();
+    expect(glyph(4)!.classList.contains('node-link-private')).toBe(false);
+  });
+
+  it('the stylesheet dims what is out and gives the frame the accent', async () => {
+    const fsModule = 'node:fs';
+    const { readFileSync } = (await import(/* @vite-ignore */ fsModule)) as { readFileSync(path: string, encoding: 'utf8'): string };
+    const css = readFileSync(`${(globalThis as unknown as { process: { cwd(): string } }).process.cwd()}/src/style.css`, 'utf8');
+    expect(css).toContain('#world .node.depth-out,');
+    expect(css).toContain('#world .node.depth-frame .node-rect {');
+    expect(css).toContain('.depth-crumb.current {');
+  });
+});
+
 describe('neighbour focus (Task 4)', () => {
   const nodes = [mkNode(1), mkNode(2), mkNode(3), mkNode(4, { y: 600 })];
   const edges = [mkEdge(10, 1, 2, 'a-b'), mkEdge(11, 2, 3, 'b-c')];
