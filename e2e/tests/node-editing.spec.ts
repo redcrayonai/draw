@@ -9,10 +9,11 @@ const nodeEl = (page: Page, id: number) => page.locator(`#world g[data-id="${id}
 const lastId = async (page: Page) => Number(await nodes(page).last().getAttribute('data-id'));
 const rowsOn = (stack: Stack, board: number, columns = '*') => stack.sql(`SELECT ${columns} FROM node WHERE board_id = ${board}`);
 
-/** Press a kind key and click the board there: the kind stays armed until Escape. */
+/** Press a kind key, click the board there, and keep the default name the editor opens with. */
 async function place(page: Page, key: string, x: number, y: number) {
   await page.keyboard.press(key);
   await page.locator('#board').click({ position: { x, y } });
+  await page.locator('#inline-edit').press('Enter');
 }
 
 /** The drawn rect's corner radius and half its width: equal for an ellipse. */
@@ -30,7 +31,7 @@ const tokenColor = (page: Page, name: string) => page.evaluate(value => {
   return rgb;
 }, name);
 
-test('an armed kind keeps placing until Esc', async ({ guest, stack }) => {
+test('a placed node hands back the select tool and opens its name', async ({ guest, stack }) => {
   const page = await guest();
   await openBoard(page, `${stack.url}?new=1`);
   const board = await boardIdOf(stack, page);
@@ -41,25 +42,25 @@ test('an armed kind keeps placing until Esc', async ({ guest, stack }) => {
   await page.locator('#empty-place').click();
   await expect(service).toHaveClass(/armed/);
   await expect(page.locator('#rail-hint')).toContainText('armed · service');
-  await expect(page.locator('#rail-hint')).toContainText('keep clicking to place more');
+  await expect(page.locator('#rail-hint')).toContainText('click canvas to place');
 
-  // CV-01: every click places another node while the kind stays armed.
+  // CV-01: one click places, hands back the select tool and opens the name, ready to type over.
   await page.locator('#board').click({ position: { x: 500, y: 220 } });
   await expect(nodes(page)).toHaveCount(1);
   await expect(page.locator('#empty-state')).toBeHidden();
-  await page.locator('#board').click({ position: { x: 800, y: 220 } });
-  await expect(nodes(page)).toHaveCount(2);
-  await expect(service).toHaveClass(/armed/);
-
-  // Esc hands back the select tool: a click on empty canvas places nothing.
-  await page.keyboard.press('Escape');
   await expect(page.locator('#tool-select')).toHaveClass(/armed/);
   await expect(service).not.toHaveClass(/armed/);
   await expect(page.locator('#board')).not.toHaveClass(/armed/);
+  await expect(page.locator('#inline-edit')).toBeFocused();
+  await page.keyboard.type('gateway');
+  await page.keyboard.press('Enter');
+  await expect(page.locator('#world')).toContainText('gateway');
+
+  // A click on empty canvas places nothing more.
   await page.locator('#board').click({ position: { x: 650, y: 450 } });
-  await expect(nodes(page)).toHaveCount(2);
+  await expect(nodes(page)).toHaveCount(1);
   await expect(page.locator('#save-status')).toHaveText('Saved');
-  expect(await rowsOn(stack, board, 'id')).toHaveLength(2);
+  expect(await rowsOn(stack, board, 'label')).toEqual([{ label: 'gateway' }]);
 
   // Key 1 arms the same tool, and pressing it again puts it down.
   await page.keyboard.press('1');
@@ -69,7 +70,7 @@ test('an armed kind keeps placing until Esc', async ({ guest, stack }) => {
   await expect(service).not.toHaveClass(/armed/);
 
   await page.reload();
-  await expect(nodes(page)).toHaveCount(2);
+  await expect(nodes(page)).toHaveCount(1);
 });
 
 test('label edits cancel on Esc, save live on Enter, and undo and redo', async ({ guest, account, stack }) => {
@@ -273,7 +274,6 @@ test('each kind draws its own mark, and the kind cycle reaches a collaborator', 
   await place(owner, '3', 720, 220);
   await place(owner, '4', 300, 360);
   await place(owner, '5', 680, 380);
-  await owner.locator('#inline-edit').press('Enter'); // a new note opens its editor
   await owner.keyboard.press('Escape');
   await expect(nodes(owner)).toHaveCount(5);
   await expect(owner.locator('#world g.node-datastore .node-rule')).toHaveCount(1);

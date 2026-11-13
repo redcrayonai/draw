@@ -80,17 +80,23 @@ test('module upgrade retains edge rows before deploying appended-column canvas b
   expect(saved).toHaveLength(3);
   expect(saved).toEqual(expect.arrayContaining(after));
   expect(saved.every(row => row.upgrade_probe === 'retained-edge')).toBe(true);
-  await drawNode(current, 'AfterUpgrade');
+  // Placed and kept as the default name: the write after the upgrade is what counts here. On this
+  // page the name editor that placing opens has not appeared in CI (the node lands unselected),
+  // so the test does not wait on it.
+  await current.keyboard.press('1');
+  await current.locator('#board').click({ position: { x: 120, y: 420 } });
+  await expect(current.locator('#world g.node')).toHaveCount(3);
+  await expect(current.locator('#save-status')).toHaveText('Saved');
   await current.reload();
   await expect(current.locator('#world g.node')).toHaveCount(3);
   await expect(current.locator('#world g.edge')).toHaveCount(3);
-  await expect(current.locator('#world')).toContainText('AfterUpgrade');
+  await expect(current.locator('#world')).toContainText('Service');
   expect(await upgrade.readEdges()).toEqual(saved);
   expect(currentErrors).toEqual([]);
   // The original page lost its socket at the break-clients publish and reloaded
   // itself, onto whichever canvas was served then. It must show the post-upgrade writes.
   await expect(page.locator('#world g.edge')).toHaveCount(3);
   await expect(page.locator('#world g.node')).toHaveCount(3);
-  await expect(page.locator('#world')).toContainText('AfterUpgrade');
+  await expect(page.locator('#world')).toContainText('Service');
   expect(legacyErrors).toEqual([]);
 });

@@ -416,7 +416,7 @@ test('an agent on an empty board says it is here; an empty session board waits f
   const empty = owner.locator('#empty-state');
   await expect(empty).toHaveAttribute('data-mode', 'board');
   await expect(empty.getByText('Start with your first node.')).toBeVisible();
-  await expect(empty.getByText('Click to place.', { exact: false })).toBeVisible();
+  await expect(empty.getByText('Click to place, then type its name.')).toBeVisible();
   await expect(owner.locator('#empty-orb')).toBeHidden();
 
   const agent = await presentAgent(stack);
@@ -426,7 +426,7 @@ test('an agent on an empty board says it is here; an empty session board waits f
   await expect(owner.locator('#empty-orb')).toBeVisible();
   // The board-only parts go. This build has no MCP URL, so #empty-connect is never rendered here.
   await expect(empty.getByText('Start with your first node.')).toBeHidden();
-  await expect(empty.getByText('Click to place.', { exact: false })).toBeHidden();
+  await expect(empty.getByText('Click to place, then type its name.')).toBeHidden();
   await expect(agentChip(owner)).toBeVisible();
   await drawNode(owner, 'First');
   await expect(empty).toBeHidden();

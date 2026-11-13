@@ -52,6 +52,19 @@ function setup(factual = false, readOnly = false) {
   return { node, svg, editor, viewport, resizeNodeAction, history, updateNodeAction, deleteNodesAction, createNodeAction, pointer, drag };
 }
 
+describe('placing', () => {
+  it('a placed node hands back the select tool and opens its label editor', async () => {
+    const { node, svg, editor, createNodeAction, pointer } = setup();
+    createNodeAction.mockResolvedValueOnce(node.id);
+    editor.arm('service');
+    pointer(svg, 'pointerdown', 600, 600);
+    expect(createNodeAction).toHaveBeenCalledTimes(1);
+    expect(editor.armedKind).toBeNull();
+    await vi.waitFor(() => expect(document.getElementById('inline-edit')).not.toBeNull());
+    expect([...editor.selection]).toEqual([node.id]);
+  });
+});
+
 describe('resizing fitted nodes', () => {
   it('holds opposite edges fixed when a north/west resize reaches the text minimum', () => {
     const { node, editor, drag } = setup();
@@ -806,7 +819,7 @@ describe('rail hint (G10)', () => {
     editor.arm('service');
     expect(hint().hidden).toBe(false);
     expect(hint().textContent).toContain('armed · service');
-    expect(hint().textContent).toContain('keep clicking to place more');
+    expect(hint().textContent).toContain('click canvas to place');
     editor.arm(null);
     expect(hint().hidden).toBe(true);
   });

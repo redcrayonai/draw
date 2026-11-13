@@ -54,7 +54,7 @@ test('a double-click on empty canvas places free text, and T or 6 arms text for 
   // A double-click on a node still edits its label. (drawNode double-clicks the last g.node, here the text.)
   await page.keyboard.press('1');
   await page.locator('#board').click({ position: { x: 500, y: 120 } });
-  await page.keyboard.press('Escape');
+  await page.locator('#inline-edit').press('Enter'); // a new node opens its name: keep the default
   const service = page.locator('#world g.node-service');
   await expect(service).toHaveCount(1);
   await dblclickSettled(page, service);
@@ -199,12 +199,12 @@ test('inline markdown styles text for everyone and survives reload and export', 
   // CV-73: an external node too, for its drawn glyph.
   await owner.keyboard.press('3');
   await owner.locator('#board').click({ position: { x: 950, y: 420 } });
-  await owner.keyboard.press('Escape');
+  await owner.locator('#inline-edit').press('Enter'); // a new node opens its name: keep the default
   await expect(owner.locator('#world g.node-external')).toHaveCount(1);
   // And a boundary, for its faint fill.
   await owner.keyboard.press('4');
   await owner.locator('#board').click({ position: { x: 80, y: 420 } });
-  await owner.keyboard.press('Escape');
+  await owner.locator('#inline-edit').press('Enter'); // a new node opens its name: keep the default
   await expect(owner.locator('#world g.node-boundary')).toHaveCount(1);
   await expect(owner.locator('#save-status')).toHaveText('Saved');
 

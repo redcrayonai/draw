@@ -463,7 +463,7 @@ test('hovering or selecting one node dims all but its neighbours, and an export 
   const box = await settledBox(node(page, c));
   await page.keyboard.press('4');
   await page.mouse.click(box.x + box.width + 120, box.y - 200);
-  await page.keyboard.press('Escape');
+  await page.locator('#inline-edit').press('Enter'); // a new node opens its name: keep the default
   const boundary = page.locator('#world g.node.node-boundary');
   await expect(boundary).toHaveCount(1);
   await expect(page.locator('#save-status')).toHaveText('Saved');

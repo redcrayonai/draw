@@ -117,12 +117,11 @@ export async function drawNode(page: Page, label: string) {
   const count = await nodes.count();
   await page.keyboard.press('1');
   await page.locator('#board').click({ position: { x: 500 + count * 220, y: 220 + count * 130 } });
-  await page.keyboard.press('Escape');
-  await expect(nodes).toHaveCount(count + 1);
-  await nodes.last().dblclick();
+  // The new node opens its name editor; Esc then a double-click would race the reveal glide Esc starts.
   const edit = page.locator('#inline-edit');
   await edit.fill(label);
   await edit.press('Enter');
+  await expect(nodes).toHaveCount(count + 1);
   await expect(page.locator('#world')).toContainText(label);
   await expect(page.locator('#save-status')).toHaveText('Saved');
 }
