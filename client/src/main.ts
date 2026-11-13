@@ -1343,6 +1343,15 @@ async function boot(conn: DbConnection, identityHex: string, signedIn: boolean):
       let depthTrail: bigint[] = [];
       let depthInside: ReadonlySet<bigint> = new Set();
       const depthFrame = (): bigint | null => depthTrail[depthTrail.length - 1] ?? null;
+      // The boards left through a link, outermost first, each with the frames the view was inside. They come before
+      // this board in the trail. A new array per arrival (showBoard); a board opened any other way starts empty.
+      type View = { tx: number; ty: number; scale: number };
+      type LeftBoard = { id: bigint; name: string; frames: { id: bigint; name: string; color: string }[]; view: View };
+      // `view`: the pan and zoom to put back (coming back to a board as it was left); without it the board is framed fresh.
+      type Arrival = { left: LeftBoard[]; frames: bigint[]; view?: View };
+      let boardTrail: LeftBoard[] = [];
+      // The frames to step back into when a trail level of an earlier board is clicked (read by the popstate that follows).
+      let returnFrames: bigint[] | null = null;
       /* ---- board links: nodes that point at another board (visible_node_link). `open` is false, and the
          target unnamed, for a board this reader cannot open. ---- */
       let links = new Map<bigint, { open: boolean; target: bigint; name: string }>();
@@ -1874,38 +1883,50 @@ async function boot(conn: DbConnection, identityHex: string, signedIn: boolean):
         const link = selectedLink();
         openBoardButton.hidden = !link;
         openBoardButton.textContent = !link ? '' : link.open ? `Open ${link.name}` : 'A board you cannot open';
-        openBoardButton.title = !link ? '' : link.open ? `Open ${link.name} · \u21b5 · back returns here` : 'This node links a board that is not shared with you';
+        openBoardButton.title = !link ? '' : link.open ? `Open ${link.name} · \u21b5 · esc comes back here` : 'This board is private';
       };
       let depthPainted = '';
+      const levelColor = (n: Node) => (['blue', 'red', 'green', 'purple', 'gray'].includes(n.color) ? n.color : 'ink');
+      // Three stacked sheets, the same mark a frame wears on the canvas: a level that is a whole board.
+      const BOARD_LEVEL_ICON = '<svg class="depth-board" width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round" aria-hidden="true"><path d="M8,1.5 L14.5,5 L8,8.5 L1.5,5 Z"/><path d="M1.5,8.25 L8,11.75 L14.5,8.25"/><path d="M1.5,11.5 L8,15 L14.5,11.5"/></svg>';
       const paintDepthTrail = () => {
         const byId = new Map(getNodes().map(n => [n.id, n]));
         // Every table change comes through here: rebuild only when a level or a name changed, so a crumb keeps its focus and hover.
-        const levelsNow = depthTrail.length === 0 ? '' : JSON.stringify([board.name, ...depthTrail.map(id => [String(id), nameOf(byId.get(id)!), byId.get(id)!.color])]);
+        const here = depthTrail.map(id => [String(id), nameOf(byId.get(id)!), byId.get(id)!.color]);
+        const levelsNow = depthTrail.length === 0 && boardTrail.length === 0 ? '' : JSON.stringify([boardTrail.map(l => [String(l.id), l.name, l.frames.map(f => [String(f.id), f.name, f.color])]), board.name, ...here]);
         if (levelsNow === depthPainted) return;
         depthPainted = levelsNow;
-        depthTrailEl.hidden = depthTrail.length === 0;
+        depthTrailEl.hidden = levelsNow === '';
         if (depthTrailEl.hidden) { depthTrailEl.replaceChildren(); return; }
         const list = document.createElement('ol');
-        // The whole board first, then each frame stepped through; the last is where the view is.
-        // Each frame's dot is the colour its node is drawn in ('' draws as ink); the board itself has none.
-        const levels: { name: string; to: bigint | null; color: string }[] = [
-          { name: board.name, to: null, color: '' },
-          ...depthTrail.map(id => ({ name: nameOf(byId.get(id)!), to: id, color: ['blue', 'red', 'green', 'purple', 'gray'].includes(byId.get(id)!.color) ? byId.get(id)!.color : 'ink' })),
-        ];
+        // Each board left through a link, with the frames it was inside; then this board, then each frame stepped through.
+        // The last level is where the view is. A frame's dot is the colour its node is drawn in ('' draws as ink); a board has none.
+        const levels: { name: string; color: string; board: boolean; back: boolean; go: () => void }[] = [];
+        boardTrail.forEach((left, i) => {
+          levels.push({ name: left.name, color: '', board: true, back: true, go: () => leaveTo(i, 0) });
+          left.frames.forEach((f, k) => levels.push({ name: f.name, color: f.color, board: false, back: true, go: () => leaveTo(i, k + 1) }));
+        });
+        levels.push({ name: board.name, color: '', board: true, back: false, go: () => stepTo(null) });
+        depthTrail.forEach(id => levels.push({ name: nameOf(byId.get(id)!), color: levelColor(byId.get(id)!), board: false, back: false, go: () => stepTo(id) }));
         levels.forEach((level, depth) => {
           const current = depth === levels.length - 1;
           const crumb = document.createElement(current ? 'span' : 'button');
           crumb.className = current ? 'depth-crumb current' : 'depth-crumb';
-          const dot = document.createElement('i');
-          dot.className = 'depth-dot';
-          if (level.color) dot.style.setProperty('--level-color', `var(--c-${level.color})`);
+          // The sheets only where the trail crosses boards; a trail within one board keeps its dots.
+          if (boardTrail.length > 0 && level.board) crumb.insertAdjacentHTML('afterbegin', BOARD_LEVEL_ICON);
+          else {
+            const dot = document.createElement('i');
+            dot.className = 'depth-dot';
+            if (level.color) dot.style.setProperty('--level-color', `var(--c-${level.color})`);
+            crumb.append(dot);
+          }
           const label = document.createElement('span');
           label.className = 'depth-name';
           label.textContent = level.name;
-          crumb.append(dot, label);
-          crumb.title = current ? 'You are here · esc steps out' : `Step out to ${level.name}`;
+          crumb.append(label);
+          crumb.title = current ? 'You are here · esc steps out' : level.back ? `Back to ${level.name}` : `Step out to ${level.name}`;
           if (current) crumb.setAttribute('aria-current', 'location');
-          else { (crumb as HTMLButtonElement).type = 'button'; crumb.addEventListener('click', () => stepTo(level.to)); }
+          else { (crumb as HTMLButtonElement).type = 'button'; crumb.addEventListener('click', level.go); }
           const item = document.createElement('li');
           item.append(crumb);
           list.append(item);
@@ -1943,8 +1964,18 @@ async function boot(conn: DbConnection, identityHex: string, signedIn: boolean):
         stepTo(id);
         return true;
       };
+      /** Back through a link to an earlier board, and into the frames it was in (none: its whole board). The browser's own back does the move, so the two always agree. */
+      const leaveTo = (index: number, frames: number) => {
+        if (switchTo !== undefined) return; // a board is on its way: a second Esc would count the old trail and go back too far
+        returnFrames = boardTrail[index].frames.slice(0, frames).map(f => f.id);
+        history.go(index - boardTrail.length);
+      };
       const stepOut = (): boolean => {
-        if (depthTrail.length === 0) return false;
+        if (depthTrail.length === 0) {
+          if (boardTrail.length === 0) return false;
+          leaveTo(boardTrail.length - 1, boardTrail[boardTrail.length - 1].frames.length);
+          return true;
+        }
         stepTo(depthTrail[depthTrail.length - 2] ?? null);
         return true;
       };
@@ -1955,10 +1986,13 @@ async function boot(conn: DbConnection, identityHex: string, signedIn: boolean):
       const openLinked = (id: bigint): boolean => {
         const link = links.get(id);
         if (!link) return false;
-        if (!link.open) { showError('This node links a board that is not shared with you.'); return true; }
-        // A history entry for where we are, so the browser's back comes back to this board.
+        // shortcut: says only that the board is private. When people can ask its owner to share it, offer that here.
+        if (!link.open) { showError('This board is private.'); return true; }
+        // A history entry for where we are, so the browser's back comes back to this board; the trail leaves by it too.
         history.pushState(null, '', location.href);
-        switchBoard(link.target);
+        const byId = new Map(getNodes().map(n => [n.id, n]));
+        const frames = depthTrail.map(id => ({ id, name: nameOf(byId.get(id)!), color: levelColor(byId.get(id)!) }));
+        switchBoard(link.target, { left: [...boardTrail, { id: boardId, name: board.name, frames, view: { tx: viewport.tx, ty: viewport.ty, scale: viewport.scale } }], frames: [] });
         return true;
       };
       openBoardButton.addEventListener('click', () => { const node = selectedNodes()[0]; if (node && selectedLink()) openLinked(node.id); });
@@ -2031,7 +2065,7 @@ async function boot(conn: DbConnection, identityHex: string, signedIn: boolean):
         const commands: Command[] = [];
 
         const linked = selectedLink();
-        if (linked?.open) commands.push({ id: 'open-linked', group: 'View', title: `Open ${linked.name}`, hint: 'the board this node links; back returns here', keys: '\u21b5', keywords: ['link', 'board', 'go', 'follow'], run: () => { openLinked(sel[0].id); } });
+        if (linked?.open) commands.push({ id: 'open-linked', group: 'View', title: `Open ${linked.name}`, hint: 'the board this node links; esc comes back here', keys: '\u21b5', keywords: ['link', 'board', 'go', 'follow'], run: () => { openLinked(sel[0].id); } });
         if (sel.length === 1 && editor.selectedEdges.size === 0 && canDraw() && ['service', 'datastore', 'external', 'boundary'].includes(sel[0].kind)) {
           const node = sel[0];
           commands.push({ id: 'link-board', group: 'Selection', title: linked ? 'Link a different board\u2026' : 'Link this node to a board\u2026', hint: 'the node opens that board', keywords: ['link', 'board', 'connect', 'open'], run: () => pickBoard(target => { void conn.reducers.linkNodeBoard({ nodeId: node.id, targetBoardId: target.id }).catch(report); }) });
@@ -2707,7 +2741,8 @@ async function boot(conn: DbConnection, identityHex: string, signedIn: boolean):
       window.addEventListener('redcrayon:theme', rerender);
       window.addEventListener('redcrayon:fonts', rerender);
 
-      const switchBoard = (id: bigint) => {
+      /** `arrival`: the trail to carry over when this is a step through a link or back along one; any other switch starts a fresh trail. */
+      const switchBoard = (id: bigint, arrival?: Arrival) => {
         if (id === (switchTo ?? boardId)) return;
         const next = conn.db.visibleBoard.id.find(id);
         if (!next) { showError('This snapshot is not available.'); return; }
@@ -2717,10 +2752,10 @@ async function boot(conn: DbConnection, identityHex: string, signedIn: boolean):
           if (switchTo !== id) return;
           switchTo = undefined;
           if (!ok) showError('We could not open this board. Please try again.');
-          else if (id !== boardId) showBoard(id, next);
+          else if (id !== boardId) showBoard(id, next, arrival);
         });
       };
-      const showBoard = (id: bigint, next: typeof board) => {
+      const showBoard = (id: bigint, next: typeof board, arrival?: Arrival) => {
         board = next;
         stopLive();
         agentChat?.switchBoard();
@@ -2731,7 +2766,8 @@ async function boot(conn: DbConnection, identityHex: string, signedIn: boolean):
         ops = new Ops(conn, identityHex, new History());
         editor.switchBoard(id, ops);
         crayonUi.crayon.clear(); // drafts belong to the board they were drawn on
-        depthTrail = []; // a depth is a place on one board
+        boardTrail = arrival?.left ?? [];
+        depthTrail = arrival?.frames ?? []; // a depth is a place on one board; syncDepth drops frames that are gone
         closeQuickAdd();
         resetChartDraft();
         pointer = null;
@@ -2747,6 +2783,15 @@ async function boot(conn: DbConnection, identityHex: string, signedIn: boolean):
         enter = false;
         onTableChange();
         enter = true;
+        if (arrival) {
+          // The view is not carried over from the board left: a board reached by a link is framed like a fresh open,
+          // and one come back to is put back as it was left, frame and all.
+          if (depthTrail.length > 0) syncDepth();
+          if (arrival.view) { viewport.stopAnimation(); viewport.tx = arrival.view.tx; viewport.ty = arrival.view.ty; viewport.scale = arrival.view.scale; viewport.apply(); }
+          else if (depthTrail.length > 0) frameView();
+          else editor.fitView();
+          rerender();
+        }
         publishSelection();
         rerenderParticipants();
       };
@@ -2873,7 +2918,18 @@ async function boot(conn: DbConnection, identityHex: string, signedIn: boolean):
           return;
         }
         const target = selectBoard(conn.db.visibleBoard.iter(), location.search, location.hash, boardAccess(conn));
-        if (typeof target !== 'string') switchBoard(target.id);
+        // Back onto a board the trail came through: keep the levels before it and the frames the view was in (a clicked level picks its own).
+        const at = boardTrail.map(l => l.id).lastIndexOf(typeof target === 'string' ? -1n : target.id);
+        const frames = returnFrames ?? (at < 0 ? [] : boardTrail[at].frames.map(f => f.id));
+        returnFrames = null;
+        // A trail level whose board is gone or no longer shared: history has moved, so the trail no longer counts it right.
+        if (typeof target === 'string') { if (boardTrail.length > 0) { showError(target); boardTrail = []; paintDepthTrail(); } return; }
+        // An earlier level of the board already on screen (two boards that link each other): no switch, only the trail moves.
+        if (target.id === boardId && at >= 0) { boardTrail = boardTrail.slice(0, at); stepTo(frames[frames.length - 1] ?? null); return; }
+        // Exactly as it was left (same frames): the same view too. A board the trail does not know, such as the forward
+        // button after a way back, starts a fresh trail framed fresh.
+        const view = at >= 0 && frames.length === boardTrail[at].frames.length ? boardTrail[at].view : undefined;
+        switchBoard(target.id, { left: at < 0 ? [] : boardTrail.slice(0, at), frames, view });
       });
 
       syncOpenBoards();

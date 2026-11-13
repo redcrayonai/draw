@@ -229,3 +229,99 @@ test('a frame that is also a board link: each glyph does its own; dimmed edges a
   await payments.locator('.node-link').click();
   await expect(page.locator('#board-title')).toHaveText(other);
 });
+
+test('a link followed from inside a frame: one trail across both boards, and a level, Esc and back each return', async ({ stack, account }) => {
+  const token = stack.accountToken();
+  const name = `Acme ${Date.now()}`, other = `billing-${Date.now()}`;
+  const board = await seedDepthBoard(stack, token, name);
+  await stack.callReducer(token, 'create_board', [other]);
+  const [target] = await stack.sql(`SELECT id FROM board WHERE name = '${other}'`);
+  const [ledger] = await stack.sql(`SELECT id FROM node WHERE board_id = ${board} AND label = 'ledger'`);
+  await stack.callReducer(token, 'link_node_board', [Number(ledger.id), Number(target.id)]);
+  // Far from where the first board's view is looking: carried over unchanged, the view would show none of it.
+  await stack.callReducer(token, 'create_node', [Number(target.id), 'far', '', 4000, 3000, 160, 80, 'ink', false, { some: 'service' }, NONE, NONE, NONE, NONE, NONE, NONE]);
+  const page = await account(token);
+  await page.emulateMedia({ reducedMotion: 'reduce' }); // the view jumps to a frame, so its place can be read at once
+  await page.goto(await boardLink(stack, board));
+  await expect(nodes(page)).toHaveCount(9);
+  const title = page.locator('#board-title');
+  const follow = () => node(page, 'ledger').locator('.node-link').click();
+
+  // From inside Payments: the trail runs through the frame, then the board it led to, which is where the view is.
+  await pick(page, 'Payments');
+  await page.keyboard.press('Enter');
+  await expect(crumbs(page)).toHaveText([name, 'Payments']);
+  const left = (await node(page, 'ledger').boundingBox())!;
+  await follow();
+  await expect(title).toHaveText(other);
+  await expect(crumbs(page)).toHaveText([name, 'Payments', other]);
+  await expect(trail(page).locator('[aria-current="location"]')).toHaveText(other);
+  await expect(node(page, 'far')).toBeInViewport(); // framed like a fresh open, not at the view of the board left
+
+  // Esc steps back out through the link, into the frame the view was in, looking where it was.
+  await page.keyboard.press('Escape');
+  await expect(title).toHaveText(name);
+  await expect(crumbs(page)).toHaveText([name, 'Payments']);
+  await expect(node(page, 'Payments')).toHaveClass(/depth-frame/);
+  await expect.poll(async () => { const b = (await node(page, 'ledger').boundingBox())!; return [b.x, b.y, b.width].map(Math.round); }).toEqual([left.x, left.y, left.width].map(Math.round));
+
+  // A level of the earlier board goes straight back to it: its first level, the whole board.
+  await follow();
+  await expect(crumbs(page)).toHaveText([name, 'Payments', other]);
+  await crumbs(page).first().click();
+  await expect(title).toHaveText(name);
+  await expect(trail(page)).toBeHidden();
+
+  // From the whole board the trail is just the two boards, and the browser's back returns the same way.
+  await follow();
+  await expect(crumbs(page)).toHaveText([name, other]);
+  await page.goBack();
+  await expect(title).toHaveText(name);
+  await expect(trail(page)).toBeHidden();
+});
+
+test('two boards that link each other: a second Esc does not go back twice, and a level of the board on screen moves the trail', async ({ stack, account }) => {
+  const token = stack.accountToken();
+  const name = `Acme ${Date.now()}`, other = `billing-${Date.now()}`;
+  const board = await seedDepthBoard(stack, token, name);
+  await stack.callReducer(token, 'create_board', [other]);
+  const [target] = await stack.sql(`SELECT id FROM board WHERE name = '${other}'`);
+  await stack.callReducer(token, 'create_node', [Number(target.id), 'home', '', 0, 0, 160, 80, 'ink', false, { some: 'service' }, NONE, NONE, NONE, NONE, NONE, NONE]);
+  const [ledger] = await stack.sql(`SELECT id FROM node WHERE board_id = ${board} AND label = 'ledger'`);
+  const [home] = await stack.sql(`SELECT id FROM node WHERE board_id = ${target.id} AND label = 'home'`);
+  await stack.callReducer(token, 'link_node_board', [Number(ledger.id), Number(target.id)]);
+  await stack.callReducer(token, 'link_node_board', [Number(home.id), board]);
+  const page = await account(token);
+  const title = page.locator('#board-title');
+  // A history entry before the trail starts: going back once too often would land on it.
+  await page.goto(await boardLink(stack, Number(target.id)));
+  await expect(title).toHaveText(other);
+  await page.goto(await boardLink(stack, board));
+  await page.reload(); // boot on this board, so the view fits it
+  await expect(nodes(page)).toHaveCount(9);
+  const follow = (label: string) => node(page, label).locator('.node-link').click();
+
+  // The board being left stays on screen while the earlier one loads: Esc pressed again in that time is one step back, not two.
+  await follow('ledger');
+  await expect(crumbs(page)).toHaveText([name, other]);
+  await page.keyboard.press('Escape');
+  await page.keyboard.press('Escape');
+  await expect(title).toHaveText(name);
+  await expect(trail(page)).toBeHidden();
+  await expect(nodes(page)).toHaveCount(9);
+
+  // There and back through the links: the board on screen is also the first level. Clicking it drops the levels after it.
+  await follow('ledger');
+  await follow('home');
+  await expect(crumbs(page)).toHaveText([name, other, name]);
+  await crumbs(page).first().click();
+  await expect(trail(page)).toBeHidden();
+  await expect(title).toHaveText(name);
+
+  // The trail and the browser's history still agree: one link in, one Esc out.
+  await follow('ledger');
+  await expect(crumbs(page)).toHaveText([name, other]);
+  await page.keyboard.press('Escape');
+  await expect(title).toHaveText(name);
+  await expect(trail(page)).toBeHidden();
+});

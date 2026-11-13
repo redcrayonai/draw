@@ -6147,6 +6147,10 @@ button:disabled { cursor: default; opacity: 0.45; }
   transition: color var(--dur) var(--ease);
 }
 
+.depth-board {
+  flex: none;
+}
+
 .depth-name {
   max-width: 24ch;
   overflow: hidden;
