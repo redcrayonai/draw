@@ -7,7 +7,7 @@ export function trackBoardWrites<T extends { reducers: object }>(conn: T, report
   let pending = 0;
   let failed = false;
   const unsaved = new Set<UnsavedWrite>();
-  const ignored = new Set(['updateCursor', 'setSelection', 'joinBoard', 'openBoards', 'openSharedLink', 'ensureGuestBoard', 'claimGuestBoard', 'offerGuestClaim', 'saveLibraryItem', 'renameLibraryItem', 'deleteLibraryItem']);
+  const ignored = new Set(['updateCursor', 'markRepliesRead', 'setSelection', 'joinBoard', 'openBoards', 'openSharedLink', 'ensureGuestBoard', 'claimGuestBoard', 'offerGuestClaim', 'saveLibraryItem', 'renameLibraryItem', 'deleteLibraryItem']);
   conn.reducers = new Proxy(conn.reducers, {
     get(target, key, receiver) {
       const call = Reflect.get(target, key, receiver);

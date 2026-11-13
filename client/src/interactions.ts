@@ -1935,6 +1935,7 @@ export class Editor {
       done = true;
       // A label is one line of text: a pasted newline becomes a space. Free text keeps its lines.
       const value = node.kind === 'text' ? input.value.replace(/\s+$/, '') : input.value.replace(/\s*[\r\n]+\s*/g, ' ');
+      if (!commit) input.dispatchEvent(new Event('draft-cancel', { bubbles: true }));
       input.remove();
       this.editInput = null;
       this.deps.rerender();

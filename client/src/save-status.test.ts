@@ -2,12 +2,13 @@ import { describe, expect, it, vi } from 'vitest';
 import { trackBoardWrites } from './save-status';
 
 describe('write acknowledgements', () => {
-  it('does not prevent recovery when connection setup fails before anyone can edit', async () => {
+  it('does not prevent recovery when connection setup or an automatic read receipt fails', async () => {
     const conn = { reducers: {
       openBoards: async () => { throw new Error('offline'); },
       openSharedLink: async () => { throw new Error('offline'); },
       ensureGuestBoard: async () => { throw new Error('offline'); },
       claimGuestBoard: async () => { throw new Error('offline'); },
+      markRepliesRead: async () => { throw new Error('offline'); },
     } };
     const report = vi.fn();
     const unsaved = trackBoardWrites(conn, report);

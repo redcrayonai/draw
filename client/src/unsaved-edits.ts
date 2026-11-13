@@ -1,6 +1,6 @@
 import type { UnsavedWrite } from './save-status';
 
-const TYPED_TEXT = 'textarea, input:not([type=checkbox]):not([type=radio]):not([type=range]):not([type=password]):not([type=hidden]):not([readonly]), [contenteditable]:not([contenteditable="false"])';
+const TYPED_TEXT = 'textarea, input:not([type=search]):not(#palette-input):not([type=checkbox]):not([type=radio]):not([type=range]):not([type=password]):not([type=hidden]):not([readonly]), [contenteditable]:not([contenteditable="false"])';
 
 /** Keep disconnected drafts available even after blur removes their editor. */
 export function protectUnsavedEdits(writes: () => UnsavedWrite[]) {
@@ -13,6 +13,9 @@ export function protectUnsavedEdits(writes: () => UnsavedWrite[]) {
   };
   document.addEventListener('input', event => {
     if (disconnected && event.target instanceof Element) capture(event.target);
+  });
+  document.addEventListener('draft-cancel', event => {
+    if (event.target instanceof Element) drafts.delete(event.target);
   });
   const blocked = () => drafts.size > 0 || writes().length > 0 || Boolean(document.activeElement?.matches(TYPED_TEXT));
   window.addEventListener('beforeunload', event => {

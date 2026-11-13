@@ -1,6 +1,47 @@
 import { readFile } from 'node:fs/promises';
 import { test, expect, openBoard, drawNode } from '../fixtures';
 
+test('library search does not prevent automatic reconnect', async ({ guest, stack }) => {
+  const page = await guest();
+  await openBoard(page, stack.url);
+  await drawNode(page, 'Saved');
+  await page.locator('#tool-library').click();
+  await page.getByRole('searchbox', { name: 'Search the library' }).fill('database');
+  await page.evaluate(() => (window as any).conn.disconnect());
+  await expect(page.locator('#reconnect')).toContainText('Retrying');
+  await page.getByRole('searchbox', { name: 'Search the library' }).fill('queue');
+  await expect(page.locator('#reconnect')).toHaveCount(0);
+  await expect(page.locator('#world')).toContainText('Saved');
+});
+
+for (const kind of ['service', 'text']) {
+  test(`Escape ${kind === 'text' ? 'saves free text and keeps recovery paused' : 'discards a label and allows reconnect'}`, async ({ guest, stack }) => {
+    const page = await guest();
+    await openBoard(page, stack.url);
+    await drawNode(page, 'Saved');
+    if (kind === 'text') {
+      await page.evaluate(async () => {
+        const conn = (window as any).conn;
+        await conn.reducers.updateNode({ nodeId: [...conn.db.visibleNode.iter()][0].id, kind: 'text' });
+      });
+    }
+    await page.locator('#world g.node').dblclick();
+    const input = page.locator('#inline-edit');
+    if (kind === 'text') await expect(input).toHaveClass(/text/);
+    await input.fill('Offline draft');
+    await page.evaluate(() => (window as any).conn.disconnect());
+    await expect(page.locator('#reconnect')).toContainText('Reconnect paused');
+    await input.press('Escape');
+    if (kind === 'text') {
+      await page.waitForTimeout(2200);
+      await expect(page.locator('#reconnect')).toContainText('Reconnect paused');
+    } else {
+      await expect(page.locator('#reconnect')).toHaveCount(0);
+      await expect(page.locator('#world')).toContainText('Saved');
+    }
+  });
+}
+
 test('a disconnected draft survives submission and offers a backup before reload', async ({ guest, stack }) => {
   const page = await guest();
   await openBoard(page, stack.url);

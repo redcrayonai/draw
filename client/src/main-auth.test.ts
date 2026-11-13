@@ -33,7 +33,7 @@ afterEach(() => {
     if (type === 'hashchange' || type === 'beforeunload') window.removeEventListener(type, listener);
   }
   for (const [type, listener] of vi.mocked(document.addEventListener).mock.calls) {
-    if (type === 'input') document.removeEventListener(type, listener);
+    if (type === 'input' || type === 'draft-cancel') document.removeEventListener(type, listener);
   }
   history.replaceState(null, '', '/');
   vi.useRealTimers();
