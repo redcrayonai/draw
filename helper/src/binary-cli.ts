@@ -8,6 +8,7 @@ else if (args[0] === '--executable-path') console.log(process.execPath);
 else if (args[0] === '--help' || args[0] === '-h') console.log(
   'Draw — architecture boards for your coding agent\n\n' +
   '  draw [--repo path] [--port number] [--no-open]   Open a local board\n' +
+  '  draw local --background [--repo path]          Start a persistent local server\n' +
   '  draw install <codex|claude-code|pi> [--permissions-defaults]\n' +
   '  draw permissions codex [--permissions-defaults]\n' +
   '  draw update [--check] [--channel stable|preview] [--installer npm|bun]\n' +

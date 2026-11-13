@@ -78,6 +78,8 @@ Open the startup URL, including its credential fragment. It exchanges the creden
 
 The server prints its storage directory and URL. By default storage is `~/.redcrayon/local/<hash-of-canonical-repository-path>/`. `--store /path` chooses another directory; `--port 4200` chooses a port instead of an available random port. Stop with Ctrl-C. Reopen the new startup link after restarting.
 
+Agent skills use `draw local --background --repo /absolute/path/to/repository` so their terminal can close without stopping the board server. This command returns once the server is reachable and prints its PID and private `server.log` path; repeated starts reuse a reachable server. To stop it, send SIGTERM to that printed PID after confirming it still belongs to this Draw server. A writer lock is never automatically removed. After a connection failure during an edit, read the board's current revision before retrying.
+
 To move the distribution, copy the entire `helper/dist/` directory, including `local-assets/`. Run its `redcrayon.mjs` from any working directory with an explicit `--repo`. There is no runtime package install. Hosted mode continues using its existing entry point and build.
 
 ## Try the source distribution with Codex

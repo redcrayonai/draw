@@ -28,7 +28,7 @@ export function localEndpoint(args: string[]) {
   const endpoint = JSON.parse(readFileSync(join(directory, 'endpoint.json'), 'utf8'));
   const url = new URL(endpoint.origin);
   if (url.protocol !== 'http:' || url.hostname !== '127.0.0.1' || url.origin !== endpoint.origin || !/^[a-f0-9]{64}$/.test(endpoint.token) || endpoint.repo !== repo) throw new Error('REJECTED: invalid local endpoint; restart the board server');
-  return endpoint as { origin: string; token: string };
+  return endpoint as { origin: string; token: string; pid?: number };
 }
 export async function localCall(endpoint: { origin: string; token: string }, input: unknown, signal = AbortSignal.timeout(30000)) {
   const body = JSON.stringify(input);

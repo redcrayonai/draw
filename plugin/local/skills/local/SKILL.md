@@ -34,18 +34,21 @@ explicit scope instead of guessing from its own working directory. Do not omit
    executable or Node plus `redcrayon.mjs`; do not assume Node is installed.
    Preserve any `env` fields from that server entry when launching the helper;
    native Codex installs use them to locate the saved Draw permissions.
-2. Call `list_boards`. If the local server is unavailable, run this command in a
-   background terminal process and keep it running:
+2. Call `list_boards`. If the local server is unavailable, run:
 
    ```sh
-   <configured launcher> local --repo /absolute/path/to/repository
+   <configured launcher> local --background --repo /absolute/path/to/repository
    ```
 
-   Wait for its `Draw:` startup line, then retry `list_boards`. Do not launch a
+   The command returns after the detached server is ready; it survives the
+   agent terminal closing. It prints the server PID and private log path.
+   Then retry `list_boards`. Do not launch a
    second writer when a store is already locked; report the existing process or
    startup error. If the helper or its browser assets are missing, explain that
    the standalone local plugin must be built and installed; do not switch to a
    hosted server. No account is needed.
+   After a connection failure during an edit, read the existing board's latest
+   revision before retrying; the edit may already have been saved.
 3. For a supplied local link, extract its `b` fragment and `read_board` that slug.
    Do not replace an unavailable board. Otherwise reuse the uniquely matching
    board name from `list_boards`; with no name, use the current git branch.
