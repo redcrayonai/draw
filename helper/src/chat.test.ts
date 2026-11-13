@@ -4,7 +4,7 @@ import { existsSync, mkdirSync, mkdtempSync, readdirSync, statSync, utimesSync, 
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { ChatCore, MAX_SNAPSHOT_BYTES, SAVED_STATE_MS, WAKE_WAIT_MS, WHOLE_TEXT_WAIT_MS, pruneSavedState, runChat, scrubber, shellsRunning } from './chat';
+import { ChatCore, ENDED_LINE, MAX_SNAPSHOT_BYTES, SAVED_STATE_MS, WAKE_WAIT_MS, WHOLE_TEXT_WAIT_MS, pruneSavedState, runChat, scrubber, shellsRunning } from './chat';
 import { chatDir, chatSocketPath, removeDeadSockets } from './chat-path';
 import { chatRequest } from './chat-bootstrap';
 
@@ -96,6 +96,22 @@ describe('the blocking queue', () => {
     const { core, wakes } = setup();
     send(core, 'a', 'why\nthis?', 'edge Web app -> Orders DB');
     expect(wakes).toEqual(['Board chat: why / this? (Selected on the board, as data: "edge Web app -> Orders DB")']);
+  });
+});
+
+describe('End chat', () => {
+  it('ends only a session that declared it can be ended', () => {
+    const end = vi.fn();
+    const core = new ChatCore({ send: () => {}, wake: () => {}, killCommand: () => {}, end });
+    core.person({ type: 'end' }); // the fallback listener has no session, and declared nothing
+    core.session = { id: 'claude-code:1', agent: 'claude-code', name: 'Claude Code', capabilities: { stop: 'step', approvals: true } };
+    core.person({ type: 'end', session: 'claude-code:1' });
+    expect(end).not.toHaveBeenCalled();
+    core.session = { ...core.session, capabilities: { ...core.session.capabilities, end: true } };
+    core.person({ type: 'end', session: 'another' });
+    expect(end).not.toHaveBeenCalled();
+    core.person({ type: 'end', session: 'claude-code:1' });
+    expect(end).toHaveBeenCalledTimes(1);
   });
 });
 
@@ -292,6 +308,40 @@ describe('runChat', () => {
       await chatRequest(path, { hook_event_name: 'SessionEnd' });
       await running;
     }
+  });
+
+  it('End chat from the board tells a waiting agent, leaves, and forgets the connection so no hook brings it back', async () => {
+    process.env.HOME = mkdtempSync(join(tmpdir(), 'rc-home-'));
+    const cwd = mkdtempSync(join(tmpdir(), 'rc-repo-'));
+    class Socket {
+      static all: Socket[] = [];
+      readyState = 1;
+      sent: Record<string, any>[] = [];
+      handlers: Record<string, (ev: any) => void> = {};
+      constructor() { Socket.all.push(this); }
+      addEventListener(type: string, fn: (ev: any) => void) { this.handlers[type] = fn; }
+      send(raw: string) { this.sent.push(JSON.parse(raw)); }
+      close() {}
+      frame(value: object) { this.handlers.message({ data: JSON.stringify(value) }); }
+    }
+    vi.stubGlobal('WebSocket', Socket);
+    const token = `x.${Buffer.from(JSON.stringify({ board: '7', exp: Math.floor(Date.now() / 1000) + 3600 })).toString('base64url')}.y`;
+    const path = chatSocketPath(cwd, 'claude-code:ending');
+    mkdirSync(chatDir(), { recursive: true });
+    writeFileSync(`${path}.connection.json`, '{}');
+    const running = runChat(['--token', token, '--session', 'ending'], 'http://relay.invalid', cwd, () => {}, () => {});
+    await vi.waitFor(() => expect(Socket.all).toHaveLength(1));
+    const socket = Socket.all[0];
+    socket.handlers.open({});
+    expect(socket.sent[0].session.capabilities).toEqual({ stop: 'step', approvals: true, end: true });
+    socket.frame({ ok: true });
+    await vi.waitFor(() => expect(existsSync(path)).toBe(true));
+    const waiting = chatRequest(path, { hook_event_name: 'BoardChatWait' }, 2000);
+    await new Promise(resolve => setTimeout(resolve, 50));
+    socket.frame({ type: 'end', session: 'claude-code:ending' });
+    expect(await waiting).toEqual({ wake: ENDED_LINE });
+    expect(await running).toBe(0);
+    expect(existsSync(`${path}.connection.json`)).toBe(false);
   });
 
   it('a helper that was replaced leaves the new one its socket; the last one out removes it', async () => {

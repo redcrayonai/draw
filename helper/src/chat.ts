@@ -9,7 +9,7 @@
  * Stop is best effort: the next hook halts the agent, and the shell of a command
  * running now is signalled. Text generating now runs to that next hook.
  */
-import { mkdirSync, readFileSync, readdirSync, statSync, unlinkSync, writeFileSync } from 'node:fs';
+import { mkdirSync, readFileSync, readdirSync, rmSync, statSync, unlinkSync, writeFileSync } from 'node:fs';
 import { createServer, type Server, type Socket } from 'node:net';
 import { join, relative } from 'node:path';
 import { execFile } from 'node:child_process';
@@ -33,6 +33,7 @@ export const SAVED_STATE_MS = 60 * 60_000;
 export const MAX_TEXT_CHARS = 256 * 1024;
 export const MAX_SNAPSHOT_BYTES = 768 * 1024;
 const LATE_TEXT_MS = 400;
+export const ENDED_LINE = 'Board chat ended: the person closed it from the board. Carry on in this conversation; your replies no longer reach the board.';
 const STOPPED_REASON = 'Stopped from the board by the person running you. Wait for their next "Board chat:" line, then act on it.';
 
 export type QueuedMessage = { id: string; text: string; context?: string };
@@ -108,6 +109,8 @@ export interface ChatCoreDeps {
   /** Best effort: signal the shell running this command, if one can be found. */
   killCommand(command: string): void;
   changed?(): void;
+  /** The person ended board chat from the board: leave, and stay gone. */
+  end?(): void;
 }
 
 export interface ChatExecution {
@@ -335,6 +338,8 @@ export class ChatCore {
     if (msg.session && this.session && msg.session !== this.session.id) return;
     if (msg.type === 'viewers' && typeof msg.count === 'number' && Number.isSafeInteger(msg.count) && msg.count >= 0) return this.setViewers(msg.count);
     if (msg.type === 'joined') return this.deps.send(this.snapshot());
+    // Only a session that said it can be ended: the relay passes the frame on whatever the session declared.
+    if (msg.type === 'end') return this.session?.capabilities.end ? this.deps.end?.() : undefined;
     if (msg.type === 'send' || msg.type === 'receipt') {
       if (typeof msg.text !== 'string' || !msg.text.trim() || typeof msg.id !== 'string') return;
       if (msg.id.length > 200 || msg.text.length > CHAT_PERSON_MAX_CHARS || this.queue.length >= 100 || this.queue.some(m => m.id === msg.id) || this.events.some(e => e.type === 'delivered' && e.id === msg.id)) return;
@@ -649,6 +654,13 @@ export async function runChat(argv: string[], origin: string, cwd: string, log: 
     },
     canWake: sessionId && agent === 'claude-code' ? () => Boolean(waiter && !waiter.destroyed) : undefined,
     killCommand: command => { if (!sessionId || flags.has('--owner')) killCommand(command, execFile, pid => process.kill(pid, 'SIGTERM'), flags.get('--owner')); },
+    end: () => {
+      // The hooks restart a missing helper from this file (chat-bootstrap.ts): without it, chat stays ended.
+      rmSync(`${path}.connection.json`, { force: true });
+      // An idle agent hears it now; a working one finds out when its replies stop reaching the board.
+      if (waiter && !waiter.destroyed) { waiter.end(JSON.stringify({ wake: ENDED_LINE }) + '\n'); waiter = undefined; }
+      quit();
+    },
     changed: () => {
       saveTimer ??= setTimeout(() => {
         saveTimer = undefined;
@@ -657,7 +669,7 @@ export async function runChat(argv: string[], origin: string, cwd: string, log: 
     },
   });
   if (sessionId && agent === 'claude-code') {
-    core.session = { id: sessionId, agent, name: 'Claude Code', capabilities: { stop: 'step', approvals: true } };
+    core.session = { id: sessionId, agent, name: 'Claude Code', capabilities: { stop: 'step', approvals: true, end: true } };
     core.hook({ hook_event_name: 'Connected' });
   }
   // A re-armed helper picks up where the last one stopped.

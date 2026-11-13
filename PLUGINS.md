@@ -123,6 +123,10 @@ repo.
      the selection and its changes, the person's token and the plugin's canvas
      settings; nothing that writes to the board. A board switch remounts the
      panel. Each panel renders inside an error boundary (decision 14).
+   - *An agent* a plugin provides (`agent` in `client/index.ts`) gets no button
+     or dock of its own: it joins the board's one chat panel, beside the agent
+     the person runs. The core owns the panel; the plugin carries messages to
+     its agent and the reply back.
    - *Canvas settings* (`canvasSettings` in the manifest) are public: the canvas
      ships their values to every browser. They are filled when the canvas
      container starts, from `<NAME>` or `plugins.env`, as the canvas's own runtime

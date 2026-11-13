@@ -200,7 +200,7 @@ Preserve datastore rims, external dashes, boundaries, and evidence stroke patter
 
 ## Components
 
-**Agent chat.** The panel beside the board (`agent-chat.ts`) docks to the right edge below the header at 721px and wider, 320–640px and resizable, and the canvas takes the remaining width, so it never covers a node. Below 1280px it replaces the inspector. On a phone it is a sheet. Its two looks, Chat and Terminal, show one conversation in the current theme; Terminal uses Geist Mono because it reads as a transcript. Stop uses `--c-red`, the only red control in the panel, and appears only while the agent works. `--accent-soft` marks what needs the person: an approval, a paused queue, a lost connection.
+**Agent chat.** The panel beside the board (`agent-chat.ts`) docks to the right edge below the header at 721px and wider, 320–640px and resizable, and the canvas takes the remaining width, so it never covers a node. Below 1280px it replaces the inspector. On a phone it is a sheet. Its two looks, Chat and Terminal, show one conversation in the current theme; Terminal uses Geist Mono because it reads as a transcript. Stop uses `--c-red`, the only red control in the panel, and appears only while the agent works. The session's one action (End chat for the person's own agent, New chat for a plugin's) is a labeled neutral button with an icon on a second header row, under the look switch and never beside Close; without one, the header keeps its single row. `--accent-soft` marks what needs the person: an approval, a paused queue, a lost connection.
 
 **Connections.** Direction uses an open chevron with a 1.5px stroke and rounded caps and joins.
 The chevron sits inside a padded 12×12px marker to prevent clipping.

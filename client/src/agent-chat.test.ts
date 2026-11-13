@@ -134,6 +134,7 @@ describe('mountAgentChat', () => {
     vi.stubGlobal('matchMedia', (q: string) => ({ matches: !q.includes('reduced-motion') }));
   });
   afterEach(() => {
+    location.hash = '';
     panel()?.remove();
     document.querySelectorAll('#chat-draw').forEach(node => node.remove());
     document.documentElement.removeAttribute('data-agent-chat');
@@ -153,18 +154,35 @@ describe('mountAgentChat', () => {
     return { chat, socket, button };
   }
 
-  it('an agent drawing elsewhere calls the panel over; an old session waits until the person opens it', async () => {
-    const old = await mount({ board: 'old', href: '#b=old', live: false });
-    old.socket.frame({ agent: 'gone' });
-    old.chat.refresh();
+  it('an agent drawing elsewhere calls the panel over; with no agent anywhere the panel waits, then hands over a prompt for this board', async () => {
+    location.hash = '#b=checkout';
+    const none = await mount();
+    none.socket.frame({ agent: 'gone' });
+    none.chat.refresh();
     expect(panel().hidden).toBe(true);
-    old.button.click();
-    expect(panel().textContent).toContain('Open old');
-    expect(panel().textContent).toContain('ask your agent to reconnect board chat if it is offline');
+    none.button.click();
+    expect(panel().textContent).toContain('No agent connected');
+    expect(panel().querySelector('.ac-empty a')).toBeNull();
+    const writeText = vi.fn(async () => {});
+    vi.stubGlobal('navigator', { clipboard: { writeText } });
+    [...panel().querySelectorAll('button')].find(b => b.textContent === 'Copy prompt for agent')!.click();
+    expect(writeText).toHaveBeenCalledWith(`Reconnect board chat on this board: ${location.href}`);
+    expect(location.href).toContain('#b=checkout');
     panel().remove();
 
+    // A share link is a secret: no prompt carries it.
     FakeSocket.all = [];
-    const live = await mount({ board: 'now', href: '#b=now', live: true });
+    location.hash = '#s=secret-share-token';
+    const shared = await mount();
+    shared.socket.frame({ agent: 'gone' });
+    shared.button.click();
+    expect(panel().textContent).toContain('Ask your agent to reconnect board chat');
+    expect([...panel().querySelectorAll('button')].some(b => b.textContent === 'Copy prompt for agent')).toBe(false);
+    panel().remove();
+    location.hash = '';
+
+    FakeSocket.all = [];
+    const live = await mount({ board: 'now', href: '#b=now' });
     live.socket.frame({ agent: 'gone' });
     live.chat.refresh();
     expect(panel().hidden).toBe(false);
@@ -565,4 +583,77 @@ describe('mountAgentChat', () => {
     expect(input().value).toBe('draft one');
   });
 
+  it('a plugin\'s agent shares the panel: no link needed, no opening by itself, New chat, and no red-crayon marks', async () => {
+    const sent: string[] = [];
+    let reply!: { text(delta: string): void; done(): void };
+    const button = document.createElement('button');
+    button.hidden = true;
+    let offered = true;
+    const chat = mountAgentChat(button, {
+      url: () => 'wss://x/chat/1', token: async () => 'tok', selection: () => '',
+      agents: () => (offered ? [{ id: 'helper', name: 'Agent', open(r) { reply = r; return { send: text => { sent.push(text); }, stop() {}, reset() {} }; } }] : []),
+    });
+    chat.setAvailable(false);
+    expect(button.hidden).toBe(false);
+    expect(FakeSocket.all).toHaveLength(0); // nobody linked: no relay to ask
+    expect(panel().hidden).toBe(true);
+
+    button.click();
+    expect(panel().querySelector('.ac-name')!.textContent).toBe('Agent');
+    expect(panel().textContent).toContain('Ready');
+    expect([...panel().querySelectorAll('.ac-suggest button')].map(b => b.textContent)).toEqual(['Explain this board']);
+    const newChat = panel().querySelector<HTMLButtonElement>('.ac-end')!;
+    expect(newChat.textContent).toBe('New chat');
+    expect(newChat.hidden).toBe(true);
+
+    const input = panel().querySelector('textarea')!;
+    input.value = 'What is this?';
+    input.dispatchEvent(new Event('input'));
+    input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+    await flush();
+    expect(sent).toEqual(['What is this?']);
+    reply.text('A checkout flow.');
+    reply.done();
+    await vi.advanceTimersByTimeAsync(1000);
+    expect(panel().textContent).toContain('A checkout flow.');
+    expect(chat.online).toBe(false);
+    expect(chat.prepareMessage('I sent 1 red-crayon mark.')).toBeUndefined();
+
+    expect(newChat.hidden).toBe(false);
+    newChat.click();
+    await flush();
+    expect(panel().textContent).not.toContain('A checkout flow.');
+    expect(panel().textContent).toContain('Explain this board');
+
+    // The workspace turned the plugin off: nobody to chat with.
+    offered = false;
+    chat.setAvailable(false);
+    expect(button.hidden).toBe(true);
+    expect(panel().hidden).toBe(true);
+  });
+
+  it('End chat shows only for an agent that can be let go; it sends end and puts the panel back to connecting one', async () => {
+    location.hash = '#b=checkout';
+    const { button, socket } = await mount();
+    const able = (end: boolean) => ({ id: 'one', agent: 'claude-code', name: 'Claude Code', capabilities: { stop: 'step', approvals: true, ...(end ? { end: true } : {}) } });
+    const slot = () => panel().querySelector<HTMLButtonElement>('.ac-end')!;
+    const head = () => panel().querySelector<HTMLElement>('.ac-head')!;
+    button.click();
+    socket.frame({ type: 'snapshot', session: able(false), events: [{ type: 'user', id: 'u', text: 'Earlier' }], queue: [], state: 'idle' });
+    expect(slot().hidden).toBe(true); // an older helper: nothing to offer
+    expect(head().hasAttribute('data-action')).toBe(false);
+
+    socket.frame({ type: 'snapshot', session: able(true), events: [{ type: 'user', id: 'u', text: 'Earlier' }], queue: [], state: 'idle' });
+    expect(slot().textContent).toBe('End chat');
+    expect(slot().hidden).toBe(false);
+    expect(head().hasAttribute('data-action')).toBe(true);
+    slot().click();
+    expect(socket.sent[socket.sent.length - 1]).toEqual({ type: 'end', session: 'one' });
+    socket.frame({ type: 'sessions', sessions: [], selected: 'one' });
+    socket.frame({ agent: 'gone' });
+    expect(panel().textContent).not.toContain('Earlier');
+    expect(panel().textContent).toContain('No agent connected');
+    expect(panel().textContent).toContain('Copy prompt for agent');
+    expect(slot().hidden).toBe(true);
+  });
 });

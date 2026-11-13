@@ -2,6 +2,7 @@ import type { ChatSession } from '../../shared/chat';
 import { createChatConnection, type ChatConnection, type ChatConnectionOptions, type ConnectionStatus } from './chat-connection';
 export { IDLE_REAUTH_MS } from './chat-connection';
 import { armChime, chime, setSound, soundOn } from './chime';
+import { PLUGIN_AGENT, joinAgents, type BoardAgent } from './chat-agents';
 
 /**
  * Chat with the agent you are running, from the board. The canvas holds no
@@ -243,8 +244,8 @@ export function revealStep(shown: number, target: number): number {
   return Math.min(target, shown + Math.max(1, Math.ceil((target - shown) / 18)));
 }
 
-/** Where the person's agent is when it is not on this board. */
-export type AgentElsewhere = { board: string; href: string; live: boolean };
+/** The board the person's agent is on now, when it is not this one. */
+export type AgentElsewhere = { board: string; href: string };
 
 export interface AgentChatOpts {
   url(): string;
@@ -252,6 +253,8 @@ export interface AgentChatOpts {
   /** What the person has selected, in words, or empty. */
   selection(): string;
   connection?(options: ChatConnectionOptions): ChatConnection;
+  /** The agents plugins provide for the board on screen. They share this panel with the person's own. */
+  agents?(): BoardAgent[];
   agentElsewhere?(): AgentElsewhere | null;
   onOpen?(): void;
   canAutoOpen?(): boolean;
@@ -305,6 +308,8 @@ const ICON = {
   check: 'M3.5 8.5l3 3 6-7',
   down: 'M8 3v10M4 9l4 4 4-4',
   pencil: 'M2.75 13.25V11l7.5-7.5 2.25 2.25-7.5 7.5ZM10.25 3.5l1.5-1.5 2.25 2.25-1.5 1.5',
+  leave: 'M6.5 2.75H4a1.25 1.25 0 0 0-1.25 1.25v8A1.25 1.25 0 0 0 4 13.25h2.5M10.25 5.25 13 8l-2.75 2.75M13 8H6.5',
+  plus: 'M8 3.5v9M3.5 8h9',
 };
 
 export function mountAgentChat(chatButton: HTMLButtonElement, opts: AgentChatOpts) {
@@ -325,7 +330,9 @@ export function mountAgentChat(chatButton: HTMLButtonElement, opts: AgentChatOpt
   const selections = new Map<string, string>();
   let draftContext: string | null = null;
   const pendingApprovals = new Set<string>();
-  let available = false;
+  let linked = false;
+  /** Whose agents the connection serves; '' with none, and then there is no chat to offer. */
+  let sources = '';
   let open = false;
   let drawing = false;
   let unread = false;
@@ -360,6 +367,8 @@ export function mountAgentChat(chatButton: HTMLButtonElement, opts: AgentChatOpt
     return current === detached ? '' : current;
   };
   const busy = () => model.online && (model.state === 'working' || model.state === 'stopping');
+  /** Their own agent is listening. A plugin's agent does not count: it takes no red-crayon marks. */
+  const ownOnline = () => model.online && model.session?.agent !== PLUGIN_AGENT;
   const closedKey = () => CLOSED_KEY + opts.url();
 
   // ---- width: the panel docks beside the board, and the board keeps the rest ----
@@ -420,6 +429,17 @@ export function mountAgentChat(chatButton: HTMLButtonElement, opts: AgentChatOpt
   };
   renderSound();
   armChime();
+  // The session's one action, by what it can do: the person's own agent is let go, a plugin's starts over.
+  // It has a row of its own under the look switch: named, and out of the way of Close.
+  const sessionAction = button('ac-end', '', () => {
+    if (!model.session?.capabilities.end) return void frame({ type: 'reset' });
+    if (!frame({ type: 'end' })) return;
+    // Their agent keeps the conversation; the panel goes back to how to connect one.
+    model.items = [];
+    model.queue = [];
+    render();
+  });
+  sessionAction.hidden = true;
   const statusLine = el('div', 'ac-private');
   statusLine.append(statusText, el('span', 'ac-sep', ' · '), sound);
   const name = el('div', 'ac-name');
@@ -449,7 +469,7 @@ export function mountAgentChat(chatButton: HTMLButtonElement, opts: AgentChatOpt
   close.append(icon(ICON.close));
   close.setAttribute('aria-label', 'Close chat');
   const head = el('div', 'ac-head');
-  head.append(id, seg, close);
+  head.append(id, seg, close, sessionAction);
 
   const log = el('div', 'ac-log');
   log.setAttribute('role', 'log');
@@ -743,8 +763,8 @@ export function mountAgentChat(chatButton: HTMLButtonElement, opts: AgentChatOpt
     const card = el('div', 'ac-empty');
     const elsewhere = opts.agentElsewhere?.() ?? null;
     if (elsewhere) {
-      card.append(el('h4', undefined, elsewhere.live ? `Your agent is on ${elsewhere.board}` : `Your latest session is ${elsewhere.board}`));
-      card.append(el('p', undefined, elsewhere.live ? 'This board has no agent. Go to the board it is drawing on.' : 'Open this board, then ask your agent to reconnect board chat if it is offline.'));
+      card.append(el('h4', undefined, `Your agent is on ${elsewhere.board}`));
+      card.append(el('p', undefined, 'This board has no agent. Go to the board it is drawing on.'));
       const go = el('a', 'ac-action primary', `Open ${elsewhere.board}`);
       go.href = elsewhere.href;
       card.append(go);
@@ -757,16 +777,23 @@ export function mountAgentChat(chatButton: HTMLButtonElement, opts: AgentChatOpt
     }
     const syncing = model.connection === 'syncing';
     card.append(el('h4', undefined, syncing ? 'Restoring your conversation' : model.connection === 'waiting' ? 'No agent connected' : model.connection === 'reconnecting' ? 'Reconnecting to your agent' : 'Connecting to your agent'));
-    card.append(el('p', undefined, syncing ? 'Your messages will appear here in a moment.' : model.connection === 'waiting' ? 'Ask your agent to reconnect board chat and include this board’s URL. You can keep a draft here.' : 'Your conversation and draft will stay here while we reconnect.'));
+    // A share link (#s=) is a secret: it never goes into a prompt. Only the board's own #b= link does.
+    const hash = new URLSearchParams(location.hash.slice(1));
+    const promptable = model.connection === 'waiting' && hash.has('b') && !hash.has('s');
+    card.append(el('p', undefined, syncing ? 'Your messages will appear here in a moment.' : promptable ? 'Paste this prompt into your coding agent to chat with it here. You can keep a draft meanwhile.' : model.connection === 'waiting' ? 'Ask your agent to reconnect board chat. You can keep a draft here.' : 'Your conversation and draft will stay here while we reconnect.'));
+    // Labeled with who it goes to: the prompt names this board, so the agent joins it and not its last one.
+    if (promptable) card.append(copyButton('Copy prompt for agent', `Reconnect board chat on this board: ${location.href}`, 'ac-action primary'));
     return card;
   }
 
   function startCard(attached: string): HTMLElement {
     const card = el('div', 'ac-empty');
     card.append(el('h4', undefined, 'Ask about this board, or ask for a change'));
+    // A plugin's agent has no checkout and no history of its own to ask about.
+    const own = model.session?.agent !== PLUGIN_AGENT;
     const prompts = attached
-      ? ['Why is this here?', 'Explain what this does', 'Remove this and update the code']
-      : ['Explain this board', 'What did you change most recently?'];
+      ? ['Why is this here?', 'Explain what this does', ...(own ? ['Remove this and update the code'] : [])]
+      : ['Explain this board', ...(own ? ['What did you change most recently?'] : [])];
     const list = el('div', 'ac-suggest');
     for (const text of prompts) {
       list.append(button('ac-action', text, () => {
@@ -785,6 +812,15 @@ export function mountAgentChat(chatButton: HTMLButtonElement, opts: AgentChatOpt
     const awaitingApproval = model.online && model.items.some(i => i.kind === 'approval' && i.status === 'pending');
     statusText.textContent = `${awaitingApproval ? 'Needs approval' : state} · private to you`;
     agentName.textContent = model.session?.name || 'Your agent';
+    const ends = Boolean(model.session?.capabilities.end);
+    const label = ends ? 'End chat' : 'New chat';
+    if (sessionAction.dataset.label !== label) {
+      sessionAction.dataset.label = label;
+      sessionAction.replaceChildren(icon(ends ? ICON.leave : ICON.plus), label);
+      sessionAction.title = ends ? 'Disconnect your agent from this board. It carries on in its own conversation.' : 'Start this conversation over';
+    }
+    sessionAction.hidden = !model.online || (!ends && (!model.session?.capabilities.reset || model.items.length + model.queue.length === 0));
+    head.toggleAttribute('data-action', !sessionAction.hidden);
     sessions.hidden = model.sessions.length < 2;
     const options = JSON.stringify(model.sessions.map(s => [s.id, s.name]));
     if (sessions.dataset.options !== options) {
@@ -950,8 +986,8 @@ export function mountAgentChat(chatButton: HTMLButtonElement, opts: AgentChatOpt
 
   // ---- channel: adapters speak one protocol; presentation never owns a socket ----
   function connect(): void {
-    if (connection || !available || switchingBoard) return;
-    const current = (opts.connection ?? createChatConnection)({
+    if (connection || !sources || switchingBoard) return;
+    const current = joinAgents(linked ? opts.connection ?? createChatConnection : null, opts.agents?.() ?? [], {
       url: boardUrl,
       token: opts.token,
       status(status, reason) {
@@ -997,7 +1033,8 @@ export function mountAgentChat(chatButton: HTMLButtonElement, opts: AgentChatOpt
           }
         }
         if (model.selected) selections.set(boardUrl, model.selected);
-        if (f.type === 'sessions' && model.sessions.length) arrive();
+        // Only their own agent calls the panel over; a plugin's is there whenever they want it.
+        if (f.type === 'sessions' && model.sessions.some(s => s.agent !== PLUGIN_AGENT)) arrive();
         const watching = open && document.hasFocus() && document.visibilityState === 'visible';
         if (f.type === 'state' && before === 'working' && f.state === 'idle') chime('done', watching);
         if ((f.type === 'notice' && f.tone === 'attention') || (f.type === 'approval' && f.status === 'pending')) chime('attention', watching);
@@ -1009,7 +1046,7 @@ export function mountAgentChat(chatButton: HTMLButtonElement, opts: AgentChatOpt
           for (const item of model.items) if (item.kind === 'text') shown.set(item.message, item.text.length);
         }
         if (model.state === 'working' && before !== 'working') workingSince = Date.now();
-        if (model.online && !wasOnline) arrive();
+        if (model.online && !wasOnline && model.session?.agent !== PLUGIN_AGENT) arrive();
         wasOnline = model.online;
         if (f.type === 'snapshot') reportViewing();
         if (!open && f.type === 'text') unread = true;
@@ -1032,6 +1069,28 @@ export function mountAgentChat(chatButton: HTMLButtonElement, opts: AgentChatOpt
     opts.onlineChanged?.();
     model.connection = 'offline';
     wasOnline = false;
+  }
+
+  /** Connects to the agents this board has now: the person's own, and any a plugin provides. */
+  // shortcut: a link gained or lost, or a plugin switched, restarts the connection and drops a plugin agent's transcript; keep it across the restart if that shows up mid-conversation.
+  function sync(): void {
+    if (switchingBoard) return;
+    const agents = opts.agents?.() ?? [];
+    const next = linked || agents.length ? JSON.stringify([linked, agents.map(a => a.id)]) : '';
+    chatButton.hidden = !next;
+    if (next === sources) return;
+    sources = next;
+    if (connection) {
+      disconnect();
+      Object.assign(model, emptyChat());
+      clearHistory();
+    }
+    if (next) connect();
+    else {
+      setDrawing(false);
+      setOpen(false);
+    }
+    if (open) render();
   }
 
   /** The panel comes to the person once per board, unless they closed it there. A phone keeps the board. */
@@ -1081,11 +1140,11 @@ export function mountAgentChat(chatButton: HTMLButtonElement, opts: AgentChatOpt
   renderStatus();
 
   return {
-    get online(): boolean { return model.online; },
+    get online(): boolean { return ownOnline(); },
     close(): void { setOpen(false, true); },
     /** Capture the destination before a board action saves; never forward into a later conversation. */
     prepareMessage(text: string, attached?: string): ((wake?: boolean) => boolean) | undefined {
-      if ((!open && !drawing) || !model.online || !text.trim()) return;
+      if ((!open && !drawing) || !ownOnline() || !text.trim()) return;
       const target = { connection, boardUrl, selected: model.selected };
       let sent = false;
       return (wake = true) => {
@@ -1098,17 +1157,10 @@ export function mountAgentChat(chatButton: HTMLButtonElement, opts: AgentChatOpt
         return true;
       };
     },
-    /** Shown only to someone with a linked agent: anyone else could not connect anyway. */
+    /** Shown to someone with a linked agent, or on a board a plugin gives an agent: anyone else has nobody to chat with. */
     setAvailable(next: boolean): void {
-      chatButton.hidden = !next;
-      if (next === available) return;
-      available = next;
-      if (next) connect();
-      else {
-        setDrawing(false);
-        setOpen(false);
-        disconnect();
-      }
+      linked = next;
+      sync();
     },
     /** A pairing link was opened: ask the person, and run it only on their answer. */
     offerPair(run: () => Promise<'linked' | 'already'>): void {
@@ -1124,8 +1176,7 @@ export function mountAgentChat(chatButton: HTMLButtonElement, opts: AgentChatOpt
         draftContext = null;
       }
       if (open) render();
-      // Only an agent drawing now calls the panel over; an old session waits until the person opens it.
-      else if (!model.online && opts.agentElsewhere?.()?.live) arrive();
+      else if (!model.online && opts.agentElsewhere?.()) arrive();
     },
     /** Another board is on screen: another chat channel, and a fresh snapshot from its helper. */
     switchBoard(): void {
@@ -1147,7 +1198,8 @@ export function mountAgentChat(chatButton: HTMLButtonElement, opts: AgentChatOpt
         switchingBoard = false;
         boardUrl = opts.url();
         restoreDraft();
-        if (available) connect();
+        sources = '';
+        sync();
       });
     },
   };

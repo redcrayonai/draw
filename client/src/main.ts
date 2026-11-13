@@ -2845,7 +2845,8 @@ async function boot(conn: DbConnection, identityHex: string, signedIn: boolean):
       requestAnimationFrame(finishBoardLoading);
       requestAnimationFrame(tellExtra);
       // After everything the selection and the board read exists: a board with no agent can open the panel at once.
-      if (config.mcpUrl !== undefined) {
+      {
+        // A build with no agent server has no agent of the person's own; a plugin's can still be here.
         const mcpUrl = config.mcpUrl;
         const chatButton = document.getElementById('act-chat') as HTMLButtonElement;
         let framed = { tx: viewport.tx, ty: viewport.ty, scale: viewport.scale };
@@ -2861,15 +2862,16 @@ async function boot(conn: DbConnection, identityHex: string, signedIn: boolean):
               framed = { tx: viewport.tx, ty: viewport.ty, scale: viewport.scale };
             } else viewport.panBy(delta / 2, 0);
           },
-          url: () => chatUrl(mcpUrl, boardId),
+          url: () => (mcpUrl === undefined ? '' : chatUrl(mcpUrl, boardId)),
           token: liveToken,
+          agents: () => canvasPlugins?.agents() ?? [],
           selection: () => {
             const nodes = getNodes().filter(n => editor.selection.has(n.id)).map(n => n.label || n.sublabel).filter(Boolean);
             const byId = new Map(getNodes().map(n => [n.id, n.label || n.sublabel]));
             const edges = getEdges().filter(e => editor.selectedEdges.has(e.id)).map(e => `${byId.get(e.fromNode) ?? '?'} → ${byId.get(e.toNode) ?? '?'}`);
             return [...edges, ...nodes].join(', ').slice(0, 300);
           },
-          // Where to go from a board with no agent: where it is drawing now, else the person's newest session board.
+          // Where to go from a board with no agent: where it is drawing now.
           agentElsewhere: () => {
             const live = findAgentBoard({
               me: identityHex,
@@ -2880,26 +2882,23 @@ async function boot(conn: DbConnection, identityHex: string, signedIn: boolean):
               onScreen: boardId,
               now: Date.now(),
             });
-            if (live?.here) return null;
-            if (live) return { board: live.board, href: hrefOf(live.slug), live: true };
-            const sessions = boardAccess(conn).filter(b => b.isSession).sort((x, y) => (x.boardId < y.boardId ? 1 : -1));
-            const latest = sessions[0] && conn.db.visibleBoard.id.find(sessions[0].boardId);
-            return latest && latest.id !== boardId ? { board: latest.name, href: hrefOf(latest.slug), live: false } : null;
+            return live && !live.here ? { board: live.board, href: hrefOf(live.slug) } : null;
           },
         });
         agentChat = chat;
         const refreshChat = () => {
-          chat.setAvailable([...conn.db.myAgentLinks.iter()].some(l => l.owner.toHexString() === identityHex));
+          chat.setAvailable(mcpUrl !== undefined && [...conn.db.myAgentLinks.iter()].some(l => l.owner.toHexString() === identityHex));
           chat.refresh();
         };
-        for (const table of [conn.db.myAgentLinks, conn.db.visibleParticipant, conn.db.visibleSelection, conn.db.visibleBoard, conn.db.myBoardAccess, conn.db.myBoards]) {
+        // The plugin switch and the board's workspace decide whether a plugin's agent is here.
+        for (const table of [conn.db.myAgentLinks, conn.db.visibleParticipant, conn.db.visibleSelection, conn.db.visibleBoard, conn.db.myWorkspacePlugins, ...(conn.db.myBoardPermissions ? [conn.db.myBoardPermissions] : [])]) {
           table.onInsert(refreshChat);
           table.onUpdate(refreshChat);
           table.onDelete(refreshChat);
         }
         refreshChat();
         // A build with accounts links signed-in people on its own; this is for one without.
-        if (signedIn || !config.accounts) {
+        if (mcpUrl !== undefined && (signedIn || !config.accounts)) {
           offerPair = code => {
             pendingPair = null;
             sessionStorage.removeItem(PAIR_HANDOFF_KEY);
