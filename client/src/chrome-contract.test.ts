@@ -162,12 +162,16 @@ describe('index.html DOM contract', () => {
     expect(panel.querySelector('textarea, input')).toBeNull();
   });
 
-  it('puts Connect, Share and Embed before Export, secondary, hidden until boot', () => {
+  it('puts Connect and Share before Export, secondary, hidden until boot; Embed lives in the Share popover', () => {
     const btn = doc.getElementById('act-connect')!;
     expect(btn.previousElementSibling?.id).toBe('act-rescan');
     expect(btn.nextElementSibling?.id).toBe('act-share');
-    expect(btn.nextElementSibling?.nextElementSibling?.id).toBe('act-embed');
-    expect(doc.getElementById('embed-pop')?.nextElementSibling?.id).toBe('act-export');
+    expect(btn.nextElementSibling?.nextElementSibling?.id).toBe('act-export');
+    // one header button for both ways out: the popover switches between the link and the embed
+    const pop = doc.getElementById('share-pop')!;
+    expect([...pop.querySelectorAll('#share-tabs > button')].map(b => b.textContent)).toEqual(['Link', 'Embed']);
+    expect(doc.getElementById('act-embed')?.hasAttribute('hidden')).toBe(true);
+    expect([...pop.children].map(c => c.id).filter(Boolean)).toEqual(['share-tabs', 'share-link-pane', 'embed-pop']);
     // without VITE_MCP_URL it never shows; with one, setupConnect reveals it
     expect(btn.hasAttribute('hidden')).toBe(true);
     expect(btn.classList.contains('btn-primary')).toBe(false);

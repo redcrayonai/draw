@@ -2493,6 +2493,7 @@ async function boot(conn: DbConnection, identityHex: string, signedIn: boolean):
           myRow()?.access === 'owner' ? { boardId, title: conn.db.visibleBoard.id.find(boardId)?.name ?? 'Board',
             token: boardLink?.token ?? '', threats: boardLink?.threats ?? false, comparisonBoardId: boardLink?.comparisonBoardId ?? 0n,
             previousBoardId: previous ?? 0n } : null);
+        syncShare(); // Share shows or drops its Embed pane with the owner's right to embed
       };
       syncEmbed();
       conn.db.myChartEmbeds.onInsert(syncEmbed);

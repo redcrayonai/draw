@@ -343,9 +343,12 @@ export function mountAgentChat(chatButton: HTMLButtonElement, opts: AgentChatOpt
   /** A pairing link waiting for the person's answer. Never acted on without it: anyone can send someone a link. */
   let pairing: { run(): Promise<'linked' | 'already'>; busy: boolean; failed: boolean; already?: boolean } | null = null;
   const expanded = new Set<string>();
+  // The launcher names who answers, as the panel's header does; the status dot stays last.
+  const launchLabel = el('span', 'ac-label', 'Your agent');
   const back = el('span', 'ac-back', 'Back to chat');
   back.hidden = true;
-  chatButton.append(back);
+  chatButton.insertBefore(launchLabel, chatButton.querySelector('.ac-dot'));
+  chatButton.insertBefore(back, launchLabel);
   const draw = button('ac-draw', '', () => {
     setOpen(false);
     setDrawing(true);
@@ -811,7 +814,8 @@ export function mountAgentChat(chatButton: HTMLButtonElement, opts: AgentChatOpt
     const state = !model.online ? ({ connecting: 'Connecting', reconnecting: 'Reconnecting', syncing: 'Syncing conversation', waiting: 'Waiting for agent', offline: 'Not connected', ready: 'Syncing conversation' }[model.connection]) : model.state === 'working' ? 'Working' : model.state === 'stopping' ? 'Stopping' : model.state === 'stopped' ? 'Stopped' : 'Ready';
     const awaitingApproval = model.online && model.items.some(i => i.kind === 'approval' && i.status === 'pending');
     statusText.textContent = `${awaitingApproval ? 'Needs approval' : state} · private to you`;
-    agentName.textContent = model.session?.name || 'Your agent';
+    agentName.textContent = launchLabel.textContent = model.session?.name || 'Your agent';
+    launchLabel.hidden = drawing;
     const ends = Boolean(model.session?.capabilities.end);
     const label = ends ? 'End chat' : 'New chat';
     if (sessionAction.dataset.label !== label) {

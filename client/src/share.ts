@@ -1,4 +1,4 @@
-// Owner's share control in the header: #act-share opens #share-pop.
+// Owner's share control in the header: #act-share opens #share-pop, which holds the link and, for owners, Embed.
 import { copyText, dismissible, flashLabel } from './chrome';
 import { newShareToken, shareHref } from '../../shared/share-link';
 
@@ -34,6 +34,10 @@ export function setupShare(deps: ShareDeps): (state: ShareState | null) => void 
   const chip = document.getElementById('exposure-chip');
   // Owners export from the popover (#share-export), so the header keeps one filled button.
   const exportBtn = document.getElementById('act-export');
+  // Embed is the popover's second pane (chart-embed-menu.ts unhides its button for owners); optional like the chip.
+  const tabs = document.getElementById('share-tabs'), linkTab = document.getElementById('share-tab-link'), embedTab = document.getElementById('act-embed');
+  const linkPane = document.getElementById('share-link-pane'), embedPane = document.getElementById('embed-pop');
+  let tab: 'link' | 'embed' = 'link';
   let state: ShareState | null = null;
   let opener: HTMLElement = btn;
 
@@ -45,13 +49,22 @@ export function setupShare(deps: ShareDeps): (state: ShareState | null) => void 
   };
   const paint = (): void => {
     if (exportBtn) exportBtn.hidden = state !== null;
+    // An owner who cannot share by link (a factual board) still embeds: the button stays, on Embed alone.
+    const canEmbed = Boolean(embedTab && embedPane && !embedTab.hidden);
+    btn.hidden = state === null && !canEmbed;
+    if (btn.hidden) setOpen(false);
+    const embed = canEmbed && (state === null || tab === 'embed');
+    if (tabs) tabs.hidden = state === null || !canEmbed;
+    if (linkPane) linkPane.hidden = embed;
+    if (embedPane) embedPane.hidden = !embed;
+    linkTab?.setAttribute('aria-pressed', String(!embed));
+    embedTab?.setAttribute('aria-pressed', String(embed));
     if (state === null) {
-      btn.hidden = true;
-      setOpen(false);
+      btn.textContent = 'Share';
+      btn.classList.remove('shared');
       return;
     }
     const shared = state.mode !== '';
-    btn.hidden = false;
     btn.textContent = shared ? 'Shared' : 'Share';
     btn.classList.toggle('shared', shared);
     on.checked = shared;
@@ -93,10 +106,18 @@ export function setupShare(deps: ShareDeps): (state: ShareState | null) => void 
     if (state === null) return;
     if (!pop.hidden) return setOpen(false);
     opener = chip;
+    tab = 'link';
+    paint();
     setOpen(true);
     pop.classList.add('from-exposure');
     (state.mode === '' ? on : threats).focus();
   });
+  for (const [button, name] of [[linkTab, 'link'], [embedTab, 'embed']] as const) {
+    button?.addEventListener('click', () => {
+      tab = name;
+      paint();
+    });
+  }
   on.addEventListener('change', () => void run(() => (on.checked ? deps.setLink('view', newShareToken()) : deps.stopLink())));
   pop.addEventListener('click', evt => {
     const b = (evt.target as Element).closest<HTMLElement>('[data-share-mode]');

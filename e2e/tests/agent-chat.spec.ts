@@ -122,7 +122,8 @@ test('the panel opens once when the agent connects, and stays closed once the pe
   const launcher = page.getByRole('button', { name: 'Chat with agent' });
   const bounds = (await launcher.boundingBox())!;
   const viewport = page.viewportSize()!;
-  expect(bounds.x).toBeGreaterThan(viewport.width - 120);
+  // labeled with the agent's name now, so it is its right edge that sits in the corner
+  expect(bounds.x + bounds.width).toBeGreaterThan(viewport.width - 24);
   expect(bounds.y).toBeGreaterThan(viewport.height - 180);
   expect(bounds.width).toBeGreaterThanOrEqual(44);
   expect(bounds.height).toBeGreaterThanOrEqual(44);
