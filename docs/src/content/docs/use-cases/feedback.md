@@ -36,15 +36,15 @@ a new agent session.
 ## Mark and send
 
 1. Sign in with edit access to the board.
-2. If chat is open, click the pencil **Draw** button to reveal the toolbar.
-   Press **C**, or choose the red crayon.
+2. Press **C**, or choose the red crayon. On a phone or a narrow window with
+   chat open, first tap the pencil **Draw** button to reveal the toolbar.
 3. Click a node to circle it and open its note.
 4. Write specific feedback, such as “Add a timeout and explain the failure path.”
 5. Mark any other nodes you want reviewed.
 6. Press **Send** to send the batch as one review round.
 
-Sending from the temporary drawing view returns to connected chat and adds a
-receipt, preserving your unfinished message. If a watcher is already listening,
+Sending adds a receipt to connected chat and preserves your unfinished
+message. If a watcher is already listening,
 chat does not send a second request; otherwise it asks your connected agent to
 fetch the saved marks. Marks still save when chat is closed or disconnected.
 

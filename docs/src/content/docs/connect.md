@@ -130,10 +130,10 @@ If your workspace turned on a plugin with an agent, that agent uses the same
 panel. Your own agent comes first; the plugin's agent answers when yours is not
 connected.
 
-With chat open, the pencil **Draw** button temporarily reveals the drawing tools.
-**Back to chat** restores your conversation and unfinished message. Sending
-red-crayon marks returns to connected chat and adds a receipt. If a review watcher
-is already listening, chat does not send a second review request.
+The drawing tools stay beside the open chat. On a phone or a narrow window, the
+pencil **Draw** button reveals them, and **Back to chat** restores your conversation and
+unfinished message. Sending red-crayon marks adds a receipt to connected chat. If
+a review watcher is already listening, chat does not send a second review request.
 
 You do not need a `start.command` launcher for the released plugin. That launcher
 is only used to test local development builds. Codex's shared-session requirement

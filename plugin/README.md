@@ -210,9 +210,10 @@ app server. Standalone sessions and host-managed sessions without that connectio
 remain available in their original interface; chat never starts a second agent.
 
 - Select a node or edge, then ask about it or request a change.
-- The pencil Draw button reveals drawing tools while chat is open. Back to chat
-  restores your draft; sending marks returns to chat with a receipt. An active
-  review watcher handles marks without a second chat request.
+- Drawing tools stay beside the open chat. On a phone or a narrow window, the pencil
+  Draw button reveals them and Back to chat restores your draft. Sending marks adds a
+  receipt to chat. An active review watcher handles marks without a second chat
+  request.
 - Replies, work steps, and supported approvals appear in the board. Sensitive
   approvals stay in your agent; declining never grants permission.
 - Stop requests cancellation and confirms it when the agent stops. Claude Code

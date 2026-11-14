@@ -6732,13 +6732,11 @@ svg:not(.armed) #crayon .mark-chip { pointer-events: all; cursor: pointer; }
 .ac-panel[hidden] { display: none; }
 .ac-panel :is(input, textarea)::selection, .ac-panel ::selection { background: color-mix(in srgb, var(--sel) 30%, transparent); }
 
-/* Chat and drawing take turns; neither has to squeeze the full tool dock. */
-:root[data-agent-chat] #dock { display: none; }
+/* A phone's chat sheet covers the dock, so chat and drawing take turns there. Beside a docked chat the dock stays. */
 #chat-draw {
   position: absolute;
-  left: min(50vw, calc(100% - 22px - var(--space-4)));
-  bottom: var(--space-5);
-  transform: translateX(-50%);
+  top: var(--space-4);
+  right: var(--space-4);
   display: grid;
   place-items: center;
   width: 44px;
@@ -6789,6 +6787,32 @@ svg:not(.armed) #crayon .mark-chip { pointer-events: all; cursor: pointer; }
 }
 @media (min-width: 721px) and (max-width: 1100px) {
   :root[data-agent-drawing] .zoom-cluster { bottom: calc(var(--space-5) + var(--dock-h) + var(--space-3)); }
+}
+/* Under 800px the board left beside the chat is narrower than the dock, so they take turns as on a phone. */
+@media (min-width: 721px) and (max-width: 799px) {
+  :root[data-agent-chat] #dock { display: none; }
+}
+/* From 800px the dock stays beside the chat. The chat takes up to MAX_WIDTH (agent-chat.ts, 640px) of the board,
+   and each step is sized for that: what sits beside the dock moves above it, then the names go, then the dividers. */
+@media (min-width: 800px) {
+  #chat-draw { display: none; }
+}
+@media (min-width: 800px) and (max-width: 1728px) {
+  :root[data-agent-chat] .zoom-cluster { bottom: calc(var(--space-5) + var(--dock-h) + var(--space-3)); }
+  :root[data-agent-chat] #legend:not(.in-rail) { bottom: calc(var(--space-5) + var(--dock-h) + var(--space-3) + var(--zoom-h) + 6px); }
+  :root[data-agent-chat] #rail { max-height: calc(100% - var(--space-4) - var(--space-5) - var(--dock-h) - var(--zoom-h) - 2 * var(--space-3)); }
+  :root[data-agent-chat] .mark-send { bottom: calc(var(--space-5) + var(--dock-h) + var(--space-2)); }
+  /* the launcher's 48px over the pill, plus the 20px the pill went up */
+  :root[data-agent-chat] body:has(.mark-send:not([hidden])) { --canvas-launcher-lift: 68px; }
+}
+@media (min-width: 800px) and (max-width: 1359px) {
+  :root[data-agent-chat] #dock .add-row { width: 44px; }
+  :root[data-agent-chat] #dock .add-name { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
+  :root[data-agent-chat] #dock .add-key { display: block; }
+}
+@media (min-width: 800px) and (max-width: 1169px) {
+  :root[data-agent-chat] #dock { gap: 0; padding-inline: 4px; }
+  :root[data-agent-chat] #dock .dock-div { display: none; }
 }
 
 .ac-resize {
@@ -6960,7 +6984,6 @@ svg:not(.armed) #crayon .mark-chip { pointer-events: all; cursor: pointer; }
 
 /* A phone keeps the board on top and the talk in a sheet. */
 @media (max-width: 720px) {
-  #chat-draw { top: var(--space-4); right: var(--space-4); bottom: auto; left: auto; transform: none; }
   :root[data-agent-drawing] #canvas-wrap { --dock-h: 104px; }
   :root[data-agent-drawing] #dock {
     display: grid;

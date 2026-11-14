@@ -1,6 +1,6 @@
 import type { Page, WebSocketRoute } from '@playwright/test';
 import { randomBytes } from 'node:crypto';
-import { test, expect, openBoard, boardIdOf, boardLink, linkedAgent, signInOnRequest, boardWith, armCrayon, send, guestToken, drawNode, nodes, type Stack } from '../fixtures';
+import { test, expect, openBoard, boardIdOf, boardLink, linkedAgent, signInOnRequest, boardWith, send, guestToken, drawNode, nodes, type Stack } from '../fixtures';
 
 // Chat with the agent you are running, from the board, against a mocked relay:
 // page.routeWebSocket stands in for the hosted Worker at wss://mcp.e2e.invalid/chat/<board>.
@@ -196,8 +196,7 @@ test('sending crayon marks saves their data and sends only a label-free nudge to
   await linkedAgent(stack, token, B);
   await expect(page.locator('#agent-chat .ac-private')).toContainText('Ready');
   await input(page).fill('Keep this unfinished thought');
-  await page.getByRole('button', { name: 'Draw', exact: true }).click();
-  await armCrayon(page);
+  await page.locator('#tool-crayon').click(); // the dock stays beside the chat; C would type into the message
   for (const [i, note] of ['Add retry handling', 'Explain the indexes'].entries()) {
     await page.locator(`#world g[data-id="${ids[i]}"] .node-rect`).click({ position: { x: 12, y: 12 } });
     await page.locator('.mark-note textarea').fill(note);
@@ -233,10 +232,9 @@ test('a live mark watcher gets a chat receipt without a second review request', 
   const agent = await linkedAgent(stack, token, B);
   await expect(page.locator('#agent-chat .ac-private')).toContainText('Ready');
   await input(page).fill('Keep this draft');
-  await page.getByRole('button', { name: 'Draw', exact: true }).click();
   await stack.callReducer(agent.token, 'claim_marks', [B, '0123456789abcdef']);
   await expect(page.locator('#mark-banner')).toContainText('waiting for your marks');
-  await armCrayon(page);
+  await page.locator('#tool-crayon').click();
   await page.locator(`#world g[data-id="${ids[0]}"] .node-rect`).click({ position: { x: 12, y: 12 } });
   await page.locator('.mark-note textarea').fill('Review the retry policy');
   await page.keyboard.press('Enter');
@@ -376,31 +374,17 @@ test('chat stays usable at phone, tablet and desktop widths with keyboard contro
   expect(errors).toEqual([]);
 });
 
-test('chat offers Draw, which reveals every tool and preserves the conversation when returning', async ({ account, stack }, testInfo) => {
+test('the dock stays beside a docked chat; a narrow window offers Draw, which preserves the conversation when returning', async ({ account, stack }, testInfo) => {
   const { page } = await linkedBoard(account, stack);
   const dock = page.locator('#dock');
   const draw = page.getByRole('button', { name: 'Draw', exact: true });
-  await page.emulateMedia({ reducedMotion: 'no-preference' });
-  await expect.poll(() => draw.evaluate(el => getComputedStyle(el, '::after').animationName)).toBe('draw-glow');
-  await draw.hover();
-  await expect.poll(() => draw.evaluate(el => getComputedStyle(el, '::after').animationName)).toBe('none');
-  await page.mouse.move(0, 0);
-  await page.emulateMedia({ reducedMotion: 'reduce' });
-  await expect.poll(() => draw.evaluate(el => getComputedStyle(el, '::after').animationName)).toBe('none');
-  await page.emulateMedia({ reducedMotion: 'no-preference' });
-  await input(page).fill('Keep my draft');
-  for (const width of [2560, 1440, 1024, 768, 320]) {
-    await page.setViewportSize({ width, height: 900 });
-    await expect(dock).toBeHidden();
-    await expect(draw).toBeVisible();
-    const d = (await draw.boundingBox())!;
-    expect(d.x).toBeGreaterThanOrEqual(0);
-    if (width >= 1024) expect(Math.abs(d.x + d.width / 2 - width / 2)).toBeLessThan(1);
-    await draw.click();
-    await expect(page.locator('#agent-chat')).toBeHidden();
+  /** Every tool can be pressed inside [left, right], and the zoom controls stay clear of the dock. */
+  const everyToolFits = async (left: number, right: number) => {
     await expect(dock).toBeVisible();
     const bounds = (await dock.boundingBox())!;
-    expect(Math.abs(bounds.x + bounds.width / 2 - width / 2)).toBeLessThan(1);
+    expect(bounds.x).toBeGreaterThanOrEqual(left);
+    expect(bounds.x + bounds.width).toBeLessThanOrEqual(right);
+    expect(Math.abs(bounds.x + bounds.width / 2 - (left + right) / 2)).toBeLessThan(1);
     expect(await dock.evaluate(el => el.scrollWidth <= el.clientWidth)).toBe(true);
     const tools = dock.locator('button');
     await expect(tools).toHaveCount(10);
@@ -415,24 +399,56 @@ test('chat offers Draw, which reveals every tool and preserves the conversation 
     }
     const z = (await page.locator('.zoom-cluster').boundingBox())!;
     expect(z.x + z.width <= bounds.x || z.y + z.height <= bounds.y).toBe(true);
-    if (width === 1440 || width === 320) await page.screenshot({ path: testInfo.outputPath(`drawing-${width}.png`) });
+  };
+  // A circled node brings the Send pill, which sits beside the dock.
+  await drawNode(page, 'Orders API');
+  await page.locator('#tool-crayon').click();
+  await page.locator('#world g.node .node-rect').click({ position: { x: 12, y: 12 } });
+  await page.locator('.mark-note textarea').fill('Review this');
+  await page.keyboard.press('Enter');
+  const pill = page.locator('#mark-send');
+  await expect(pill).toBeVisible();
+  await input(page).fill('Keep my draft');
+  // The chat at its widest leaves the narrowest board; the widths are each side of the dock's steps in style.css.
+  await page.setViewportSize({ width: 2560, height: 900 });
+  const handle = page.getByRole('separator', { name: 'Resize chat' });
+  const widest = Number(await handle.getAttribute('aria-valuemax'));
+  await handle.focus();
+  while (Number(await handle.getAttribute('aria-valuenow')) < widest) await page.keyboard.press('ArrowLeft');
+  for (const width of [2560, 1729, 1728, 1360, 1359, 1170, 1169, 800]) {
+    await page.setViewportSize({ width, height: 900 });
+    await expect(draw).toBeHidden();
+    await expect(page.locator('#agent-chat')).toBeVisible();
+    const board = Math.max(width - widest, 480);
+    await expect.poll(async () => (await page.locator('#agent-chat').boundingBox())!.x).toBe(board);
+    await everyToolFits(0, board);
+    const d = (await dock.boundingBox())!, s = (await pill.boundingBox())!;
+    expect(s.x >= d.x + d.width || s.y + s.height <= d.y).toBe(true);
+    if (width === 1728 || width === 800) await page.screenshot({ path: testInfo.outputPath(`chat-dock-${width}.png`) });
+  }
+  await expect(input(page)).toHaveValue('Keep my draft');
+  // Take the circle back: a phone's two-row dock has its own layout around the pill.
+  await page.locator('#tool-crayon').focus();
+  await page.keyboard.press('ControlOrMeta+z');
+  await expect(pill).toBeHidden();
+
+  await page.emulateMedia({ reducedMotion: 'no-preference' });
+  for (const width of [768, 320]) {
+    await page.setViewportSize({ width, height: 900 });
+    await expect(dock).toBeHidden();
+    await expect(draw).toBeVisible();
+    await expect.poll(() => draw.evaluate(el => getComputedStyle(el, '::after').animationName)).toBe('draw-glow');
+    await draw.click();
+    await expect(page.locator('#agent-chat')).toBeHidden();
+    await everyToolFits(0, width);
+    await page.screenshot({ path: testInfo.outputPath(`drawing-${width}.png`) });
     await page.getByRole('button', { name: 'Back to chat', exact: true }).click();
     await expect(input(page)).toHaveValue('Keep my draft');
     await expect(input(page)).toBeFocused();
-    if (width === 1440 || width === 320) await page.screenshot({ path: testInfo.outputPath(`chat-draw-${width}.png`) });
+    await page.screenshot({ path: testInfo.outputPath(`chat-draw-${width}.png`) });
   }
-  await page.setViewportSize({ width: 1440, height: 900 });
-  const handle = page.getByRole('separator', { name: 'Resize chat' });
-  await handle.focus();
-  for (let i = 0; i < 10; i++) await page.keyboard.press('ArrowLeft');
-  const d = (await draw.boundingBox())!;
-  const chat = (await page.locator('#agent-chat').boundingBox())!;
-  expect(d.x + d.width).toBeLessThanOrEqual(chat.x);
-  expect(Math.abs(d.x + d.width / 2 - 720)).toBeLessThan(1);
-  await draw.click();
-  await expect(dock).toBeVisible();
-  await page.getByRole('button', { name: 'Back to chat', exact: true }).click();
-  await expect(page.locator('#agent-chat')).toBeVisible();
+  await page.emulateMedia({ reducedMotion: 'reduce' });
+  await expect.poll(() => draw.evaluate(el => getComputedStyle(el, '::after').animationName)).toBe('none');
 });
 
 /** A database-minted agent that offers a pairing code, and the board link carrying it. */
