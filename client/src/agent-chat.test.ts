@@ -103,6 +103,40 @@ describe('appendBlocks', () => {
     expect(div.querySelector('.ac-heading')?.textContent).toBe('Next');
   });
 
+  it('hands known fences and node names to the board, and keeps the rest as text', () => {
+    const div = document.createElement('div');
+    const seen: [string, string, string, boolean][] = [];
+    const clicked: string[] = [];
+    appendBlocks(div, 'See `Orders` and `a.ts`.\n- **`Orders` (412 ms):** slow\n```chart bars p95 by hop\nhop,p95\nA,1\n```\n```ts\nx\n```\n```choices\nYes', undefined, {
+      streaming: true,
+      node: name => (name === 'Orders' ? () => clicked.push(name) : null),
+      fence: (lang, info, body, closed) => {
+        seen.push([lang, info, body, closed]);
+        return lang === 'ts' ? null : Object.assign(document.createElement('figure'), { textContent: lang });
+      },
+    });
+    expect(seen).toEqual([['chart', 'bars p95 by hop', 'hop,p95\nA,1', true], ['ts', '', 'x', true], ['choices', '', 'Yes', false]]);
+    expect([...div.children].map(c => c.tagName)).toEqual(['P', 'UL', 'FIGURE', 'PRE', 'FIGURE']);
+    for (const chip of div.querySelectorAll<HTMLButtonElement>('button.ac-node')) chip.click();
+    expect(clicked).toEqual(['Orders', 'Orders']);
+    expect(div.querySelector('li strong')?.textContent).toBe('Orders (412 ms):');
+    expect(div.querySelector('p code')?.textContent).toBe('a.ts');
+  });
+
+  it('while text streams, a fence line waits for its language and an open fence is not closed; at the end it is', () => {
+    const fences = (text: string, streaming: boolean) => {
+      const div = document.createElement('div');
+      const seen: [string, boolean][] = [];
+      appendBlocks(div, text, undefined, { streaming, fence: (lang, _info, _body, closed) => { seen.push([lang, closed]); return null; } });
+      return { seen, blocks: div.querySelectorAll('pre').length };
+    };
+    // "```ch" is "```chart" half typed: nothing is drawn for it yet.
+    expect(fences('Slow.\n```ch', true)).toEqual({ seen: [], blocks: 0 });
+    expect(fences('Slow.\n```chart bars t\nhop,p95', true)).toEqual({ seen: [['chart', false]], blocks: 1 });
+    expect(fences('Slow.\n```chart bars t\nhop,p95', false)).toEqual({ seen: [['chart', true]], blocks: 1 });
+    expect(fences('Slow.\n```ts', false)).toEqual({ seen: [['ts', true]], blocks: 1 });
+  });
+
   it('a fence still streaming is already code, and nothing becomes markup', () => {
     const div = html('```js\nalert(1)\n<img src=x>');
     expect(div.querySelector('pre code')?.textContent).toBe('alert(1)\n<img src=x>');
@@ -288,6 +322,27 @@ describe('mountAgentChat', () => {
     press('Link agent');
     await flush();
     expect(panel().textContent).toContain('Your agent is already linked');
+  });
+
+  it.each([
+    ['chart', '```chart bars Test\nname,value\nA,1', '.ac-chart'],
+    ['choices', '```choices\nYes\nNo', '.ac-choices'],
+    ['invalid chart', '```chart bars Test\nonly one column', 'pre code'],
+  ])('finishes an unclosed %s block when the final event has no text', async (_kind, text, selector) => {
+    vi.stubGlobal('requestAnimationFrame', (fn: FrameRequestCallback) => setTimeout(() => fn(0), 16));
+    const { socket, button } = await mount();
+    if (panel().hidden) button.click();
+    socket.frame({ type: 'snapshot', state: 'working', queue: [], events: [] });
+    socket.frame({ type: 'text', message: 'm', delta: text, final: false });
+    await vi.advanceTimersByTimeAsync(2000);
+    expect(panel().querySelector('.ac-pending')).not.toBeNull();
+    socket.frame({ type: 'text', message: 'm', delta: '', final: true });
+    await vi.advanceTimersByTimeAsync(32);
+    expect(panel().querySelector('.ac-pending')).toBeNull();
+    expect(panel().querySelector(selector)).not.toBeNull();
+    socket.frame({ type: 'snapshot', state: 'idle', queue: [], events: [{ type: 'text', message: 'm', delta: text, final: true }] });
+    expect(panel().querySelector('.ac-pending')).toBeNull();
+    expect(panel().querySelector(selector)).not.toBeNull();
   });
 
   it('history from a snapshot shows at once; only live text is revealed as it streams', async () => {

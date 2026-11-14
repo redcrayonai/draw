@@ -1,6 +1,6 @@
 import type { Page, WebSocketRoute } from '@playwright/test';
 import { randomBytes } from 'node:crypto';
-import { test, expect, openBoard, boardIdOf, boardLink, linkedAgent, signInOnRequest, boardWith, armCrayon, send, guestToken, type Stack } from '../fixtures';
+import { test, expect, openBoard, boardIdOf, boardLink, linkedAgent, signInOnRequest, boardWith, armCrayon, send, guestToken, drawNode, nodes, type Stack } from '../fixtures';
 
 // Chat with the agent you are running, from the board, against a mocked relay:
 // page.routeWebSocket stands in for the hosted Worker at wss://mcp.e2e.invalid/chat/<board>.
@@ -151,6 +151,41 @@ test('a message goes to the agent with the selection, and the reply streams in',
   push(r, { type: 'text', message: 'm2', delta: '<img src=x onerror=alert(1)>', final: true });
   await expect(chatLog(page)).toContainText('<img src=x onerror=alert(1)>');
   await expect(chatLog(page).locator('img')).toHaveCount(0);
+});
+
+test('a reply links a node it names, draws a chart to pin, and offers answers to send', async ({ account, stack }) => {
+  const { page, relay: r } = await linkedBoard(account, stack);
+  await drawNode(page, 'Orders service');
+  await page.keyboard.press('Escape');
+  // What is selected rides along with the next message: the panel shows it as a chip.
+  const attached = page.locator('#agent-chat .ac-chip');
+  await expect(attached).toHaveCount(0);
+
+  push(r, { type: 'state', state: 'working' });
+  push(r, { type: 'text', message: 'm1', delta: 'Slow in **`Orders service`**, not `web/orders.ts`.\n```chart bars p95 by hop (ms)\nhop,p95\nOrders service,412\n', final: false });
+  // A fence the board draws never shows its raw text while it streams.
+  await expect(chatLog(page)).toContainText('Drawing chart…');
+  await expect(chatLog(page).locator('pre')).toHaveCount(0);
+  push(r, { type: 'text', message: 'm1', delta: '```\n```chart bars refused\nonly one column\n```\n```choices\nMake billing async\nShow me the code\n```', final: true });
+  push(r, { type: 'state', state: 'idle' });
+  // The reply is revealed a few characters a frame: the answers come last.
+  await expect(chatLog(page).getByRole('button', { name: 'Make billing async' })).toBeVisible();
+  await expect(chatLog(page).locator('.ac-chart .chart-bar')).toHaveCount(1);
+  // Data the chart contract refuses stays the code the agent wrote; so does a name the board does not have.
+  await expect(chatLog(page).locator('pre code')).toHaveText('only one column');
+  await expect(chatLog(page).locator('p code')).toHaveText('web/orders.ts');
+
+  await chatLog(page).getByRole('button', { name: 'Orders service' }).click();
+  await expect(attached).toContainText('Orders service');
+
+  await chatLog(page).getByRole('button', { name: 'Pin to board' }).click();
+  await expect(nodes(page)).toHaveCount(2);
+  await expect(chatLog(page).getByRole('button', { name: 'Pinned to board' })).toBeDisabled();
+  await expect(attached).toContainText('p95 by hop (ms)');
+
+  await chatLog(page).getByRole('button', { name: 'Make billing async' }).click();
+  // What is selected rides along with an answer too.
+  await expect.poll(() => r.sent.find(m => m.type === 'send')).toMatchObject({ text: 'Make billing async', context: 'p95 by hop (ms)' });
 });
 
 test('sending crayon marks saves their data and sends only a label-free nudge to chat', async ({ account, stack }, testInfo) => {

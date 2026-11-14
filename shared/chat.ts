@@ -23,3 +23,14 @@ export type ChatEvent =
   | { type: 'approval'; id: string; summary: string; status: 'pending' | 'resolved' };
 
 export type ApprovalDecision = 'accept' | 'decline';
+
+/**
+ * What the board draws in an agent's reply (client/src/agent-chat.ts RichText), in words for the agent.
+ * Hosted chat only: the local board prints replies as plain text.
+ */
+export const CHAT_REPLY_GUIDE =
+  'In a reply to a "Board chat:" message the board draws three things. ' +
+  'A node\'s exact label in backticks becomes a link to that node. ' +
+  'A fenced block that opens with ```chart <type> <title> and holds CSV becomes a chart the person can pin to the board: <type> and the CSV columns are the ones create_chart takes (bars, toplist, pie, timeseries, table and the rest). ' +
+  'A fenced block that opens with ```choices and holds one short answer per line, six at most, becomes buttons that send that answer. ' +
+  'Use them only where they help, and only in such replies: anywhere else they read as code.';

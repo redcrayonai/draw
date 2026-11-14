@@ -235,6 +235,16 @@ test('handoff skill: no argument picks the last opened board without asking', ()
   assert.match(handoff, /never name a board `HEAD`/);
 });
 
+test('handoff skill and the chat hook teach the reply blocks the board draws', () => {
+  const guide = read('shared/chat.ts');
+  for (const text of [read('plugin/skills/handoff/SKILL.md'), guide]) {
+    for (const block of ['```chart <type> <title>', '```choices', 'six at most']) assert.ok(text.includes(block), block);
+  }
+  assert.match(read('helper/src/chat-hook.ts'), /additionalContext: '[^']*' \+ CHAT_REPLY_GUIDE/);
+  // The canvas draws exactly these two fences (client/src/agent-chat.ts).
+  assert.match(read('client/src/agent-chat.ts'), /lang === 'chart' \? .* lang === 'choices' \?/);
+});
+
 // ---- the triage skill ----
 
 const triageMd = read('plugin/skills/triage/SKILL.md');

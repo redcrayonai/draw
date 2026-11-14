@@ -3,6 +3,7 @@ import { createChatConnection, type ChatConnection, type ChatConnectionOptions, 
 export { IDLE_REAUTH_MS } from './chat-connection';
 import { armChime, chime, setSound, soundOn } from './chime';
 import { PLUGIN_AGENT, joinAgents, type BoardAgent } from './chat-agents';
+import { parsedChart, renderPlot } from './charts';
 
 /**
  * Chat with the agent you are running, from the board. The canvas holds no
@@ -157,16 +158,33 @@ export function chatUrl(mcpUrl: string, board: bigint): string {
   return u.toString();
 }
 
+/** What the board adds to an agent's text. Either hook answers null to leave the text as it is. */
+export interface RichText {
+  /** A `code` span that names something on the board: what a click on it does. */
+  node?(name: string): (() => void) | null;
+  /** A fence with a language the board knows (```chart, ```choices), as an element. `closed` is false while it still streams. */
+  fence?(lang: string, info: string, body: string, closed: boolean): HTMLElement | null;
+  /** More text is coming: an open fence may still close, and a last line may still grow. */
+  streaming?: boolean;
+}
+
 /** Text with `code` and **bold** spans, as DOM nodes: an agent's text never becomes markup. */
-export function appendInline(parent: HTMLElement, text: string): void {
+export function appendInline(parent: HTMLElement, text: string, rich?: RichText): void {
   text.split(/(`[^`\n]+`|\*\*[^*\n]+\*\*)/).forEach(part => {
     if (part.length > 2 && part.startsWith('`') && part.endsWith('`')) {
-      const code = document.createElement('code');
+      const focus = rich?.node?.(part.slice(1, -1));
+      const code = document.createElement(focus ? 'button' : 'code');
       code.textContent = part.slice(1, -1);
+      if (focus) {
+        code.className = 'ac-node';
+        (code as HTMLButtonElement).type = 'button';
+        code.title = 'Show on the board';
+        code.addEventListener('click', focus);
+      }
       parent.append(code);
     } else if (part.length > 4 && part.startsWith('**') && part.endsWith('**')) {
       const strong = document.createElement('strong');
-      strong.textContent = part.slice(2, -2);
+      appendInline(strong, part.slice(2, -2), rich); // agents bold a node's name: **`Orders` (412 ms):**
       parent.append(strong);
     } else if (part) {
       parent.append(part);
@@ -178,25 +196,34 @@ export function appendInline(parent: HTMLElement, text: string): void {
  * An agent's markdown as DOM: paragraphs, lists, headings and fenced code, the
  * subset agents write. A fence still streaming renders as code already.
  */
-export function appendBlocks(parent: HTMLElement, text: string, codeActions?: (pre: HTMLElement, code: string) => void): void {
+export function appendBlocks(parent: HTMLElement, text: string, codeActions?: (pre: HTMLElement, code: string) => void, rich?: RichText): void {
   const lines = text.split('\n');
   let para: string[] = [];
   let list: HTMLElement | null = null;
   const flush = () => {
     if (para.length) {
       const p = document.createElement('p');
-      appendInline(p, para.join('\n'));
+      appendInline(p, para.join('\n'), rich);
       parent.append(p);
     }
     para = [];
   };
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i];
-    if (/^\s*```/.test(line)) {
+    const fence = /^\s*```\s*(\S*)\s*(.*)$/.exec(line);
+    if (fence) {
       flush();
       list = null;
+      // A fence line still arriving has half a language: wait for its next line before deciding what it is.
+      if (rich?.streaming && i === lines.length - 1) break;
       const body: string[] = [];
       for (i++; i < lines.length && !/^\s*```/.test(lines[i]); i++) body.push(lines[i]);
+      // A reply that ends inside a fence is as closed as it will get.
+      const block = fence[1] ? rich?.fence?.(fence[1], fence[2].trim(), body.join('\n'), i < lines.length || !rich.streaming) : null;
+      if (block) {
+        parent.append(block);
+        continue;
+      }
       const pre = document.createElement('pre');
       const code = document.createElement('code');
       code.textContent = body.join('\n');
@@ -213,7 +240,7 @@ export function appendBlocks(parent: HTMLElement, text: string, codeActions?: (p
         parent.append(list);
       }
       const li = document.createElement('li');
-      appendInline(li, item[2]);
+      appendInline(li, item[2], rich);
       list.append(li);
       continue;
     }
@@ -228,7 +255,7 @@ export function appendBlocks(parent: HTMLElement, text: string, codeActions?: (p
       list = null;
       const h = document.createElement('p');
       h.className = 'ac-heading';
-      appendInline(h, heading[1]);
+      appendInline(h, heading[1], rich);
       parent.append(h);
       continue;
     }
@@ -261,6 +288,10 @@ export interface AgentChatOpts {
   onlineChanged?(): void;
   /** The board gained (+) or lost (-) this much width beside it. */
   boardWidthChanged?(delta: number): void;
+  /** What a click on a node's name in the agent's text does, or null when the board has no node of that name. */
+  nodeNamed?(name: string): (() => void) | null;
+  /** Put a chart the agent drew in chat on the board. */
+  pinChart?(chart: { type: string; title: string; csv: string }): Promise<void>;
 }
 
 const LOOK_KEY = 'redcrayon.chatLook';
@@ -564,11 +595,12 @@ export function mountAgentChat(chatButton: HTMLButtonElement, opts: AgentChatOpt
     restoreDraft();
     render();
   }
+  function sendText(text: string, attached = ''): boolean {
+    if (!text || !model.online) return false;
+    return frame({ type: 'send', id: `b${Date.now()}-${nextId++}`, text, ...(attached ? { context: attached } : {}) });
+  }
   function send(): void {
-    const text = input.value.trim();
-    if (!text || !model.online) return;
-    const attached = context();
-    if (!frame({ type: 'send', id: `b${Date.now()}-${nextId++}`, text, ...(attached ? { context: attached } : {}) })) return;
+    if (!sendText(input.value.trim(), context())) return;
     input.value = '';
     draftContext = null;
     drafts.delete(draftKey());
@@ -610,9 +642,68 @@ export function mountAgentChat(chatButton: HTMLButtonElement, opts: AgentChatOpt
     stickToEnd = log.scrollHeight - log.scrollTop - log.clientHeight < 24;
     if (stickToEnd) jump.hidden = true;
   });
-  const fillText = (node: HTMLElement, text: string) => {
+  // ---- rich blocks: fences the board draws instead of printing ----
+  const pinned = new Set<string>();
+  /** ```chart <type> <title> over the chart's CSV. Data the chart contract refuses stays a code block. */
+  const chartBlock = (info: string, csv: string, closed: boolean): HTMLElement | null => {
+    if (!closed) return el('div', 'ac-pending', 'Drawing chart…');
+    const [, type = '', title = ''] = /^(\S+)\s*(.*)$/.exec(info) ?? [];
+    const parsed = parsedChart({ type, csv, options: '{}' });
+    if (!parsed.ok) return null;
+    const figure = el('figure', 'ac-chart');
+    const head = el('figcaption');
+    head.append(el('span', 'ac-chart-title', title || type));
+    const pinChart = opts.pinChart;
+    if (pinChart) {
+      const key = `${type}\n${title}\n${csv}`;
+      const pin = button('ac-link ac-chart-pin', pinned.has(key) ? 'Pinned to board' : 'Pin to board', () => {
+        pin.disabled = true;
+        pinChart({ type, title: title || type, csv }).then(
+          () => { pinned.add(key); pin.textContent = 'Pinned to board'; },
+          () => { pin.disabled = false; pin.textContent = 'Could not pin. Try again'; },
+        );
+      });
+      pin.disabled = pinned.has(key);
+      head.append(pin);
+    }
+    // shortcut: drawn at the panel's width when the text arrives, and scaled after that; redraw on resize if the scaling shows.
+    const w = Math.max(240, log.clientWidth - 58), h = 148;
+    const svg = document.createElementNS(SVG_NS, 'svg');
+    svg.setAttribute('viewBox', `0 0 ${w} ${h}`);
+    svg.setAttribute('role', 'img');
+    svg.setAttribute('aria-label', title || type);
+    svg.dataset.chartType = type;
+    const plot = document.createElementNS(SVG_NS, 'g');
+    plot.setAttribute('class', 'chart-plot');
+    plot.append(...renderPlot(parsed.data, { x: 0, y: 0, w, h }, false));
+    svg.append(plot);
+    figure.append(head, svg);
+    return figure;
+  };
+  /** ```choices, one answer a line: each is a button that sends it. */
+  const choicesBlock = (body: string, closed: boolean): HTMLElement | null => {
+    if (!closed) return el('div', 'ac-pending', 'Writing choices…');
+    const answers = body.split('\n').map(line => line.trim()).filter(Boolean).slice(0, 6);
+    if (!answers.length) return null;
+    const group = el('div', 'ac-choices');
+    group.setAttribute('role', 'group');
+    group.setAttribute('aria-label', 'Answers your agent offers');
+    // shortcut: an old question's answers stay clickable; grey them out once a later message exists if people mis-click.
+    for (const answer of answers) group.append(button('ac-action', answer, () => {
+      if (!sendText(answer, context())) return;
+      stickToEnd = true;
+      render();
+    }));
+    return group;
+  };
+  const rich: RichText = {
+    node: name => opts.nodeNamed?.(name) ?? null,
+    fence: (lang, info, body, closed) => lang === 'chart' ? chartBlock(info, body, closed) : lang === 'choices' ? choicesBlock(body, closed) : null,
+  };
+  const fillText = (node: HTMLElement, item: Extract<Item, { kind: 'text' }>, shownTo: number) => {
     node.textContent = '';
-    appendBlocks(node, text.trimEnd(), (pre, code) => pre.append(copyButton('Copy', code, 'ac-copy')));
+    const streaming = !item.final || shownTo < item.text.length;
+    appendBlocks(node, item.text.slice(0, shownTo).trimEnd(), (pre, code) => pre.append(copyButton('Copy', code, 'ac-copy')), { ...rich, streaming });
   };
   const animate = () => {
     if (animating || !open) return;
@@ -627,7 +718,7 @@ export function mountAgentChat(chatButton: HTMLButtonElement, opts: AgentChatOpt
         if (next !== at) {
           shown.set(item.message, next);
           const node = log.querySelector<HTMLElement>(`[data-message="${CSS.escape(item.message)}"] .ac-body`);
-          if (node) fillText(node, item.text.slice(0, next));
+          if (node) fillText(node, item, next);
         }
         if (next < item.text.length) pending = true;
       }
@@ -945,13 +1036,13 @@ export function mountAgentChat(chatButton: HTMLButtonElement, opts: AgentChatOpt
       if (item.kind === 'text') {
         rows.push({
           key: `t:${item.message}`,
-          sig: '',
+          sig: String(item.final),
           build: () => {
             const node = el('div', 'ac-agent');
             node.dataset.message = item.message;
             if (look === 'terminal') node.append(el('span', 'ac-bullet', '●'));
             const body = el('div', 'ac-body');
-            fillText(body, item.text.slice(0, reduced() ? item.text.length : (shown.get(item.message) ?? 0)));
+            fillText(body, item, reduced() ? item.text.length : (shown.get(item.message) ?? 0));
             node.append(body);
             return node;
           },
@@ -1061,7 +1152,7 @@ export function mountAgentChat(chatButton: HTMLButtonElement, opts: AgentChatOpt
         wasOnline = model.online;
         if (f.type === 'snapshot') reportViewing();
         if (!open && f.type === 'text') unread = true;
-        if (f.type === 'text' && log.querySelector(`[data-message="${CSS.escape(String(f.message))}"]`)) {
+        if (f.type === 'text' && !f.final && log.querySelector(`[data-message="${CSS.escape(String(f.message))}"]`)) {
           renderStatus();
           return animate();
         }
