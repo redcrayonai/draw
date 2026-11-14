@@ -66,3 +66,15 @@ test('parses the committed reducers.gen.ts, every row', () => {
   assert.deepEqual(args.move_node, [['nodeId', 'u64', false], ['x', 'i32', false], ['y', 'i32', false]]);
   assert.deepEqual(args.create_edge.at(-1), ['evidenceStatus', 'string', true]);
 });
+
+test('resolves named types and optional references through Typespace', () => {
+  const described = { sections: [
+    { Typespace: { types: [T.u64, opt({ Ref: 0 }), { Ref: 1 }, { Product: { elements: [param('__identity__', T.u64)] } }] } },
+    { Reducers: [{ source_name: 'example', params: { elements: [param('id', { Ref: 2 }), param('actor', { Ref: 3 })] } }] },
+  ] };
+  assert.deepEqual(liveReducers(described), { example: [['id', 'u64', true], ['actor', 'identity', false]] });
+  described.sections[0].Typespace.types[0] = { Ref: 2 };
+  assert.throws(() => liveReducers(described), /cyclic type reference/);
+  described.sections[0].Typespace.types[0] = { Ref: 99 };
+  assert.throws(() => liveReducers(described), /missing type reference 99/);
+});

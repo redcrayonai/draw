@@ -709,6 +709,23 @@ describe('board unavailable recovery', () => {
 });
 
 describe('connection recovery', () => {
+  it('offers a backup and labels a potentially destructive reload', () => {
+    const backup = vi.fn();
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    try {
+      chrome.showReconnect('closed', 1000, backup);
+      const panel = document.getElementById('reconnect')!;
+      expect(panel.textContent).toContain('Reconnect paused to protect unsaved edits');
+      const buttons = [...panel.querySelectorAll('button')];
+      expect(buttons[0].textContent).toBe('Reload anyway');
+      buttons[1].click();
+      expect(backup).toHaveBeenCalledOnce();
+    } finally {
+      document.getElementById('reconnect')?.remove();
+      warn.mockRestore();
+    }
+  });
+
   it('dismisses loading and releases the canvas so retry feedback is reachable', () => {
     const fixture = document.createElement('div');
     fixture.innerHTML = '<main id="canvas-wrap" aria-busy="true" inert></main><div id="board-loading">Loading board…</div>';

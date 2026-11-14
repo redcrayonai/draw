@@ -117,6 +117,9 @@ suite() {
     node --test --test-skip-pattern="$DRAINS_OUTBOX" "$@" "$REPO/scripts/verify-dashboard-local.mjs" "$REPO/scripts/verify-access-local.mjs" "$REPO/scripts/verify-issuers-local.mjs" \
       "$REPO/scripts/verify-change-notes-local.mjs" "$REPO/scripts/verify-threats-local.mjs" "$REPO/scripts/verify-tellings-local.mjs" "$REPO/scripts/verify-icons-local.mjs" \
       "$REPO/scripts/verify-code-consent-local.mjs" "$REPO/scripts/verify-deletion-local.mjs" "$REPO/scripts/verify-incidents-local.mjs"
+  # Global metrics need stable participants between the procedure and SQL oracle.
+  STDB_URL="$URL" STDB_DB="$DB" STDB_OWNER_TOKEN="$(cat "$ROOT/owner-token")" \
+    node --test "$REPO/scripts/verify-service-load-local.mjs"
   # After, and alone: it serves the test issuer on the port verify-issuers-local.mjs serves it on.
   STDB_URL="$URL" STDB_DB="$DB" STDB_OWNER_TOKEN="$(cat "$ROOT/owner-token")" \
     node --test "$REPO/scripts/verify-marks-local.mjs"
@@ -191,8 +194,9 @@ case "$cmd" in
     trap stop EXIT
     start
     MODULE_ENV=none publish
+    # shortcut: Node 22 can corrupt non-ASCII child stdout; drop this single-suite workaround once its runner is fixed.
     MODULE_ENV=none STDB_URL="$URL" STDB_DB="$DB" STDB_OWNER_TOKEN="$(cat "$ROOT/owner-token")" \
-      node --test "$@" "$REPO/scripts/verify-issuers-local.mjs"
+      node --test --experimental-test-isolation=none "$@" "$REPO/scripts/verify-issuers-local.mjs"
     ;;
   *)
     echo "usage: scripts/stdb-test.sh run|start|publish|legacy|test|parity|mcp|versions|outside|failclosed|stop [node --test args]" >&2

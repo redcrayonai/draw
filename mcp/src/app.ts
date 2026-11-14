@@ -478,8 +478,6 @@ export function createWorker<E extends Env>(deps: WorkerDeps<E>) {
     // outcome check; on the first run of each hour, the database load.
     async scheduled(event: ScheduledController, env: E, ctx: ExecutionContext): Promise<void> {
       const flag = env.USER.get(env.USER.idFromName('_canary')) as unknown as Flag;
-      // shortcut: hourly, because the service's visible_participant view scans every participant and re-runs on
-      // their writes until it expires (10 min unread); read it more often once that view reads by index.
       const load = new Date(event.scheduledTime).getUTCMinutes() < 5 ? dbLoad(database(env, () => mint(env, SERVICE_SUBJECT)), env as unknown as CanaryEnv) : undefined;
       const run = Promise.all([
         scheduled(request => appFor(env).fetch(request, env), env as unknown as CanaryEnv, {

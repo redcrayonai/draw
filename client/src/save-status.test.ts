@@ -2,6 +2,37 @@ import { describe, expect, it, vi } from 'vitest';
 import { trackBoardWrites } from './save-status';
 
 describe('write acknowledgements', () => {
+  it('does not prevent recovery when connection setup or an automatic read receipt fails', async () => {
+    const conn = { reducers: {
+      openBoards: async () => { throw new Error('offline'); },
+      openSharedLink: async () => { throw new Error('offline'); },
+      ensureGuestBoard: async () => { throw new Error('offline'); },
+      claimGuestBoard: async () => { throw new Error('offline'); },
+      markRepliesRead: async () => { throw new Error('offline'); },
+    } };
+    const report = vi.fn();
+    const unsaved = trackBoardWrites(conn, report);
+    for (const call of Object.values(conn.reducers)) await expect(call()).rejects.toThrow('offline');
+    expect(unsaved()).toEqual([]);
+    expect(report).not.toHaveBeenCalled();
+  });
+
+  it('retains failed edits after a later success, and removes acknowledged writes', async () => {
+    let finish!: () => void;
+    const conn = { reducers: {
+      updateNode: async (_args: { nodeId: bigint; label: string }) => { throw new Error('offline'); },
+      moveNode: () => new Promise<void>(resolve => { finish = resolve; }),
+    } };
+    const unsaved = trackBoardWrites(conn, vi.fn());
+    const args = { nodeId: 3n, label: 'Keep this' };
+    await expect(conn.reducers.updateNode(args)).rejects.toThrow('offline');
+    args.label = 'changed by caller';
+    const move = conn.reducers.moveNode();
+    expect(unsaved()).toHaveLength(2);
+    finish(); await move;
+    expect(unsaved()).toEqual([{ reducer: 'updateNode', args: [{ nodeId: 3n, label: 'Keep this' }] }]);
+  });
+
   it('keeps saving until every overlapping write is acknowledged', async () => {
     let finishOne!: () => void, finishTwo!: () => void;
     const report = vi.fn();

@@ -56,6 +56,27 @@ function serveOutbox(batches: unknown[][][]): unknown[] {
   return acks;
 }
 
+it('logs only row ids for invalid payloads and still inserts and acknowledges the batch', async () => {
+  const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+  const payloads = ['{"secret":"private",', 'null', '"private"', '42', 'false', '{}', '[1]', '{"label":"ok"}'];
+  const acks = serveOutbox([payloads.map((payload, i) => outboxRow(i + 1, 7, 'node.created', { payload }))]);
+  const insert = Object.assign(vi.fn().mockResolvedValue([]), { json: vi.fn(value => value) });
+  try {
+    expect(await drain(insert as unknown as Sql, {
+      SPACETIMEDB_URL: 'http://stdb.test', SPACETIMEDB_DB: DB, SPACETIMEDB_SERVICE_TOKEN: 'svc'
+    })).toBe(payloads.length);
+    expect(insert).toHaveBeenCalledTimes(1);
+    expect(insert.json.mock.calls[0][0].map((row: { payload: unknown }) => row.payload))
+      .toEqual([{}, {}, {}, {}, {}, {}, [1], { label: 'ok' }]);
+    expect(acks).toEqual([[[1, 2, 3, 4, 5, 6, 7, 8], [1, 1, 1, 1, 1, 1, 1, 1]]]);
+    expect(warn.mock.calls.map(([line]) => JSON.parse(line))).toEqual(
+      [1, 2, 3, 4, 5].map(id => ({ event: 'activity.invalid_payload', outboxId: String(id) }))
+    );
+  } finally {
+    warn.mockRestore();
+  }
+});
+
 describe.skipIf(!env.DATABASE_URL)('activity store (local Postgres)', () => {
   let sql: Sql;
 

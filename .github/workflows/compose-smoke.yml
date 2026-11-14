@@ -26,6 +26,8 @@ jobs:
           } >>"$GITHUB_ENV"
       - name: docker compose up --build -d
         run: docker compose up --build -d
+      - name: Config parsing handles multiline JSONC
+        run: docker compose exec -T mcp node --test /app/docker/mcp-config.test.mjs
       - name: The agent creates a board and draws on it
         # scripts/smoke.mjs waits for /health, then start_session, get_board, create_node, move_node
         run: docker compose exec -T -e MCP_URL=http://localhost:8788/mcp -e CANARY_API_KEY="$SMOKE_KEY" mcp node scripts/smoke.mjs

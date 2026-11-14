@@ -272,10 +272,9 @@ export function routeEdges(
       const inner = n.innerIsFrom ? a : b;
       const end = n.innerIsFrom ? 'out' : 'in';
       const p = portPoint(inner, n.side, tOf.get(`${e.id}:${end}`)!, shapes.get(n.innerIsFrom ? e.from : e.to) ?? 'rect');
-      // shortcut: the outer end sits on the outer's bounding-box border, off the curve for ellipse/pill outers; upgrade if those outers matter
       const o = n.outer;
-      const q =
-        n.side === 'top' ? { x: p.x, y: o.y } : n.side === 'bottom' ? { x: p.x, y: o.y + o.h } : n.side === 'left' ? { x: o.x, y: p.y } : { x: o.x + o.w, y: p.y };
+      const t = n.side === 'top' || n.side === 'bottom' ? (p.x - o.x) / o.w : (p.y - o.y) / o.h;
+      const q = portPoint(o, n.side, t, shapes.get(n.innerIsFrom ? e.to : e.from) ?? 'rect');
       out.set(e.id, finish(n.innerIsFrom ? [p, q] : [q, p]));
       continue;
     }

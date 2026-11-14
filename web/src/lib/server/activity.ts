@@ -10,14 +10,15 @@ const MAX_BATCHES = 5;
 // Postgres text and jsonb reject NUL and lone surrogates, and reducers accept any label or name.
 const clean = (s: string) => s.toWellFormed().replaceAll('\u0000', '');
 
-// shortcut: a malformed payload becomes {} so one bad row never blocks the drain, and its details are lost; log the row id once an event is reported with no details.
-function payloadOf(cell: unknown): JSONValue {
+function payloadOf(cell: unknown, outboxId: string): JSONValue {
   try {
     const value: JSONValue = JSON.parse(String(cell), (_k, v) => (typeof v === 'string' ? clean(v) : v));
-    return value && typeof value === 'object' ? value : {};
+    if (value && typeof value === 'object') return value;
   } catch {
-    return {};
+    // Parse errors may include payload contents; log only the row id below.
   }
+  log('warn', 'activity.invalid_payload', { outboxId });
+  return {};
 }
 
 /**
@@ -44,7 +45,7 @@ export async function drain(sql: Sql, env: Record<string, string | undefined>): 
       at: dateOf(r.at).toISOString(),
       last_at: dateOf(r.last_at).toISOString(),
       count: Number(r.count),
-      payload: payloadOf(r.payload)
+      payload: payloadOf(r.payload, String(r.id))
     }));
     const insert = (batch: typeof events) => sql`
       insert into activity_event

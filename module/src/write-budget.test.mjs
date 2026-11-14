@@ -103,7 +103,7 @@ test('every exported procedure spends a write or is explicitly read-only', () =>
     .filter(f => f.endsWith('_procedure.ts'))
     .map(f => camel(f.slice(0, -'_procedure.ts'.length)));
   assert.deepEqual([...direct.map(([, name]) => name), ...pluginProcedures.map(({ name }) => name)].sort(), exported.sort(), 'every procedure is covered by the budget contract');
-  const readOnly = ['readBoardSnapshot'];
+  const readOnly = ['readBoardSnapshot', 'serviceLoad'];
   assert.deepEqual(readOnly.filter(name => !direct.some(([, declared]) => declared === name)), [], 'read-only exemptions still name a procedure');
   for (const match of direct) {
     if (readOnly.includes(match[1])) continue;

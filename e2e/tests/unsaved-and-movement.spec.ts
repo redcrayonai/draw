@@ -1,0 +1,126 @@
+import { readFile } from 'node:fs/promises';
+import { test, expect, openBoard, drawNode } from '../fixtures';
+
+test('library search does not prevent automatic reconnect', async ({ guest, stack }) => {
+  const page = await guest();
+  await openBoard(page, stack.url);
+  await drawNode(page, 'Saved');
+  await page.locator('#tool-library').click();
+  await page.getByRole('searchbox', { name: 'Search the library' }).fill('database');
+  await page.evaluate(() => (window as any).conn.disconnect());
+  await expect(page.locator('#reconnect')).toContainText('Retrying');
+  await page.getByRole('searchbox', { name: 'Search the library' }).fill('queue');
+  await expect(page.locator('#reconnect')).toHaveCount(0);
+  await expect(page.locator('#world')).toContainText('Saved');
+});
+
+for (const kind of ['service', 'text']) {
+  test(`Escape ${kind === 'text' ? 'saves free text and keeps recovery paused' : 'discards a label and allows reconnect'}`, async ({ guest, stack }) => {
+    const page = await guest();
+    await openBoard(page, stack.url);
+    await drawNode(page, 'Saved');
+    if (kind === 'text') {
+      await page.evaluate(async () => {
+        const conn = (window as any).conn;
+        await conn.reducers.updateNode({ nodeId: [...conn.db.visibleNode.iter()][0].id, kind: 'text' });
+      });
+    }
+    await page.locator('#world g.node').dblclick();
+    const input = page.locator('#inline-edit');
+    if (kind === 'text') await expect(input).toHaveClass(/text/);
+    await input.fill('Offline draft');
+    await page.evaluate(() => (window as any).conn.disconnect());
+    await expect(page.locator('#reconnect')).toContainText('Reconnect paused');
+    await input.press('Escape');
+    if (kind === 'text') {
+      await page.waitForTimeout(2200);
+      await expect(page.locator('#reconnect')).toContainText('Reconnect paused');
+    } else {
+      await expect(page.locator('#reconnect')).toHaveCount(0);
+      await expect(page.locator('#world')).toContainText('Saved');
+    }
+  });
+}
+
+test('a disconnected draft survives submission and offers a backup before reload', async ({ guest, stack }) => {
+  const page = await guest();
+  await openBoard(page, stack.url);
+  await drawNode(page, 'Saved label');
+  await page.locator('#world g.node').dblclick();
+  await page.locator('#inline-edit').fill('Keep this draft');
+  await page.evaluate(() => (window as any).conn.disconnect());
+  await expect(page.locator('#reconnect')).toContainText('Reconnect paused');
+  await page.locator('#inline-edit').fill('Keep the latest draft');
+  await page.locator('#inline-edit').press('Enter');
+  // Beyond the automatic retry delay, including after the editor has gone.
+  await page.waitForTimeout(2200);
+  await expect(page.locator('#reconnect')).toContainText('Reconnect paused');
+  const download = page.waitForEvent('download');
+  await page.getByRole('button', { name: 'Download unsaved edits' }).click();
+  const backup = JSON.parse(await readFile((await (await download).path())!, 'utf8'));
+  expect(backup.drafts).toContainEqual({ field: 'inline-edit', text: 'Keep the latest draft' });
+  expect(backup.unacknowledgedWrites.some((w: any) => w.args.some((a: any) => a.label === 'Keep the latest draft'))).toBe(true);
+  const dialog = page.waitForEvent('dialog');
+  const click = page.getByRole('button', { name: 'Reload anyway' }).click();
+  const warning = await dialog;
+  expect(warning.type()).toBe('beforeunload');
+  await warning.dismiss();
+  await click;
+  await expect(page.locator('#reconnect')).toBeVisible();
+  page.once('dialog', d => d.accept());
+  await page.getByRole('button', { name: 'Reload anyway' }).click();
+  await expect(page.locator('#reconnect')).toHaveCount(0);
+  await expect(page.locator('#world')).toContainText('Saved label');
+});
+
+test('pending acknowledgements hold reconnect even after the editor closes', async ({ guest, stack }) => {
+  const page = await guest();
+  let hold = false;
+  let closeSocket!: () => void;
+  await page.routeWebSocket(/\/v1\/database\//, ws => {
+    const server = ws.connectToServer();
+    server.onMessage(message => { if (!hold) ws.send(message); });
+    closeSocket = () => ws.close();
+  });
+  await openBoard(page, stack.url);
+  await drawNode(page, 'Original');
+  await page.locator('#world g.node').dblclick();
+  hold = true;
+  await page.locator('#inline-edit').fill('Unacknowledged label');
+  await page.locator('#inline-edit').press('Enter');
+  await expect(page.locator('#inline-edit')).toHaveCount(0);
+  await expect(page.locator('#save-status')).toHaveText('Saving…');
+  closeSocket();
+  await expect(page.locator('#reconnect')).toContainText('Reconnect paused');
+  await page.waitForTimeout(2200);
+  await expect(page.locator('#reconnect')).toContainText('Reconnect paused');
+  const download = page.waitForEvent('download');
+  await page.getByRole('button', { name: 'Download unsaved edits' }).click();
+  const backup = JSON.parse(await readFile((await (await download).path())!, 'utf8'));
+  expect(backup.unacknowledgedWrites.some((w: any) => w.args.some((a: any) => a.label === 'Unacknowledged label'))).toBe(true);
+});
+
+test('movement redraws geometry without rebuilding chrome, while content still refreshes', async ({ guest, stack }) => {
+  const page = await guest({ reducedMotion: 'reduce' });
+  await openBoard(page, stack.url);
+  await drawNode(page, 'Move me');
+  const node = page.locator('#world g.node');
+  const before = await node.getAttribute('transform');
+  await page.evaluate(() => {
+    (window as any).__titleChanges = 0;
+    new MutationObserver(records => { (window as any).__titleChanges += records.length; })
+      .observe(document.getElementById('board-title')!, { childList: true, characterData: true, subtree: true });
+  });
+  await page.evaluate(async () => {
+    const conn = (window as any).conn;
+    const n = [...conn.db.visibleNode.iter()][0];
+    await conn.reducers.moveNode({ nodeId: n.id, x: n.x + 200, y: n.y });
+  });
+  await expect(node).not.toHaveAttribute('transform', before!);
+  expect(await page.evaluate(() => (window as any).__titleChanges)).toBe(0);
+  await node.dblclick();
+  await page.locator('#inline-edit').fill('New label');
+  await page.locator('#inline-edit').press('Enter');
+  await expect(node).toContainText('New label');
+  expect(await page.evaluate(() => (window as any).__titleChanges)).toBeGreaterThan(0);
+});

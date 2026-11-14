@@ -11,6 +11,5 @@ set -eu
   [ -z "${OIDC_ISSUER:-}" ] || echo "OIDC_ISSUER=$OIDC_ISSUER"
 } >.dev.vars
 # No Analytics Engine dataset and no cron (the canary): both are hosted-only.
-# shortcut: sed drops their one-line entries; a multi-line rewrite of either breaks this start, which compose-smoke.yml catches.
-sed '/"analytics_engine_datasets"/d; /"triggers"/d' wrangler.jsonc >wrangler.compose.jsonc
+node /app/docker/mcp-config.mjs wrangler.jsonc >wrangler.compose.jsonc
 exec pnpm exec wrangler dev --config wrangler.compose.jsonc --port 8788 --ip 0.0.0.0 --local-upstream localhost:8788

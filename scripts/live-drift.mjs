@@ -26,18 +26,23 @@ export function parseReducerArgs(text) {
 const SPECIAL = { __identity__: 'identity', __connection_id__: 'connectionId', __timestamp_micros_since_unix_epoch__: 'timestamp', __time_duration_micros__: 'timeDuration' };
 
 /** [type, optional] for one algebraic type of `spacetime describe --json`. */
-export function typeOf(t) {
+export function typeOf(t, types = [], seen = new Set()) {
+  if (Object.hasOwn(t, 'Ref')) {
+    const ref = t.Ref;
+    if (!Number.isInteger(ref) || ref < 0 || !types[ref]) throw new Error(`missing type reference ${ref}`);
+    if (seen.has(ref)) throw new Error(`cyclic type reference ${ref}`);
+    return typeOf(types[ref], types, new Set([...seen, ref]));
+  }
   const [kind] = Object.keys(t);
   if (kind === 'Sum') {
     const v = t.Sum.variants;
-    if (v.length === 2 && v[0].name?.some === 'some' && v[1].name?.some === 'none') return [typeOf(v[0].algebraic_type)[0], true];
+    if (v.length === 2 && v[0].name?.some === 'some' && v[1].name?.some === 'none') return [typeOf(v[0].algebraic_type, types, seen)[0], true];
     return ['enum', false];
   }
   if (kind === 'Product') {
     const els = t.Product.elements;
     return [(els.length === 1 && SPECIAL[els[0].name?.some]) || 'object', false];
   }
-  // shortcut: a Ref (a named type) stays 'ref'; resolve it through the Typespace when a reducer the Worker calls takes one.
   return [kind.toLowerCase(), false];
 }
 
@@ -51,7 +56,7 @@ export function liveReducers(describe) {
   const canonical = new Map((section('ExplicitNames')?.entries ?? []).flatMap(e => (e.Function ? [[e.Function.source_name, e.Function.canonical_name]] : [])));
   const out = {};
   for (const r of reducers) {
-    out[canonical.get(r.source_name) ?? camelToSnake(r.source_name)] = r.params.elements.map(p => [p.name?.some ?? '', ...typeOf(p.algebraic_type)]);
+    out[canonical.get(r.source_name) ?? camelToSnake(r.source_name)] = r.params.elements.map(p => [p.name?.some ?? '', ...typeOf(p.algebraic_type, section('Typespace')?.types)]);
   }
   return out;
 }
