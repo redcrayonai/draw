@@ -103,6 +103,25 @@ describe('appendBlocks', () => {
     expect(div.querySelector('.ac-heading')?.textContent).toBe('Next');
   });
 
+  it('hands known fences and node names to the board, and keeps the rest as text', () => {
+    const div = document.createElement('div');
+    const seen: [string, string, string, boolean][] = [];
+    const clicked: string[] = [];
+    appendBlocks(div, 'See `Orders` and `a.ts`.\n- **`Orders` (412 ms):** slow\n```chart bars p95 by hop\nhop,p95\nA,1\n```\n```ts\nx\n```\n```choices\nYes', undefined, {
+      node: name => (name === 'Orders' ? () => clicked.push(name) : null),
+      fence: (lang, info, body, closed) => {
+        seen.push([lang, info, body, closed]);
+        return lang === 'ts' ? null : Object.assign(document.createElement('figure'), { textContent: lang });
+      },
+    });
+    expect(seen).toEqual([['chart', 'bars p95 by hop', 'hop,p95\nA,1', true], ['ts', '', 'x', true], ['choices', '', 'Yes', false]]);
+    expect([...div.children].map(c => c.tagName)).toEqual(['P', 'UL', 'FIGURE', 'PRE', 'FIGURE']);
+    for (const chip of div.querySelectorAll<HTMLButtonElement>('button.ac-node')) chip.click();
+    expect(clicked).toEqual(['Orders', 'Orders']);
+    expect(div.querySelector('li strong')?.textContent).toBe('Orders (412 ms):');
+    expect(div.querySelector('p code')?.textContent).toBe('a.ts');
+  });
+
   it('a fence still streaming is already code, and nothing becomes markup', () => {
     const div = html('```js\nalert(1)\n<img src=x>');
     expect(div.querySelector('pre code')?.textContent).toBe('alert(1)\n<img src=x>');

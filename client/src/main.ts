@@ -2985,6 +2985,18 @@ async function boot(conn: DbConnection, identityHex: string, signedIn: boolean):
           url: () => (mcpUrl === undefined ? '' : chatUrl(mcpUrl, boardId)),
           token: liveToken,
           agents: () => canvasPlugins?.agents() ?? [],
+          nodeNamed: name => {
+            const node = getNodes().find(n => n.label === name);
+            return node ? () => editor.selectNodes([node.id]) : null; // selecting reveals it (revealSelection)
+          },
+          // Below everything drawn so far, so a pinned chart never lands on a node.
+          pinChart: async chart => {
+            const all = getNodes();
+            const x = all.length ? Math.min(...all.map(n => n.x)) : 0;
+            const y = all.length ? Math.ceil((Math.max(...all.map(n => n.y + n.h)) + 48) / GRID) * GRID : 0;
+            const id = await ops.createChartAction({ boardId, x, y, ...samplePlacement(chart.type as Parameters<typeof samplePlacement>[0]), label: chart.title, csv: chart.csv, source: '' });
+            editor.selectNodes([id]);
+          },
           selection: () => {
             const nodes = getNodes().filter(n => editor.selection.has(n.id)).map(n => n.label || n.sublabel).filter(Boolean);
             const byId = new Map(getNodes().map(n => [n.id, n.label || n.sublabel]));
