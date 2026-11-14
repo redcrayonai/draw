@@ -88,4 +88,28 @@ describe('local authoritative store', () => {
     expect(() => store.mutate(board.slug, 0, [{ type: 'node.put', patch: patch as never }])).toThrow('REJECTED');
     expect(store.read(board.slug)).toEqual(board);
   });
+  it('keeps an unbranded icon on a node through undo and restart, and refuses any other', () => {
+    const { directory, store, board } = setup();
+    const placed = store.mutate(board.slug, 0, [{ type: 'node.put', patch: { label: 'Queue', kind: 'datastore', icon: 'queue' } }]);
+    expect(placed.nodes[0].icon).toBe('queue');
+    expect(store.mutate(board.slug, 1, [{ type: 'graph.restore', nodes: placed.nodes, edges: [] }]).nodes[0].icon).toBe('queue');
+    for (const patch of [{ icon: 'aws-s3' }, { icon: 'claude' }, { icon: 'queue', kind: 'note' as const }]) {
+      expect(() => store.mutate(board.slug, 2, [{ type: 'node.put', id: '1', patch }])).toThrow('REJECTED: invalid icon');
+    }
+    store.close();
+    const reopened = new LocalStore(directory); stores.push(reopened);
+    expect(reopened.read(board.slug).nodes[0].icon).toBe('queue');
+    expect(reopened.mutate(board.slug, 2, [{ type: 'node.put', id: '1', patch: { icon: '' } }]).nodes[0]).not.toHaveProperty('icon');
+    reopened.mutate(board.slug, 3, [{ type: 'node.put', id: '1', patch: { icon: 'cache' } }]);
+    expect(reopened.mutate(board.slug, 4, [{ type: 'node.put', id: '1', patch: { kind: 'note' } }]).nodes[0]).not.toHaveProperty('icon');
+  });
+  it('loads a store whose icon came from a newer version, and still edits that node', () => {
+    const { directory, store, board } = setup();
+    const placed = store.mutate(board.slug, 0, [{ type: 'node.put', patch: { label: 'Bus', icon: 'event' } }]);
+    store.close();
+    writeFileSync(join(directory, 'boards.json'), JSON.stringify({ version: 1, boards: [{ ...placed, nodes: [{ ...placed.nodes[0], icon: 'added-later' }] }] }));
+    const reopened = new LocalStore(directory); stores.push(reopened);
+    expect(reopened.mutate(board.slug, 1, [{ type: 'node.put', id: '1', patch: { x: 40 } }]).nodes[0]).toMatchObject({ x: 40, icon: 'added-later' });
+    expect(() => reopened.mutate(board.slug, 2, [{ type: 'node.put', patch: { icon: 'added-later' } }])).toThrow('REJECTED: invalid icon');
+  });
 });

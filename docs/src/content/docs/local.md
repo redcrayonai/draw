@@ -59,9 +59,20 @@ Pick a node kind in the bottom toolbar and click the canvas to place it. Drag
 to move. Shift-click two nodes and choose **Connect selected**. Ctrl/Cmd-Z
 undoes the last 30 edits of this browser session.
 
+Press **L** to open the library. It holds the node kinds and 20 icons for
+agents and common systems, such as a queue, a cache or a gateway. Click an
+icon and then the canvas, or drag the icon onto the canvas.
+
 Attach code references in the inspector, and click one to read the source from
 your checkout. Open **Review**, select a node or edge, and leave a note. The
 agent replies to the note and resolves it.
+
+To review several nodes at once, press **C** for the red crayon. Click each
+node to circle it, type a note if you want one, then choose the red **Send**
+button.
+Each circle becomes a review note. When your agent is connected, Draw also
+tells it that the marks are there. If the agent is busy, Draw says so and
+keeps the message in **Conversation** for you to send.
 
 Open **Conversation** to send a message to the agent session that drew the
 board, or to stop it. Draw never starts a second agent. A message shows as
@@ -110,7 +121,8 @@ files are stale, run `draw install <agent>` again. Set
 
 ## What local boards leave out
 
-Sharing links, workspaces, the dashboard, charts, incidents, threats, branches
-and walk-throughs need a hosted board or [your own server](/self-host/quickstart/).
+Sharing links, workspaces, the dashboard, charts, product and company icons,
+saved library items, incidents, threats, branches and walk-throughs need a
+hosted board or [your own server](/self-host/quickstart/).
 
 [Connect your agent](/connect/) · [Your data and code consent](/data-and-consent/)

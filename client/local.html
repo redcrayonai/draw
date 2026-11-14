@@ -2,6 +2,8 @@
 <html lang="en" data-theme="material-light">
 <head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Draw · Local</title></head>
 <body class="local-mode">
+  <!-- chrome.ts showError and showNotice write here. -->
+  <div id="error-strip" hidden><span id="error-text"></span><button id="error-dismiss" aria-label="Dismiss">&times;</button></div>
   <header id="local-header" class="topbar">
     <div class="tb-left"><button id="rail-toggle" class="icon-btn" aria-expanded="true" title="Toggle the board panel">
           <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
@@ -67,7 +69,22 @@
           <span class="add-key tool-key">T</span>
         </button>
         <span class="dock-div" aria-hidden="true"></span>
+        <button id="tool-crayon" class="tool" title="Red crayon &middot; circle nodes to review &middot; C" aria-label="Red crayon" aria-pressed="false" aria-keyshortcuts="C">
+          <svg width="17" height="17" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2.75 13.25V11l7.5-7.5 2.25 2.25-7.5 7.5Z" /><path d="M10.25 3.5l1.5-1.5 2.25 2.25-1.5 1.5" /><path d="M4.75 9l2.25 2.25" /></svg>
+          <span class="tool-key">C</span>
+        </button>
+        <span class="dock-div" aria-hidden="true"></span>
+        <button id="tool-library" class="tool" title="Library &middot; L" aria-label="Library" aria-expanded="false" aria-controls="library-popover" aria-keyshortcuts="L">
+          <svg width="17" height="17" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <rect x="2" y="2" width="5" height="5" rx="1" /><rect x="9" y="2" width="5" height="5" rx="1" /><rect x="2" y="9" width="5" height="5" rx="1" /><path d="M11.5 9v5M9 11.5h5" />
+          </svg>
+          <span class="tool-key">L</span>
+        </button>
+        <span class="dock-div" aria-hidden="true"></span>
         <button id="add-edge" class="tool" aria-label="Connect selected" title="Connect selected nodes"><svg width="18" height="18" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3" aria-hidden="true"><path d="M2 12 13 3M7 3h6v6"/></svg><span class="tool-key">Link</span></button></div>
+    <div id="library-popover" role="dialog" aria-label="Library" hidden></div>
+    <!-- crayon.ts: shown while red crayon drafts exist; Send saves them all as review notes. -->
+    <button id="mark-send" class="mark-send" hidden><span class="mark-send-label">Send 0 marks</span><svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 8h10M9 4l4 4-4 4" /></svg></button>
     <div class="zoom-cluster"><button id="zoom-out" aria-label="Zoom out">−</button><button id="hud-zoom" aria-label="Reset zoom">100%</button><button id="zoom-in" aria-label="Zoom in">+</button><span class="zoom-div" aria-hidden="true"></span><button id="fit" aria-label="Fit">fit</button></div>
     <aside id="local-review" class="local-float" aria-labelledby="review-title" hidden><div class="rail-head"><h2 id="review-title" class="rail-title">Review</h2><button class="icon-btn" data-close="review" aria-label="Close review">×</button></div><p>Select a node or connection to leave a note.</p><form id="note"><label>Note on selection<textarea name="text" required></textarea></label><button>Add note</button></form><div id="notes"></div></aside>
     <aside id="local-conversation" class="local-float" aria-label="Conversation" hidden><div class="rail-head"><h2 class="rail-title">Conversation</h2><button class="icon-btn" data-close="conversation" aria-label="Close conversation">×</button></div></aside>

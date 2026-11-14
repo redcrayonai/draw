@@ -309,7 +309,7 @@ export function mountCrayon(view: CrayonView): { crayon: Crayon; sync: () => voi
 
   /** D4: each sent loop fades and drifts into the Review button, staggered; reduced motion fades in place. */
   const fly = (sent: bigint[]) => {
-    const target = document.getElementById('act-review')?.getBoundingClientRect();
+    const target = (document.getElementById('act-review') ?? document.getElementById('review-toggle'))?.getBoundingClientRect(); // review-toggle: a local board's Review button
     const box = view.world.closest('svg')?.getBoundingClientRect();
     const drift = !reducedMotion() && target !== undefined && box !== undefined;
     let i = 0;
