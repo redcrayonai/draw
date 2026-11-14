@@ -168,6 +168,8 @@ test('a reply links a node it names, draws a chart to pin, and offers answers to
   await expect(chatLog(page).locator('pre')).toHaveCount(0);
   push(r, { type: 'text', message: 'm1', delta: '```\n```chart bars refused\nonly one column\n```\n```choices\nMake billing async\nShow me the code\n```', final: true });
   push(r, { type: 'state', state: 'idle' });
+  // The reply is revealed a few characters a frame: the answers come last.
+  await expect(chatLog(page).getByRole('button', { name: 'Make billing async' })).toBeVisible();
   await expect(chatLog(page).locator('.ac-chart .chart-bar')).toHaveCount(1);
   // Data the chart contract refuses stays the code the agent wrote; so does a name the board does not have.
   await expect(chatLog(page).locator('pre code')).toHaveText('only one column');
@@ -182,7 +184,8 @@ test('a reply links a node it names, draws a chart to pin, and offers answers to
   await expect(attached).toContainText('p95 by hop (ms)');
 
   await chatLog(page).getByRole('button', { name: 'Make billing async' }).click();
-  await expect.poll(() => r.sent.find(m => m.type === 'send')?.text).toBe('Make billing async');
+  // What is selected rides along with an answer too.
+  await expect.poll(() => r.sent.find(m => m.type === 'send')).toMatchObject({ text: 'Make billing async', context: 'p95 by hop (ms)' });
 });
 
 test('sending crayon marks saves their data and sends only a label-free nudge to chat', async ({ account, stack }, testInfo) => {

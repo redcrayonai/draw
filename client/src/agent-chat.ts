@@ -164,6 +164,8 @@ export interface RichText {
   node?(name: string): (() => void) | null;
   /** A fence with a language the board knows (```chart, ```choices), as an element. `closed` is false while it still streams. */
   fence?(lang: string, info: string, body: string, closed: boolean): HTMLElement | null;
+  /** More text is coming: an open fence may still close, and a last line may still grow. */
+  streaming?: boolean;
 }
 
 /** Text with `code` and **bold** spans, as DOM nodes: an agent's text never becomes markup. */
@@ -212,9 +214,12 @@ export function appendBlocks(parent: HTMLElement, text: string, codeActions?: (p
     if (fence) {
       flush();
       list = null;
+      // A fence line still arriving has half a language: wait for its next line before deciding what it is.
+      if (rich?.streaming && i === lines.length - 1) break;
       const body: string[] = [];
       for (i++; i < lines.length && !/^\s*```/.test(lines[i]); i++) body.push(lines[i]);
-      const block = fence[1] ? rich?.fence?.(fence[1], fence[2].trim(), body.join('\n'), i < lines.length) : null;
+      // A reply that ends inside a fence is as closed as it will get.
+      const block = fence[1] ? rich?.fence?.(fence[1], fence[2].trim(), body.join('\n'), i < lines.length || !rich.streaming) : null;
       if (block) {
         parent.append(block);
         continue;
@@ -648,11 +653,12 @@ export function mountAgentChat(chatButton: HTMLButtonElement, opts: AgentChatOpt
     const figure = el('figure', 'ac-chart');
     const head = el('figcaption');
     head.append(el('span', 'ac-chart-title', title || type));
-    if (opts.pinChart) {
+    const pinChart = opts.pinChart;
+    if (pinChart) {
       const key = `${type}\n${title}\n${csv}`;
       const pin = button('ac-link ac-chart-pin', pinned.has(key) ? 'Pinned to board' : 'Pin to board', () => {
         pin.disabled = true;
-        opts.pinChart!({ type, title: title || type, csv }).then(
+        pinChart({ type, title: title || type, csv }).then(
           () => { pinned.add(key); pin.textContent = 'Pinned to board'; },
           () => { pin.disabled = false; pin.textContent = 'Could not pin. Try again'; },
         );
@@ -684,7 +690,7 @@ export function mountAgentChat(chatButton: HTMLButtonElement, opts: AgentChatOpt
     group.setAttribute('aria-label', 'Answers your agent offers');
     // shortcut: an old question's answers stay clickable; grey them out once a later message exists if people mis-click.
     for (const answer of answers) group.append(button('ac-action', answer, () => {
-      if (!sendText(answer)) return;
+      if (!sendText(answer, context())) return;
       stickToEnd = true;
       render();
     }));
@@ -694,9 +700,10 @@ export function mountAgentChat(chatButton: HTMLButtonElement, opts: AgentChatOpt
     node: name => opts.nodeNamed?.(name) ?? null,
     fence: (lang, info, body, closed) => lang === 'chart' ? chartBlock(info, body, closed) : lang === 'choices' ? choicesBlock(body, closed) : null,
   };
-  const fillText = (node: HTMLElement, text: string) => {
+  const fillText = (node: HTMLElement, item: Extract<Item, { kind: 'text' }>, shownTo: number) => {
     node.textContent = '';
-    appendBlocks(node, text.trimEnd(), (pre, code) => pre.append(copyButton('Copy', code, 'ac-copy')), rich);
+    const streaming = !item.final || shownTo < item.text.length;
+    appendBlocks(node, item.text.slice(0, shownTo).trimEnd(), (pre, code) => pre.append(copyButton('Copy', code, 'ac-copy')), { ...rich, streaming });
   };
   const animate = () => {
     if (animating || !open) return;
@@ -711,7 +718,7 @@ export function mountAgentChat(chatButton: HTMLButtonElement, opts: AgentChatOpt
         if (next !== at) {
           shown.set(item.message, next);
           const node = log.querySelector<HTMLElement>(`[data-message="${CSS.escape(item.message)}"] .ac-body`);
-          if (node) fillText(node, item.text.slice(0, next));
+          if (node) fillText(node, item, next);
         }
         if (next < item.text.length) pending = true;
       }
@@ -1029,13 +1036,13 @@ export function mountAgentChat(chatButton: HTMLButtonElement, opts: AgentChatOpt
       if (item.kind === 'text') {
         rows.push({
           key: `t:${item.message}`,
-          sig: '',
+          sig: String(item.final),
           build: () => {
             const node = el('div', 'ac-agent');
             node.dataset.message = item.message;
             if (look === 'terminal') node.append(el('span', 'ac-bullet', '●'));
             const body = el('div', 'ac-body');
-            fillText(body, item.text.slice(0, reduced() ? item.text.length : (shown.get(item.message) ?? 0)));
+            fillText(body, item, reduced() ? item.text.length : (shown.get(item.message) ?? 0));
             node.append(body);
             return node;
           },
@@ -1145,7 +1152,7 @@ export function mountAgentChat(chatButton: HTMLButtonElement, opts: AgentChatOpt
         wasOnline = model.online;
         if (f.type === 'snapshot') reportViewing();
         if (!open && f.type === 'text') unread = true;
-        if (f.type === 'text' && log.querySelector(`[data-message="${CSS.escape(String(f.message))}"]`)) {
+        if (f.type === 'text' && !f.final && log.querySelector(`[data-message="${CSS.escape(String(f.message))}"]`)) {
           renderStatus();
           return animate();
         }
