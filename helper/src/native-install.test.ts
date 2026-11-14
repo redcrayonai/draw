@@ -9,6 +9,8 @@ import { choosePermissionSet, permissionPath, savePermissions } from './permissi
 import { configureCodexPermissions, disableLegacyCodexIntegrations } from './codex-permissions';
 import { installLocalCodex } from './local-install';
 vi.mock('./codex-permissions', () => ({ configureCodexPermissions: vi.fn(), disableLegacyCodexIntegrations: vi.fn() }));
+const answers: string[] = [], asked: string[] = [];
+vi.mock('node:readline/promises', () => ({ createInterface: () => ({ question: async (q: string) => { asked.push(q); return answers.shift() ?? ''; }, close() {} }) }));
 vi.mock('./local-install', () => ({ installLocalCodex: vi.fn() }));
 vi.mock('./permissions', async original => ({ ...await original<typeof import('./permissions')>(), choosePermissionSet: vi.fn(), savePermissions: vi.fn() }));
 vi.mock('node:os', async original => ({ ...await original<typeof import('node:os')>(), homedir: vi.fn() }));
@@ -242,3 +244,106 @@ function useBundledAssets() {
   vi.mocked(readFileSync).mockImplementation(((file: any, options: any) => actualFs.readFileSync(asset(file), options)) as typeof readFileSync);
   vi.mocked(readdirSync).mockImplementation(((file: any, options: any) => actualFs.readdirSync(asset(file), options)) as typeof readdirSync);
 }
+
+// ---------- hosted endpoint ----------
+const active = () => join(directory, '.redcrayon/plugins/installed/codex-hosted');
+const installedUrl = () => json(join(active(), '.mcp.json')).mcpServers.draw.url;
+const tty = (on: boolean) => { for (const stream of [process.stdin, process.stderr]) Object.defineProperty(stream, 'isTTY', { value: on, configurable: true }); };
+let stderr: string[];
+beforeEach(() => {
+  answers.length = 0; asked.length = 0; stderr = []; tty(false); vi.stubEnv('REDCRAYON_MCP_URL', '');
+  vi.spyOn(process.stderr, 'write').mockImplementation(((text: string) => { stderr.push(String(text)); return true; }) as any);
+  useBundledAssets();
+});
+afterEach(() => { tty(false); vi.restoreAllMocks(); });
+const install = (...args: string[]) => runNativeInstall(['codex', ...args], '1.2.3');
+
+it('prompts with the packaged default and saves it on Enter', async () => {
+  tty(true); answers.push('');
+  await install('--mode', 'hosted');
+  expect(asked).toEqual(['Draw instance URL [https://test.example/mcp]: ']);
+  expect(installedUrl()).toBe('https://test.example/mcp');
+  expect(stderr.join('')).toContain('Hosted endpoint: https://test.example/mcp');
+  expect(stderr.join('')).toContain('restart Codex');
+});
+
+it('saves a custom URL, re-asks on an invalid one, and defaults to it on reinstall', async () => {
+  tty(true); answers.push('ftp://x', 'http://example.com/mcp', 'https://mine.example/mcp');
+  await install();
+  expect(installedUrl()).toBe('https://mine.example/mcp');
+  expect(asked).toHaveLength(3);
+  asked.length = 0; answers.push('');
+  await install();
+  expect(asked).toEqual(['Draw instance URL [https://mine.example/mcp]: ']);
+  expect(installedUrl()).toBe('https://mine.example/mcp');
+  expect(installLocalCodex).toHaveBeenLastCalledWith(active(), 'draw-binary', 'draw');
+});
+
+it('never waits without a terminal: --url, then env, then installed, then default, and prints the choice', async () => {
+  await install(); expect(installedUrl()).toBe('https://test.example/mcp');
+  vi.stubEnv('REDCRAYON_MCP_URL', 'https://env.example/mcp');
+  await install(); expect(installedUrl()).toBe('https://env.example/mcp');
+  expect(stderr.join('')).toContain('Draw instance URL: https://env.example/mcp (REDCRAYON_MCP_URL)');
+  await install('--url', 'https://flag.example/mcp'); expect(installedUrl()).toBe('https://flag.example/mcp');
+  vi.stubEnv('REDCRAYON_MCP_URL', '');
+  await install('--url=http://localhost:8788/mcp'); expect(installedUrl()).toBe('http://localhost:8788/mcp');
+  await install(); expect(installedUrl()).toBe('http://localhost:8788/mcp');
+  expect(asked).toEqual([]);
+});
+
+it('--url skips the prompt even in a terminal; env only becomes the editable default', async () => {
+  tty(true); await install('--url', 'https://flag.example/mcp');
+  expect(asked).toEqual([]);
+  vi.stubEnv('REDCRAYON_MCP_URL', 'https://env.example/mcp'); answers.push('');
+  await install();
+  expect(asked).toEqual(['Draw instance URL [https://env.example/mcp]: ']);
+});
+
+it.each([['ftp://x/mcp'], ['http://example.com/mcp'], ['/mcp'], ['https://u:p@example.com/mcp'], ['${REDCRAYON_MCP_URL:-http://localhost:8788/mcp}']])('rejects %s before changing anything', async bad => {
+  await expect(install('--url', bad)).rejects.toThrow('REJECTED');
+  vi.stubEnv('REDCRAYON_MCP_URL', bad);
+  await expect(install()).rejects.toThrow('REJECTED');
+  expect(choosePermissionSet).not.toHaveBeenCalled(); expect(installLocalCodex).not.toHaveBeenCalled();
+  expect(existsSync(active())).toBe(false);
+});
+
+it('repairs the legacy placeholder from the packaged default and keeps unrelated settings', async () => {
+  write(join(active(), '.mcp.json'), { mcpServers: { draw: { type: 'http', url: '${REDCRAYON_MCP_URL:-http://localhost:8788/mcp}' }, other: { type: 'http', url: 'https://other.example' } } });
+  await install();
+  expect(installedUrl()).toBe('https://test.example/mcp');
+  expect(stderr.join('')).toContain('Replacing an unusable saved Draw endpoint');
+  expect(JSON.stringify(json(join(active(), 'mcp.json')))).not.toContain('${');
+  expect(configureCodexPermissions).toHaveBeenCalledTimes(2); // permissions flow is untouched
+});
+
+it('local mode ignores a bad REDCRAYON_MCP_URL and still writes a concrete URL', async () => {
+  vi.stubEnv('REDCRAYON_MCP_URL', 'not a url');
+  await install('--mode', 'local');
+  expect(installedUrl()).toBe('https://test.example/mcp');
+  await expect(install('--mode', 'local', '--url', 'nope')).rejects.toThrow('REJECTED');
+});
+
+it.each([['claude-code'], ['pi']] as const)('writes the chosen URL into the %s plugin and changes its version', agent => {
+  const a = prepareNativePlugin(root, destination, executable, '1.2.3', agent, undefined, 'https://a.example/mcp');
+  const b = prepareNativePlugin(root, destination, executable, '1.2.3', agent, undefined, 'https://b.example/mcp');
+  expect(a.target).not.toBe(b.target);
+  expect(json(join(a.target, '.mcp.json')).mcpServers.draw.url).toBe('https://a.example/mcp');
+  expect(json(join(b.target, 'mcp.json')).mcpServers.draw.url).toBe('https://b.example/mcp');
+});
+
+it.each([[['--url']], [['--url', 'https://a.example', '--url', 'https://b.example']], [['--url=']]])('rejects malformed %j', async args => {
+  await expect(install(...args)).rejects.toThrow(/REJECTED/);
+  expect(installLocalCodex).not.toHaveBeenCalled();
+});
+
+it('fails when the Codex cache names another endpoint, and local mode stays non-interactive', async () => {
+  vi.stubEnv('CODEX_HOME', join(directory, 'codex'));
+  vi.mocked(installLocalCodex).mockImplementationOnce((plugin: string) => {
+    const version = json(join(plugin, '.codex-plugin/plugin.json')).version;
+    write(join(directory, 'codex/plugins/cache/draw-binary/draw', version, '.mcp.json'), { mcpServers: { draw: { url: 'https://stale.example/mcp' } } });
+  });
+  await expect(install()).rejects.toThrow('Codex loaded https://stale.example/mcp');
+  vi.stubEnv('CODEX_HOME', join(directory, 'empty')); tty(true);
+  await install('--mode', 'local');
+  expect(asked).toEqual([]); expect(stderr.join('')).not.toContain('Hosted endpoint');
+});

@@ -22,6 +22,14 @@ npm install -g @redcrayonai/draw
 draw install claude-code   # or: draw install codex, draw install pi
 ```
 
+`draw install` asks for your Draw instance URL (`Draw instance URL
+[https://mcp.redcrayon.ai/mcp]:`). Press Enter for Draw production, or enter
+your own hosted endpoint: absolute `https://`, or `http://` for localhost. For
+scripts use `draw install codex --url <url>`; without a terminal it never waits
+and uses `--url`, then `REDCRAYON_MCP_URL`, then the installed URL, then the
+default. The URL is fixed at install time: to change it, run `draw install`
+again with `--url` and restart the agent.
+
 Restart the agent. The plugin includes drawing skills, automatic code refs and
 board chat, and it needs no Node. It draws [local boards](/local/) unless you
 ask for a hosted one, so start with:

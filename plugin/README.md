@@ -36,6 +36,33 @@ draw install claude-code
 draw install pi
 ```
 
+### Choose your Draw instance
+
+`draw install` asks which hosted Draw instance to use, like `aws configure`:
+
+```text
+Draw instance URL [<default endpoint>]:
+```
+
+Press Enter for the default (Draw production), or enter the MCP endpoint of your own hosted
+Draw. The URL must be absolute `https://`; `http://` is allowed only for
+localhost. The install saves that concrete URL, and on reinstall it shows the
+saved URL as the default. Sign in again if you change the endpoint.
+
+For scripts, nothing waits for input without a terminal. Draw picks the first
+of: `--url <url>`, the `REDCRAYON_MCP_URL` environment variable, the URL
+already installed, then the default, and prints which one it used:
+
+```sh
+draw install codex --url https://mcp.example.com/mcp
+```
+
+The endpoint is fixed when you install, so `REDCRAYON_MCP_URL` set later when
+starting the agent has no effect on a `draw install`. To switch, run
+`draw install <agent> --url <url>` again and restart the agent. An older
+install that saved a `${REDCRAYON_MCP_URL:-…}` placeholder is repaired the same
+way. `--mode local` does not ask and never fails on these settings.
+
 Restart the agent and ask **"create a draw board"**, or run `/draw:navigate`.
 Draw opens a local repository board without an account. Ask explicitly for a
 **hosted board** to use the hosted connection, then sign in through your agent's
