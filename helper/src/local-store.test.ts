@@ -103,13 +103,17 @@ describe('local authoritative store', () => {
     reopened.mutate(board.slug, 3, [{ type: 'node.put', id: '1', patch: { icon: 'cache' } }]);
     expect(reopened.mutate(board.slug, 4, [{ type: 'node.put', id: '1', patch: { kind: 'note' } }]).nodes[0]).not.toHaveProperty('icon');
   });
-  it('loads a store whose icon came from a newer version, and still edits that node', () => {
+  it('loads a store whose icon came from a newer version, and still edits and undoes on that board', () => {
     const { directory, store, board } = setup();
     const placed = store.mutate(board.slug, 0, [{ type: 'node.put', patch: { label: 'Bus', icon: 'event' } }]);
     store.close();
     writeFileSync(join(directory, 'boards.json'), JSON.stringify({ version: 1, boards: [{ ...placed, nodes: [{ ...placed.nodes[0], icon: 'added-later' }] }] }));
     const reopened = new LocalStore(directory); stores.push(reopened);
+    const before = reopened.read(board.slug).nodes;
     expect(reopened.mutate(board.slug, 1, [{ type: 'node.put', id: '1', patch: { x: 40 } }]).nodes[0]).toMatchObject({ x: 40, icon: 'added-later' });
-    expect(() => reopened.mutate(board.slug, 2, [{ type: 'node.put', patch: { icon: 'added-later' } }])).toThrow('REJECTED: invalid icon');
+    expect(reopened.mutate(board.slug, 2, [{ type: 'graph.restore', nodes: before, edges: [] }]).nodes).toEqual(before);
+    reopened.mutate(board.slug, 3, [{ type: 'element.delete', id: '1' }]);
+    expect(reopened.mutate(board.slug, 4, [{ type: 'graph.restore', nodes: before, edges: [] }]).nodes).toEqual(before);
+    expect(() => reopened.mutate(board.slug, 5, [{ type: 'node.put', patch: { icon: 'added-later' } }])).toThrow('REJECTED: invalid icon');
   });
 });

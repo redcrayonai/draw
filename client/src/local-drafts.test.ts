@@ -50,22 +50,28 @@ it('ignores an old code response after the user opens another reference', async 
 });
 it('saves every circle as a review note in one edit, and tells only a connected agent', async () => {
   const mutate = vi.fn(async () => {}), call = vi.fn(async () => {}), report = vi.fn();
-  expect(await sendLocalMarks('board', ['1', '2'], ['Retry here', ''], false, mutate, call, report)).toBe(false);
+  expect(await sendLocalMarks('board', ['1', '2'], ['Retry here', ''], () => false, mutate, call, report)).toBe(false);
   expect(mutate).toHaveBeenCalledWith([{ type: 'note.add', target: '1', text: 'Retry here' }, { type: 'note.add', target: '2', text: NO_NOTE }]);
   expect(call).not.toHaveBeenCalled();
-  expect(await sendLocalMarks('board', ['1', '2'], ['Retry here', ''], true, mutate, call, report)).toBe(true);
+  expect(await sendLocalMarks('board', ['1', '2'], ['Retry here', ''], () => true, mutate, call, report)).toBe(true);
   expect(call).toHaveBeenCalledWith(expect.objectContaining({ action: 'send_feedback', board: 'board', selected: ['1', '2'], text: expect.stringContaining('2 nodes') }));
   expect(report).not.toHaveBeenCalled();
 });
 it('does not wait for the agent, and reports its refusal once the marks are saved', async () => {
   let refuse!: (error: Error) => void;
   const call = vi.fn(() => new Promise<void>((_, reject) => { refuse = reject; })), report = vi.fn();
-  expect(await sendLocalMarks('board', ['1'], ['Note'], true, async () => {}, call, report)).toBe(true);
+  expect(await sendLocalMarks('board', ['1'], ['Note'], () => true, async () => {}, call, report)).toBe(true);
   refuse(new Error('UNAVAILABLE: feedback is saved.'));
   await vi.waitFor(() => expect(report).toHaveBeenCalledWith('UNAVAILABLE: feedback is saved.'));
 });
 it('sends no message when the notes could not be saved', async () => {
   const call = vi.fn(async () => {});
-  await expect(sendLocalMarks('board', ['1'], ['Note'], true, async () => { throw new Error('REJECTED: board changed'); }, call, () => {})).rejects.toThrow('board changed');
+  await expect(sendLocalMarks('board', ['1'], ['Note'], () => true, async () => { throw new Error('REJECTED: board changed'); }, call, () => {})).rejects.toThrow('board changed');
   expect(call).not.toHaveBeenCalled();
+});
+it('tells an agent that connected while the marks were being saved', async () => {
+  let connected = false;
+  const call = vi.fn(async () => {});
+  expect(await sendLocalMarks('board', ['1'], ['Note'], () => connected, async () => { connected = true; }, call, () => {})).toBe(true);
+  expect(call).toHaveBeenCalledWith(expect.objectContaining({ action: 'send_feedback' }));
 });

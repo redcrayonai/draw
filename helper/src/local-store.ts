@@ -25,10 +25,6 @@ function node(value: LocalNode) {
   if (value.icon !== undefined) text(value.icon, 64);
 }
 const PLAIN = ['note', 'text'];
-/** Checked on writes only: a store saved by a newer version may hold an icon this one does not know, and must still load. */
-function icon(value: LocalNode) {
-  if (value.icon !== undefined && (!LOCAL_ICONS.includes(value.icon) || PLAIN.includes(value.kind))) reject(`invalid icon; use one of ${LOCAL_ICONS.join(', ')} on a service, datastore, external or boundary node`);
-}
 function edge(value: LocalEdge, board: LocalBoard) {
   text(value.label, 1000); text(value.description); refs(value.refs);
   if (!['forward', 'both', 'none'].includes(value.direction)) reject('invalid edge direction');
@@ -50,7 +46,7 @@ export function applyLocal(board: LocalBoard, operation: LocalOperation) {
         if (!value || typeof value !== 'object' || typeof value.id !== 'string' || !/^[1-9][0-9]{0,15}$/.test(value.id) || Number(value.id) >= board.nextId || ids.has(value.id) || board.notes.some(n => n.id === value.id || n.replies.some(r => r.id === value.id))) reject('invalid restored identifier');
         ids.add(value.id);
       }
-      for (const value of operation.nodes) { patchKeys(value, ['id', 'label', 'description', 'x', 'y', 'w', 'h', 'kind', 'refs', 'icon']); node(value); icon(value); }
+      for (const value of operation.nodes) { patchKeys(value, ['id', 'label', 'description', 'x', 'y', 'w', 'h', 'kind', 'refs', 'icon']); node(value); }
       board.nodes = structuredClone(operation.nodes);
       for (const value of operation.edges) { patchKeys(value, ['id', 'from', 'to', 'label', 'description', 'direction', 'refs']); edge(value, board); }
       board.edges = structuredClone(operation.edges);
@@ -64,7 +60,9 @@ export function applyLocal(board: LocalBoard, operation: LocalOperation) {
       const sets = 'icon' in operation.patch;
       if (value.icon === '' || (!sets && PLAIN.includes(value.kind))) delete value.icon; // '' takes the icon off, and so does a change to a kind that carries none
       node(value);
-      if (sets) icon(value);
+      // Only a patch that sets the icon is held to the list: a store saved by a newer version may hold one this version
+      // does not know, and it must still load, edit and undo (graph.restore puts back what was stored).
+      if (sets && value.icon !== undefined && (!LOCAL_ICONS.includes(value.icon) || PLAIN.includes(value.kind))) reject(`invalid icon; use one of ${LOCAL_ICONS.join(', ')} on a service, datastore, external or boundary node`);
       if (old) board.nodes[board.nodes.indexOf(old)] = value; else board.nodes.push(value);
       break;
     }

@@ -100,7 +100,7 @@ const crayonUi = mountCrayon({
   label: id => board?.nodes.find(n => n.id === String(id))?.label || 'Unnamed node',
   exists: id => !!board?.nodes.some(n => n.id === String(id)),
   listening: () => agentConnected,
-  send: (ids, notes) => sendLocalMarks(board!.slug, ids.map(String), notes, agentConnected, mutate, call, showError),
+  send: (ids, notes) => sendLocalMarks(board!.slug, ids.map(String), notes, () => agentConnected, mutate, call, showError),
 });
 /** With the crayon up, undo takes back the last circle before any board edit. */
 function undoCircle(event: KeyboardEvent) {
