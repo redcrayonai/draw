@@ -3020,7 +3020,7 @@ async function boot(conn: DbConnection, identityHex: string, signedIn: boolean):
             const edges = getEdges().filter(e => editor.selectedEdges.has(e.id)).map(e => `${byId.get(e.fromNode) ?? '?'} → ${byId.get(e.toNode) ?? '?'}`);
             return [...edges, ...nodes].join(', ').slice(0, 300);
           },
-          // Where to go from a board with no agent: where it is drawing now.
+          // Offer to bring the existing conversation here or open its current board.
           agentElsewhere: () => {
             const live = findAgentBoard({
               me: identityHex,
@@ -3031,7 +3031,7 @@ async function boot(conn: DbConnection, identityHex: string, signedIn: boolean):
               onScreen: boardId,
               now: Date.now(),
             });
-            return live && !live.here ? { board: live.board, href: hrefOf(live.slug) } : null;
+            return live && !live.here ? { board: live.board, href: hrefOf(live.slug), chatUrl: mcpUrl === undefined ? undefined : chatUrl(mcpUrl, live.boardId) } : null;
           },
         });
         agentChat = chat;

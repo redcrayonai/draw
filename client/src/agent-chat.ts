@@ -4,6 +4,8 @@ export { IDLE_REAUTH_MS } from './chat-connection';
 import { armChime, chime, setSound, soundOn } from './chime';
 import { PLUGIN_AGENT, joinAgents, type BoardAgent } from './chat-agents';
 import { parsedChart, renderPlot } from './charts';
+import { requestChatHandoff } from './chat-handoff';
+import { boardHref } from '../../shared/board-link';
 
 /**
  * Chat with the agent you are running, from the board. The canvas holds no
@@ -272,7 +274,7 @@ export function revealStep(shown: number, target: number): number {
 }
 
 /** The board the person's agent is on now, when it is not this one. */
-export type AgentElsewhere = { board: string; href: string };
+export type AgentElsewhere = { board: string; href: string; chatUrl?: string };
 
 export interface AgentChatOpts {
   url(): string;
@@ -371,6 +373,7 @@ export function mountAgentChat(chatButton: HTMLButtonElement, opts: AgentChatOpt
   let detached = '';
   let workingSince = 0;
   let wasOnline = false;
+  let handoff: { target: string; source: string; state: 'sending' | 'requested' | 'failed'; error?: string } | null = null;
   /** A pairing link waiting for the person's answer. Never acted on without it: anyone can send someone a link. */
   let pairing: { run(): Promise<'linked' | 'already'>; busy: boolean; failed: boolean; already?: boolean } | null = null;
   const expanded = new Set<string>();
@@ -860,12 +863,48 @@ export function mountAgentChat(chatButton: HTMLButtonElement, opts: AgentChatOpt
   function setupCard(): HTMLElement {
     const card = el('div', 'ac-empty');
     const elsewhere = opts.agentElsewhere?.() ?? null;
+    const hash = new URLSearchParams(location.hash.slice(1));
+    const boardLink = hash.get('b') && !hash.has('s')
+      ? boardHref({ app: location.href, slug: hash.get('b')!, db: new URLSearchParams(location.search).get('db') ?? '', home: '' }) : null;
     if (elsewhere) {
       card.append(el('h4', undefined, `Your agent is on ${elsewhere.board}`));
-      card.append(el('p', undefined, 'This board has no agent. Go to the board it is drawing on.'));
-      const go = el('a', 'ac-action primary', `Open ${elsewhere.board}`);
+      const current = handoff?.target === opts.url() && handoff.source === elsewhere.chatUrl ? handoff : null;
+      const description = el('p', undefined, current?.state === 'requested'
+        ? 'Handoff requested. Your agent will appear here when it connects. If it is busy, it may finish its current turn first.'
+        : current?.state === 'sending' ? 'Asking your existing session to continue on this board…'
+        : current?.error ?? 'Continue your existing session on this board, or open the board it is using.');
+      description.setAttribute('role', 'status');
+      card.append(description);
+      // Two choices side by side: bring the agent here, or go to it. The prompt is the manual way, kept quiet beneath.
+      const choices = el('div', 'ac-pair');
+      card.append(choices);
+      if (boardLink) {
+        const prompt = `Continue this existing conversation on this board: ${boardLink}\nUse the board handoff workflow to reconnect board chat here and use this board for subsequent board work. Keep the existing conversation; do not create a new board or session.`;
+        if (elsewhere.chatUrl) {
+          // Once asked, nothing here is the main action: the status line leads, and asking again stays possible.
+          const bring = button(current?.state === 'requested' ? 'ac-action' : 'ac-action primary', current?.state === 'sending' ? 'Requesting handoff…' : current?.state === 'requested' ? 'Ask again' : 'Bring agent here', () => {
+            const request: NonNullable<typeof handoff> = { target: opts.url(), source: elsewhere.chatUrl!, state: 'sending' };
+            handoff = request;
+            render();
+            void requestChatHandoff(request.source, opts.token, prompt).then(() => {
+              request.state = 'requested';
+              render();
+            }, error => {
+              request.state = 'failed';
+              request.error = error.message;
+              render();
+            });
+          });
+          bring.disabled = current?.state === 'sending';
+          choices.append(bring);
+          card.append(copyButton('Copy handoff prompt', prompt, 'ac-quiet'));
+        } else choices.append(copyButton('Copy handoff prompt', prompt, 'ac-action primary'));
+      }
+      // The heading names the board; a name in the label can run to a full branch name.
+      const go = el('a', 'ac-action', 'Open its board');
       go.href = elsewhere.href;
-      card.append(go);
+      go.title = elsewhere.board;
+      choices.append(go);
       return card;
     }
     if (!model.selected && model.sessions.length > 1) {
@@ -876,7 +915,6 @@ export function mountAgentChat(chatButton: HTMLButtonElement, opts: AgentChatOpt
     const syncing = model.connection === 'syncing';
     card.append(el('h4', undefined, syncing ? 'Restoring your conversation' : model.connection === 'waiting' ? 'No agent connected' : model.connection === 'reconnecting' ? 'Reconnecting to your agent' : 'Connecting to your agent'));
     // A share link (#s=) is a secret: it never goes into a prompt. Only the board's own #b= link does.
-    const hash = new URLSearchParams(location.hash.slice(1));
     const promptable = model.connection === 'waiting' && hash.has('b') && !hash.has('s');
     card.append(el('p', undefined, syncing ? 'Your messages will appear here in a moment.' : promptable ? 'Paste this prompt into your coding agent to chat with it here. You can keep a draft meanwhile.' : model.connection === 'waiting' ? 'Ask your agent to reconnect board chat. You can keep a draft here.' : 'Your conversation and draft will stay here while we reconnect.'));
     // Labeled with who it goes to: the prompt names this board, so the agent joins it and not its last one.
@@ -992,7 +1030,7 @@ export function mountAgentChat(chatButton: HTMLButtonElement, opts: AgentChatOpt
       rows.push({ key: 'closed', sig: model.closed, build: () => el('div', 'ac-empty', model.closed!) });
     } else if (!model.online && model.items.length === 0) {
       const elsewhere = opts.agentElsewhere?.() ?? null;
-      rows.push({ key: 'setup', sig: JSON.stringify([elsewhere, model.connection]), build: setupCard });
+      rows.push({ key: 'setup', sig: JSON.stringify([elsewhere, model.connection, handoff]), build: setupCard });
     } else if (model.items.length === 0 && model.queue.length === 0) {
       rows.push({ key: 'start', sig: attached ? 'selected' : 'none', build: () => startCard(attached) });
     }
@@ -1148,6 +1186,8 @@ export function mountAgentChat(chatButton: HTMLButtonElement, opts: AgentChatOpt
           for (const item of model.items) if (item.kind === 'text') shown.set(item.message, item.text.length);
         }
         if (model.state === 'working' && before !== 'working') workingSince = Date.now();
+        // An agent here answers the request; a later trip away must not show it as still pending.
+        if (model.online) handoff = null;
         if (model.online && !wasOnline && model.session?.agent !== PLUGIN_AGENT) arrive();
         wasOnline = model.online;
         if (f.type === 'snapshot') reportViewing();
