@@ -1,6 +1,17 @@
-import type { LocalBoard } from '../../shared/local';
+import type { LocalBoard, LocalOperation } from '../../shared/local';
 import type { ChatSession } from '../../shared/chat';
 
+/** A circle sent with no note still needs words: a review note cannot be empty. */
+export const NO_NOTE = 'Circled with the red crayon.';
+/** Red crayon Send: every circle becomes a review note in one edit, then a connected agent is told once. Resolves true when an agent was told. */
+export async function sendLocalMarks(board: string, targets: string[], notes: string[], connected: () => boolean, mutate: (operations: LocalOperation[]) => Promise<unknown>, call: (input: unknown) => Promise<unknown>, report: (message: string) => void) {
+  await mutate(targets.map((target, i) => ({ type: 'note.add', target, text: notes[i] || NO_NOTE })));
+  if (!connected()) return false; // read after the save: an agent may have connected meanwhile
+  const text = `I circled ${targets.length === 1 ? 'a node' : `${targets.length} nodes`} with the red crayon. Each circle is an open review note in the context below. Reply to each note, and resolve it when its work is done.`;
+  // Not awaited: the notes are saved, and an agent confirms receipt only at its next step. A busy agent refuses; the message then waits in Conversation.
+  void call({ action: 'send_feedback', board, id: crypto.randomUUID(), text, selected: targets }).catch(error => report(error.message));
+  return true;
+}
 type Status = { connected: boolean; connecting: boolean; state: string; error?: string; session?: ChatSession; approvals: { id: string; summary: string }[] };
 export function mountLocalChat(container: HTMLElement, read: () => LocalBoard | undefined, selected: () => string[], call: (input: unknown) => Promise<unknown>, report: (message: string) => void) {
   const section = document.createElement('section');

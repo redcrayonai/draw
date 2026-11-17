@@ -1,7 +1,7 @@
 import { closeSync, existsSync, fsyncSync, mkdirSync, openSync, readFileSync, realpathSync, renameSync, unlinkSync, writeFileSync } from 'node:fs';
 import { dirname, isAbsolute, join } from 'node:path';
 import { randomUUID } from 'node:crypto';
-import type { LocalBoard, LocalEdge, LocalFeedback, LocalNode, LocalOperation, LocalRef } from '../../shared/local';
+import { LOCAL_ICONS, type LocalBoard, type LocalEdge, type LocalFeedback, type LocalNode, type LocalOperation, type LocalRef } from '../../shared/local';
 
 const reject = (message: string): never => { throw new Error(`REJECTED: ${message}`); };
 function text(value: unknown, max = 16000): asserts value is string {
@@ -22,7 +22,9 @@ function node(value: LocalNode) {
     if (typeof value[key] !== 'number' || !Number.isFinite(value[key]) || Math.abs(value[key]) > 1e6) reject('invalid geometry');
   }
   if (value.w < 16 || value.h < 16 || value.w > 10000 || value.h > 10000) reject('invalid node size');
+  if (value.icon !== undefined) text(value.icon, 64);
 }
+const PLAIN = ['note', 'text'];
 function edge(value: LocalEdge, board: LocalBoard) {
   text(value.label, 1000); text(value.description); refs(value.refs);
   if (!['forward', 'both', 'none'].includes(value.direction)) reject('invalid edge direction');
@@ -44,19 +46,24 @@ export function applyLocal(board: LocalBoard, operation: LocalOperation) {
         if (!value || typeof value !== 'object' || typeof value.id !== 'string' || !/^[1-9][0-9]{0,15}$/.test(value.id) || Number(value.id) >= board.nextId || ids.has(value.id) || board.notes.some(n => n.id === value.id || n.replies.some(r => r.id === value.id))) reject('invalid restored identifier');
         ids.add(value.id);
       }
-      for (const value of operation.nodes) { patchKeys(value, ['id', 'label', 'description', 'x', 'y', 'w', 'h', 'kind', 'refs']); node(value); }
+      for (const value of operation.nodes) { patchKeys(value, ['id', 'label', 'description', 'x', 'y', 'w', 'h', 'kind', 'refs', 'icon']); node(value); }
       board.nodes = structuredClone(operation.nodes);
       for (const value of operation.edges) { patchKeys(value, ['id', 'from', 'to', 'label', 'description', 'direction', 'refs']); edge(value, board); }
       board.edges = structuredClone(operation.edges);
       break;
     }
     case 'node.put': {
-      patchKeys(operation.patch, ['label', 'description', 'x', 'y', 'w', 'h', 'kind', 'refs']);
+      patchKeys(operation.patch, ['label', 'description', 'x', 'y', 'w', 'h', 'kind', 'refs', 'icon']);
       const old = board.nodes.find(n => n.id === operation.id);
       if (operation.id !== undefined && !old) reject('node does not exist');
       const value: LocalNode = { ...(old ?? { id: nextId(), label: '', description: '', x: 0, y: 0, w: 160, h: 80, kind: 'service', refs: [] }), ...operation.patch };
+      const sets = 'icon' in operation.patch;
+      if (value.icon === '' || (!sets && PLAIN.includes(value.kind))) delete value.icon; // '' takes the icon off, and so does a change to a kind that carries none
       node(value);
-      if (old) Object.assign(old, value); else board.nodes.push(value);
+      // Only a patch that sets the icon is held to the list: a store saved by a newer version may hold one this version
+      // does not know, and it must still load, edit and undo (graph.restore puts back what was stored).
+      if (sets && value.icon !== undefined && (!LOCAL_ICONS.includes(value.icon) || PLAIN.includes(value.kind))) reject(`invalid icon; use one of ${LOCAL_ICONS.join(', ')} on a service, datastore, external or boundary node`);
+      if (old) board.nodes[board.nodes.indexOf(old)] = value; else board.nodes.push(value);
       break;
     }
     case 'edge.put': {

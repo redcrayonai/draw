@@ -2,12 +2,15 @@ import './style.css';
 import './local.css';
 import { renderBoard, contentBounds } from './render';
 import { Viewport, chromeInsets } from './viewport';
-import { setupTheme, setTheme, setupRailToggle } from './chrome';
+import { setupTheme, setTheme, setupRailToggle, showError } from './chrome';
 import { themeById } from '../../shared/themes';
 import type { Node, Edge } from './module_bindings/types';
-import type { LocalBoard, LocalNode, LocalOperation } from '../../shared/local';
+import { LOCAL_ICONS, type LocalBoard, type LocalNode, type LocalOperation } from '../../shared/local';
+import { ICON_NODE_H, ICON_NODE_W, iconSpec } from '../../module/src/node-icons';
+import { mountCrayon } from './crayon';
+import { LibraryPopover } from './library-popover';
 import { boardHref } from '../../shared/board-link';
-import { mountLocalChat } from './local-chat';
+import { mountLocalChat, sendLocalMarks } from './local-chat';
 import { mountLocalRefs } from './local-refs';
 import { mountLocalActivity } from './local-activity';
 
@@ -56,18 +59,53 @@ for (const name of ['review', 'conversation']) {
   panel.querySelector<HTMLButtonElement>('[data-close]')!.onclick = close;
   panel.addEventListener('keydown', event => { if (event.key === 'Escape') { event.stopPropagation(); close(); } });
 }
-let tool: LocalNode['kind'] | 'select' | 'hand' = 'select';
-function chooseTool(value: typeof tool) {
-  tool = value;
-  for (const button of document.querySelectorAll<HTMLButtonElement>('#dock [data-kind], #tool-select, #tool-hand')) {
-    const active = (button.dataset.kind ?? button.id.replace('tool-', '')) === value;
+type Tool = LocalNode['kind'] | 'select' | 'hand' | 'crayon';
+let tool: Tool = 'select';
+/** The library icon the next canvas click places, on a node of kind `tool`; '' for a plain node. */
+let armedIcon = '';
+const TOOLS = '#dock [data-kind], #tool-select, #tool-hand, #tool-crayon';
+function chooseTool(value: Tool, icon = '') {
+  tool = value; armedIcon = icon;
+  for (const button of document.querySelectorAll<HTMLButtonElement>(TOOLS)) {
+    const active = !icon && (button.dataset.kind ?? button.id.replace('tool-', '')) === value;
     button.classList.toggle('armed', active); button.setAttribute('aria-pressed', String(active));
   }
   svg.classList.toggle('panning', value === 'hand');
   svg.classList.toggle('armed', value !== 'hand' && value !== 'select');
+  if (icon) say(`Click the board to place ${iconSpec(icon)!.name}`);
 }
-for (const button of document.querySelectorAll<HTMLButtonElement>('#dock [data-kind], #tool-select, #tool-hand')) {
-  button.onclick = () => chooseTool((button.dataset.kind ?? button.id.replace('tool-', '')) as typeof tool);
+for (const button of document.querySelectorAll<HTMLButtonElement>(TOOLS)) {
+  const value = (button.dataset.kind ?? button.id.replace('tool-', '')) as Tool;
+  button.onclick = () => chooseTool(value === 'crayon' && tool === 'crayon' ? 'select' : value);
+}
+function place(kind: LocalNode['kind'], icon: string, clientX: number, clientY: number) {
+  const p = viewport.screenToWorld(clientX, clientY);
+  const w = icon ? ICON_NODE_W : kind === 'boundary' ? 360 : 160, h = icon ? ICON_NODE_H : kind === 'boundary' ? 240 : 80;
+  run(() => mutate([{ type: 'node.put', patch: { kind, label: icon ? iconSpec(icon)!.name : kind[0].toUpperCase() + kind.slice(1), ...(icon && { icon }), x: p.x - w / 2, y: p.y - h / 2, w, h } }]));
+  chooseTool('select');
+}
+const localIcons = new Set(LOCAL_ICONS);
+const library = new LibraryPopover(element('library-popover'), {
+  anchor: element('tool-library'), dropTarget: svg, only: localIcons,
+  onPick: pick => { if (pick.kind === 'node') chooseTool(pick.nodeKind); else if (pick.kind === 'icon') chooseTool(iconSpec(pick.icon)!.kind, pick.icon); },
+  onDrop: (pick, x, y) => { if (pick.kind === 'node') place(pick.nodeKind, '', x, y); else if (pick.kind === 'icon') place(iconSpec(pick.icon)!.kind, pick.icon, x, y); },
+  onRename: () => {}, onDelete: () => {}, // a local board has no saved items
+  boardIcons: () => (board?.nodes ?? []).flatMap(n => n.icon ?? []),
+});
+let agentConnected = false;
+// Red crayon: the circles and their notes stay in this tab until Send, which saves them as review notes in one edit.
+const crayonUi = mountCrayon({
+  wrap: element('canvas-wrap'), world, viewport,
+  rectOf: id => { const n = board?.nodes.find(n => n.id === String(id)); return n && { ...n, ...overrides.get(id) }; },
+  label: id => board?.nodes.find(n => n.id === String(id))?.label || 'Unnamed node',
+  exists: id => !!board?.nodes.some(n => n.id === String(id)),
+  listening: () => agentConnected,
+  send: (ids, notes) => sendLocalMarks(board!.slug, ids.map(String), notes, () => agentConnected, mutate, call, showError),
+});
+/** With the crayon up, undo takes back the last circle before any board edit. */
+function undoCircle(event: KeyboardEvent) {
+  if (tool !== 'crayon' || event.shiftKey || !(event.ctrlKey || event.metaKey) || event.key.toLowerCase() !== 'z' || crayonUi.crayon.drafts().length === 0) return false;
+  event.preventDefault(); crayonUi.crayon.undo(); return true;
 }
 const directionLabel = document.createElement('label'); directionLabel.textContent = 'Direction';
 const direction = document.createElement('select'); direction.name = 'direction';
@@ -88,8 +126,8 @@ function render() {
   element('hud-zoom').textContent = `${Math.round(viewport.scale * 100)}%`;
   if (!board) return;
   const edges: Edge[] = board.edges.map(e => ({ id: BigInt(e.id), boardId: 0n, fromNode: BigInt(e.from), toNode: BigInt(e.to), label: e.label, evidence: '', hidden: false, imported: false, color: '', strokeStyle: 'solid', evidenceSnippet: '', evidenceStatus: '', relation: e.direction === 'none' ? 'association' : 'calls', latencyMs: -1, latencySource: '' }));
-  renderBoard(world, nodes(), edges, { selection, selectedEdges, overrides, handles: new Set(), edgeTarget: null, ghosts: new Set(), ghostEdges: new Set(), ghostSetNames: new Map(), overlay: false, codeOverlay: false, refsByNode: new Map(), scale: viewport.scale, edgeDirections: new Map(board.edges.map(e => [BigInt(e.id), e.direction])), live: traffic.live });
-  traffic.sync();
+  renderBoard(world, nodes(), edges, { selection, selectedEdges, overrides, handles: new Set(), edgeTarget: null, ghosts: new Set(), ghostEdges: new Set(), ghostSetNames: new Map(), overlay: false, codeOverlay: false, refsByNode: new Map(), scale: viewport.scale, edgeDirections: new Map(board.edges.map(e => [BigInt(e.id), e.direction])), live: traffic.live, icons: new Map(board.nodes.flatMap(n => n.icon && localIcons.has(n.icon) ? [[BigInt(n.id), n.icon] as const] : [])) }); // an icon from a newer version draws as none
+  traffic.sync(); crayonUi.sync();
   for (const item of world.querySelectorAll<SVGGElement>('.node[data-id]')) {
     item.setAttribute('tabindex', '0'); item.setAttribute('role', 'button');
     item.setAttribute('aria-label', board.nodes.find(n => n.id === item.dataset.id)?.label || 'Unnamed node');
@@ -156,7 +194,8 @@ async function open(slug: string) {
   if (selected !== boardSelection) return;
   board = opened;
   element<HTMLSelectElement>('boards').value = slug;
-  drag = undefined;
+  drag = undefined; agentConnected = false;
+  crayonUi.crayon.clear(); // drafts belong to the board they were drawn on
   traffic.reset();
   history.replaceState(null, '', boardHref({ app: location.origin, slug, db: 'local', home: 'local' }));
   selection.clear(); selectedEdges.clear(); overrides.clear(); render(); inspector();
@@ -164,7 +203,7 @@ async function open(slug: string) {
   events?.close(); events = new EventSource(`/api/events?board=${encodeURIComponent(slug)}`);
   events.onmessage = event => { const value: LocalBoard = JSON.parse(event.data); if (value.slug === board?.slug && value.revision >= board.revision) { board = value; render(); inspector(); say('Connected · saved'); } };
   events.onerror = () => say('Disconnected · reconnecting');
-  events.addEventListener('chat', event => chat.status(JSON.parse((event as MessageEvent).data)));
+  events.addEventListener('chat', event => { const status = JSON.parse((event as MessageEvent).data); agentConnected = status.connected; chat.status(status); });
   events.addEventListener('activity', event => traffic.update(JSON.parse((event as MessageEvent).data)));
 }
 async function list() {
@@ -201,15 +240,16 @@ element<HTMLFormElement>('note').onsubmit = event => { event.preventDefault(); c
 let drag: { x: number; y: number; id?: string; ox: number; oy: number; revision: number } | undefined;
 svg.onpointerdown = event => {
   if (!board || busy) return;
-  if (tool !== 'select' && tool !== 'hand') {
-    const kind = tool, p = viewport.screenToWorld(event.clientX, event.clientY);
-    const w = kind === 'boundary' ? 360 : 160, h = kind === 'boundary' ? 240 : 80;
-    run(() => mutate([{ type: 'node.put', patch: { kind, label: kind[0].toUpperCase() + kind.slice(1), x: p.x - w / 2, y: p.y - h / 2, w, h } }]));
-    chooseTool('select'); return;
-  }
-  const hit = tool === 'hand' ? undefined : (event.target as Element).closest('[data-id]')?.getAttribute('data-id');
-  const edge = tool === 'hand' ? undefined : (event.target as Element).closest('[data-edge-id]')?.getAttribute('data-edge-id');
-  if (tool !== 'hand' && !event.shiftKey) { selection.clear(); selectedEdges.clear(); }
+  // Red crayon: a node toggles its circle and empty board pans. Never a select or a drag.
+  const circled = tool === 'crayon' && (event.target as Element).closest('.node[data-id]')?.getAttribute('data-id');
+  if (circled) { event.preventDefault(); crayonUi.crayon.toggle(BigInt(circled)); return; } // preventDefault: focus stays in the note the circle opens
+  if (tool !== 'select' && tool !== 'hand' && tool !== 'crayon') { place(tool, armedIcon, event.clientX, event.clientY); return; }
+  const mark = tool === 'select' && (event.target as Element).closest<SVGElement>('#crayon .mark[data-node-id]');
+  if (mark) { crayonUi.crayon.select(BigInt(mark.dataset.nodeId!)); return; }
+  const pans = tool !== 'select';
+  const hit = pans ? undefined : (event.target as Element).closest('[data-id]')?.getAttribute('data-id');
+  const edge = pans ? undefined : (event.target as Element).closest('[data-edge-id]')?.getAttribute('data-edge-id');
+  if (!pans && !event.shiftKey) { selection.clear(); selectedEdges.clear(); }
   if (hit) selection.add(BigInt(hit)); else if (edge) selectedEdges.add(BigInt(edge));
   const node = board.nodes.find(n => n.id === hit);
   drag = { x: event.clientX, y: event.clientY, id: node?.id, ox: node?.x ?? viewport.tx, oy: node?.y ?? viewport.ty, revision: board.revision };
@@ -233,15 +273,22 @@ svg.onkeydown = event => {
   const edge = (event.target as Element).closest<SVGPathElement>('.edge-hit[data-edge-id]');
   if (node && (event.key === 'Enter' || event.key === ' ')) { event.preventDefault(); if (!event.shiftKey) selection.clear(); selectedEdges.clear(); selection.add(BigInt(node.dataset.id!)); render(); inspector(); revealRail(); }
   if (edge && (event.key === 'Enter' || event.key === ' ')) { event.preventDefault(); selection.clear(); selectedEdges.clear(); selectedEdges.add(BigInt(edge.dataset.edgeId!)); render(); inspector(); revealRail(); }
+  if (undoCircle(event)) return;
   if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'z') { event.preventDefault(); run(() => restore(!event.shiftKey)); }
   const delta = ({ ArrowLeft: [-16, 0], ArrowRight: [16, 0], ArrowUp: [0, -16], ArrowDown: [0, 16] } as Record<string, number[]>)[event.key];
   if (delta) { event.preventDefault(); const item = selected(); if (item && 'x' in item) run(() => mutate([{ type: 'node.put', id: item.id, patch: { x: item.x + delta[0], y: item.y + delta[1] } }])); else viewport.panBy(delta[0], delta[1]); }
 };
 document.addEventListener('keydown', event => {
   if (event.target instanceof Element && event.target.closest('input, textarea, select, [contenteditable]')) return;
+  // Circling a node leaves focus off the board, so its undo cannot rest on the board's own key handler (which has run when defaultPrevented).
+  if (!event.defaultPrevented) undoCircle(event);
   if (event.metaKey || event.ctrlKey || event.altKey) return;
-  const shortcut = ({ h: 'hand', '1': 'service', '2': 'datastore', '3': 'external', '4': 'boundary', '5': 'note', t: 'text', Escape: 'select' } as Record<string, typeof tool>)[event.key];
-  if (shortcut) { event.preventDefault(); chooseTool(shortcut); }
+  const shortcut = ({ h: 'hand', '1': 'service', '2': 'datastore', '3': 'external', '4': 'boundary', '5': 'note', t: 'text', c: 'crayon', Escape: 'select' } as Record<string, Tool>)[event.key];
+  const mark = crayonUi.crayon.selected;
+  if (mark !== null && (event.key === 'Delete' || event.key === 'Backspace')) { event.preventDefault(); crayonUi.crayon.remove([mark]); return; }
+  if (event.key === 'Escape') crayonUi.crayon.select(null);
+  if (event.key === 'l') { event.preventDefault(); library.toggle(); }
+  if (shortcut) { event.preventDefault(); chooseTool(shortcut === 'crayon' && tool === 'crayon' ? 'select' : shortcut); }
 });
 svg.addEventListener('wheel', event => { event.preventDefault(); viewport.zoomAt(event.clientX, event.clientY, Math.exp(-event.deltaY * .001)); }, { passive: false });
 run(async () => {

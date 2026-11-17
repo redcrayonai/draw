@@ -29,6 +29,8 @@ export interface LibraryPopoverDeps {
   onDelete: (item: LibraryItem) => void;
   /** The icon id of each node on this board, duplicates and unknown ids included. */
   boardIcons: () => Iterable<string>;
+  /** A local board: only these icon ids, and no icon packs, charts or saved items. */
+  only?: ReadonlySet<string>;
 }
 
 export const EMPTY_LIBRARY = 'No saved items yet — select nodes and press ⇧L';
@@ -240,7 +242,7 @@ export class LibraryPopover {
     this.search = document.createElement('input');
     this.search.type = 'search';
     this.search.className = 'lib-search';
-    this.search.placeholder = 'Search objects, agents, products, logos, charts…';
+    this.search.placeholder = deps.only ? 'Search objects, agents, systems…' : 'Search objects, agents, products, logos, charts…';
     this.search.autocomplete = 'off';
     this.search.spellcheck = false;
     this.search.setAttribute('aria-label', 'Search the library');
@@ -562,7 +564,8 @@ export class LibraryPopover {
     this.closeMenu(false);
     this.picks.clear();
     const query = this.search.value.trim();
-    const icons = drawableIcons();
+    const { only } = this.deps;
+    const icons = only ? drawableIcons().filter(i => only.has(i.id)) : drawableIcons();
     this.board = new Set(this.deps.boardIcons());
     // drawableIcons, so an id this client cannot draw opens no pack.
     this.boardPacks = new Set(icons.filter(i => this.board.has(i.id) && PACKS.some(s => s.id === i.section)).map(i => i.section));
@@ -585,7 +588,7 @@ export class LibraryPopover {
   private renderSections(icons: readonly IconSpec[]): HTMLElement[] {
     const sections: HTMLElement[] = [
       this.section('Objects', 5, OBJECTS.map(o => this.tile({ kind: 'node', nodeKind: o.kind }, o.name, objectIcon(o.kind)))),
-      this.renderPacks(icons),
+      ...(this.deps.only ? [] : [this.renderPacks(icons)]),
     ];
     for (const { id, title, pack } of ICON_SECTIONS) {
       const found = icons.filter(i => i.section === id);
@@ -593,6 +596,7 @@ export class LibraryPopover {
         sections.push(this.section(title, 4, found.map(i => this.tile({ kind: 'icon', icon: i.id }, i.name, iconSvg(i.id, 20) ?? pendingIcon(i.id)))));
       }
     }
+    if (this.deps.only) return sections;
     sections.push(this.section('Charts', 4, CHART_TYPES.map(t => this.tile({ kind: 'chart', type: t }, CHART_CONTRACTS[t].title, chartIcon(t)))));
     const mine = this.section('My library', 3, this.items.map(i => this.savedTile(i)));
     if (this.items.length === 0) {
@@ -689,7 +693,7 @@ export class LibraryPopover {
         entries.push(entry(r => this.resultRow({ kind: 'icon', icon: i.id }, i.name, iconSvg(i.id, 20) ?? pendingIcon(i.id), r), i.name, i.id, i.terms, title, this.boardPacks.has(id)));
       }
     }
-    for (const t of CHART_TYPES) {
+    for (const t of this.deps.only ? [] : CHART_TYPES) {
       const title = CHART_CONTRACTS[t].title;
       entries.push(entry(r => this.resultRow({ kind: 'chart', type: t }, title, chartIcon(t), r), title, t, ['chart'], 'Charts'));
     }
