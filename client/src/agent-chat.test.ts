@@ -223,6 +223,79 @@ describe('mountAgentChat', () => {
     expect(panel().textContent).toContain('Your agent is on now');
   });
 
+  it('requests a handoff without leaving this board and waits for the agent to connect', async () => {
+    location.hash = '#b=checkout';
+    const { socket, chat } = await mount({ board: 'old', href: '#b=old', chatUrl: 'wss://x/chat/2' });
+    socket.frame({ agent: 'gone' });
+    chat.refresh();
+    const bring = [...panel().querySelectorAll('button')].find(b => b.textContent === 'Bring agent here')!;
+    expect(panel().querySelector('a')?.textContent).toBe('Open its board');
+    expect(panel().querySelector('a')?.title).toBe('old');
+    bring.click();
+    await flush();
+    const remote = FakeSocket.all[1];
+    expect(remote.url).toBe('wss://x/chat/2');
+    remote.handlers.open({});
+    remote.frame({ ok: true, role: 'person' });
+    remote.frame({ type: 'sessions', sessions: [{ id: 'existing' }], selected: 'existing' });
+    remote.frame({ type: 'snapshot', session: { id: 'existing' } });
+    const request = remote.sent.find(f => f.type === 'send')!;
+    expect(request.text).toContain(location.href);
+    expect(request.text).toContain('Keep the existing conversation');
+    remote.frame({ type: 'queue', session: 'existing', queue: [{ id: request.id }] });
+    await flush();
+    expect(panel().textContent).toContain('Handoff requested');
+    expect(panel().textContent).toContain('when it connects');
+    expect(location.hash).toBe('#b=checkout');
+    expect([...panel().querySelectorAll('button')].find(b => b.textContent === 'Ask again')!.disabled).toBe(false);
+    socket.frame({ type: 'snapshot', session: { id: 'existing', capabilities: { stop: 'step', approvals: false } }, events: [], queue: [], state: 'idle' });
+    expect(panel().textContent).not.toContain('Handoff requested');
+    // The agent goes back to the other board: the answered request is not shown as pending again.
+    socket.frame({ agent: 'gone' });
+    chat.refresh();
+    expect(panel().textContent).not.toContain('Handoff requested');
+    expect([...panel().querySelectorAll('button')].some(b => b.textContent === 'Bring agent here' && !b.disabled)).toBe(true);
+  });
+
+  it('says why a handoff failed and lets the person try again', async () => {
+    location.hash = '#b=checkout';
+    const { socket, chat } = await mount({ board: 'old', href: '#b=old', chatUrl: 'wss://x/chat/2' });
+    socket.frame({ agent: 'gone' });
+    chat.refresh();
+    const bring = () => [...panel().querySelectorAll('button')].find(b => b.textContent === 'Bring agent here')!;
+    bring().click();
+    await flush();
+    FakeSocket.all[1].handlers.open({});
+    FakeSocket.all[1].frame({ ok: true, role: 'person' });
+    FakeSocket.all[1].frame({ type: 'sessions', sessions: [{ id: 'one' }, { id: 'two' }], selected: null });
+    await flush();
+    expect(panel().textContent).toContain('more than one session');
+    expect(bring().disabled).toBe(false);
+    bring().click();
+    await flush();
+    expect(FakeSocket.all[2].url).toBe('wss://x/chat/2');
+  });
+
+  it('offers a handoff prompt for the current board, keeping share secrets out', async () => {
+    const writeText = vi.fn(async (_text: string) => {});
+    vi.stubGlobal('navigator', { clipboard: { writeText } });
+    location.hash = '#b=checkout&pair=private-code';
+    const { socket, chat } = await mount({ board: 'old', href: '#b=old' });
+    socket.frame({ agent: 'gone' });
+    chat.refresh();
+    [...panel().querySelectorAll('button')].find(b => b.textContent === 'Copy handoff prompt')!.click();
+    expect(writeText.mock.calls[0][0]).toContain('#b=checkout');
+    expect(writeText.mock.calls[0][0]).not.toContain('private-code');
+    location.hash = '#b=checkout&s=secret-share-token';
+    panel().remove();
+    FakeSocket.all = [];
+    const shared = await mount({ board: 'old', href: '#b=old', chatUrl: 'wss://x/chat/2' });
+    shared.socket.frame({ agent: 'gone' });
+    shared.chat.refresh();
+    expect(panel().textContent).not.toContain('Copy handoff prompt');
+    expect(panel().textContent).not.toContain('Bring agent here');
+  });
+
   it('asks the person to reconnect an absent agent while keeping the draft and history', async () => {
     const { button, socket } = await mount();
     button.click();
