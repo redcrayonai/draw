@@ -1,6 +1,6 @@
 ---
 name: navigate
-description: Create or update a Draw board, diagram a repository or flow, continue from board feedback, reconnect board chat, or investigate an incident on a Draw board. Use local boards by default; use hosted boards when explicitly requested or linked.
+description: Create or update a Draw board, diagram a repository or flow, continue from board feedback, reconnect board chat, investigate an incident on a Draw board, or explain a system, change, incident or decision to a named audience as a walk-through. Use local boards by default; use hosted boards when explicitly requested or linked.
 ---
 
 # Draw with this conversation
@@ -48,10 +48,11 @@ All paths below are relative to this `SKILL.md`.
 | Hosted board creation or drawing | [Hosted workflow](references/hosted.md) |
 | Hosted conversation reconnect or handoff | [Hosted handoff](references/handoff.md) |
 | Hosted incident or alert investigation | [Hosted triage](references/triage.md) |
+| Explaining something to a named audience as a walk-through ("make it make sense") | [Hosted walk-through](references/make-it-make-sense.md) |
 
 For a local incident, use the local workflow and its available nodes and notes.
-Hosted incident tools are not available locally; explain the limitation if the
-requested operation requires them. Do not switch backends to obtain a feature.
+Hosted incident tools and walk-throughs are not available locally; explain the
+limitation if the requested operation requires them. Do not switch backends to obtain a feature.
 
 The local workflow's helper lookup (`../../mcp.json`) is relative to the
 directory containing **this main `SKILL.md`**, not `references/local.md`.

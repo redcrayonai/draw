@@ -274,6 +274,14 @@ test('triage skill: links only shared modules, names only registered tools, and 
 
 const senseMd = read('plugin/skills/make-it-make-sense/SKILL.md');
 
+test('every hosted skill reaches the native plugin and is routed by its one skill', () => {
+  const install = read('helper/src/native-install.ts'), unified = read('plugin/unified/skills/navigate/SKILL.md');
+  for (const skill of readdirSync(join(root, 'plugin/skills'))) {
+    assert.ok(install.includes(`'${skill}'`), `draw install leaves out the ${skill} skill`);
+    assert.ok(unified.includes(`references/${skill === 'navigate' ? 'hosted' : skill}.md`), `the unified skill does not route to ${skill}`);
+  }
+});
+
 test('make-it-make-sense skill: frontmatter, the same allowed-tools, preflight and link handling', () => {
   const head = senseMd.match(/^---\n([^]*?)\n---\n/)[1];
   assert.match(head, /^name: make-it-make-sense$/m);
