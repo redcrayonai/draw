@@ -1,0 +1,9 @@
+# Advisories the security scan may pass over. Each needs a reason that a test keeps true
+# (scripts/ci-workflows.test.mjs).
+ignore:
+  # SvelteKit: DoS while parsing form data from a remote function. Only apps that turn on the
+  # experimental remote functions flag are affected; web/ does not. The fix is in Kit 3 only, and
+  # web/ is pinned to Kit 2 by its adapter (web/svelte.config.js). Remove with the Kit 3 upgrade.
+  - vulnerability: GHSA-3r8g-jcqq-3p5j
+    package:
+      name: "@sveltejs/kit"

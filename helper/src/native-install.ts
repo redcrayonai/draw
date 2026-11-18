@@ -28,7 +28,7 @@ export function prepareNativePlugin(root: string, destination: string, executabl
   const contents = new Map(paths.map(file => [file, readFileSync(join(source, file))]));
   contents.set('skills/navigate/SKILL.md', readFileSync(join(root, 'unified/skills/navigate/SKILL.md')));
   contents.set('skills/navigate/references/local.md', readFileSync(join(root, 'skills/local/SKILL.md')));
-  for (const skill of ['navigate', 'handoff', 'triage']) {
+  for (const skill of ['navigate', 'handoff', 'triage', 'make-it-make-sense']) {
     contents.set(`skills/navigate/references/${skill === 'navigate' ? 'hosted' : skill}.md`, Buffer.from(readFileSync(join(source, `skills/${skill}/SKILL.md`), 'utf8').replaceAll('../../references/', '../../../references/')));
   }
   const permissionEnv = agent === 'codex' ? { DRAW_PERMISSION_FILE: permissionPath('local'), DRAW_PERMISSION_MODE: 'local' } : undefined;

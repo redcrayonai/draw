@@ -41,7 +41,7 @@ beforeEach(() => {
   for (const file of ['plugin.json', '.codex-plugin/plugin.json', '.claude-plugin/plugin.json']) write(join(hosted, file), { name: 'draw', version: 'old', ...(file.startsWith('.codex') ? { hooks: './codex/hooks.json' } : {}) });
   for (const file of ['hooks/hooks.json', 'codex/hooks.json']) write(join(hosted, file), readFileSync(resolve('../plugin', file), 'utf8'));
   write(join(hosted, '.mcp.json'), { mcpServers: { draw: { type: 'http', url: 'https://test.example/mcp' } } });
-  for (const skill of ['navigate', 'handoff', 'triage']) write(join(hosted, `skills/${skill}/SKILL.md`), '# hosted board [reference](../../references/review.md)');
+  for (const skill of ['navigate', 'handoff', 'triage', 'make-it-make-sense']) write(join(hosted, `skills/${skill}/SKILL.md`), '# hosted board [reference](../../references/review.md)');
 });
 afterEach(() => { vi.unstubAllEnvs(); vi.clearAllMocks(); rmSync(directory, { recursive: true, force: true }); });
 
@@ -218,7 +218,7 @@ it('invalidates pi extraction when only extension code changes at the same relea
 it('installs one skill with both transports and correctly relocated workflow references', () => {
   const { target } = prepareNativePlugin(root, destination, executable, '1.2.3', 'codex');
   expect(readdirSync(join(target, 'skills'))).toEqual(['navigate']);
-  expect(readdirSync(join(target, 'skills/navigate/references')).sort()).toEqual(['handoff.md', 'hosted.md', 'local.md', 'triage.md']);
+  expect(readdirSync(join(target, 'skills/navigate/references')).sort()).toEqual(['handoff.md', 'hosted.md', 'local.md', 'make-it-make-sense.md', 'triage.md']);
   expect(readFileSync(join(target, 'skills/navigate/references/hosted.md'), 'utf8')).toContain('../../../references/review.md');
   expect(Object.keys(json(join(target, 'mcp.json')).mcpServers).sort()).toEqual(['draw', 'draw-local']);
   expect(prepareNativePlugin(root, destination, executable, '1.2.3', 'codex', 'local').target).toBe(target);
