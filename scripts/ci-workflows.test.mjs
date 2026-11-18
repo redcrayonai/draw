@@ -136,3 +136,9 @@ test('public wrangler configs contain local settings only', () => {
     assert.ok(config.name.endsWith('-local'), `${dir}/wrangler.jsonc must name a local Worker`);
   }
 });
+
+test('the security scan passes over the remote-functions advisory only while web/ leaves them off', () => {
+  assert.match(read('.grype.yaml'), /GHSA-3r8g-jcqq-3p5j/);
+  assert.doesNotMatch(read('web/svelte.config.js'), /remoteFunctions/, 'remote functions make GHSA-3r8g-jcqq-3p5j real: remove its entry from .grype.yaml');
+  assert.match(read('web/package.json'), /"@sveltejs\/kit": "\^2\./, 'on Kit 3 the fix is available: remove the entry from .grype.yaml');
+});
