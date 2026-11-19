@@ -4,14 +4,18 @@ import { chmodSync, cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, re
 import { homedir, tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
-import { activateNativePlugin, prepareNativePlugin, runNativeInstall, runNativePermissions } from './native-install';
+import { activateNativePlugin, prepareNativePlugin, runNativeInstall, runNativePermissions, runNativeUninstall } from './native-install';
 import { choosePermissionSet, permissionPath, savePermissions } from './permissions';
-import { configureCodexPermissions, disableLegacyCodexIntegrations } from './codex-permissions';
+import { configureCodexPermissions, disableLegacyCodexIntegrations, readCodexUserConfig } from './codex-permissions';
 import { installLocalCodex } from './local-install';
-vi.mock('./codex-permissions', () => ({ configureCodexPermissions: vi.fn(), disableLegacyCodexIntegrations: vi.fn() }));
+vi.mock('./codex-permissions', () => ({ configureCodexPermissions: vi.fn(), disableLegacyCodexIntegrations: vi.fn(), readCodexUserConfig: vi.fn() }));
 const answers: string[] = [], asked: string[] = [];
 vi.mock('node:readline/promises', () => ({ createInterface: () => ({ question: async (q: string) => { asked.push(q); return answers.shift() ?? ''; }, close() {} }) }));
 vi.mock('./local-install', () => ({ installLocalCodex: vi.fn() }));
+vi.mock('node:child_process', async original => {
+  const child = await original<typeof import('node:child_process')>();
+  return { ...child, execFileSync: vi.fn(child.execFileSync) };
+});
 vi.mock('./permissions', async original => ({ ...await original<typeof import('./permissions')>(), choosePermissionSet: vi.fn(), savePermissions: vi.fn() }));
 vi.mock('node:os', async original => ({ ...await original<typeof import('node:os')>(), homedir: vi.fn() }));
 vi.mock('node:fs', async original => {
@@ -32,6 +36,8 @@ beforeEach(() => {
   vi.mocked(choosePermissionSet).mockReset().mockImplementation(async modes => modes.map(mode => ({ mode, editable: true, record: { permissions: { boards: 'ask', conversation: 'ask', snippets: 'deny', uploads: 'deny' }, managedDisabledTools: ['old_tool'] } })));
   vi.mocked(configureCodexPermissions).mockReset().mockResolvedValue(['read_code']);
   vi.mocked(installLocalCodex).mockReset();
+  vi.mocked(execFileSync).mockReset();
+  vi.mocked(readCodexUserConfig).mockReset().mockResolvedValue({});
   write(executable, '#!/bin/sh\nprintf "%s\\n" "$@"\n'); chmodSync(executable, 0o755);
   for (const file of ['plugin.json', '.codex-plugin/plugin.json']) write(join(root, file), { name: 'draw-local', version: 'old' });
   write(join(root, 'unified/skills/navigate/SKILL.md'), '# unified routing');
@@ -346,4 +352,135 @@ it('fails when the Codex cache names another endpoint, and local mode stays non-
   vi.stubEnv('CODEX_HOME', join(directory, 'empty')); tty(true);
   await install('--mode', 'local');
   expect(asked).toEqual([]); expect(stderr.join('')).not.toContain('Hosted endpoint');
+});
+
+function registerCodexMarketplace(source = active()) {
+  vi.mocked(readCodexUserConfig).mockResolvedValue({
+    marketplaces: { 'draw-binary': { source_type: 'local', source } },
+    plugins: { 'draw@draw-binary': { enabled: true } },
+  });
+}
+
+it('removes the configured Codex integration even if the marketplace folder is missing', async () => {
+  const receipts = join(directory, '.redcrayon/integrations');
+  const retained = [join(receipts, 'pi-unified.json'), permissionPath('local'), join(directory, '.redcrayon/local/repo/boards.json')];
+  for (const file of retained) write(file, 'keep');
+  for (const mode of ['local', 'hosted', 'unified']) write(join(receipts, `codex-${mode}.json`), 'installed');
+  const run = vi.mocked(execFileSync);
+  registerCodexMarketplace();
+  expect(existsSync(active())).toBe(false);
+  run.mockReturnValue('');
+  expect(await runNativeUninstall(['codex'])).toBe(0);
+  expect(stderr.join('')).toContain('Removed the Draw integration from Codex.');
+  expect(stderr.join('')).toContain('npm uninstall -g @redcrayonai/draw');
+  expect(run.mock.calls.map(call => call.slice(0, 2))).toEqual([
+    ['codex', ['plugin', 'remove', 'draw@draw-binary']],
+    ['codex', ['plugin', 'marketplace', 'remove', 'draw-binary']],
+  ]);
+  expect(readdirSync(receipts)).toEqual(['pi-unified.json']);
+  for (const file of retained) expect(readFileSync(file, 'utf8')).toBe('keep');
+});
+
+it('can be rerun after Codex removes the marketplace', async () => {
+  const run = vi.mocked(execFileSync);
+  run.mockReturnValue('');
+  expect(await runNativeUninstall(['codex'])).toBe(0);
+  expect(stderr.join('')).toContain('No Draw integrations found.');
+  expect(stderr.join('')).not.toContain('Removed the Draw integration');
+  expect(stderr.join('')).toContain('npm uninstall -g @redcrayonai/draw');
+  expect(run.mock.calls.map(call => call[1])).toEqual([
+    ['plugin', 'remove', 'draw@draw-binary'],
+  ]);
+});
+
+it('reports removing the leftover Codex plugin entry after the marketplace was removed', async () => {
+  vi.mocked(readCodexUserConfig).mockResolvedValue({ plugins: { 'draw@draw-binary': { enabled: false } } });
+  const run = vi.mocked(execFileSync);
+  run.mockReturnValue('');
+  expect(await runNativeUninstall(['codex'])).toBe(0);
+  expect(stderr.join('')).toContain('Removed the Draw integration from Codex.');
+  expect(run.mock.calls.map(call => call[1])).toEqual([['plugin', 'remove', 'draw@draw-binary']]);
+});
+
+it('keeps the integration receipt when Codex fails to remove the plugin', async () => {
+  const receipt = join(directory, '.redcrayon/integrations/codex-unified.json');
+  write(receipt, 'installed');
+  const run = vi.mocked(execFileSync);
+  registerCodexMarketplace();
+  run.mockImplementationOnce(() => { throw new Error('plugin removal failed'); });
+  await expect(runNativeUninstall(['codex'])).rejects.toThrow('plugin removal failed');
+  expect(run).toHaveBeenCalledTimes(1);
+  expect(readFileSync(receipt, 'utf8')).toBe('installed');
+});
+
+it('leaves a marketplace from another source in place', async () => {
+  const run = vi.mocked(execFileSync);
+  registerCodexMarketplace('/another/source');
+  await expect(runNativeUninstall(['codex'])).rejects.toThrow('REJECTED');
+  expect(run).not.toHaveBeenCalled();
+});
+
+it('removes all managed integrations and only those integrations when no agent is specified', async () => {
+  const installs = join(directory, '.redcrayon/plugins/installed');
+  const receipts = join(directory, '.redcrayon/integrations');
+  const claude = join(installs, 'claude-code-hosted'), pi = join(installs, 'pi-hosted');
+  const piDir = join(directory, '.pi-custom');
+  vi.stubEnv('PI_CODING_AGENT_DIR', piDir);
+  write(join(piDir, 'settings.json'), { packages: [{ source: '../.redcrayon/plugins/installed/pi-hosted', skills: [] }, 'npm:other'] });
+  for (const agent of ['codex', 'claude-code', 'pi']) write(join(receipts, `${agent}-unified.json`), 'installed');
+  const run = vi.mocked(execFileSync);
+  registerCodexMarketplace();
+  run.mockReturnValueOnce('').mockReturnValueOnce('')
+    .mockReturnValueOnce(JSON.stringify([{ name: 'draw-binary', source: 'directory', path: claude }]))
+    .mockReturnValueOnce(JSON.stringify([{ id: 'draw@draw-binary', scope: 'user' }, { id: 'draw@other', scope: 'user' }]))
+    .mockReturnValue('');
+  expect(await runNativeUninstall([])).toBe(0);
+  for (const agent of ['Codex', 'Claude Code', 'Pi']) {
+    expect(stderr.join('')).toContain(`Removed the Draw integration from ${agent}.`);
+  }
+  expect(run.mock.calls.map(call => call.slice(0, 2))).toEqual([
+    ['codex', ['plugin', 'remove', 'draw@draw-binary']],
+    ['codex', ['plugin', 'marketplace', 'remove', 'draw-binary']],
+    ['claude', ['plugin', 'marketplace', 'list', '--json']],
+    ['claude', ['plugin', 'list', '--json']],
+    ['claude', ['plugin', 'uninstall', 'draw@draw-binary', '--scope', 'user', '--keep-data']],
+    ['claude', ['plugin', 'marketplace', 'remove', 'draw-binary', '--scope', 'user', '--json']],
+    ['pi', ['remove', pi]],
+  ]);
+  expect(readdirSync(receipts)).toEqual([]);
+});
+
+it.each(['not_configured', 'permission_denied'])('handles Claude marketplace removal failure %s', async failureCode => {
+  const receipt = join(directory, '.redcrayon/integrations/claude-code-unified.json');
+  write(receipt, 'installed');
+  const path = join(directory, '.redcrayon/plugins/installed/claude-code-hosted');
+  const failure = Object.assign(new Error('marketplace removal failed'), {
+    stdout: JSON.stringify({ command: 'marketplace-remove', marketplace: 'draw-binary', outcome: 'failed', failureCode }),
+  });
+  const run = vi.mocked(execFileSync);
+  run.mockReturnValueOnce(JSON.stringify([{ name: 'draw-binary', source: 'directory', path }]))
+    .mockReturnValueOnce(JSON.stringify([{ id: 'draw@draw-binary', scope: 'project' }]))
+    .mockImplementationOnce(() => { throw failure; });
+  if (failureCode === 'not_configured') {
+    expect(await runNativeUninstall(['claude-code'])).toBe(0);
+    expect(stderr.join('')).toContain('No Draw integrations found.');
+  } else await expect(runNativeUninstall(['claude-code'])).rejects.toThrow(failure);
+  expect(run.mock.calls.map(call => call[1])).toEqual([
+    ['plugin', 'marketplace', 'list', '--json'],
+    ['plugin', 'list', '--json'],
+    ['plugin', 'marketplace', 'remove', 'draw-binary', '--scope', 'user', '--json'],
+  ]);
+  expect(existsSync(receipt)).toBe(failureCode !== 'not_configured');
+});
+
+it('skips absent agents and continues after an agent fails', async () => {
+  const receipts = join(directory, '.redcrayon/integrations');
+  write(join(receipts, 'codex-unified.json'), 'installed');
+  write(join(receipts, 'pi-unified.json'), 'installed');
+  vi.stubEnv('PI_CODING_AGENT_DIR', join(directory, 'no-pi-settings'));
+  const run = vi.mocked(execFileSync);
+  vi.mocked(readCodexUserConfig).mockRejectedValueOnce(new Error('unavailable'));
+  await expect(runNativeUninstall([])).rejects.toThrow('codex: unavailable');
+  expect(run).not.toHaveBeenCalled();
+  expect(readdirSync(receipts)).toEqual(['codex-unified.json']);
 });

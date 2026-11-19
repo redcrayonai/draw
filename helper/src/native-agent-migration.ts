@@ -22,21 +22,46 @@ export function disableLegacyClaudePlugins(): void {
   }
 }
 
+function piAgentDirectory(home: string) {
+  const configured = process.env.PI_CODING_AGENT_DIR || join(home, '.pi/agent');
+  return resolve(process.cwd(), configured.startsWith('~/') ? join(home, configured.slice(2)) : configured);
+}
+
+function readPiSettings(path: string) {
+  let raw: string;
+  try { raw = readFileSync(path, 'utf8'); }
+  catch (error) { if ((error as NodeJS.ErrnoException).code === 'ENOENT') return; throw error; }
+  const settings = JSON.parse(raw);
+  if (!settings || typeof settings !== 'object' || Array.isArray(settings) || (settings.packages !== undefined && !Array.isArray(settings.packages))) throw new Error(`UNAVAILABLE: Pi package settings could not be read: ${path}`);
+  return settings;
+}
+
+function piPackagePath(path: string, source: string, home: string) {
+  return resolve(dirname(path), source.startsWith('~/') ? join(home, source.slice(2)) : source);
+}
+
+export function uninstallNativePiPackage(active: string) {
+  const home = homedir(), path = join(piAgentDirectory(home), 'settings.json');
+  const settings = readPiSettings(path);
+  const installed = settings?.packages?.some((entry: unknown) => {
+    const source = typeof entry === 'string' ? entry : (entry as { source?: unknown } | null)?.source;
+    return typeof source === 'string' && piPackagePath(path, source, home) === active;
+  });
+  if (!installed) return false;
+  execFileSync('pi', ['remove', active], { stdio: 'inherit' });
+  return true;
+}
+
 export function disableLegacyPiIntegrations(): void {
   const home = homedir(), oldLocal = join(home, '.redcrayon/plugins/installed/pi-local');
-  const configured = process.env.PI_CODING_AGENT_DIR || join(home, '.pi/agent');
-  const agentDirectory = resolve(process.cwd(), configured.startsWith('~/') ? join(home, configured.slice(2)) : configured);
   const changes: { path: string; content: string; mode: number }[] = [];
-  for (const path of new Set([join(agentDirectory, 'settings.json'), join(process.cwd(), '.pi/settings.json')])) {
-    let raw: string;
-    try { raw = readFileSync(path, 'utf8'); }
-    catch (error) { if ((error as NodeJS.ErrnoException).code === 'ENOENT') continue; throw error; }
-    const settings = JSON.parse(raw);
-    if (!settings || typeof settings !== 'object' || Array.isArray(settings) || (settings.packages !== undefined && !Array.isArray(settings.packages))) throw new Error(`UNAVAILABLE: Pi package settings could not be read: ${path}`);
+  for (const path of new Set([join(piAgentDirectory(home), 'settings.json'), join(process.cwd(), '.pi/settings.json')])) {
+    const settings = readPiSettings(path);
+    if (!settings) continue;
     let changed = false;
     const packages = settings.packages?.map((entry: any) => {
       const source = typeof entry === 'string' ? entry : entry?.source;
-      if (typeof source !== 'string' || (!/^npm:@redcrayonai\/draw(?:@[^\s/]+)?$/.test(source) && resolve(dirname(path), source.startsWith('~/') ? join(home, source.slice(2)) : source) !== oldLocal)) return entry;
+      if (typeof source !== 'string' || (!/^npm:@redcrayonai\/draw(?:@[^\s/]+)?$/.test(source) && piPackagePath(path, source, home) !== oldLocal)) return entry;
       const disabled = { ...(typeof entry === 'string' ? { source } : entry), extensions: [], skills: [], prompts: [], themes: [] };
       if (JSON.stringify(entry) !== JSON.stringify(disabled)) changed = true;
       return disabled;

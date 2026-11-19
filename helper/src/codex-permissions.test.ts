@@ -2,7 +2,7 @@ import { EventEmitter } from 'node:events';
 import { readFileSync } from 'node:fs';
 import { PassThrough } from 'node:stream';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { configureCodexPermissions, disableLegacyCodexIntegrations } from './codex-permissions';
+import { configureCodexPermissions, disableLegacyCodexIntegrations, readCodexUserConfig } from './codex-permissions';
 
 const { spawn } = vi.hoisted(() => ({ spawn: vi.fn() }));
 vi.mock('node:child_process', () => ({ spawn }));
@@ -36,6 +36,19 @@ function server(settings: Record<string, unknown> = {}, mode = 'local', override
   spawn.mockReturnValue(child);
   return { child, frames, write: () => frames.find(frame => frame.method === 'config/batchWrite')?.params };
 }
+
+it('reads only Codex user settings without loading marketplaces or writing config', async () => {
+  const config = {
+    marketplaces: { 'draw-binary': { source_type: 'local', source: '/missing/marketplace' } },
+    plugins: { 'draw@draw-binary': { enabled: false } },
+  };
+  const s = server({}, 'local', { 'config/read': {
+    config: { plugins: { 'draw@other': { enabled: true } } },
+    layers: [{ name: { type: 'user', file: '/mock/config.toml' }, version: 'user-version', config }],
+  } });
+  expect(await readCodexUserConfig()).toEqual(config);
+  expect(s.frames.map(frame => frame.method)).toEqual(['initialize', 'initialized', 'config/read']);
+});
 
 describe('Draw plugin permissions in Codex', () => {
   it('writes only plugin policy using the user layer version, without starting a conversation', async () => {

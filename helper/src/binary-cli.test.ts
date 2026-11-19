@@ -99,3 +99,8 @@ it('names draw in native CLI errors, including a locked local store', async () =
   await expect(run(['--repo', directory, '--store', store, '--no-open'])).rejects.toThrow('draw: UNAVAILABLE: local store is locked.');
   expect(readFileSync(join(store, 'writer.lock'), 'utf8')).toBe('existing writer');
 });
+
+it('advertises uninstall and rejects unsupported targets', async () => {
+  expect((await run(['--help'])).stdout).toContain('draw uninstall [codex|claude-code|pi]');
+  await expect(run(['uninstall', 'other'])).rejects.toThrow('REJECTED: usage: draw uninstall [codex|claude-code|pi]');
+});

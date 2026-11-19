@@ -32,6 +32,15 @@ draw install pi
 This is the same plugin that draws on [hosted boards](/connect/). It turns off
 older Draw plugins it finds and keeps their settings and sign-in.
 
+Run `draw uninstall` to remove integrations added by `draw install` for
+Codex, Claude Code, and Pi. To remove just one, use `draw uninstall codex`,
+`draw uninstall claude-code`, or `draw uninstall pi`. Restart the affected
+agents afterward. The Draw CLI, local boards, and saved Draw permission choices
+stay on disk.
+
+If you installed the Draw CLI with npm, remove it with
+`npm uninstall -g @redcrayonai/draw`.
+
 ## Open a board
 
 In your repository, ask your agent:
