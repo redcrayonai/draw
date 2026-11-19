@@ -4208,7 +4208,8 @@ textarea#inline-edit {
   font: 500 12px/1 var(--sans);
 }
 
-.branch-dialog input {
+.branch-dialog input,
+#issue-dialog :is(select, textarea) {
   width: 100%;
   min-width: 0;
   height: 36px;
@@ -4219,6 +4220,18 @@ textarea#inline-edit {
   border: 1px solid var(--hairline);
   border-radius: var(--r-md);
   font: 500 13px/1 var(--mono);
+}
+
+#report-issue {
+  color: #dc4949;
+  visibility: visible;
+}
+
+#issue-dialog textarea {
+  height: auto;
+  padding-block: var(--space-2);
+  font: 400 14px/1.5 var(--sans);
+  resize: vertical;
 }
 
 .branch-from {
