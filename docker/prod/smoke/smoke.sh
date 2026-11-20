@@ -65,6 +65,7 @@ get() { curl -sS --cacert "$work/ca.crt" --resolve "$1:443:127.0.0.1" -o /dev/nu
 canvas_up() { [ "$(get "$domain" /)" = 200 ]; }
 retry 60 canvas_up || fail "canvas: $(get "$domain" /)"
 [ "$(get "dash.$domain" /dashboard)" = 200 ] || fail "dashboard: $(get "dash.$domain" /dashboard)"
+[ "$(get "dash.$domain" /local-board)" = 200 ] || fail "dashboard sharing route: $(get "dash.$domain" /local-board)"
 [ "$(get "$domain" /v1/database/redcrayon/subscribe)" = 426 ] || fail "the realtime socket does not reach the database"
 [ "$(get "$domain" /v1/database/redcrayon/sql -X POST -d 'SELECT 1')" = 405 ] || fail "the database's SQL route is reachable from outside"
 health() { curl -sS --cacert "$work/ca.crt" --resolve "mcp.$domain:443:127.0.0.1" "https://mcp.$domain/health"; }

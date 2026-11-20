@@ -65,14 +65,14 @@ way. `--mode local` does not ask and never fails on these settings.
 
 Restart the agent and ask **"create a draw board"**, or run `/draw:navigate`.
 Draw opens a local repository board without an account. Ask explicitly for a
-**hosted board** to use the hosted connection, then sign in through your agent's
-Draw MCP controls when needed. There is no separate binary login step. Give an
+**hosted board** to use the hosted connection, then sign in through the browser when Draw asks, or run `draw login` first. Give an
 existing board link to continue there; Draw keeps its backend and does not
 silently create a replacement or upload a local board.
 
 Both backends ship in the same plugin, named `draw@draw-binary` in Claude Code
-and Codex. The MCP server names `draw-local` and `draw` identify its local and
-hosted tools; they are not separate plugins to install. The single
+and Codex. A single stdio MCP server named `draw` handles local tools on the device and
+forwards hosted tools to the selected HTTP endpoint. The executable stores
+its OAuth credentials separately from older agent-managed connections. The single
 `/draw:navigate` skill also handles board feedback, reconnects, and incidents
 from natural prompts. Legacy `--mode local|hosted` install flags remain accepted;
 both install the same unified plugin. Native installation replaces the older Draw

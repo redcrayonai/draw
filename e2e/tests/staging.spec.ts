@@ -15,6 +15,15 @@ async function viaAccess(context: BrowserContext) {
 }
 const test = base.extend({ context: async ({ context }, use) => { await use(await viaAccess(context)); } });
 
+test('deployed dashboard serves the local-board route', async ({ page, baseURL }) => {
+  await page.goto(baseURL!);
+  const link = page.locator('#crumb-boards');
+  await expect(link).toHaveAttribute('href', /.+/);
+  const dashboard = await link.evaluate(element => (element as HTMLAnchorElement).href);
+  const response = await page.goto(new URL('/local-board', dashboard).href);
+  expect(response?.status()).toBe(200);
+});
+
 test('deployed canvas retains nodes and edges after reload', async ({ page, baseURL }) => {
   const errors: string[] = [];
   page.on('pageerror', error => errors.push(error.message));

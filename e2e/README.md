@@ -45,6 +45,6 @@ To test an existing canvas, set its URL:
 E2E_BASE_URL=https://app-staging.example.com pnpm -C e2e test:staging
 ```
 
-These three cases cover node/edge reload, private locator denial, and guest sharing/revocation.
+These checks cover the dashboard’s `/local-board` route, node/edge reload, private locator denial, and guest sharing/revocation.
 They use the served app without the local auth alias. They do not sign in or exercise OAuth.
 The `ci` workflow includes the isolated suite and ends with `ci-ready`.

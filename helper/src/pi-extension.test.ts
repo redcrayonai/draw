@@ -105,7 +105,7 @@ it('loads local and hosted integrations together without leaking mode or executa
   expect(process.env.DRAW_MODE).toBe('local'); expect(process.env.DRAW_EXECUTABLE).toBe('/other/draw');
 });
 
-it('registers both transports in unified mode and stops the previous chat when switching modes', async () => {
+it('registers one MCP router in unified mode and stops the previous chat when switching modes', async () => {
   const polls: { resolve(value: object): void; signal: AbortSignal }[] = [];
   vi.mocked(localCall).mockImplementation(async (_endpoint, input, signal) => {
     if ((input as any).action !== 'poll_local_agent') return {};
@@ -115,10 +115,12 @@ it('registers both transports in unified mode and stops the previous chat when s
     });
   });
   const f = await fixture('unified');
-  expect(f.register.mock.calls.map(call => call[0])).toEqual(['draw-local', 'draw']);
+  expect(f.register.mock.calls.map(call => call[0])).toEqual(['draw']);
   await f.attach();
-  await f.invoke('tool_result', { toolName: 'mcp__draw_local__open_board', structuredContent: { slug: 'local-board' } });
+  await f.invoke('tool_result', { toolName: 'mcp__draw__open_board', structuredContent: { slug: 'local-board', repo: process.cwd() } });
   expect(f.appendEntry).toHaveBeenLastCalledWith('draw-chat', null);
+  await f.invoke('tool_result', { toolName: 'mcp__draw__read_board', structuredContent: { slug: 'other-board', repo: '/other/repo' } });
+  expect(polls[0].signal.aborted).toBe(false);
   polls[0].resolve({ type: 'message', id: 'local-message', text: 'local feedback' });
   await vi.waitFor(() => expect(f.sent).toHaveBeenCalledExactlyOnceWith('local feedback'));
   await f.invoke('message_end', { message: { role: 'assistant', content: [{ type: 'text', text: 'local reply only' }] } });
@@ -147,7 +149,7 @@ it('keeps the latest local selection when an older hosted capture finishes later
   });
   const hosted = f.invoke('tool_result', { toolName: 'mcp__draw__start_session', input: {}, structuredContent: { chat: f.chat } });
   await vi.waitFor(() => expect(child).toBeDefined());
-  await f.invoke('tool_result', { toolName: 'mcp__draw_local__open_board', structuredContent: { slug: 'new-local' } });
+  await f.invoke('tool_result', { toolName: 'mcp__draw__open_board', structuredContent: { slug: 'new-local', repo: process.cwd() } });
   child.emit('close', 0);
   await hosted;
   expect(f.appendEntry).toHaveBeenCalledExactlyOnceWith('draw-chat', null);

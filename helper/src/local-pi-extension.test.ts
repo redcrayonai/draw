@@ -39,7 +39,7 @@ it('registers local tools without a selected board and attaches when the session
   const context = { cwd: process.cwd(), isIdle: () => false, abort: vi.fn(), sessionManager: { getSessionId: () => 'auto' }, ui: { notify: vi.fn() } };
   await handlers.get('session_start')!({}, context);
   expect(localCall).not.toHaveBeenCalled();
-  await handlers.get('tool_result')!({ toolName: 'mcp__draw_local__open_board', content: [{ type: 'text', text: JSON.stringify({ slug: 'new-board' }) }] }, context);
+  await handlers.get('tool_result')!({ toolName: 'mcp__draw_local__open_board', content: [{ type: 'text', text: JSON.stringify({ slug: 'new-board', repo: process.cwd() }) }] }, context);
   expect(localCall).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({ action: 'connect_local_agent', board: 'new-board', session: 'pi:auto' }), undefined);
   expect(registerMcpServer).toHaveBeenCalledOnce();
   await handlers.get('session_shutdown')!();
@@ -54,7 +54,7 @@ it('does not revive local chat when a pending attachment finishes after switchin
   });
   const controller = localPi({ on: (name, fn) => { handlers.set(name, fn); }, registerMcpServer: vi.fn(), sendUserMessage: vi.fn() }, ['/test/draw'], beforeAttach);
   const context = { cwd: process.cwd(), isIdle: () => true, abort: vi.fn(), sessionManager: { getSessionId: () => 'auto' }, ui: { notify: vi.fn() } };
-  const opening = handlers.get('tool_result')!({ toolName: 'mcp__draw-local__open_board', structuredContent: { slug: 'local-board' } }, context);
+  const opening = handlers.get('tool_result')!({ toolName: 'mcp__draw-local__open_board', structuredContent: { slug: 'local-board', repo: process.cwd() } }, context);
   await vi.waitFor(() => expect(beforeAttach).toHaveBeenCalledOnce());
   await controller.close();
   connected();

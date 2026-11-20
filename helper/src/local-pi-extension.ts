@@ -1,3 +1,4 @@
+import { realpathSync } from 'node:fs';
 import { piHelperCommand } from './pi-runtime';
 import { localCall, localEndpoint } from './local-mcp';
 import { hookResult } from './hook-result';
@@ -9,7 +10,7 @@ export default function localPi(pi: Pi, helper = piHelperCommand(), beforeAttach
   const configuredBoard = process.env.DRAW_LOCAL_BOARD;
   const storeArgs = process.env.DRAW_LOCAL_STORE ? ['--store', process.env.DRAW_LOCAL_STORE] : [];
   const [command, ...args] = helper;
-  pi.registerMcpServer('draw-local', { command, args: [...args, 'local-mcp', '--repo', process.cwd(), ...storeArgs], exposure: 'direct' });
+  if (!beforeAttach) pi.registerMcpServer('draw-local', { command, args: [...args, 'local-mcp', '--repo', process.cwd(), ...storeArgs], exposure: 'direct' });
   let active: { board: string; event(value: object): Promise<void>; close(): Promise<void> } | undefined;
   let sequence = 0, generation = 0;
   const detach = async () => {
@@ -63,9 +64,10 @@ export default function localPi(pi: Pi, helper = piHelperCommand(), beforeAttach
     if (configuredBoard) await attach(configuredBoard, context);
   });
   pi.on('tool_result', async (event, context) => {
-    if (configuredBoard || event.isError || !/^mcp__draw[-_]local__(open_board|read_board)$/.test(event.toolName)) return;
+    if (configuredBoard || event.isError || !/^mcp__draw(?:[-_]local)?__(open_board|read_board)$/.test(event.toolName)) return;
     const board = hookResult(event.structuredContent ?? { content: event.content });
-    if (typeof board?.slug === 'string' && board.slug !== active?.board && /^[A-Za-z0-9_-]{1,200}$/.test(board.slug)) await attach(board.slug, context);
+    if (!board || board.repo !== realpathSync(context.cwd)) return;
+    if (typeof board.slug === 'string' && board.slug !== active?.board && /^[A-Za-z0-9_-]{1,200}$/.test(board.slug)) await attach(board.slug, context);
   });
   pi.on('agent_start', () => active?.event({ type: 'state', state: 'working' }));
   pi.on('message_end', async message => {

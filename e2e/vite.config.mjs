@@ -14,6 +14,7 @@ export default {
   // build into a temp dir and rename it over E2E_ASSETS if schema-upgrade flakes again.
   build: { outDir: process.env.E2E_ASSETS, emptyOutDir: false, rollupOptions: { input: {
     main: fileURLToPath(new URL('../client/index.html', import.meta.url)),
+    local: fileURLToPath(new URL('../client/local.html', import.meta.url)),
     embed: fileURLToPath(new URL('../client/embed.html', import.meta.url)),
   } } },
 };

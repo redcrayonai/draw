@@ -41,7 +41,15 @@ One Draw plugin contains both local and hosted workflows. Restart the agent afte
 
 You can also run `draw` directly in your repository to open the browser; `draw --no-open` only prints the URL. Running `draw` again opens the existing server. Keep the terminal serving the board open; Ctrl-C stops it without deleting boards. Keep the executable in place after installing an integration, or rerun the install command if you move it. Existing boards retain their storage.
 
-For hosted boards, explicitly ask for a hosted board or supply its existing link, then authenticate through your agent's Draw MCP controls when needed. No second installation is required. Legacy install `--mode` flags are accepted but install the same unified plugin. Hosted behavior has been exercised against a controlled relay/capture fixture with real agents; production authentication was not verified in this change.
+For hosted boards, explicitly ask for a hosted board or supply its existing link, then authorize Draw in the browser when needed. The one `draw` MCP entry runs the local executable, which connects to the hosted server on demand. Use `draw login` to connect ahead of time. No second installation is required. Legacy install `--mode` flags are accepted but install the same unified plugin. Hosted behavior has been exercised against a controlled relay/capture fixture with real agents; production authentication was not verified in this change.
+
+## Share a local board
+
+Select **Sign in** to open your Draw account, or **Share** to create a separate hosted copy. Choose a workspace and who can view it, then select **Share a copy**. The local board keeps a link to the copy. Each board saves its own later edits.
+
+The copy includes diagram text, shapes, connections and review notes. Reviews become canvas notes with their replies in the description. Source references, repository paths, chat and feedback history stay on the device. **Stay offline** closes the introduction. **Don’t remind me again** remembers that choice across repository servers for this local installation (or within a custom `--store`).
+
+For the packaged MCP instance, the local board uses the dashboard configured by `VITE_DASHBOARD_URL`. For a custom MCP endpoint or a build without a dashboard address, enter the dashboard origin when you choose Sign in or Share. The confirmation shows the destination host.
 
 ## Updates
 

@@ -1,0 +1,132 @@
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Draw · Checkout flow</title>
+<style>
+@font-face{font-family:Geist;src:url(../client/public/assets/fonts/geist.ttf)}
+*{box-sizing:border-box}
+body{margin:0;font:15px Geist,system-ui,sans-serif;color:#292a26;background:#faf9f5}
+header,footer,.actions{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+header{background:white;border-bottom:1px solid #deded6;padding:13px 24px}
+.brand{font-size:21px;letter-spacing:-1px;font-weight:750;margin-right:7px}
+.mark{display:inline-block;width:8px;height:22px;background:#c54130;transform:rotate(28deg);border-radius:5px 5px 1px 1px;margin-right:8px;vertical-align:-3px}
+.location{color:#52604e;font-size:13px;margin-right:auto}
+button,select,textarea{font:inherit}
+button,select{border:1px solid #d6d7ce;background:white;color:inherit;border-radius:7px;padding:8px 13px;cursor:pointer}
+button:hover{background:#f1f0ea}
+.primary{background:#343830;color:white;border-color:#343830}
+.primary:hover{background:#484e42}
+:focus-visible{outline:3px solid #417eab;outline-offset:3px}
+main{min-height:calc(100dvh - 118px);display:grid;align-content:center;padding:60px max(6vw,24px);background-image:radial-gradient(#cecec3 1px,transparent 1px);background-size:22px 22px}
+.sheet{width:min(100%,920px);margin:auto}
+small{color:#58625a;font:12px ui-monospace,monospace}
+h1{font-size:clamp(34px,5vw,62px);letter-spacing:-.06em;line-height:1.08;margin:10px 0 36px}
+.flow{display:flex;align-items:center;gap:1rem}
+.node{background:#fffefb;border:1.5px solid #949a8d;border-radius:12px;flex:1;padding:18px;box-shadow:0 3px 0 #dddfd5}
+.node strong{display:block;font-size:20px;margin-top:8px;letter-spacing:-.04em}
+.arrow{color:#77816f;font-size:24px}
+.note{display:block;width:min(325px,100%);background:#f9eab9;padding:15px 18px;margin:32px 0 0 auto;box-shadow:0 2px 4px #302b1814;border-radius:2px;color:#624f2c;font-size:13px}
+textarea{display:block;width:100%;resize:vertical;background:transparent;border:0;color:#413a28;margin-top:6px;line-height:1.5}
+footer{padding:12px 24px;border-top:1px solid #deded6;background:white;color:#62655b;font-size:13px}
+footer button{margin-left:auto}
+dialog{color:inherit;border:1px solid #d4d5cc;border-radius:16px;width:min(440px,calc(100% - 28px));padding:28px;box-shadow:0 20px 75px #25291f26}
+dialog::backdrop{background:#31372f35}
+h2{margin:0 0 14px;font-size:28px;letter-spacing:-.05em;line-height:1.1}
+p{line-height:1.5;color:#575b51}
+dialog label,dialog select{display:block;width:100%;margin-bottom:10px}
+.actions{margin-top:22px}
+.reminder{font-size:13px;color:#575b51}.reminder input{vertical-align:middle}
+.offline{width:100%;min-height:44px;background:#f3f4ef;border-color:#808578;font-weight:600}
+.offline:hover{background:#e8ebe2}
+.offline:active{background:#dce1d5}
+[hidden]{display:none!important}
+@media(max-width:650px){header{padding:10px;gap:5px}.location{flex-basis:100%;order:2}.flow{flex-direction:column;gap:3px}.node{width:100%;padding:10px 18px}.arrow{transform:rotate(90deg);font-size:18px}main{padding:28px 20px}h1{margin-bottom:20px}.note{margin-top:16px}footer{padding:10px}}
+</style>
+<header><span class="brand"><i class="mark"></i>Draw</span><span id="location" class="location"></span><button id="switchBoard" hidden></button><button id="account">Sign in</button><button id="share" class="primary">Share</button></header>
+<main><section class="sheet"><small id="workspace"></small><h1>Checkout flow</h1>
+<div class="flow"><div class="node"><small>Client</small><strong>Storefront</strong></div><span class="arrow">→</span><div class="node"><small>Service</small><strong>Checkout API</strong></div><span class="arrow">→</span><div class="node"><small>Datastore</small><strong>Orders</strong></div></div>
+<label class="note">Review note<textarea id="note" rows="2" aria-label="Review note"></textarea></label></section></main>
+<footer><span role="status" id="status">Interactive preview · Account and sharing are simulated.</span><button id="reset">Restart demo</button></footer>
+<dialog aria-labelledby="title"><h2 id="title"></h2><div id="detail"></div><div class="actions"></div></dialog>
+<script>
+const el = id => document.getElementById(id);
+const dialog = document.querySelector('dialog');
+const initialNote = 'Where do we retry a failed payment?';
+let signedIn, shared, hosted, localNote, sharedNote, access;
+function reset() {
+  signedIn = shared = hosted = false;
+  localNote = initialNote;
+  sharedNote = access = '';
+  render();
+}
+function render() {
+  el('location').textContent = hosted ? 'Shared copy · ' + access : 'Saved on this device';
+  el('workspace').textContent = hosted ? 'Demo workspace / Boards' : 'Local boards / Checkout';
+  el('switchBoard').hidden = !shared;
+  el('switchBoard').textContent = hosted ? 'View local original' : 'View shared copy ↗';
+  el('account').textContent = signedIn ? 'Demo account' : 'Sign in';
+  el('share').hidden = hosted;
+  el('note').value = hosted ? sharedNote : localNote;
+}
+function panel(title, detail, buttons) {
+  el('title').textContent = title;
+  el('detail').innerHTML = detail;
+  const actions = document.querySelector('.actions');
+  actions.replaceChildren();
+  for (const [label, style, action] of buttons) {
+    const button = document.createElement('button');
+    button.textContent = label;
+    button.className = style;
+    button.onclick = action;
+    actions.append(button);
+  }
+  if (!dialog.open) dialog.showModal();
+  actions.firstElementChild.focus();
+}
+function close() { dialog.close(); }
+const offline = ['Stay offline', 'offline', close];
+const reminderKey = 'draw-demo-skip-intro';
+function connect(forShare, create) {
+  panel(create ? 'Create a preview account' : 'Sign in to Draw',
+    '<p>This demo simulates browser sign-in with a sample account. No credentials are needed.</p>',
+    [['Continue as Alex', 'primary', () => {
+      signedIn = true;
+      render();
+      if (forShare) chooseAccess();
+      else { close(); el('status').textContent = 'Demo account connected. Your board is still local.'; }
+    }], ['Cancel', '', close]]);
+}
+function intro(forShare) {
+  if (localStorage.getItem(reminderKey)) return connect(forShare, false);
+  panel(forShare ? 'Share this board with a teammate?' : 'Bring a teammate into the conversation',
+    '<p>Save a copy to your Draw workspace, send a teammate a link, and collect feedback on the diagram.</p><p>Signing in connects your account. You choose when to share a board.</p><label class="reminder"><input id="skipIntro" type="checkbox"> Don’t remind me again</label>',
+    [['Create an account', 'primary', () => connect(forShare, true)], ['Sign in', '', () => connect(forShare, false)], offline]);
+  el('skipIntro').onchange = event => {
+    if (event.target.checked) localStorage.setItem(reminderKey, 'yes');
+    else localStorage.removeItem(reminderKey);
+  };
+}
+function chooseAccess() {
+  panel('Share a copy of Checkout flow?',
+    '<p>The copy includes the diagram and its review note. Future edits stay with the copy you edit.</p><label for="access">Who can view the copy?</label><select id="access"><option>Workspace members</option><option>Anyone with the link</option></select>',
+    [['Share a copy', 'primary', () => {
+      access = el('access').value;
+      sharedNote = localNote;
+      shared = hosted = true;
+      close(); render();
+      el('status').textContent = 'Demo shared copy opened. Edit the review note to try the two copies.';
+    }], offline]);
+}
+el('account').onclick = () => signedIn ? panel('Demo account', '<p>Signed in as Alex.</p>', [['Done', '', close]]) : intro(false);
+el('share').onclick = () => {
+  if (shared) { hosted = true; render(); }
+  else if (signedIn) chooseAccess();
+  else intro(true);
+};
+el('switchBoard').onclick = () => { hosted = !hosted; render(); el('status').textContent = 'Interactive preview · Account and sharing are simulated.'; };
+el('note').oninput = event => { if (hosted) sharedNote = event.target.value; else localNote = event.target.value; };
+el('reset').onclick = () => { localStorage.removeItem(reminderKey); reset(); el('status').textContent = 'Demo restarted. Account and sharing are simulated.'; };
+reset();
+</script>
+</html>

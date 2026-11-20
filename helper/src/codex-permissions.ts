@@ -2,7 +2,7 @@ import { spawn } from 'node:child_process';
 import type { DrawPermissions } from './permissions';
 
 type Frame = Record<string, any>;
-const localTools = ['list_boards', 'open_board', 'read_board', 'apply_board', 'attach_conversation', 'read_code'];
+const localTools = ['list_boards', 'open_board', 'read_board', 'apply_local_board', 'attach_conversation', 'read_code'];
 const hostedTools = [
   'get_board', 'create_node', 'move_node', 'layout_board', 'update_node', 'resize_node', 'delete_node',
   'create_edge', 'hide_node', 'hide_edge', 'play_trace', 'start_tap', 'set_edge_latency', 'delete_edge',
@@ -95,22 +95,24 @@ async function writeConfig(rpc: Rpc, user: Frame, edits: Frame[]) {
 
 /** Returns only denials owned by this installer; independent user denials must survive policy edits. */
 export async function configureCodexPermissions(
-  mode: 'local' | 'hosted', policy: DrawPermissions, previousManagedDisabledTools: string[] = [],
+  mode: 'local' | 'hosted', policy: DrawPermissions, previousManagedDisabledTools: string[] = [], migrateLocal = false,
 ): Promise<string[]> {
   if (!['local', 'hosted'].includes(mode) ||
     (['boards', 'conversation', 'snippets', 'uploads'] as const).some(key => !(key === 'boards' || key === 'conversation' ? ['ask', 'allow', 'deny'] : ['ask', 'deny']).includes(policy[key]))) throw unavailable();
   disabledTools(previousManagedDisabledTools);
   return withCodexConfig(async (read, user, rpc) => {
     const plugin = 'draw@draw-binary';
-    const server = mode === 'local' ? 'draw-local' : 'draw';
-    const settings = (config: Frame, id = plugin) => object(object(object(object(config.plugins)[id]).mcp_servers)[server]);
+    const server = 'draw';
+    const settings = (config: Frame, id = plugin, name = server) => object(object(object(object(config.plugins)[id]).mcp_servers)[name]);
     const effective = settings(object(read.config));
     const saved = settings(object(user.config));
-    // Import once: repeating this would restore old installer denials after the user chooses Ask.
-    const legacy = mode === 'local' && saved.disabled_tools === undefined && effective.disabled_tools === undefined
-      ? [settings(object(user.config), 'draw-local@draw-local-dev'), settings(object(read.config), 'draw-local@draw-local-dev')] : [];
-    const existing = new Set([...legacy.flatMap(settings => disabledTools(settings.disabled_tools)), ...disabledTools(saved.disabled_tools), ...disabledTools(effective.disabled_tools)]);
-    const previous = new Set(previousManagedDisabledTools);
+    const rename = (tool: string) => mode === 'local' && tool === 'apply_board' ? 'apply_local_board' : tool;
+    const previous = new Set(previousManagedDisabledTools.map(rename));
+    const legacy = migrateLocal ? [plugin, 'draw-local@draw-local-dev'].flatMap(id =>
+      [read.config, user.config].flatMap(config => disabledTools(settings(object(config), id, 'draw-local').disabled_tools).map(rename))) : [];
+    const current = [...disabledTools(saved.disabled_tools), ...disabledTools(effective.disabled_tools)];
+    if (migrateLocal) for (const tool of current) previous.delete(tool);
+    const existing = new Set([...legacy, ...current]);
     const requested = policy.boards === 'deny' ? [...(mode === 'local' ? localTools : hostedTools)] : [
       ...(policy.conversation === 'deny' ? [mode === 'local' ? 'attach_conversation' : 'start_chat'] : []),
       ...(policy.snippets === 'deny' ? [mode === 'local' ? 'read_code' : 'add_code_ref'] : []),
@@ -119,7 +121,9 @@ export async function configureCodexPermissions(
     const managed = requested.filter(tool => previous.has(tool) || !existing.has(tool));
     const disabled = [...new Set([...existing].filter(tool => !previous.has(tool)).concat(requested))];
     const tools = { ...object(saved.tools), ...object(effective.tools) };
-    for (const [tool, settings] of Object.entries(tools)) tools[tool] = { ...object(settings), approval_mode: 'prompt' };
+    for (const [tool, settings] of Object.entries(tools)) {
+      if (!(mode === 'local' ? hostedTools : localTools).includes(tool)) tools[tool] = { ...object(settings), approval_mode: 'prompt' };
+    }
     if (policy.boards === 'allow') {
       const sourceTools = mode === 'local' ? ['read_code'] : ['add_code_ref', 'mark_checkpoint', 'arrive', 'create_edge', 'apply_board'];
       const conversationTool = mode === 'local' ? 'attach_conversation' : 'start_chat';

@@ -46,11 +46,18 @@ jobs:
         with:
           bun-version: 1.4.4
       - name: Install build and browser test dependencies
-        run: for p in agent client helper e2e; do pnpm -C "$p" install --frozen-lockfile; done
+        run: for p in agent client helper e2e mcp; do pnpm -C "$p" install --frozen-lockfile; done
+      - name: Check native hosted tool catalog
+        run: agent/node_modules/.bin/tsx mcp/scripts/native-tools.ts --check
       - name: Build standalone executable and npm packages
+        env:
+          VITE_DASHBOARD_URL: ${{ vars.VITE_DASHBOARD_URL }}
         run: pnpm -C helper build:binary
       - name: Install with npm and Bun and verify no runtime dependencies
         run: node scripts/local-binary-smoke.mjs helper/dist/binary/draw-*.tgz helper/dist/binary/redcrayonai-draw-*.tgz
+      - name: Verify offline routing and hosted OAuth
+        if: runner.os == 'macOS'
+        run: node helper/test/router-smoke.mjs helper/dist/binary/draw
       - name: Install Chromium
         run: pnpm -C e2e exec playwright install --with-deps chromium
       - name: Browser and MCP journey using only the relocated executable

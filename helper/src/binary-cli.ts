@@ -12,6 +12,8 @@ else if (args[0] === '--help' || args[0] === '-h') console.log(
   '  draw install <codex|claude-code|pi> [--url <https://...>] [--permissions-defaults]\n' +
   '  draw permissions codex [--permissions-defaults]\n' +
   '  draw update [--check] [--channel stable|preview] [--installer npm|bun]\n' +
+  '  draw login [--url <MCP endpoint>]               Connect your hosted Draw account\n' +
+  '  draw mcp                                        Local and hosted MCP router\n' +
   '  draw local-mcp --per-repo                       Local MCP bridge\n' +
   '  draw capture | chat | tap | marks | doctor      Hosted helper commands\n' +
   '  draw live --board slug --map mapping.json       Local piped activity\n\n' +
@@ -20,6 +22,23 @@ else if (args[0] === '--help' || args[0] === '-h') console.log(
   'Hosted source uploads set to Ask require browser approval before reading files.\n' +
   'Set DRAW_NO_UPDATE_CHECK=1 to disable automatic update checks.'
 );
+else if (['mcp', 'login', 'hosted-transport'].includes(args[0])) {
+  try {
+    const { runRouter, login, loginUrl, routerUrl } = await import('./mcp-router');
+    if (args[0] === 'login') await login(loginUrl(args.slice(1)));
+    else if (args[0] === 'mcp') await runRouter(routerUrl());
+    else {
+      const { join } = await import('node:path');
+      const { homedir } = await import('node:os');
+      process.umask(0o077);
+      process.env.MCP_REMOTE_CONFIG_DIR = join(homedir(), '.redcrayon', 'oauth');
+      process.argv.splice(2, args.length, routerUrl(args[1]), '--transport', 'http-only', '--protocol', 'auto', '--auth-timeout', '150',
+        '--static-oauth-client-metadata', JSON.stringify({ client_name: 'Draw', scope: 'board:read board:write' }));
+      // @ts-expect-error The bundled CLI has a script-only declaration and starts on import.
+      await import('mcp-remote/dist/proxy.js');
+    }
+  } catch (error) { console.error(error instanceof Error ? error.message : 'Draw connection failed.'); process.exitCode = 1; }
+}
 else if (args[0] === 'install') {
   try { process.exitCode = await runNativeInstall(args.slice(1), __DRAW_VERSION__); }
   catch (error) { console.error(error instanceof Error ? error.message : 'UNAVAILABLE: install failed'); process.exitCode = 1; }

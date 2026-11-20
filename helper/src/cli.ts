@@ -40,6 +40,7 @@ import { runTap } from './tap';
 import { runLocal } from './local-cli';
 import { standalone } from './local-runtime';
 import { runLocalInstall } from './local-install';
+import { assertHostedArguments, isLocalTool } from './router-names';
 import { runLocalMcp } from './local-mcp';
 import { runLocalLive } from './local-live';
 import { localClaudeSettings, runLocalClaudeHook } from './local-claude-hook';
@@ -251,7 +252,11 @@ async function hook(out: string[], err: string[]): Promise<number> {
     if (!isObject(input) || !isObject(input.tool_input)) return 0;
     const guarded = /^mcp__(plugin_draw_)?(?:draw|redcrayon)(-dev)?__(.+)$/.exec(String(input.tool_name))?.[3];
     if (guarded && input.hook_event_name === 'PreToolUse') {
-      try { enforceToolPermissions(guarded, 'hosted', input.tool_input); }
+      try {
+        if (process.env.DRAW_ROUTER && isLocalTool(guarded)) return 0;
+        if (process.env.DRAW_ROUTER) assertHostedArguments(input.tool_input);
+        enforceToolPermissions(guarded, 'hosted', input.tool_input);
+      }
       catch (error) { err.push(error instanceof Error ? error.message : 'REJECTED: Draw permissions could not be checked.'); return 2; }
     }
     const tool = new RegExp(HOOK_MATCHER).exec(String(input.tool_name))?.[3];
