@@ -78,6 +78,10 @@ describe('neo-brutalism theme tokens', () => {
       ['c-green', 'paper', 4.5],
       ['c-purple', 'paper', 4.5],
       ['c-gray', 'paper', 4.5],
+      ['c-orange', 'paper', 4.5],
+      ['c-yellow', 'paper', 4.5],
+      ['c-teal', 'paper', 4.5],
+      ['c-pink', 'paper', 4.5],
     ];
     for (const [fg, bg, min] of pairs) {
       expect(contrast(t[fg], t[bg]), `--${fg} on --${bg}`).toBeGreaterThanOrEqual(min);
@@ -146,7 +150,7 @@ describe('neo-brutalism contrast on composited surfaces', () => {
 
   it('focal accent labels stay AA on every freeform fill', () => {
     const t = Object.assign({}, ...blocks(BRUTAL)) as Record<string, string>;
-    for (const f of ['blue', 'red', 'green', 'purple', 'gray']) {
+    for (const f of ['blue', 'red', 'green', 'purple', 'gray', 'orange', 'yellow', 'teal', 'pink']) {
       expect(contrast(t['accent-ink'], t[`c-${f}-fill`]), `--accent-ink on --c-${f}-fill`).toBeGreaterThanOrEqual(4.5);
     }
     expect(css).toContain('.node-label.token-accent { fill: var(--accent-ink); }');

@@ -13,6 +13,8 @@ import { McpServer } from '@modelcontextprotocol/server';
 import { z } from 'zod';
 import { CHART_MIN_H, CHART_MIN_W, CHART_TYPES, HUMAN_SOURCE_RESERVED, MAX_CSV_BYTES, SAMPLE_RESERVED, timeValue } from '../../module/src/chart-contracts';
 import { traceMs } from '../../module/src/trace';
+import { audienceKey } from '../../module/src/tellings';
+import { EDGE_COLORS, HUES, NODE_COLORS } from '../../module/src/colors';
 import { MARK_FILES_MAX, MARK_FILE_MAX, MARK_REPLY_MAX, SEAT_RE } from '../../module/src/marks';
 import { ICONS, ICON_SECTIONS } from '../../module/src/node-icons';
 import { chartSummaryText, chartTypesText, checkChartInput, checkChartUpdate, describeChartsText, notAChart, optionsText } from '../../agent/src/charts';
@@ -80,7 +82,7 @@ import {
   quotaSpent,
   rateLimited,
   sameCall,
-  targetNotFound,
+  flowColorTaken, targetNotFound,
   newRef,
 } from './copy';
 import { database, safeToken, safeU64, sql, type Database, type SafeToken, type SafeU64 } from './db';
@@ -357,6 +359,8 @@ const ICON_LIST = ICON_SECTIONS.map(s => `${s.title.toLowerCase()}: ${ICONS.filt
 const iconRule =
   ' icon (optional): a library icon drawn above the label (beside a boundary\'s heading). ' +
   'Give one when the node is that kind of thing (an agent, a model, a queue) or that product or cloud (claude, aws); leave it out otherwise. Not on notes, charts or architecture boards. A node with an icon needs about 40 px more height (160x96 shows icon, label and sublabel).';
+const nodeColor = z.enum(NODE_COLORS as [string, ...string[]]).optional().describe(`${HUES.join('|')}; on a service or datastore also <hue>-soft (faded) or <hue>-bold (filled). Leave out for the plain look`);
+const edgeColor = z.enum(EDGE_COLORS as [string, ...string[]]).optional().describe(`${HUES.join('|')}: the hue of the group or flow this edge belongs to. Leave out for the plain look; update_edge changes it later`);
 const FIT_RULE =
   'The board draws exactly the stored box: the label wraps to at most 2 lines inside w (16 px padding each side; ellipse and pill rows are narrower) and is cut off after that; the sublabel takes one line below it; a node with code refs keeps a row for its badge. At 15 px a label and sublabel need h=48 on one line and 68 on two. ' +
   'When the box cuts something off, the result says so and names the size that shows it: "(label wraps to N lines; cut off below w=W — widen to W to show it in full)", "(sublabel cut off below w=W)", "(needs h=H to show label and sublabel)".';
@@ -364,6 +368,7 @@ const FIT_RULE =
 const EDITORIAL_RULES = `Editorial rules (enforced where noted):
 - x/y/w/h divisible by 4 (enforced; violations are rejected, never rounded)
 - at most 2 focal nodes per board (enforced); accent color renders only on focal nodes
+- color groups nodes and edges that belong together (one flow, one team, one tier): one hue per group, the same hue on its edges, most of the board left uncolored. Keep red for danger. A bold node is a group's main step, at most one per group
 - token: ink (normal) | muted (infrastructure/secondary) | accent
 - deletion is the strongest edit; target density ~4/10 with generous whitespace
 - containers are large nodes drawn behind smaller ones: create big, move members inside
@@ -427,6 +432,7 @@ export const TOOLS: Record<string, ToolDef> = {
         kind: z.string().optional().describe('service|datastore|external|boundary|note|text (charts: use create_chart)'),
         doc: z.string().optional().describe('at most two sentences: what this is and why'),
         icon: z.string().optional().describe(`library icon id, one of ${ICON_LIST}`),
+        color: nodeColor,
       })
       .strict(),
     async run({ board, icon, ...input }, t) {
@@ -507,7 +513,7 @@ export const TOOLS: Record<string, ToolDef> = {
     title: 'Update node',
     scope: 'board:write',
     description:
-      'Update any of label, sublabel, token, focal, kind, icon on a node. Omitted fields keep their current value; icon "" removes the icon. A chart cannot change kind and no node can become a chart; chart data changes with set_chart_data.' +
+      'Update any of label, sublabel, token, focal, kind, icon, color on a node. Omitted fields keep their current value; icon "" removes the icon. A chart cannot change kind and no node can become a chart; chart data changes with set_chart_data.' +
       iconRule + ' ' + FIT_RULE,
     input: z
       .object({
@@ -519,6 +525,7 @@ export const TOOLS: Record<string, ToolDef> = {
         focal: z.boolean().optional(),
         kind: z.string().optional().describe('service|datastore|external|boundary|note|text (charts: use create_chart)'),
         icon: z.string().optional().describe('library icon id, as listed on create_node\'s icon parameter, or "" to remove the icon'),
+        color: nodeColor,
       })
       .strict(),
     async run({ board, nodeId, icon, ...patch }, t) {
@@ -569,8 +576,8 @@ export const TOOLS: Record<string, ToolDef> = {
       '"import" | "test-import" | "source:<path>:<line>" | "agent:<basis>". ' +
       'For source: the path is repo-relative as git prints it, and <line> must be a unique nonblank line you read; the server captures its exact text from a capture of the file and registers the path on first use. On session boards, each checkpoint follows that text only while it occurs exactly once; edited, missing or duplicate text makes the evidence stale. ' +
       '"agent:<basis>" is only for a flow no code shows, such as a scenario the user describes: <basis> says what it rests on (e.g. "agent:user described the topology"), and the board draws it as an unverified agent claim. When code shows the flow, cite source. "human:" is refused: a person drawing on the canvas gets it. Returns "committed id=<n> board=<name>".',
-    input: z.object({ board: boardArg, fromNode: id, toNode: id, label: z.string(), evidence: z.string(), capture }).strict(),
-    async run({ board, fromNode, toNode, label, evidence: given, capture: cap }, t) {
+    input: z.object({ board: boardArg, fromNode: id, toNode: id, label: z.string(), evidence: z.string(), color: edgeColor, capture }).strict(),
+    async run({ board, fromNode, toNode, label, evidence: given, capture: cap, color }, t) {
       const boardId = u64(board);
       const from = u64(fromNode);
       const to = u64(toNode);
@@ -639,6 +646,10 @@ export const TOOLS: Record<string, ToolDef> = {
           });
         }
       }
+      // The create call takes no colour: it lands on the new edge as its own write. A repeated call made no edge
+      // (the colour write may be what failed the first time), so it takes the id from the first call's answer.
+      const made = landed.length > 0 || !repeat ? landed : [.../id=(\d+)/.exec(text) ?? []].slice(1).map(u64);
+      if (color !== undefined) for (const edgeId of made) await absolute(() => t.ctx.db.call('update_edge_style', { edgeId, color }, t.signal));
       const stored = evidence !== given ? ` (evidence stored as ${evidence})` : '';
       return okResult(`${text}${stored} board=${b.name}${repeat}`);
     },
@@ -691,12 +702,24 @@ export const TOOLS: Record<string, ToolDef> = {
     annotations: { idempotentHint: true },
     description: SAVE_TELLING_DESCRIPTION + BOARD_SUFFIX,
     input: z.object({ board: boardArg, ...tellingInput }).strict(),
-    async run({ board, author, ...input }, t) {
+    async run({ board, author, color, ...input }, t) {
       const b = await boardOf(t, board);
       const every: string[] = input.steps.flatMap((s: TellingInput['steps'][number]) => [...s.nodes, ...(s.frame ?? [])]);
       const ids = [...new Set(every)].map(u64);
       await nodesOnBoard(t, b, ids);
+      // The hue is its own write after the save, so check it first: a taken hue must not leave a plain walk-through behind.
+      if (color) {
+        const [hues, tellings] = await Promise.all([
+          t.ctx.db.read<Row>(sql`SELECT * FROM visible_telling_color WHERE board_id = ${b.id}`, t.signal),
+          t.ctx.db.read<Row>(sql`SELECT id, audience FROM visible_telling WHERE board_id = ${b.id}`, t.signal),
+        ]);
+        const owner = (h: Row) => tellings.find(x => x.id === h.tellingId)?.audience as string | undefined;
+        const taken = hues.find(h => h.color === color && audienceKey(owner(h) ?? '') !== audienceKey(input.audience));
+        if (taken) throw new Refusal(flowColorTaken(color, owner(taken) ?? 'another walk-through', b.name));
+      }
       await absolute(() => t.ctx.db.call('save_telling', saveTellingArgs(b.id, input, author ?? ''), t.signal));
+      // Saving keeps a flow's colour; a colour given here is its own write.
+      if (color !== undefined) await absolute(() => t.ctx.db.call('set_telling_color', { boardId: b.id, audience: input.audience, color }, t.signal));
       return okResult(`committed telling: ${input.audience}, ${input.steps.length} steps board=${b.name}`);
     },
   },
@@ -736,6 +759,19 @@ export const TOOLS: Record<string, ToolDef> = {
     async run({ board, edgeId, latencyMs, source }, t) {
       const { board: b, targetId } = await boardAndTarget(t, board, 'edge', edgeId);
       await absolute(() => t.ctx.db.call('set_edge_latency', { edgeId: targetId, latencyMs, source: source ?? '' }, t.signal));
+      return committed(b.name);
+    },
+  },
+
+  update_edge: {
+    title: 'Update edge',
+    scope: 'board:write',
+    annotations: { idempotentHint: true },
+    description: 'Change the color of an existing edge: the hue of the group or flow it belongs to, or "" for the plain look. Label and evidence do not change: to change those, delete the edge and create it again.' + BOARD_SUFFIX,
+    input: z.object({ board: boardArg, edgeId: id, color: z.enum(['', ...EDGE_COLORS] as [string, ...string[]]).describe(`${HUES.join('|')}, or "" for the plain look`) }).strict(),
+    async run({ board, edgeId, color }, t) {
+      const { board: b, targetId } = await boardAndTarget(t, board, 'edge', edgeId);
+      await absolute(() => t.ctx.db.call('update_edge_style', { edgeId: targetId, color }, t.signal));
       return committed(b.name);
     },
   },

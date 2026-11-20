@@ -394,6 +394,23 @@ describe.skipIf(!url || !db)('the Worker on a real DB', () => {
         const edge = /committed id=(\d+)/.exec(created)![1];
         expect((await call('set_edge_latency', { board, edgeId: edge, latencyMs: 38.5, source: 'prod' })).text).toBe(`committed board=${name}`);
         expect((await call('set_edge_latency', { board, edgeId: edge, latencyMs: 700_000, source: 'prod' })).text).toMatch(/^REJECTED.*latencyMs must be at most 600000/);
+        // Colour: an edge takes a hue, at creation or later; a node a hue with a strength; a flow one hue of its own.
+        const tinted = (await call('create_edge', { board, fromNode: b, toNode: a, label: 'notifies', evidence: 'import', color: 'pink' })).text;
+        expect(tinted).toMatch(/^committed id=\d+ board=/);
+        expect((await call('update_edge', { board, edgeId: edge, color: 'teal' })).text).toBe(`committed board=${name}`);
+        expect((await call('update_node', { board, nodeId: b, color: 'teal-bold' })).isError).toBe(false);
+        const painted = JSON.parse((await call('get_board', { board })).text);
+        expect(painted.edges.map((e: { color?: string }) => e.color).sort()).toEqual(['pink', 'teal']);
+        expect(painted.nodes.find((n: { id: string }) => n.id === b).color).toBe('teal-bold');
+        expect((await call('update_edge', { board, edgeId: edge, color: '' })).text).toBe(`committed board=${name}`);
+        expect(JSON.parse((await call('get_board', { board })).text).edges.map((e: { color?: string }) => e.color).filter(Boolean)).toEqual(['pink']);
+        expect((await call('delete_edge', { board, edgeId: /committed id=(\d+)/.exec(tinted)![1] })).isError).toBe(false);
+        const flow = { board, title: 'How a row is stored', steps: [{ nodes: [a], title: 'In', body: 'The gateway takes the request.' }, { nodes: [b], title: 'Stored', body: 'The store keeps the row.' }] };
+        expect((await call('save_telling', { ...flow, audience: 'Write path', color: 'blue' })).text).toBe(`committed telling: Write path, 2 steps board=${name}`);
+        expect((await call('save_telling', { ...flow, audience: 'Read path', color: 'blue' })).text).toMatch(/^REJECTED: telling rule: blue already marks Write path on this board; pick another color\. Nothing was written\./);
+        // refused before the save: no plain walk-through is left behind
+        expect((await call('remove_telling', { board, audience: 'Read path' })).text).toMatch(/^REJECTED.*no telling for that audience/);
+        expect((await call('remove_telling', { board, audience: 'Write path' })).isError).toBe(false);
         expect((await call('move_node', { board, nodeId: a, x: 8, y: 8 })).text).toBe(`committed board=${name}`);
         expect((await call('update_node', { board, nodeId: a, label: 'API gateway' })).isError).toBe(false);
         expect((await call('resize_node', { board, nodeId: a, x: 8, y: 8, w: 200, h: 68 })).isError).toBe(false);

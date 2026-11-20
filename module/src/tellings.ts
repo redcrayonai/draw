@@ -3,6 +3,8 @@
 export const MAX_TELLINGS_PER_BOARD = 6, MAX_TELLING_STEPS = 12, MAX_STEP_NODES = 12;
 export const MAX_AUDIENCE = 40, MAX_TELLING_TITLE = 120, MAX_STEP_TITLE = 80, MAX_STEP_BODY = 280, MAX_STEP_SOURCE = 200;
 export const STEP_KEYS = ['nodes', 'frame', 'title', 'body', 'source'] as const;
+/** A flow's hue (colors.ts HUES, without ink: a flow has to stand out from the plain board). */
+export const FLOW_COLORS: readonly string[] = ['red', 'orange', 'yellow', 'green', 'teal', 'blue', 'purple', 'pink', 'gray'];
 
 /** Node ids are decimal strings. frame and source are always present after parsing ([] and ''). */
 export interface TellingStep { nodes: string[]; frame: string[]; title: string; body: string; source: string }

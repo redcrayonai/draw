@@ -8,6 +8,7 @@ import { drawableIcon, iconGroup } from './node-icons';
 import { renderPlot, parsedChart } from './charts/index';
 import { clipToWindow, type TimeWindow } from './time-window';
 import { SAMPLE_SOURCE } from '../../module/src/chart-contracts';
+import { EDGE_COLORS, colorParts } from '../../module/src/colors';
 import type { RouteMarker } from './route';
 import { routeEdges, placeLabels, type Route } from './edge-route';
 import { SCHEMA_FOOT_H, SCHEMA_HEAD_H, SCHEMA_ROW_H, schemaRows, type Schema, type SchemaColumn } from '../../module/src/change-notes';
@@ -16,6 +17,7 @@ import { makeHopBadge, makeMarker, markerKey, type MarkerSpec } from './board-ma
 import type { Blast } from './blast';
 import { blastEdgeIds } from './blast-play';
 import type { StepView } from './telling';
+import type { FlowPaint } from './flows';
 
 const SVG_NS = 'http://www.w3.org/2000/svg';
 
@@ -257,6 +259,15 @@ function makeRouteMarker(marker: RouteMarker): SVGGElement {
   return g;
 }
 
+/** One dot per flow through a shared node, inside its top-right corner. */
+function makeFlowDots(w: number, hues: readonly string[]): SVGGElement {
+  const g = el('g', { class: 'node-flow-dots', role: 'img' });
+  const title = el('title', {});
+  title.textContent = `In ${hues.length} flows`;
+  g.append(title, ...hues.map((hue, i) => el('circle', { class: `node-flow-dot dot-${hue}`, cx: String(w - 14 - i * 13), cy: '13', r: '4.5' })));
+  return g;
+}
+
 /** A telling's step number, centred on the node's top-left corner. */
 function makeStepBadge(step: number): SVGGElement {
   const g = el('g', { class: 'node-step', role: 'img' });
@@ -487,6 +498,8 @@ export interface RenderState {
   live?: ReadonlyMap<bigint, LiveEdge>;
   /** A playing telling: only lit and seen nodes show, each with its step number; it owns the dimming. */
   telling?: Pick<StepView, 'lit' | 'seen' | 'stepOf'> | null;
+  /** Flows (flows.ts): the hue uncoloured nodes and edges take, dots on shared nodes, and one flow shown alone. */
+  flow?: FlowPaint | null;
   scale: number;
   /** Fade in the nodes and edges this render adds: live arrivals, never a board's first paint. */
   enter?: boolean;
@@ -673,7 +686,6 @@ const CHART_FOOT_SIZE = 11;
 const CHART_SAMPLE_SIZE = 10.5;
 
 /** Marker id for an edge given its overlay class and selection state. */
-const EDGE_COLORS = ['ink', 'blue', 'red', 'green', 'purple', 'gray'] as const;
 /** Head stroke for a hand-set weight: its line's width plus half a pixel. */
 const WEIGHT_HEAD_PX = new Map([['medium', '2.5'], ['bold', '3.5']]);
 
@@ -787,6 +799,9 @@ interface NodeEntry {
   /** Telling step number, top left ('' key = none). */
   step: SVGGElement | null;
   stepKey: string;
+  /** Flow dots of a shared node, and the width and hues they were drawn for. */
+  dots: SVGGElement | null;
+  dotsKey: string;
   /** The RefBadge.key the current badge was built from ('' = no badge). */
   refsKey: string;
   /** The shape the current badge was anchored for. */
@@ -879,6 +894,8 @@ interface EdgeEntry {
   depthOut: boolean;
   /** Last-written telling class of g and labels ('' = hidden or no telling). */
   telling: string;
+  /** Last-written flow-out state of g and labels. */
+  flowOut: boolean;
   /** Last-written path data, and the route it came from. */
   d: string;
   route: Route | null;
@@ -1013,6 +1030,8 @@ function makeNodeEntry(n: Node): NodeEntry {
     routeKey: '',
     step: null,
     stepKey: '',
+    dots: null,
+    dotsKey: '',
     noteTag: null,
     noteTagKey: '',
     marker: null,
@@ -1109,6 +1128,8 @@ function buildInner(e: NodeEntry, kind: string): void {
   e.routeKey = '';
   e.step = null;
   e.stepKey = '';
+  e.dots = null;
+  e.dotsKey = '';
   e.noteTag = null;
   e.noteTagKey = '';
   e.marker = null;
@@ -1542,6 +1563,10 @@ export function renderBoard(
   const depth = state.depth ?? null;
   world.classList.toggle('focus-flow', focusId !== null && state.focus!.flow && blast === null);
   world.classList.toggle('telling-on', telling !== null);
+  const flow = state.flow ?? null;
+  world.classList.toggle('flow-only', Boolean(flow?.only));
+  // The picked or playing flow's hue on step numbers and the lit glow; flow-only is the dimming alone (export drops it).
+  world.classList.toggle('flow-hue', flow !== null && (flow.only !== null || telling !== null));
 
   // --- nodes ---
   const seen = new Set<bigint>();
@@ -1628,7 +1653,11 @@ export function renderBoard(
       (state.edgeTarget !== null && n.id === state.edgeTarget ? ' edge-target' : '') +
       // Sub-project C styling. '' colour means "derive from kind", which is
       // the pre-C look, so unstyled boards render exactly as before.
-      (n.color ? ` color-${n.color}` : '') +
+      // A colour of its own wins; without one a node takes the hue of the flow it belongs to.
+      (n.color ? ` color-${colorParts(n.color).hue}` : flow?.nodeHue.has(n.id) ? ` color-${flow.nodeHue.get(n.id)}` : '') +
+      (flow?.only && !flow.only.has(n.id) ? ' flow-out' : '') +
+      // A strength shows only on kinds that fill; an external or a boundary keeps the hue alone.
+      (colorParts(n.color).tone && (kind === 'service' || kind === 'datastore') ? ` tone-${colorParts(n.color).tone}` : '') +
       (n.strokeStyle === 'dashed' ? ' stroke-dashed' : '') +
       (n.size && n.size !== 'm' ? ` size-${n.size}` : '') +
       (nearNodes.has(n.id) ? ' focus-near' : '') +
@@ -1760,7 +1789,7 @@ export function renderBoard(
       e.routeKey = routeKey;
     }
 
-    const step = tellingCls(n.id) ? telling!.stepOf.get(n.id) : undefined;
+    const step = tellingCls(n.id) ? telling!.stepOf.get(n.id) : flow?.stepOf?.get(n.id);
     const stepKey = step === undefined ? '' : String(step);
     if (stepKey !== e.stepKey) {
       if (step === undefined) {
@@ -1774,6 +1803,14 @@ export function renderBoard(
         e.step.querySelector('text')!.textContent = stepKey;
       }
       e.stepKey = stepKey;
+    }
+    const hues = flow?.dots.get(n.id);
+    const dotsKey = hues ? `${n.w}:${hues.join()}` : '';
+    if (dotsKey !== e.dotsKey) {
+      e.dots?.remove();
+      e.dots = hues ? makeFlowDots(n.w, hues) : null;
+      if (e.dots) e.g.append(e.dots);
+      e.dotsKey = dotsKey;
     }
 
     // Change note tag (top right, astride the outline) and reader pip, keyed.
@@ -1979,6 +2016,7 @@ export function renderBoard(
         near: false,
         depthOut: false,
         telling: '',
+        flowOut: false,
         d: '',
         route: null,
         anchor: null,
@@ -1997,6 +2035,12 @@ export function renderBoard(
       e.g.classList.toggle('depth-out', out);
       e.labels.classList.toggle('depth-out', out);
       e.depthOut = out;
+    }
+    const flowOut = Boolean(flow?.only) && !flow!.edgeHue.has(edge.id);
+    if (flowOut !== e.flowOut) {
+      e.g.classList.toggle('flow-out', flowOut);
+      e.labels.classList.toggle('flow-out', flowOut);
+      e.flowOut = flowOut;
     }
     // Shown only when both ends are: lit when either end is lit.
     const ends = [tellingCls(edge.fromNode), tellingCls(edge.toNode)];
@@ -2026,6 +2070,15 @@ export function renderBoard(
     const selected = state.selectedEdges.has(edge.id);
     const reader = state.notes?.edgeStatus.get(edge.id);
     const weight = state.edgeWeights?.get(edge.id);
+    // Warmth from latency (live p50, else the stored value); red when live calls fail.
+    // An explicit style wins: the evidence overlay, or a hand-set colour.
+    const le = state.live?.get(edge.id);
+    const ms = le?.p50 ?? (edge.latencyMs >= 0 ? edge.latencyMs : null);
+    const styled = state.overlay || edge.color !== '';
+    const flagged = !styled && ((ms !== null && ms >= WARM_MS) || (le !== undefined && le.errors > 0));
+    // A colour of its own wins; without one an edge takes the hue of the flow both its ends belong to.
+    // Nobody chose that hue for this edge, so the overlay's evidence reading and a latency or error mark stay on top.
+    const edgeHue = edge.color || (styled || flagged ? '' : flow?.edgeHue.get(edge.id)) || '';
     const lineCls =
       'edge-line ev-' +
       evCls +
@@ -2034,7 +2087,7 @@ export function renderBoard(
       (state.ghostEdges.has(edge.id) ? ' ghost' : '') +
       (selected ? ' selected' : '') +
       // '' colour leaves the evidence overlay in charge of how the edge reads.
-      (edge.color ? ` color-${edge.color}` : '') +
+      (edgeHue ? ` color-${edgeHue}` : '') +
       (edge.strokeStyle === 'dashed' || edge.strokeStyle === 'dotted' ? ` stroke-${edge.strokeStyle}` : '') +
       // The overlay owns line and weight while it is on; style.css lets these
       // classes apply only while it is off, so the row keeps what was set.
@@ -2043,11 +2096,6 @@ export function renderBoard(
       e.line.setAttribute('class', lineCls);
       e.lineCls = lineCls;
     }
-    // Warmth from latency (live p50, else the stored value); red when live calls fail.
-    // An explicit style wins: the evidence overlay, or a hand-set colour.
-    const le = state.live?.get(edge.id);
-    const ms = le?.p50 ?? (edge.latencyMs >= 0 ? edge.latencyMs : null);
-    const styled = state.overlay || edge.color !== '';
     e.g.classList.toggle('lat-warm', !styled && ms !== null && ms >= WARM_MS && ms < HOT_MS);
     e.g.classList.toggle('lat-hot', !styled && ms !== null && ms >= HOT_MS);
     e.g.classList.toggle('lat-err', !styled && le !== undefined && le.errors > 0);
@@ -2067,7 +2115,7 @@ export function renderBoard(
       else e.g.style.removeProperty('--motion-dur');
     }
     const diffColor = state.edgeDiff?.get(edge.id);
-    const head = markerFor(evCls, state.overlay, selected, diffColor === 'added' ? 'green' : diffColor === 'removed' ? 'red' : diffColor === 'changed' ? 'blue' : reader?.status === 'stale' ? 'red' : edge.color);
+    const head = markerFor(evCls, state.overlay, selected, diffColor === 'added' ? 'green' : diffColor === 'removed' ? 'red' : diffColor === 'changed' ? 'blue' : reader?.status === 'stale' ? 'red' : edgeHue);
     // The overlay owns weight; with it off, a medium or bold edge takes a head of its weight.
     const marker = !state.overlay && weight !== undefined && WEIGHT_HEAD_PX.has(weight) ? `${head}-${weight}` : head;
     const direction = state.edgeDirections?.get(edge.id);

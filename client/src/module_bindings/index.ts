@@ -147,6 +147,7 @@ import SetNodeIconReducer from "./set_node_icon_reducer";
 import SetOrgMembershipsReducer from "./set_org_memberships_reducer";
 import SetSelectionReducer from "./set_selection_reducer";
 import SetSessionRemoteReducer from "./set_session_remote_reducer";
+import SetTellingColorReducer from "./set_telling_color_reducer";
 import SetThreatContainedReducer from "./set_threat_contained_reducer";
 import ShareBoardWithTeamReducer from "./share_board_with_team_reducer";
 import StartSessionReducer from "./start_session_reducer";
@@ -246,6 +247,7 @@ import VisibleSessionRow from "./visible_session_table";
 import VisibleSessionRemoteRow from "./visible_session_remote_table";
 import VisibleSessionRouteRow from "./visible_session_route_table";
 import VisibleTellingRow from "./visible_telling_table";
+import VisibleTellingColorRow from "./visible_telling_color_table";
 import VisibleThreatRow from "./visible_threat_table";
 import VisibleTracePlaybackRow from "./visible_trace_playback_table";
 
@@ -715,6 +717,13 @@ const tablesSchema = __schema({
     constraints: [
     ],
   }, VisibleTellingRow),
+  visibleTellingColor: __table({
+    name: 'visible_telling_color',
+    indexes: [
+    ],
+    constraints: [
+    ],
+  }, VisibleTellingColorRow),
   visibleThreat: __table({
     name: 'visible_threat',
     indexes: [
@@ -846,6 +855,7 @@ const reducersSchema = __reducers(
   __reducerSchema("set_org_memberships", SetOrgMembershipsReducer),
   __reducerSchema("set_selection", SetSelectionReducer),
   __reducerSchema("set_session_remote", SetSessionRemoteReducer),
+  __reducerSchema("set_telling_color", SetTellingColorReducer),
   __reducerSchema("set_threat_contained", SetThreatContainedReducer),
   __reducerSchema("share_board_with_team", ShareBoardWithTeamReducer),
   __reducerSchema("start_session", StartSessionReducer),

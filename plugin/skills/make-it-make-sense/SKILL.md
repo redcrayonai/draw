@@ -136,6 +136,11 @@ in the reader's own words. Saving again for the same audience replaces it. A
 `REJECTED` answer names the audiences the board already has;
 `remove_telling` takes away one the user no longer wants.
 
+When a walk-through follows one path through a larger system (how checkout
+works, where a request failed), save it with a `color` and the path's name as
+`audience`: it becomes a flow. The board paints that path, lists it in the
+legend, and lets a reader show it alone ([color.md](../../references/color.md)).
+
 Then tell the user, in one short message: the board link, the audiences you
 saved, and `Open the link and press Play walk-through.` Readers need only a view
 link, which the user makes with Share on the board.

@@ -571,11 +571,11 @@ export function exportSvgMarkup(svg: SVGSVGElement): string {
     'color',
     'filter',
   ];
-  // Export the settled board: no neighbour dimming or flow dashes, and no
+  // Export the settled board: no neighbour dimming, flow dashes or one-flow dimming, and no
   // transition caught mid-fade while the computed styles are read.
   const world = svg.querySelector('#world');
   const worldCls = world?.getAttribute('class') ?? null;
-  world?.classList.remove('focus-dim', 'focus-flow');
+  world?.classList.remove('focus-dim', 'focus-flow', 'flow-only');
   world?.classList.add('exporting');
   // Threats are members-only and the open card is local state: read the styles without the blast.
   const blastLive = [...svg.querySelectorAll('[class*="blast-"], .tc-lit')].map(e => [e, e.getAttribute('class')!] as const);

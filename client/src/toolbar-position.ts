@@ -32,9 +32,10 @@ function overlap(a: Rect, b: Rect): number {
 
 /**
  * Where a toolbar popover opens (G14), in the same space as its inputs: above
- * the bar, else right of it, else left of it, else below it — the first that
- * fits the bounds without covering the selection. When none does, the
- * placement covering the least of the selection wins.
+ * the bar, else right of it, else left of it, else below it, else below the
+ * selection — the first that fits the bounds without covering the selection.
+ * When none does, the placement covering the least of the bar and the
+ * selection wins: a panel over its own bar hides the button that closes it.
  */
 export function popoverPosition(
   bar: Rect,
@@ -50,16 +51,18 @@ export function popoverPosition(
     { left: bar.x + bar.w + 8, top: clampY(bar.y) },
     { left: bar.x - 8 - panel.w, top: clampY(bar.y) },
     { left: clampX(anchorLeft), top: bar.y + bar.h + 8 },
+    { left: clampX(anchorLeft), top: selection.y + selection.h + 8 },
   ];
   const fits = (c: { left: number; top: number }) =>
     c.left >= bounds.left && c.left + panel.w <= bounds.right &&
     c.top >= bounds.top && c.top + panel.h <= bounds.bottom;
-  const covered = (c: { left: number; top: number }) =>
-    overlap({ x: c.left, y: c.top, w: panel.w, h: panel.h }, selection);
-  const best = candidates.find(c => fits(c) && covered(c) === 0);
+  const over = (c: { left: number; top: number }, r: Rect) => overlap({ x: c.left, y: c.top, w: panel.w, h: panel.h }, r);
+  const covered = (c: { left: number; top: number }) => over(c, selection);
+  const best = candidates.find(c => fits(c) && covered(c) === 0 && over(c, bar) === 0);
   if (best !== undefined) {
     return best;
   }
   const clamped = candidates.map(c => ({ left: clampX(c.left), top: clampY(c.top) }));
-  return clamped.reduce((a, b) => (covered(b) < covered(a) ? b : a));
+  const cost = (c: { left: number; top: number }) => covered(c) + over(c, bar);
+  return clamped.reduce((a, b) => (cost(b) < cost(a) ? b : a));
 }

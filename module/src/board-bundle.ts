@@ -4,17 +4,17 @@
 // the module passes the Timestamp and Identity constructors to parseBundle.
 import { sha256Hex } from './sha256';
 import { PLUGIN_TABLES } from './plugin-meta.generated';
-import { remapTellingSteps } from './tellings';
+import { FLOW_COLORS, remapTellingSteps } from './tellings';
 
 export const BUNDLE_FORMAT = 'draw.board-bundle';
-export const BUNDLE_VERSION = 2;
+export const BUNDLE_VERSION = 3;
 /** UTF-8 bytes of a whole bundle file. */
 export const MAX_BUNDLE_BYTES = 16 * 1024 * 1024;
 
 type Codec = 'u64' | 'u32' | 'i32' | 'f32' | 'f64' | 'bool' | 'string' | 'time' | 'identity' | 'u64[]' | 'string[]' | 'u64?';
 type Cols = Record<string, Codec>;
 
-// Format v2 (v1 had no tellings). Each section is one board-owned table; its columns, in key order. A column left out
+// Format v3 (v1 had no tellings, v2 no telling colours). Each section is one board-owned table; its columns, in key order. A column left out
 // is never stored: code text (edge.evidenceSnippet, codeRef.snippet), a mark's claim and lease,
 // and every boardId (the restored board's). Never change a format: append the next and decode older ones into it.
 export const SECTIONS = {
@@ -41,6 +41,7 @@ export const SECTIONS = {
   tracePlayback: { table: 'tracePlayback', one: true, cols: { spans: 'string', source: 'string', title: 'string', seq: 'u32', playedAt: 'time' } },
   boardWindow: { table: 'boardWindow', one: true, cols: { startMs: 'f64', endMs: 'f64', updatedAt: 'time' } },
   tellings: { table: 'telling', cols: { id: 'u64', audience: 'string', title: 'string', steps: 'string', author: 'string', updatedAt: 'time' } },
+  tellingColors: { table: 'tellingColor', cols: { tellingId: 'u64', color: 'string' } },
 } as const satisfies Record<string, { table: string; one?: true; cols: Cols }>;
 
 // Every other table and why a bundle leaves it out: the coverage inventory. scripts/verify-versions-local.mjs
@@ -146,8 +147,8 @@ export function parseBundle(text: string, conv: Convert = PLAIN): BundleBoard {
   if (f.version > BUNDLE_VERSION) fail(`the bundle is format ${f.version}; this server reads formats up to ${BUNDLE_VERSION}`);
   if (Object.keys(f).join() !== 'format,version,sha256,board' || !isObj(f.board)) fail('the bundle must have exactly format, version, sha256 and board');
   if (typeof f.sha256 !== 'string' || sha256Hex(JSON.stringify(f.board)) !== f.sha256) fail('the bundle checksum does not match its contents');
-  // v1 predates tellings: it decodes as v2 with none.
-  const raw = (f.version === 1 ? { ...f.board, tellings: [] } : f.board) as Record<string, unknown>;
+  // v1 predates tellings and v2 their colours: each decodes as the current format with none.
+  const raw = (f.version === 1 ? { ...f.board, tellings: [], tellingColors: [] } : f.version === 2 ? { ...f.board, tellingColors: [] } : f.board) as Record<string, unknown>;
   const expected = ['name', 'source', 'architecture', ...Object.keys(SECTIONS)];
   if (Object.keys(raw).length !== expected.length || expected.some(k => !(k in raw))) fail(`board must have exactly the fields ${expected.join(', ')}`);
   const board: any = {
@@ -191,9 +192,13 @@ function checkRelations(b: any): void {
   for (const r of b.codeRefs) target(r.targetKind, r.targetId, `code ref ${r.id}`);
   for (const n of b.changeNotes) { target('node', n.anchorId, 'a change note'); if (!refs.has(n.refId)) fail(`a change note names code ref ${n.refId}, which is not in the bundle`); }
   for (const t of b.threats) target('node', t.anchorId, 'a threat');
+  const tellings = keys(b.tellings, 'id', 'tellings');
+  for (const id of keys(b.tellingColors, 'tellingId', 'tellingColors')) if (!tellings.has(id)) fail(`tellingColors names tellingId ${id}, which is not in the bundle`);
+  // The reducer's rules (set_telling_color): a hue from the palette, one flow per hue.
+  for (const color of keys(b.tellingColors, 'color', 'tellingColors')) if (!FLOW_COLORS.includes(color as unknown as string)) fail(`tellingColors has color ${color}, which is not a flow color`);
 }
 
-const rowKey = (r: any): bigint => r.id ?? r.nodeId ?? r.edgeId ?? r.refId;
+const rowKey = (r: any): bigint => r.id ?? r.nodeId ?? r.edgeId ?? r.refId ?? r.tellingId;
 const byKey = (a: any, b: any) => (rowKey(a) < rowKey(b) ? -1 : rowKey(a) > rowKey(b) ? 1 : 0);
 
 /** Reads one board's persistent content. Call it inside one transaction, so the bundle is one consistent state. */
@@ -253,7 +258,9 @@ export function restoreBoard(ctx: any, b: BundleBoard, boardId: bigint, epoch: u
   if (b.session) db.session.insert({ ...b.session, id: 0n, boardId });
   if (b.sessionRoute) db.sessionRoute.insert({ ...b.sessionRoute, boardId, nodeIds: b.sessionRoute.nodeIds.map((id: bigint) => to(nodes, id)) });
   if (b.sessionRemote) db.sessionRemote.insert({ ...b.sessionRemote, boardId });
-  for (const t of b.tellings) db.telling.insert({ ...t, id: 0n, boardId, steps: remapTellingSteps(t.steps, id => to(nodes, id)) });
+  const tellings = new Map<bigint, bigint>();
+  for (const t of b.tellings) tellings.set(t.id, db.telling.insert({ ...t, id: 0n, boardId, steps: remapTellingSteps(t.steps, id => to(nodes, id)) }).id);
+  for (const c of b.tellingColors) db.tellingColor.insert({ ...c, tellingId: to(tellings, c.tellingId), boardId });
   if (b.tracePlayback) db.tracePlayback.insert({ ...b.tracePlayback, boardId, spans: remapJson(b.tracePlayback.spans, (s: any) => ({ ...s, node: to(nodes, BigInt(s.node)).toString() })) });
 }
 
