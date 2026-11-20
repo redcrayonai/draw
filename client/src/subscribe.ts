@@ -24,6 +24,8 @@ export const CHANGE_NOTE_TABLES = ['visible_change_note'];
 export const THREAT_TABLES = ['visible_threat'];
 /** Tellings (walk-throughs per audience): optional, so a module without them keeps the board open. */
 export const TELLING_TABLES = ['visible_telling'];
+/** Flow colours of tellings: their own optional subscription, so a module without them still plays walk-throughs. */
+export const FLOW_TABLES = ['visible_telling_color'];
 /** Red crayon review marks, waiting agents and read cursors: optional, so a module without them keeps the board open. */
 export const MARK_TABLES = ['visible_mark', 'visible_mark_waiter', 'visible_mark_read'];
 /** Hand-set edge weights (RC-688): optional, so a module without them draws every edge at regular weight. */
@@ -206,4 +208,7 @@ export function subscribeBoard(
   conn.subscriptionBuilder()
     .onError(ctx => console.warn('tellings unavailable (module predates tellings):', ctx.event))
     .subscribe(all(TELLING_TABLES));
+  conn.subscriptionBuilder()
+    .onError(ctx => console.warn('flows unavailable (module predates them):', ctx.event))
+    .subscribe(all(FLOW_TABLES));
 }

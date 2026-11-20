@@ -41,6 +41,19 @@ describe('popoverPosition (G14)', () => {
     return { side: t.side, barRect, pop: { x: p.left, y: p.top, w: panel.w, h: panel.h } };
   }
 
+  it('a wide panel with no room above or beside the bar opens below the selection, never over its own bar', () => {
+    // The colour grid between an open rail and inspector, the node near the top (node-editing.spec).
+    const tight = { left: 264, right: 928, top: 84, bottom: 704 };
+    const sel = { x: 500, y: 272, w: 160, h: 80 };
+    const barRect = { x: 394, y: 216, w: 372, h: 44 };
+    const grid = { w: 388, h: 184 };
+    const p = popoverPosition(barRect, barRect.x + 8, grid, sel, tight);
+    const pop = { x: p.left, y: p.top, w: grid.w, h: grid.h };
+    expect(intersects(pop, barRect)).toBe(false);
+    expect(intersects(pop, sel)).toBe(false);
+    expect(p.top).toBe(sel.y + sel.h + 8);
+  });
+
   it('popover rect never intersects the selection near the top edge', () => {
     for (const y of [68, 80, 100, 140, 180, 220, 300, 420, 560]) {
       for (const x of [300, 520, 760, 900]) {

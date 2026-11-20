@@ -19,6 +19,8 @@ export const linkNotFound = (link: string) =>
   `REJECTED: no board at ${link}. Nothing was written. Check the link, or call start_session with a name to open your own board.`;
 export const targetNotFound = (kind: 'node' | 'edge' | 'code ref' | 'chart' | 'change note' | 'threat', id: string | bigint, board: string) =>
   `REJECTED: ${kind} ${id} not found on board "${board}". Nothing was written. Call get_board for current ids.`;
+export const flowColorTaken = (color: string, flow: string, board: string) =>
+  `REJECTED: telling rule: ${color} already marks ${flow} on this board; pick another color. Nothing was written. board=${board}`;
 export const noSession = (board: string) =>
   `REJECTED: board "${board}" has no session for this checkout. Nothing was written. Call start_session from inside your project to open a board with code refs.`;
 export const rateLimited = (seconds: number) =>

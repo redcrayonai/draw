@@ -29,14 +29,15 @@ says why, and the first word tells the agent what to do:
 | Tool | What it does |
 |---|---|
 | `apply_board` | Creates nodes and their edges, then optionally lays them out, in one call. Uses temporary node keys; at most 16 operations. Nodes must differ in label, sublabel or position. Returned edge IDs match input order, with `null` for unconfirmed IDs. |
-| `create_node` | Adds a component: a service, data store, external system, boundary, note or text block. |
+| `create_node` | Adds a component: a service, data store, external system, boundary, note or text block. Takes an optional colour: one of nine hues, and on a service or data store a soft or bold strength. |
 | `update_node` | Changes a node's label, sublabel, colour, kind or focus. |
 | `move_node` | Moves a node. |
 | `resize_node` | Resizes a node. |
 | `layout_board` | Lays the board out left to right: entry points left, data stores right. Best for about 5 nodes or fewer; plan positions on larger boards. |
 | `hide_node` | Hides a node and its edges without deleting them. |
 | `delete_node` | Deletes a node and its edges. |
-| `create_edge` | Connects two nodes, with a label and the source line that proves the link. |
+| `create_edge` | Connects two nodes, with a label and the source line that proves the link. Takes an optional colour, the hue of the group or flow the edge belongs to. |
+| `update_edge` | Changes the colour of an existing edge, or takes it off. |
 | `hide_edge` | Hides an edge without deleting it. |
 | `delete_edge` | Deletes an edge. |
 
@@ -72,7 +73,7 @@ says why, and the first word tells the agent what to do:
 | `start_tap` | Starts a live view of your app's local traffic on the board, while you run it. |
 | `set_edge_latency` | Sets an edge's latency and where the number came from: production, local or an estimate. |
 | `play_trace` | Replays one request on the board, span by span; errors show red. |
-| `save_telling` | Saves a walk-through of the board for one audience: ordered steps that light a few nodes each, with one sentence. Saving again for the same audience replaces it. |
+| `save_telling` | Saves a walk-through of the board for one audience: ordered steps that light a few nodes each, with one sentence. Saving again for the same audience replaces it. With a colour it becomes a flow: the legend on the board lists it, the board paints the nodes and edges only that flow uses, and a reader can show that flow alone and step through it. |
 | `remove_telling` | Removes the walk-through for one audience. |
 
 ## Red crayon review

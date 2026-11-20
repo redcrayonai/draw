@@ -1435,8 +1435,9 @@ svg[viewBox='0 0 16 16'] * {
   box-shadow: var(--shadow-lg);
 }
 
+/* Nine 28 px hues and a row label: the grid sets its own width. */
 #tb-color-menu .tb-popover {
-  width: 238px;
+  width: max-content;
 }
 
 /* An edge adds Default: seven 28 px swatches and six gaps on one row. */
@@ -4748,6 +4749,14 @@ textarea#inline-edit {
   --c-green-fill: #14241A;
   --c-purple-fill: #1F1830;
   --c-gray-fill: #1E1E22;
+  --c-orange: #F0883E;
+  --c-yellow: #E3B341;
+  --c-teal: #2CC5C5;
+  --c-pink: #F472B6;
+  --c-orange-fill: #37271F;
+  --c-yellow-fill: #312A1E;
+  --c-teal-fill: #192F31;
+  --c-pink-fill: #3A2532;
   /* chart series (spec: Tokens), validated against --panel #161619 */
   --series-1: #3987e5;
   --series-2: #199e70;
@@ -4780,6 +4789,14 @@ textarea#inline-edit {
   --c-green-fill: #E8F6EC;
   --c-purple-fill: #F2EBFE;
   --c-gray-fill: #F2F2F0;
+  --c-orange: #BC4C00;
+  --c-yellow: #966401;
+  --c-teal: #017B85;
+  --c-pink: #BF3989;
+  --c-orange-fill: #F6E6DB;
+  --c-yellow-fill: #EFE8D9;
+  --c-teal-fill: #DBEDEE;
+  --c-pink-fill: #F6E3EE;
   /* chart series (spec: Tokens), validated against --panel #FFFFFF */
   --series-1: #2a78d6;
   --series-2: #1baf7a;
@@ -4813,6 +4830,14 @@ textarea#inline-edit {
   --c-green-fill: #B6F2C3;
   --c-purple-fill: #DDC4FF;
   --c-gray-fill: #E8E8E8;
+  --c-orange: #945204;
+  --c-yellow: #7A6207;
+  --c-teal: #027184;
+  --c-pink: #AE0286;
+  --c-orange-fill: #D4BA9B;
+  --c-yellow-fill: #CAC09C;
+  --c-teal-fill: #9AC6CE;
+  --c-pink-fill: #E1A1D2;
   /* chart series: the light values (white panels) */
   --series-1: #2a78d6;
   --series-2: #1baf7a;
@@ -4836,12 +4861,35 @@ textarea#inline-edit {
 .node.color-green .node-rect { stroke: var(--c-green); fill: var(--c-green-fill); }
 .node.color-purple .node-rect { stroke: var(--c-purple); fill: var(--c-purple-fill); }
 .node.color-gray .node-rect { stroke: var(--c-gray); fill: var(--c-gray-fill); }
+.node.color-orange .node-rect { stroke: var(--c-orange); fill: var(--c-orange-fill); }
+.node.color-yellow .node-rect { stroke: var(--c-yellow); fill: var(--c-yellow-fill); }
+.node.color-teal .node-rect { stroke: var(--c-teal); fill: var(--c-teal-fill); }
+.node.color-pink .node-rect { stroke: var(--c-pink); fill: var(--c-pink-fill); }
 
 /* External nodes are drawn unfilled and boundaries faintly filled by kind. The
    colour rules above carry one more class than `.node-external .node-rect`, so
    without this they would win and give those kinds a fill they must not have. */
 .node.node-external .node-rect { fill: none; }
 .node.node-boundary .node-rect { fill: var(--ink); fill-opacity: 0.03; }
+
+/* Strength (module/src/colors.ts): '<hue>-soft' and '<hue>-bold' reuse the hue's
+   one token per theme, so a theme defines nine colours, not twenty-seven. Soft
+   fades the outline into the node; bold fills with the hue and its text takes
+   --paper, the pair themes.test.ts already holds at AA. render.ts gives the
+   tone class only to kinds that fill (service, datastore). */
+.node.color-ink { --hue: var(--c-ink); }
+.node.color-red { --hue: var(--c-red); }
+.node.color-orange { --hue: var(--c-orange); }
+.node.color-yellow { --hue: var(--c-yellow); }
+.node.color-green { --hue: var(--c-green); }
+.node.color-teal { --hue: var(--c-teal); }
+.node.color-blue { --hue: var(--c-blue); }
+.node.color-purple { --hue: var(--c-purple); }
+.node.color-pink { --hue: var(--c-pink); }
+.node.color-gray { --hue: var(--c-gray); }
+.node.tone-soft .node-rect { stroke: color-mix(in srgb, var(--hue) 55%, var(--panel)); fill: color-mix(in srgb, var(--hue) 7%, var(--panel)); }
+.node.tone-bold .node-rect { fill: var(--hue); }
+#world .node.tone-bold :is(.node-label, .node-sublabel) { fill: var(--paper); }
 
 /* focal still wins: accent stays the board's one reserved signal. Equal
    specificity to the colour rules, so this must stay declared after them. */
@@ -4868,7 +4916,12 @@ textarea#inline-edit {
 .node.color-green .node-icon-stroke { color: var(--c-green); }
 .node.color-purple .node-icon-stroke { color: var(--c-purple); }
 .node.color-gray .node-icon-stroke { color: var(--c-gray); }
+.node.color-orange .node-icon-stroke { color: var(--c-orange); }
+.node.color-yellow .node-icon-stroke { color: var(--c-yellow); }
+.node.color-teal .node-icon-stroke { color: var(--c-teal); }
+.node.color-pink .node-icon-stroke { color: var(--c-pink); }
 .node.focal .node-icon-stroke { color: var(--accent); }
+#world .node.tone-bold .node-icon-stroke { color: var(--paper); }
 :root[data-theme='brutal'] .node .node-icon-stroke > g { stroke-width: 1.6; }
 .logo-on-light { display: none; }
 :root:is([data-theme='light'], [data-theme='brutal'], [data-theme='catppuccin-latte'], [data-theme='material-light'], [data-theme='one-light']) .logo-on-light { display: inline; }
@@ -4971,11 +5024,23 @@ textarea#inline-edit {
 /* ---------- style toolbar: swatches, size, line ---------- */
 
 #tb-swatches {
-  display: flex;
-  flex-wrap: wrap;
+  display: grid;
+  grid-template-columns: auto repeat(9, 28px);
   align-items: center;
   gap: var(--space-2);
   margin-top: var(--space-2);
+}
+
+/* A phone is narrower than nine 28 px hues: smaller swatches, tighter gaps. */
+@media (max-width: 480px) {
+  #toolbar:not(.edges-only) #tb-swatches { grid-template-columns: auto repeat(9, 22px); gap: var(--space-1); }
+  #toolbar:not(.edges-only) #tb-swatches .swatch { width: 22px; min-width: 22px; height: 22px; }
+}
+
+/* Edges only: one wrapping row of hues, as before the strengths came. */
+#toolbar.edges-only #tb-swatches {
+  display: flex;
+  flex-wrap: wrap;
 }
 
 .swatch {
@@ -5002,6 +5067,27 @@ textarea#inline-edit {
 #toolbar .sw-green { background: var(--c-green); }
 #toolbar .sw-purple { background: var(--c-purple); }
 #toolbar .sw-gray { background: var(--c-gray); }
+#toolbar .sw-orange { background: var(--c-orange); }
+#toolbar .sw-yellow { background: var(--c-yellow); }
+#toolbar .sw-teal { background: var(--c-teal); }
+#toolbar .sw-pink { background: var(--c-pink); }
+/* The colour grid: nine hues in columns, a row per strength (module/src/colors.ts).
+   A regular swatch is tinted and a bold one solid, as the node they give; with
+   only edges selected the strengths go and each hue is the solid dot of its line. */
+#toolbar .sw-red { --sw: var(--c-red); }
+#toolbar .sw-orange { --sw: var(--c-orange); }
+#toolbar .sw-yellow { --sw: var(--c-yellow); }
+#toolbar .sw-green { --sw: var(--c-green); }
+#toolbar .sw-teal { --sw: var(--c-teal); }
+#toolbar .sw-blue { --sw: var(--c-blue); }
+#toolbar .sw-purple { --sw: var(--c-purple); }
+#toolbar .sw-pink { --sw: var(--c-pink); }
+#toolbar .sw-gray { --sw: var(--c-gray); }
+#toolbar:not(.edges-only) #tb-swatches .sw-regular { background: color-mix(in srgb, var(--sw) 30%, var(--panel)); border-color: var(--sw); }
+#tb-swatches .sw-soft { background: color-mix(in srgb, var(--sw) 8%, var(--panel)); border-color: color-mix(in srgb, var(--sw) 55%, var(--panel)); }
+#tb-swatches .swatch.on { border-color: var(--ink); }
+#tb-swatches .sw-row { font-size: 11px; color: var(--muted); }
+#toolbar.edges-only #tb-swatches :is(.sw-tone, .sw-row) { display: none; }
 /* An edge's '' colour: no colour of its own, so the evidence overlay or the
    plain edge colour decides. Struck through, as "no colour" reads elsewhere. */
 #toolbar .sw-default {
@@ -5051,6 +5137,10 @@ textarea#inline-edit {
 .node-note.color-green .note-body { fill: var(--c-green); }
 .node-note.color-purple .note-body { fill: var(--c-purple); }
 .node-note.color-gray .note-body { fill: var(--c-gray); }
+.node-note.color-orange .note-body { fill: var(--c-orange); }
+.node-note.color-yellow .note-body { fill: var(--c-yellow); }
+.node-note.color-teal .note-body { fill: var(--c-teal); }
+.node-note.color-pink .note-body { fill: var(--c-pink); }
 
 .node-note.size-s .note-body { font-size: 12px; }
 .node-note.size-l .note-body { font-size: 17px; }
@@ -5066,6 +5156,10 @@ textarea#inline-edit {
 .node-text.color-green .text-body { fill: var(--c-green); }
 .node-text.color-purple .text-body { fill: var(--c-purple); }
 .node-text.color-gray .text-body { fill: var(--c-gray); }
+.node-text.color-orange .text-body { fill: var(--c-orange); }
+.node-text.color-yellow .text-body { fill: var(--c-yellow); }
+.node-text.color-teal .text-body { fill: var(--c-teal); }
+.node-text.color-pink .text-body { fill: var(--c-pink); }
 
 /* P2 fix: the style toolbar outgrew narrow viewports and clipped its controls.
    Let it wrap and cap its width rather than overflow the canvas. */
@@ -5091,6 +5185,14 @@ textarea#inline-edit {
 #world.overlay .edge-line.color-purple { stroke: var(--c-purple); }
 #world .edge-line.color-gray,
 #world.overlay .edge-line.color-gray { stroke: var(--c-gray); }
+#world .edge-line.color-orange,
+#world.overlay .edge-line.color-orange { stroke: var(--c-orange); }
+#world .edge-line.color-yellow,
+#world.overlay .edge-line.color-yellow { stroke: var(--c-yellow); }
+#world .edge-line.color-teal,
+#world.overlay .edge-line.color-teal { stroke: var(--c-teal); }
+#world .edge-line.color-pink,
+#world.overlay .edge-line.color-pink { stroke: var(--c-pink); }
 /* RC-688: a hand-set line and weight show only while the evidence overlay is
    off. Under it, weight and dash carry the evidence class (the ev-* rules) and
    the edge keeps just its colour; the stored style is untouched, so turning
@@ -5131,12 +5233,12 @@ textarea#inline-edit {
    so a colour picked from the toolbar shows at once, and a halo in --sel marks
    the selection instead (RC-688). :where() keeps (1,2,0), so diff and reader
    colours, declared later, still win as they did. */
-#world .edge-line.selected:where(:not(.color-ink, .color-blue, .color-red, .color-green, .color-purple, .color-gray)),
-#world.overlay .edge-line.selected:where(:not(.color-ink, .color-blue, .color-red, .color-green, .color-purple, .color-gray)) {
+#world .edge-line.selected:where(:not(.color-ink, .color-blue, .color-red, .color-green, .color-purple, .color-gray, .color-orange, .color-yellow, .color-teal, .color-pink)),
+#world.overlay .edge-line.selected:where(:not(.color-ink, .color-blue, .color-red, .color-green, .color-purple, .color-gray, .color-orange, .color-yellow, .color-teal, .color-pink)) {
   stroke: var(--sel);
 }
 
-#world .edge-line.selected:where(.color-ink, .color-blue, .color-red, .color-green, .color-purple, .color-gray) {
+#world .edge-line.selected:where(.color-ink, .color-blue, .color-red, .color-green, .color-purple, .color-gray, .color-orange, .color-yellow, .color-teal, .color-pink) {
   filter: drop-shadow(0 0 1.5px var(--sel)) drop-shadow(0 0 1.5px var(--sel));
 }
 
@@ -5157,6 +5259,10 @@ textarea#inline-edit {
 .mk-c-green { stroke: var(--c-green); }
 .mk-c-purple { stroke: var(--c-purple); }
 .mk-c-gray { stroke: var(--c-gray); }
+.mk-c-orange { stroke: var(--c-orange); }
+.mk-c-yellow { stroke: var(--c-yellow); }
+.mk-c-teal { stroke: var(--c-teal); }
+.mk-c-pink { stroke: var(--c-pink); }
 
 /* ---------- SESSION block (rail) ---------- */
 
@@ -5964,7 +6070,7 @@ a.ctl {
 :root[data-theme='brutal'] .chart-tag-box,
 :root[data-theme='brutal'] .chart-sample-box { stroke: var(--ink); stroke-width: 2; rx: 0; ry: 0; }
 
-:root[data-theme='brutal'] .node.focal:is(.color-blue, .color-red, .color-green, .color-purple, .color-gray)
+:root[data-theme='brutal'] .node.focal:is(.color-blue, .color-red, .color-green, .color-purple, .color-gray, .color-orange, .color-yellow, .color-teal, .color-pink)
   .node-label.token-accent { fill: var(--accent-ink); }
 
 /* Change notes on the board (spec 2026-10-16): the anchor's tag and schema
@@ -7059,3 +7165,60 @@ svg:not(.armed) #crayon .mark-chip { pointer-events: all; cursor: pointer; }
 @media (max-width: 560px) {
   #telling-bar { max-height: 60%; overflow-y: auto; }
 }
+
+/* ---------- flows (flows.ts, flow-legend.ts) ----------
+   A flow is a walk-through with a colour. render.ts gives its nodes and edges
+   the ordinary color-<hue> classes; these rules add what is new: the dots on a
+   node several flows pass through, and one flow shown alone, where the rest of
+   the board dims but stays in place so the reader keeps their bearings. */
+.node-flow-dots { pointer-events: none; }
+/* One hue per dot class, for the dots on a shared node and in the legend. */
+.node-flow-dot { fill: var(--dot); }
+.dot-red { --dot: var(--c-red); }
+.dot-orange { --dot: var(--c-orange); }
+.dot-yellow { --dot: var(--c-yellow); }
+.dot-green { --dot: var(--c-green); }
+.dot-teal { --dot: var(--c-teal); }
+.dot-blue { --dot: var(--c-blue); }
+.dot-purple { --dot: var(--c-purple); }
+.dot-pink { --dot: var(--c-pink); }
+.dot-gray { --dot: var(--c-gray); }
+#world.flow-only .node.flow-out { opacity: 0.16; }
+#world.flow-only .edge.flow-out,
+#world.flow-only .edge-labels.flow-out { opacity: 0.1; }
+/* A flow shown alone or played: its step numbers and the lit step's glow take the flow's hue, not the accent. */
+#world.flow-hue .node-step-circle { fill: var(--hue, var(--accent)); }
+#world.flow-hue .node-step-number { fill: var(--paper); }
+#world.flow-hue.telling-on .node.telling-lit:not(.trace-active):not(.trace-error) .node-rect { filter: drop-shadow(0 4px 10px color-mix(in srgb, var(--hue, var(--accent)) 45%, transparent)); }
+@media (prefers-reduced-motion: no-preference) {
+  #world.flow-only .node, #world.flow-only .edge, #world.flow-only .edge-labels { transition: opacity 0.18s ease-out; }
+}
+
+#flow-legend {
+  position: absolute;
+  left: var(--space-4, 16px);
+  bottom: 76px; /* above the zoom control */
+  z-index: 11;
+  min-width: 208px;
+  max-width: min(280px, calc(100vw - 32px));
+  padding: var(--space-2);
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: var(--r-lg);
+  box-shadow: var(--shadow);
+  font: 13px/1.3 var(--sans);
+  color: var(--ink);
+}
+#flow-legend[hidden] { display: none; }
+.flow-legend-head { display: flex; justify-content: space-between; gap: var(--space-3); padding: 2px var(--space-2) var(--space-2); font-size: 10.5px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); }
+.flow-legend-row { display: flex; align-items: center; gap: var(--space-2); width: 100%; padding: 6px var(--space-2); border: 0; border-radius: var(--r-md); background: none; color: inherit; font: inherit; text-align: left; cursor: pointer; }
+.flow-legend-row:hover { background: color-mix(in srgb, var(--tint) 6%, transparent); }
+.flow-legend-row[aria-pressed='true'] { background: var(--sel-soft); }
+#flow-legend.picked .flow-legend-row[aria-pressed='false'] { opacity: 0.5; }
+.flow-legend-dot { flex: none; width: 10px; height: 10px; border-radius: 50%; background: var(--dot); }
+.flow-legend-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.flow-legend-count { margin-left: auto; padding-left: var(--space-3); color: var(--muted); font-size: 12px; white-space: nowrap; }
+.flow-legend-actions { display: flex; gap: var(--space-2); margin-top: var(--space-2); padding: var(--space-2) var(--space-2) 2px; border-top: 1px solid var(--hairline); }
+.flow-legend-actions[hidden] { display: none; }
+/* The walk-through bar takes the bottom of the canvas while it plays. */
+#canvas-wrap.telling-open #flow-legend { display: none; }

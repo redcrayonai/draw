@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import { readTellings, stepView, stepMs, stepStart, stepAt, tellingMs, type Telling } from './telling';
 
 const step = (nodes: string[], body = 'x', frame: string[] = []) => ({ nodes, frame, title: 't', body, source: '' });
-const t: Telling = { id: 1n, audience: 'a', title: 'T', steps: [step(['1']), step(['2', '3']), step(['4'])] };
+const t: Telling = { id: 1n, audience: 'a', title: 'T', color: '', steps: [step(['1']), step(['2', '3']), step(['4'])] };
 const live = new Set([1n, 2n, 3n, 4n]);
 
 describe('stepView', () => {

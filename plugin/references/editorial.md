@@ -38,6 +38,9 @@ own mistakes freely.
 - Exactly one `focal: true` node — the thing you built that a reader should see
   first. The server allows two for hand-drawn boards; a session board never uses
   the second.
+- `color` is optional, on nodes and edges: it groups parts that belong together,
+  and a walk-through with a color traces one flow through the board. Read
+  [color.md](color.md) before you set one.
 - `kind` carries the visual grammar: `service` (code you wrote), `datastore`
   (tables, files, caches), `external` (outside this repo), `boundary` (a container
   — create it first and large, `token: muted`, then place members inside with

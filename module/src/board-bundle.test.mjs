@@ -53,6 +53,7 @@ function seed(db, boardId = 7n) {
   db.sessionRoute.insert({ boardId, nodeIds: [1n, 2n], currentIndex: 1, revision: 1, currentCheckpoint: 2, updatedAt: time(2n) });
   db.sessionRemote.insert({ boardId, remoteUrl: 'https://github.com/o/r', pushedHead: '', dirtyPaths: ['src/a.ts'] });
   db.telling.insert({ id: 101n, boardId, audience: 'product', title: 'Checkout', steps: JSON.stringify([{ nodes: ['1', '999'], frame: ['2'], title: 't', body: 'b', source: '' }]), author: 'agent', updatedAt: time(7n) });
+  db.tellingColor.insert({ tellingId: 101n, boardId, color: 'blue' });
   db.tracePlayback.insert({ boardId, spans: JSON.stringify([{ id: 'a', parent: null, node: '1', startMs: 0, durationMs: 5, status: 'ok' }]), source: 'local', title: 't', seq: 1, playedAt: time(6n) });
 }
 
@@ -135,6 +136,14 @@ test('parseBundle refuses corrupt, unsupported, oversized and inconsistent bundl
   const { tellings, ...v1 } = board;
   assert.deepEqual(parseBundle(bundleText(v1).replace(`"version":${BUNDLE_VERSION}`, '"version":1')).tellings, []);
   rejects(resealed(v1), 'board must have exactly the fields');
+  // Version 2 predates telling colours: it reads with none; version 3 must carry them, each for a telling in the bundle.
+  const { tellingColors, ...v2 } = board;
+  assert.deepEqual(parseBundle(bundleText(v2).replace(`"version":${BUNDLE_VERSION}`, '"version":2')).tellingColors, []);
+  rejects(resealed(v2), 'board must have exactly the fields');
+  rejects(resealed({ ...board, tellingColors: [{ tellingId: '4242', color: 'blue' }] }), 'tellingColors names tellingId 4242');
+  rejects(resealed({ ...board, tellingColors: [{ ...board.tellingColors[0], color: 'blue ghost' }] }), 'which is not a flow color');
+  const twin = { ...board.tellings[0], id: '102', audience: 'ops' };
+  rejects(resealed({ ...board, tellings: [...board.tellings, twin], tellingColors: [...board.tellingColors, { tellingId: '102', color: 'blue' }] }), 'tellingColors repeats color blue');
   // Checksum over the canonical board JSON: a re-encoded but identical board still verifies.
   const pretty = JSON.stringify({ format: 'draw.board-bundle', version: BUNDLE_VERSION, sha256: sha256Hex(JSON.stringify(board)), board }, null, 2);
   assert.equal(parseBundle(pretty).name, 'Payments');

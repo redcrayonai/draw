@@ -104,6 +104,7 @@ step comes up in the session, and follow it as part of this skill.
 | Before `set_selection`, and before the final checkpoint | [focus.md](../../references/focus.md) |
 | When ordered milestones help the reader (optional) | [route.md](../../references/route.md) |
 | When the user asks how a request flows or where time goes (optional) | [latency.md](../../references/latency.md) |
+| Before you set a `color`, and when one path through a larger board matters (optional) | [color.md](../../references/color.md) |
 | When the user asks you to propose a change as a branch (optional) | [branch.md](../../references/branch.md) |
 | After you draw the board: red crayon marks | [marks.md](../../references/marks.md) |
 

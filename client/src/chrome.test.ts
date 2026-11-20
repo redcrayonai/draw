@@ -159,7 +159,7 @@ describe('exportSvg follows the screen (G29)', () => {
   it('exports the settled board: no focus dimming or flow, live classes restored', () => {
     const svg = board(false);
     const style = document.createElement('style');
-    style.textContent = `#world.focus-dim .node:not(.focus-near) { opacity: 0.22; }`;
+    style.textContent = `#world.focus-dim .node:not(.focus-near) { opacity: 0.22; } #world.flow-only .node { opacity: 0.16; }`;
     document.head.append(style);
     try {
       const world = svg.querySelector('#world')!;
@@ -167,6 +167,13 @@ describe('exportSvg follows the screen (G29)', () => {
       const markup = chrome.exportSvgMarkup(svg);
       expect(markup).not.toContain('opacity:0.22');
       expect(markup).not.toMatch(/focus-dim|focus-flow|exporting/);
+      // one flow shown alone dims the rest on screen only
+      world.setAttribute('class', 'flow-only flow-hue');
+      const alone = chrome.exportSvgMarkup(svg);
+      expect(alone).not.toContain('opacity:0.16');
+      expect(alone).not.toContain('flow-only');
+      expect(world.getAttribute('class')).toBe('flow-only flow-hue');
+      world.setAttribute('class', 'focus-dim focus-flow');
       expect(world.classList.contains('focus-dim')).toBe(true);
       expect(world.classList.contains('focus-flow')).toBe(true);
       expect(world.classList.contains('exporting')).toBe(false);

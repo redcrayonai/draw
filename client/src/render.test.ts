@@ -2508,6 +2508,72 @@ describe('ghost edges', () => {
   });
 });
 
+describe('colour strength', () => {
+  it('gives a hue class and, on kinds that fill, a strength class', () => {
+    const world = document.createElementNS('http://www.w3.org/2000/svg', 'g') as SVGGElement;
+    const nodes = [mkNode(1, { color: 'teal-bold' }), mkNode(2, { color: 'pink-soft', kind: 'datastore' }), mkNode(3, { color: 'yellow-bold', kind: 'external' }), mkNode(4, { color: 'blue' })];
+    renderBoard(world, nodes, [], mkState());
+    const cls = (id: number) => [...world.querySelector(`g.node[data-id="${id}"]`)!.classList].filter(c => c.startsWith('color-') || c.startsWith('tone-'));
+    expect(cls(1)).toEqual(['color-teal', 'tone-bold']);
+    expect(cls(2)).toEqual(['color-pink', 'tone-soft']);
+    // an external draws unfilled: bold would hide its label
+    expect(cls(3)).toEqual(['color-yellow']);
+    expect(cls(4)).toEqual(['color-blue']);
+  });
+});
+
+describe('flows', () => {
+  const paint = (over: Record<string, unknown> = {}) => ({ nodeHue: new Map([[1n, 'teal']]), edgeHue: new Map([[10n, 'teal']]), dots: new Map([[2n, ['blue', 'pink']]]), only: null, stepOf: null, ...over });
+  const cls = (world: SVGGElement, id: number) => [...world.querySelector(`g.node[data-id="${id}"]`)!.classList];
+
+  it('an uncoloured node and edge take their flow\'s hue, a coloured one keeps its own, and a shared node gets a dot per flow', () => {
+    const world = document.createElementNS('http://www.w3.org/2000/svg', 'g') as SVGGElement;
+    const nodes = [mkNode(1), mkNode(2), mkNode(3, { color: 'red' })];
+    renderBoard(world, nodes, [mkEdge(10, 1, 2)], mkState({ flow: paint({ nodeHue: new Map([[1n, 'teal'], [3n, 'teal']]) }) }));
+    expect(cls(world, 1)).toContain('color-teal');
+    expect(cls(world, 3)).toContain('color-red');
+    expect(cls(world, 3)).not.toContain('color-teal');
+    expect([...world.querySelectorAll('g.node[data-id="2"] .node-flow-dot')].map(d => d.getAttribute('class'))).toEqual(['node-flow-dot dot-blue', 'node-flow-dot dot-pink']);
+    expect(world.querySelector('.edge-line')!.classList.contains('color-teal')).toBe(true);
+    expect(world.querySelector('.edge-line')!.getAttribute('marker-end')).toBe('url(#mk-c-teal)');
+    // the flow is removed: the board goes back to plain
+    renderBoard(world, nodes, [mkEdge(10, 1, 2)], mkState());
+    expect(cls(world, 1)).not.toContain('color-teal');
+    expect(world.querySelectorAll('.node-flow-dot').length).toBe(0);
+    expect(world.querySelector('.edge-line')!.classList.contains('color-teal')).toBe(false);
+  });
+
+  it('a latency or error mark, and the evidence overlay, stay on top of a flow\'s hue', () => {
+    const world = document.createElementNS('http://www.w3.org/2000/svg', 'g') as SVGGElement;
+    const nodes = [mkNode(1), mkNode(2)];
+    const line = () => world.querySelector('.edge-line')!;
+    renderBoard(world, nodes, [{ ...mkEdge(10, 1, 2), latencyMs: 450 }], mkState({ flow: paint() }));
+    expect(world.querySelector('g.edge')!.classList.contains('lat-hot')).toBe(true);
+    expect(line().classList.contains('color-teal')).toBe(false);
+    // the edge cools down: the flow's hue comes back
+    renderBoard(world, nodes, [mkEdge(10, 1, 2)], mkState({ flow: paint() }));
+    expect(world.querySelector('g.edge')!.classList.contains('lat-hot')).toBe(false);
+    expect(line().classList.contains('color-teal')).toBe(true);
+    renderBoard(world, nodes, [mkEdge(10, 1, 2)], mkState({ flow: paint(), overlay: true }));
+    expect(line().classList.contains('color-teal')).toBe(false);
+    // a colour a person set holds under the overlay, as before
+    renderBoard(world, nodes, [{ ...mkEdge(10, 1, 2), color: 'pink' }], mkState({ flow: paint(), overlay: true }));
+    expect(line().classList.contains('color-pink')).toBe(true);
+  });
+
+  it('one flow shown alone numbers its nodes and marks the rest of the board out', () => {
+    const world = document.createElementNS('http://www.w3.org/2000/svg', 'g') as SVGGElement;
+    const nodes = [mkNode(1), mkNode(2), mkNode(3)];
+    const flow = paint({ nodeHue: new Map([[1n, 'teal'], [2n, 'teal']]), dots: new Map(), only: new Set([1n, 2n]), stepOf: new Map([[1n, 1], [2n, 2]]) });
+    renderBoard(world, nodes, [mkEdge(10, 1, 2), mkEdge(11, 2, 3)], mkState({ flow }));
+    expect(world.classList.contains('flow-only')).toBe(true);
+    expect(cls(world, 3)).toContain('flow-out');
+    expect(cls(world, 2)).not.toContain('flow-out');
+    expect(world.querySelector('g.node[data-id="2"] .node-step-number')!.textContent).toBe('2');
+    expect([...world.querySelectorAll('g.edge')].map(g => g.classList.contains('flow-out'))).toEqual([false, true]);
+  });
+});
+
 describe('hand-set edge style (RC-688)', () => {
   const nodes = [mkNode(1), mkNode(2)];
   const line = (world: SVGGElement) => world.querySelector('.edge-line')!;
@@ -2609,14 +2675,14 @@ describe('hand-set edge style (RC-688)', () => {
     // a dot is a round cap
     expect(rules.find(r => r.sel === '#world:where(:not(.overlay)) .edge-line.stroke-dotted')?.body).toMatch(/stroke-linecap:\s*round/);
     // colour holds in both modes
-    for (const c of ['ink', 'blue', 'red', 'green', 'purple', 'gray']) {
+    for (const c of ['ink', 'blue', 'red', 'green', 'purple', 'gray', 'orange', 'yellow', 'teal', 'pink']) {
       const sels = naming(`color-${c}`).flatMap(r => r.sel.split(',').map(s => s.trim())).filter(s => s.endsWith(`.edge-line.color-${c}`));
       expect(sels, c).toEqual([`#world .edge-line.color-${c}`, `#world.overlay .edge-line.color-${c}`]);
     }
     // selection recolours only an edge without a colour of its own, and haloes the rest
-    const colours = ':not(.color-ink, .color-blue, .color-red, .color-green, .color-purple, .color-gray)';
+    const colours = ':not(.color-ink, .color-blue, .color-red, .color-green, .color-purple, .color-gray, .color-orange, .color-yellow, .color-teal, .color-pink)';
     expect(rules.find(r => r.sel.startsWith(`#world .edge-line.selected:where(${colours})`))?.body).toMatch(/stroke:\s*var\(--sel\)/);
-    expect(rules.find(r => r.sel === '#world .edge-line.selected:where(.color-ink, .color-blue, .color-red, .color-green, .color-purple, .color-gray)')?.body)
+    expect(rules.find(r => r.sel === '#world .edge-line.selected:where(.color-ink, .color-blue, .color-red, .color-green, .color-purple, .color-gray, .color-orange, .color-yellow, .color-teal, .color-pink)')?.body)
       .toMatch(/filter:\s*drop-shadow\([^)]*var\(--sel\)\)/);
     expect(rules.some(r => r.sel.split(',').some(s => s.trim() === '#world .edge-line.selected'))).toBe(false);
     // below 60% zoom a weighted head thins with its line, half a pixel over it
@@ -2639,7 +2705,7 @@ describe('hand-set edge style (RC-688)', () => {
     expect(head()).toBe('url(#mk-c-blue)');
     // half a pixel over the line, as the regular head (1.5) is over a 1 px line
     expect([width('mk-c-blue'), width('mk-c-blue-medium'), width('mk-c-blue-bold')]).toEqual(['1.5', '2.5', '3.5']);
-    for (const id of ['mk-edge', 'mk-sel', 'mk-c-ink', 'mk-c-blue', 'mk-c-red', 'mk-c-green', 'mk-c-purple', 'mk-c-gray']) {
+    for (const id of ['mk-edge', 'mk-sel', 'mk-c-ink', 'mk-c-blue', 'mk-c-red', 'mk-c-green', 'mk-c-purple', 'mk-c-gray', 'mk-c-orange', 'mk-c-yellow', 'mk-c-teal', 'mk-c-pink']) {
       for (const weight of ['medium', 'bold']) {
         const m = world.querySelector(`marker[id="${id}-${weight}"]`)!;
         expect(m, `${id}-${weight}`).not.toBeNull();

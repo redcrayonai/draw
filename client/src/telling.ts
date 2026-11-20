@@ -1,12 +1,13 @@
 import type { TellingStep } from '../../module/src/tellings';
 
-export interface Telling { id: bigint; audience: string; title: string; steps: TellingStep[] }
+/** color: '' is a plain walk-through; a hue makes it a flow (flows.ts). */
+export interface Telling { id: bigint; audience: string; title: string; color: string; steps: TellingStep[] }
 
 const ID = /^\d{1,20}$/;
 const ids = (v: unknown): string[] => Array.isArray(v) ? v.filter((x): x is string => typeof x === 'string' && ID.test(x)) : [];
 
-/** This board's tellings, oldest first. A row whose steps do not parse is skipped. */
-export function readTellings(rows: Iterable<{ id: bigint; boardId: bigint; audience: string; title: string; steps: string }>, boardId: bigint): Telling[] {
+/** This board's tellings, oldest first, each with its flow colour (visible_telling_color) when it has one. A row whose steps do not parse is skipped. */
+export function readTellings(rows: Iterable<{ id: bigint; boardId: bigint; audience: string; title: string; steps: string }>, boardId: bigint, colors: ReadonlyMap<bigint, string> = new Map()): Telling[] {
   const out: Telling[] = [];
   for (const r of rows) {
     if (r.boardId !== boardId) continue;
@@ -18,7 +19,7 @@ export function readTellings(rows: Iterable<{ id: bigint; boardId: bigint; audie
       nodes: ids(s.nodes), frame: ids(s.frame),
       title: String(s.title ?? ''), body: String(s.body ?? ''), source: String(s.source ?? ''),
     }));
-    out.push({ id: r.id, audience: r.audience, title: r.title, steps });
+    out.push({ id: r.id, audience: r.audience, title: r.title, color: colors.get(r.id) ?? '', steps });
   }
   return out.sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
 }

@@ -5,7 +5,7 @@ type Frame = Record<string, any>;
 const localTools = ['list_boards', 'open_board', 'read_board', 'apply_board', 'attach_conversation', 'read_code'];
 const hostedTools = [
   'get_board', 'create_node', 'move_node', 'layout_board', 'update_node', 'resize_node', 'delete_node',
-  'create_edge', 'hide_node', 'hide_edge', 'play_trace', 'start_tap', 'set_edge_latency', 'delete_edge',
+  'create_edge', 'hide_node', 'hide_edge', 'play_trace', 'start_tap', 'set_edge_latency', 'update_edge', 'delete_edge',
   'describe_charts', 'create_chart', 'set_chart_data', 'get_chart', 'pin_chart', 'set_time_window',
   'open_incident', 'start_session', 'create_branch', 'submit_branch', 'add_code_ref', 'mark_checkpoint',
   'plan_route', 'arrive', 'reroute', 'remove_code_ref', 'add_change_note', 'update_change_note',

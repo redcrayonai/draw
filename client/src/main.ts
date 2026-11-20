@@ -89,6 +89,7 @@ import { threatMarker, type MarkerSpec } from './board-marker';
 import { peekPosition, renderThreatPeek } from './threat-peek';
 import { blastRadius, type Blast, type Depth, type Direction } from './blast';
 import { isThreatKind } from '../../module/src/threats';
+import { EDGE_COLORS, colorParts } from '../../module/src/colors';
 import { blastLegs, loopBlast, playSpread } from './blast-play';
 import { renderThreatCard, threatCardKey, threatCardStillValid, type ThreatCardActions, type ThreatCardModel } from './threat-card';
 import { buildRouteModel, type RouteModel } from './route';
@@ -106,6 +107,8 @@ import { playRoute, reducedMotion, routeLegs } from './route-play';
 import { readTellings, type StepView, type Telling } from './telling';
 import { renderTellingBar } from './telling-bar';
 import { createTellingPlayer, drawEdgesIn, tellingKeyRoute } from './telling-play';
+import { flowPaint, readFlows, type FlowPaint } from './flows';
+import { renderFlowLegend } from './flow-legend';
 import { mountCrayon } from './crayon';
 import { listening, setupReview } from './review-panel';
 import { playTrace } from './trace-play';
@@ -720,7 +723,8 @@ async function boot(conn: DbConnection, identityHex: string, signedIn: boolean):
       const tellButton = document.getElementById('act-tell') as HTMLButtonElement;
       const tellingBar = document.getElementById('telling-bar') as HTMLElement;
       const rebuildTellings = () => {
-        tellings = readTellings(conn.db.visibleTelling?.iter() ?? [], boardId);
+        const colors = new Map([...(conn.db.visibleTellingColor?.iter() ?? [])].map(c => [c.tellingId, c.color] as const));
+        tellings = readTellings(conn.db.visibleTelling?.iter() ?? [], boardId, colors);
         tellButton.hidden = tellings.length === 0;
       };
       const player = createTellingPlayer({
@@ -750,6 +754,42 @@ async function boot(conn: DbConnection, identityHex: string, signedIn: boolean):
         player.open();
       };
       tellButton.addEventListener('click', openTelling);
+      // Flows: tellings with a colour. The legend lists them; picking one shows it alone.
+      let flowPicked: bigint | null = null;
+      const flowLegend = document.getElementById('flow-legend') as HTMLElement;
+      // Runs on every repaint: a board without flows must not pay for a set of its node ids.
+      const boardFlows = () => (tellings.some(t => t.color !== '') ? readFlows(tellings, new Set(getNodes().map(n => n.id))) : []);
+      /** What the board paints: the playing flow in its hue (the player owns the dimming), else the picked flow alone, else every flow. */
+      const flowState = (): FlowPaint | null => {
+        const flows = boardFlows();
+        if (!player.isOpen) return flowPaint(flows, getEdges(), flowPicked);
+        const playing = flows.find(f => f.id === player.current);
+        return playing ? { ...flowPaint([playing], getEdges(), playing.id)!, only: null, stepOf: null } : null;
+      };
+      const pickFlow = (id: bigint | null) => {
+        flowPicked = id;
+        editor.selectedEdges.clear();
+        editor.selectNodes([]);
+        rerender();
+        const nodes = id === null ? null : boardFlows().find(f => f.id === id)?.nodes;
+        if (nodes) viewport.flyTo(contentBounds(getNodes().filter(n => nodes.has(n.id))), chromeInsets(wrap), reducedMotion() ? 0 : 600);
+      };
+      const paintFlowLegend = () => {
+        const flows = boardFlows();
+        if (flowPicked !== null && !flows.some(f => f.id === flowPicked)) flowPicked = null; // the flow was removed
+        renderFlowLegend(flowLegend, {
+          flows: flows.map(f => ({ name: f.name, title: f.title, color: f.color, steps: f.steps })),
+          picked: flows.findIndex(f => f.id === flowPicked),
+          onPick: i => pickFlow(flows[i].id === flowPicked ? null : flows[i].id),
+          onShowAll: () => pickFlow(null),
+          onStep: () => {
+            editor.selectedEdges.clear();
+            editor.selectNodes([]);
+            player.setBlocked(document.visibilityState === 'hidden');
+            player.open(tellings.findIndex(t => t.id === flowPicked));
+          },
+        });
+      };
       document.addEventListener('visibilitychange', () => player.setBlocked(document.hidden));
       // Reduced motion turned on while a walk-through plays: refresh pauses it.
       window.matchMedia?.('(prefers-reduced-motion: reduce)').addEventListener('change', () => player.refresh());
@@ -1721,6 +1761,7 @@ async function boot(conn: DbConnection, identityHex: string, signedIn: boolean):
           threatMarkers,
           blast,
           telling: tellingView,
+          flow: flowState(),
         });
         placePeek();
         crayonUi.sync();
@@ -1728,6 +1769,7 @@ async function boot(conn: DbConnection, identityHex: string, signedIn: boolean):
         syncBlastDots();
         flow.sync();
         renderLegend();
+        paintFlowLegend();
         syncEmpty();
         const nodesById = new Map(getAllNodes().map(n => [n.id, n]));
         const panelFocused = panelFocusKey();
@@ -1891,7 +1933,7 @@ async function boot(conn: DbConnection, identityHex: string, signedIn: boolean):
         openBoardButton.title = !link ? '' : link.open ? `Open ${link.name} · \u21b5 · esc comes back here` : 'This board is private';
       };
       let depthPainted = '';
-      const levelColor = (n: Node) => (['blue', 'red', 'green', 'purple', 'gray'].includes(n.color) ? n.color : 'ink');
+      const levelColor = (n: Node) => (EDGE_COLORS.includes(colorParts(n.color).hue) ? colorParts(n.color).hue : 'ink');
       // Three stacked sheets, the same mark a frame wears on the canvas: a level that is a whole board.
       const BOARD_LEVEL_ICON = '<svg class="depth-board" width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round" aria-hidden="true"><path d="M8,1.5 L14.5,5 L8,8.5 L1.5,5 Z"/><path d="M1.5,8.25 L8,11.75 L14.5,8.25"/><path d="M1.5,11.5 L8,15 L14.5,11.5"/></svg>';
       const paintDepthTrail = () => {
@@ -2662,6 +2704,7 @@ async function boot(conn: DbConnection, identityHex: string, signedIn: boolean):
         conn.db.visibleEdgeWeight,
         ...(conn.db.visibleEdgeMotion ? [conn.db.visibleEdgeMotion] : []),
         ...(conn.db.visibleTelling ? [conn.db.visibleTelling] : []),
+        ...(conn.db.visibleTellingColor ? [conn.db.visibleTellingColor] : []),
         conn.db.visibleHideSet,
         conn.db.visibleHideSetMember,
         conn.db.visibleCodeRef,

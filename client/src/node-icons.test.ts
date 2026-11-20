@@ -309,7 +309,7 @@ describe('icon colours in every theme', () => {
     const surfaces = (fill: string) => [t[fill], t.paper].map(hex).filter((v): v is string => v !== undefined);
     const pairs: Array<[string, string, string]> = [];
     for (const bg of surfaces('panel')) pairs.push(['--ink', t.ink, bg]);
-    for (const c of ['blue', 'red', 'green', 'purple', 'gray', 'ink']) {
+    for (const c of ['blue', 'red', 'green', 'purple', 'gray', 'orange', 'yellow', 'teal', 'pink', 'ink']) {
       for (const bg of surfaces(`c-${c}-fill`)) pairs.push([`--c-${c}`, t[`c-${c}`], bg]);
     }
     for (const bg of surfaces('accent-soft')) pairs.push(['--accent', t.accent, bg]);
