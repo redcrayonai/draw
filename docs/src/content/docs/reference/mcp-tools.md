@@ -21,7 +21,7 @@ says why, and the first word tells the agent what to do:
 
 | Tool | What it does |
 |---|---|
-| `start_session` | Opens the task's board (by name, or by a board link you gave it) and returns its id and URL. |
+| `start_session` | Opens the task's board (by name, or by a board link you gave it, full or only its `#b=` part) and returns its id and URL. |
 | `get_board` | Reads the graph, ref metadata, chart summaries and route progress. Large results report omitted content. |
 
 ## Nodes and edges
