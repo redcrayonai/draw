@@ -39,6 +39,12 @@ it('says so when the chosen installer leaves the running copy unchanged', async 
   vi.mocked(execFileSync).mockReset().mockReturnValueOnce('').mockReturnValueOnce(root).mockReturnValueOnce(join(dir, 'elsewhere')).mockImplementation(() => { throw new Error('missing'); });
   expect(await runUpdate(['--installer', 'npm'], '1.0.0', join(dir, 'cache.json'))).toBe(0);
   expect(printed()).toContain(`${process.execPath} is a separate copy and is still 1.0.0`);
+  // Ownership found before the install is not asked again: a slow first start must not read as a separate copy.
+  vi.mocked(process.stderr.write).mockClear();
+  vi.mocked(execFileSync).mockReset().mockReturnValueOnce(root).mockReturnValueOnce(process.execPath).mockReturnValueOnce('').mockImplementation(() => { throw new Error('slow'); });
+  expect(await runUpdate([], '1.0.0', join(dir, 'cache.json'))).toBe(0);
+  expect(execFileSync).toHaveBeenCalledTimes(3);
+  expect(printed()).not.toContain('separate copy');
 });
 it('rejects unsupported flags before contacting any service', async () => {
   release(); expect(await runUpdate(['--installer', 'sh'], '1.0.0', join(directory(), 'cache'))).toBe(1);
