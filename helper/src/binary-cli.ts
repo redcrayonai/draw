@@ -1,5 +1,5 @@
 import { runUpdate } from './update';
-import { runNativeInstall, runNativePermissions } from './native-install';
+import { runNativeInstall, runNativePermissions, runNativeUninstall } from './native-install';
 
 declare const __DRAW_VERSION__: string;
 const args = process.argv.slice(2);
@@ -10,6 +10,7 @@ else if (args[0] === '--help' || args[0] === '-h') console.log(
   '  draw [--repo path] [--port number] [--no-open]   Open a local board\n' +
   '  draw local --background [--repo path]          Start a persistent local server\n' +
   '  draw install <codex|claude-code|pi> [--url <https://...>] [--permissions-defaults]\n' +
+  '  draw uninstall [codex|claude-code|pi]           Remove all Draw integrations or just one\n' +
   '  draw permissions codex [--permissions-defaults]\n' +
   '  draw update [--check] [--channel stable|preview] [--installer npm|bun]\n' +
   '  draw local-mcp --per-repo                       Local MCP bridge\n' +
@@ -23,6 +24,10 @@ else if (args[0] === '--help' || args[0] === '-h') console.log(
 else if (args[0] === 'install') {
   try { process.exitCode = await runNativeInstall(args.slice(1), __DRAW_VERSION__); }
   catch (error) { console.error(error instanceof Error ? error.message : 'UNAVAILABLE: install failed'); process.exitCode = 1; }
+}
+else if (args[0] === 'uninstall') {
+  try { process.exitCode = await runNativeUninstall(args.slice(1)); }
+  catch (error) { console.error(error instanceof Error ? error.message : 'UNAVAILABLE: uninstall failed'); process.exitCode = 1; }
 }
 else if (args[0] === 'permissions') {
   try { process.exitCode = await runNativePermissions(args.slice(1)); }

@@ -13,7 +13,7 @@ const hostedTools = [
   'list_marks', 'update_threat', 'remove_threat', 'set_node_doc', 'set_selection', 'apply_board',
   'save_telling', 'remove_telling',
 ];
-const unavailable = () => new Error('UNAVAILABLE: could not configure Draw permissions in Codex. Check Codex settings and try again.');
+const unavailable = () => new Error('UNAVAILABLE: could not access Codex settings. Check Codex settings and try again.');
 function object(value: unknown): Frame {
   if (value === undefined || value === null) return {};
   if (typeof value !== 'object' || Array.isArray(value)) throw unavailable();
@@ -33,6 +33,7 @@ async function withCodexConfig<T>(update: (read: Frame, user: Frame, rpc: Rpc) =
   let buffer = '';
   let closed = false;
   let failure: Error | undefined;
+  let timer: ReturnType<typeof setTimeout> | undefined;
   let pending: { id: number; resolve(value: Frame): void; reject(error: Error): void } | undefined;
   const close = (error?: Error) => {
     if (closed) return;
@@ -43,12 +44,13 @@ async function withCodexConfig<T>(update: (read: Frame, user: Frame, rpc: Rpc) =
     child.stdin.destroy();
     child.kill(); // Only this configuration subprocess belongs to us.
   };
-  const timer = setTimeout(() => close(new Error('UNCONFIRMED: Codex did not acknowledge the permission update. Check Codex settings before retrying.')), 15_000);
   const write = (frame: Frame) => child.stdin.write(JSON.stringify(frame) + '\n');
   const rpc = (method: string, params: Frame): Promise<Frame> => new Promise((resolve, reject) => {
     if (closed) { reject(failure ?? unavailable()); return; }
     const id = ++sequence;
     pending = { id, resolve, reject };
+    const timeout = method === 'config/read' ? 30_000 : 15_000;
+    timer = setTimeout(() => close(new Error('UNCONFIRMED: Codex did not respond. Check Codex settings before retrying.')), timeout);
     try { write({ id, method, params }); } catch { close(unavailable()); }
   });
   child.on('error', () => close(unavailable()));
@@ -73,6 +75,7 @@ async function withCodexConfig<T>(update: (read: Frame, user: Frame, rpc: Rpc) =
           return;
         }
         if (!frame.result || typeof frame.result !== 'object' || Array.isArray(frame.result)) throw unavailable();
+        clearTimeout(timer);
         const request = pending; pending = undefined; request.resolve(frame.result);
       } catch { close(unavailable()); return; }
     }
@@ -85,6 +88,10 @@ async function withCodexConfig<T>(update: (read: Frame, user: Frame, rpc: Rpc) =
     if (!user || typeof user.version !== 'string' || typeof user.name.file !== 'string') throw unavailable();
     return await update(read, user, rpc);
   } finally { close(); }
+}
+
+export function readCodexUserConfig() {
+  return withCodexConfig(async (_read, user) => object(user.config));
 }
 
 async function writeConfig(rpc: Rpc, user: Frame, edits: Frame[]) {
