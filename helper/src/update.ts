@@ -116,7 +116,8 @@ export function detectInstaller(executable: string): 'npm' | 'bun' | undefined {
     const owner = JSON.parse(readFileSync(join(dirname(dirname(realpathSync(launcher))), 'package.json'), 'utf8'));
     if (owner.name !== PACKAGE || owner.drawRuntime?.protocol !== 1 || owner.bin?.draw !== 'bin/draw') continue;
     // Ask the installed launcher where its own executable lives; no update is performed.
-    const owned = execFileSync(launcher, ['--executable-path'], { encoding: 'utf8', timeout: 3000, stdio: ['ignore', 'pipe', 'ignore'] }).trim();
+    // A new executable's first start can take seconds; a timeout here reads as not owned.
+    const owned = execFileSync(launcher, ['--executable-path'], { encoding: 'utf8', timeout: 10000, stdio: ['ignore', 'pipe', 'ignore'] }).trim();
     if (realpathSync(owned) === binary) return manager;
   } catch {}
 }
@@ -134,6 +135,7 @@ export async function runUpdate(args: string[], current: string, cache?: string)
   process.stderr.write(`${updateMessage(result, current, channel)}\n`);
   if (result.state !== 'available') return result.state === 'unpublished' ? 0 : 1;
   if (check || !newer(result.version!, current)) return 0;
+  const forced = !!installer;
   installer ??= detectInstaller(process.execPath);
   if (!installer) {
     process.stderr.write(`Install method is unknown. Use draw update --installer npm or --installer bun, or download the matching release archive.\n`); return 1;
@@ -141,6 +143,8 @@ export async function runUpdate(args: string[], current: string, cache?: string)
   try {
     execFileSync(installer, ['install', '--global', '--ignore-scripts', `${PACKAGE}@${result.version}`], { stdio: 'inherit' });
     process.stderr.write('Draw package installed. Use its global draw command for the new version. Running sessions keep their current executable until restarted; rerun draw install for each agent to refresh its integration.\n');
+    // An archive copy, or one from the other manager, is never replaced by this install. Detected ownership needs no second look.
+    if (forced && detectInstaller(process.execPath) !== installer) process.stderr.write(`${process.execPath} is a separate copy and is still ${current}; ${installer} did not replace it. Open a new terminal and run draw --version. If it still reports ${current}, remove that copy or put the ${installer} global bin directory first on PATH.\n`);
     return 0;
   } catch {
     process.stderr.write('UNAVAILABLE: the package manager could not finish the update. Check its output and reinstall the same package if needed. Running Draw sessions were not restarted.\n'); return 1;

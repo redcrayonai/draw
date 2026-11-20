@@ -26,6 +26,26 @@ it('never downgrades and reports install failure without restarting sessions', a
   expect(await runUpdate(['--installer', 'npm'], '1.0.0', cache)).toBe(1);
   expect(execFileSync).toHaveBeenCalledTimes(1);
 });
+it('says so when the chosen installer leaves the running copy unchanged', async () => {
+  release(); const dir = directory(), root = join(dir, 'node_modules'), launcher = join(root, '@redcrayonai/draw/bin/draw');
+  mkdirSync(join(root, '@redcrayonai/draw/bin'), { recursive: true }); writeFileSync(launcher, '');
+  writeFileSync(join(root, '@redcrayonai/draw/package.json'), JSON.stringify({ name: '@redcrayonai/draw', drawRuntime: { protocol: 1 }, bin: { draw: 'bin/draw' } }));
+  const printed = () => vi.mocked(process.stderr.write).mock.calls.map(call => String(call[0])).join('');
+  // Install, then npm's global root, then its launcher reporting this executable.
+  vi.mocked(execFileSync).mockReturnValueOnce('').mockReturnValueOnce(root).mockReturnValueOnce(process.execPath);
+  expect(await runUpdate(['--installer', 'npm'], '1.0.0', join(dir, 'cache.json'))).toBe(0);
+  expect(printed()).not.toContain('separate copy');
+  vi.mocked(process.stderr.write).mockClear();
+  vi.mocked(execFileSync).mockReset().mockReturnValueOnce('').mockReturnValueOnce(root).mockReturnValueOnce(join(dir, 'elsewhere')).mockImplementation(() => { throw new Error('missing'); });
+  expect(await runUpdate(['--installer', 'npm'], '1.0.0', join(dir, 'cache.json'))).toBe(0);
+  expect(printed()).toContain(`${process.execPath} is a separate copy and is still 1.0.0`);
+  // Ownership found before the install is not asked again: a slow first start must not read as a separate copy.
+  vi.mocked(process.stderr.write).mockClear();
+  vi.mocked(execFileSync).mockReset().mockReturnValueOnce(root).mockReturnValueOnce(process.execPath).mockReturnValueOnce('').mockImplementation(() => { throw new Error('slow'); });
+  expect(await runUpdate([], '1.0.0', join(dir, 'cache.json'))).toBe(0);
+  expect(execFileSync).toHaveBeenCalledTimes(3);
+  expect(printed()).not.toContain('separate copy');
+});
 it('rejects unsupported flags before contacting any service', async () => {
   release(); expect(await runUpdate(['--installer', 'sh'], '1.0.0', join(directory(), 'cache'))).toBe(1);
   expect(fetch).not.toHaveBeenCalled(); expect(execFileSync).not.toHaveBeenCalled();
