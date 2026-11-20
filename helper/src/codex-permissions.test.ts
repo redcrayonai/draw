@@ -50,6 +50,34 @@ it('reads only Codex user settings without loading marketplaces or writing confi
   expect(s.frames.map(frame => frame.method)).toEqual(['initialize', 'initialized', 'config/read']);
 });
 
+it('allows a slow user settings read after Codex initialization', async () => {
+  vi.useFakeTimers();
+  const s = server({}, 'local', { initialize: undefined, 'config/read': undefined });
+  const config = { plugins: { 'draw@draw-binary': { enabled: true } } };
+  const result = readCodexUserConfig();
+  // Attach a rejection handler before moving the clock past the old session deadline.
+  const observed = result.catch(error => error);
+  await vi.advanceTimersByTimeAsync(10_000);
+  s.child.stdout.write(JSON.stringify({ id: 1, result: {} }) + '\n');
+  await vi.advanceTimersByTimeAsync(20_000);
+  s.child.stdout.write(JSON.stringify({ id: 2, result: { layers: [
+    { name: { type: 'user', file: '/mock/config.toml' }, version: 'user-version', config },
+  ] } }) + '\n');
+  expect(await observed).toEqual(config);
+  expect(s.child.kill).toHaveBeenCalledOnce();
+});
+
+it('closes the Codex process when the settings read reaches its deadline', async () => {
+  vi.useFakeTimers();
+  const s = server({}, 'local', { 'config/read': undefined });
+  const pending = expect(readCodexUserConfig()).rejects.toThrow('UNCONFIRMED');
+  await vi.advanceTimersByTimeAsync(29_999);
+  expect(s.child.kill).not.toHaveBeenCalled();
+  await vi.advanceTimersByTimeAsync(1);
+  await pending;
+  expect(s.child.kill).toHaveBeenCalledOnce();
+});
+
 describe('Draw plugin permissions in Codex', () => {
   it('writes only plugin policy using the user layer version, without starting a conversation', async () => {
     const s = server({ disabled_tools: ['custom'], tools: { read_board: { approval_mode: 'approve', output_token_limit: 1000 } } });
@@ -159,7 +187,7 @@ describe('Draw plugin permissions in Codex', () => {
     expect(s.child.kill).toHaveBeenCalledOnce();
   });
 
-  it('bounds the transaction and closes only its own child on timeout', async () => {
+  it('bounds initialization and closes only its own child on timeout', async () => {
     vi.useFakeTimers();
     const s = server({}, 'local', { initialize: undefined });
     const pending = expect(configureCodexPermissions('local', policy)).rejects.toThrow('UNCONFIRMED');
