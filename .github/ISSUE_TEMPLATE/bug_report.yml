@@ -1,6 +1,11 @@
 name: Bug report
 description: Report an error in the local application.
 body:
+  - type: input
+    id: component
+    attributes:
+      label: Component
+      placeholder: Canvas, Dashboard, MCP, or Agent
   - type: textarea
     id: reproduction
     attributes:
