@@ -22,7 +22,7 @@ export const REDUCERS = [
   'create_node', 'create_requested_board', 'delete_edge', 'delete_node', 'grant_hosted_agent_board', 'join_board', 'link_hosted_agent', 'mark_checkpoint', 'merge_architecture_proposal', 'move_node',
   'offer_agent_link', 'open_shared_link', 'plan_route', 'play_trace', 'remove_change_note', 'remove_code_ref', 'remove_telling', 'remove_threat', 'reply_mark', 'reroute', 'reset_demo',
   'resize_node', 'save_telling', 'set_change_note_readers', 'set_chart_data', 'set_code_ref_hashes', 'set_edge_evidence_code', 'set_edge_hidden', 'set_edge_latency', 'set_node_doc', 'set_node_hidden', 'set_node_icon',
-  'set_selection', 'set_session_remote', 'start_session', 'submit_architecture_proposal', 'update_change_note', 'update_code_ref', 'update_code_ref_and_focus', 'update_edge_evidence', 'update_node', 'update_threat',
+  'set_selection', 'set_session_remote', 'set_telling_color', 'start_session', 'submit_architecture_proposal', 'update_change_note', 'update_code_ref', 'update_code_ref_and_focus', 'update_edge_evidence', 'update_edge_style', 'update_node', 'update_threat',
 ];
 
 function reducerArgs(name) {

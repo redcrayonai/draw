@@ -63,7 +63,8 @@ import { workspaceTables, workspaceFeatures, humanBoardRole, humanBoardIds, nati
 import { workspaceServiceAccountTables, workspaceApiKeyExpiry, workspaceServiceAccountFeatures, isWorkspaceMachine, workspaceMachineBoardRole, workspaceMachineBoardIds, registerWorkspaceMachine } from './workspace-service-accounts';
 import { roleRank, strongestRole } from './workspace-policy';
 import { parseTraceSpans } from './trace';
-import { MAX_TELLINGS_PER_BOARD, audienceKey, tellingHeadError, parseTellingSteps } from './tellings';
+import { EDGE_COLORS, NODE_COLORS } from './colors';
+import { MAX_TELLINGS_PER_BOARD, FLOW_COLORS, audienceKey, tellingHeadError, parseTellingSteps } from './tellings';
 import { backfillSlugs, newSlug } from './slug';
 import { FEED_SIZE, KEEP_PER_BOARD, activityLayer, beyondKeep, newestFirst, oldestBatch } from './activity-feed';
 import {
@@ -347,6 +348,16 @@ const tables = {
       steps: t.string(),
       author: t.string(),
       updatedAt: t.timestamp(),
+    }
+  ),
+  // New table (additive): a telling with a row here is a flow in that hue, listed in the board's legend
+  // (set_telling_color). Its own table and view, as nodeIcon: a column on telling would change the row old clients decode.
+  tellingColor: table(
+    {},
+    {
+      tellingId: t.u64().primaryKey(),
+      boardId: t.u64().index('btree'),
+      color: t.string(),
     }
   ),
   routeEvent: table(
@@ -976,7 +987,7 @@ export const embeddedBoard = spacetimedb.view({ name: 'embedded_board', public: 
 // readable board (the switcher, ⌘K, the history rail); the rest return the
 // boards the caller has open (viewBoardIds, RC-605).
 export const visibleRows = spacetimedb.exportGroup({
-  ...Object.fromEntries(['board', 'architectureVersion', 'node', 'edge', 'edgeWeight', 'edgeMotion', 'hideSet', 'sessionRoute', 'routeEvent', 'chart', 'tracePlayback', 'changeNote', 'nodeIcon', 'chartAnchor', 'boardWindow', 'boardLifetime', 'incident', 'telling'].map(key => [
+  ...Object.fromEntries(['board', 'architectureVersion', 'node', 'edge', 'edgeWeight', 'edgeMotion', 'hideSet', 'sessionRoute', 'routeEvent', 'chart', 'tracePlayback', 'changeNote', 'nodeIcon', 'chartAnchor', 'boardWindow', 'boardLifetime', 'incident', 'telling', 'tellingColor'].map(key => [
     `visible${key[0].toUpperCase()}${key.slice(1)}`,
     spacetimedb.view({ name: `visible_${key.replace(/[A-Z]/g, c => `_${c.toLowerCase()}`)}`, public: true }, t.array((tables as any)[key].rowType) as any, ctx => {
       const ids = key === 'board' || key === 'architectureVersion' ? readableBoardIds(ctx) : viewBoardIds(ctx);
@@ -1100,7 +1111,8 @@ const ALLOWED_KINDS = ['service', 'datastore', 'external', 'boundary', 'note', '
 // allowlist must not offer a value that silently renders as a rectangle.
 const ALLOWED_SHAPES = ['rect', 'ellipse', 'pill'];
 // '' is legal and means "derive from kind/token" — the pre-C behaviour.
-const ALLOWED_COLORS = ['', 'ink', 'blue', 'red', 'green', 'purple', 'gray'];
+const ALLOWED_COLORS = ['', ...NODE_COLORS];
+const ALLOWED_EDGE_COLORS = ['', ...EDGE_COLORS];
 const ALLOWED_STROKES = ['solid', 'dashed'];
 // RC-688: an edge can also be dotted; a node border cannot (no renderer).
 const ALLOWED_EDGE_STROKES = ['solid', 'dashed', 'dotted'];
@@ -2064,6 +2076,7 @@ function clearBoardContent(ctx: any, boardId: bigint): void {
   for (const row of [...ctx.db.edgeWeight.boardId.filter(boardId)]) ctx.db.edgeWeight.edgeId.delete(row.edgeId);
   for (const row of [...ctx.db.edgeMotion.boardId.filter(boardId)]) ctx.db.edgeMotion.edgeId.delete(row.edgeId);
   for (const row of [...ctx.db.nodeIcon.boardId.filter(boardId)]) ctx.db.nodeIcon.nodeId.delete(row.nodeId);
+  for (const row of [...ctx.db.tellingColor.boardId.filter(boardId)]) ctx.db.tellingColor.tellingId.delete(row.tellingId);
   for (const row of [...ctx.db.nodeLink.boardId.filter(boardId)]) ctx.db.nodeLink.nodeId.delete(row.nodeId);
   for (const row of [...ctx.db.chartAnchor.boardId.filter(boardId)]) ctx.db.chartAnchor.nodeId.delete(row.nodeId);
   for (const row of [...ctx.db.nodeTouch.boardId.filter(boardId)]) ctx.db.nodeTouch.nodeId.delete(row.nodeId);
@@ -2616,7 +2629,7 @@ export const updateEdgeStyle = reducer(
       color: color ?? edge.color,
       strokeStyle: strokeStyle ?? edge.strokeStyle,
     };
-    assertOneOf('color', next.color, ALLOWED_COLORS);
+    assertOneOf('color', next.color, ALLOWED_EDGE_COLORS);
     assertOneOf('strokeStyle', next.strokeStyle, ALLOWED_EDGE_STROKES);
     ctx.db.edge.id.update(next);
     touch(ctx, edge.boardId);
@@ -2914,6 +2927,25 @@ export const saveTelling = reducer(
   }
 );
 
+/** Make a telling a flow by giving it a hue of its own on this board, or '' to make it a plain walk-through again. */
+export const setTellingColor = reducer(
+  { boardId: t.u64(), audience: t.string(), color: t.string() },
+  (ctx, { boardId, audience, color }) => {
+    assertBoardWrite(ctx, boardId);
+    const row = tellingFor(ctx, boardId, audience);
+    if (!row) throw new SenderError(`telling rule: no telling for that audience on this board; ${tellingAudiences(ctx, boardId)}`);
+    if (color !== '' && !FLOW_COLORS.includes(color)) throw new SenderError(`telling rule: color must be one of ${FLOW_COLORS.join(', ')}, or empty`);
+    const taken = color === '' ? undefined : [...ctx.db.tellingColor.boardId.filter(boardId)].find((other: any) => other.tellingId !== row.id && other.color === color);
+    if (taken) throw new SenderError(`telling rule: ${color} already marks ${ctx.db.telling.id.find(taken.tellingId)?.audience ?? 'another telling'} on this board; pick another color`);
+    const prev = ctx.db.tellingColor.tellingId.find(row.id);
+    if ((prev?.color ?? '') === color) return;
+    if (color === '') ctx.db.tellingColor.tellingId.delete(row.id);
+    else if (prev) ctx.db.tellingColor.tellingId.update({ ...prev, color });
+    else ctx.db.tellingColor.insert({ tellingId: row.id, boardId, color });
+    touch(ctx, boardId);
+  }
+);
+
 export const removeTelling = reducer(
   { boardId: t.u64(), audience: t.string() },
   (ctx, { boardId, audience }) => {
@@ -2921,6 +2953,7 @@ export const removeTelling = reducer(
     const row = tellingFor(ctx, boardId, audience);
     if (!row) throw new SenderError(`telling rule: no telling for that audience on this board; ${tellingAudiences(ctx, boardId)}`);
     ctx.db.telling.id.delete(row.id);
+    ctx.db.tellingColor.tellingId.delete(row.id); // false (no throw) for a plain walk-through
     touch(ctx, boardId);
   }
 );

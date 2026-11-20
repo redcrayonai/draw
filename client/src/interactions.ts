@@ -9,6 +9,7 @@ import { contentBounds, nodeRect, el, renderedText, renderedEdgeAnchor, type Rec
 import { layoutNodeText, editLines } from './node-layout';
 import { layoutText, toggleMark } from './text-block';
 import { iconSpec } from '../../module/src/node-icons';
+import { colorParts } from '../../module/src/colors';
 import { toolbarPosition, popoverPosition } from './toolbar-position';
 import type { LibraryPick, TemplatePick } from './library-popover';
 import { CHART_MIN_W, CHART_MIN_H } from '../../module/src/chart-contracts';
@@ -814,7 +815,7 @@ export class Editor {
       // (or the plain edge colour) in charge: the Default swatch.
       const pressedColor = head !== undefined ? head.color || 'ink' : headEdge?.color;
       const colorDot = document.getElementById('tb-color-dot');
-      if (colorDot !== null) setAttr(colorDot, 'class', `sw-${pressedColor === undefined ? 'ink' : pressedColor || 'default'}`);
+      if (colorDot !== null) setAttr(colorDot, 'class', `sw-${pressedColor === undefined ? 'ink' : colorParts(pressedColor).hue || 'default'}`);
       // Every option says whether it is the current one, in words (G32).
       const press = (b: HTMLButtonElement, on: boolean) => {
         b.classList.toggle('on', on);
@@ -1701,7 +1702,8 @@ export class Editor {
     for (const sw of document.querySelectorAll<HTMLButtonElement>('#tb-swatches .swatch')) {
       sw.addEventListener('click', () => {
         const color = sw.dataset.color ?? '';
-        styleSelection({ node: { color }, edge: { color } }, 'colour');
+        // An edge is a line: it takes the hue and leaves the strength to nodes.
+        styleSelection({ node: { color }, edge: { color: colorParts(color).hue } }, 'colour');
       });
     }
     for (const b of document.querySelectorAll<HTMLButtonElement>('#tb-size button')) {

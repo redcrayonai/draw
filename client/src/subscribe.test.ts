@@ -15,6 +15,7 @@ import {
   TRACE_TABLES,
   THREAT_TABLES,
   TELLING_TABLES,
+  FLOW_TABLES,
   MARK_TABLES,
   EDGE_WEIGHT_TABLES,
   EDGE_MOTION_TABLES,
@@ -52,7 +53,7 @@ describe('board subscription', () => {
   it('list + core + companion + route tables + the unsubscribed dashboard views are exactly the tables in module_bindings', () => {
     const inBindings = [...bindings.matchAll(/^ {4}name: '(\w+)',$/gm)].map(m => m[1]).sort();
     expect(
-      [...LIST_TABLES, ...CORE_TABLES, ...COMPANION_TABLES, ...ROUTE_TABLES, ...ARCHITECTURE_TABLES, ...CHART_TABLES, ...ICON_TABLES, ...LIBRARY_VIEWS, ...TRACE_TABLES, ...CHANGE_NOTE_TABLES, ...THREAT_TABLES, ...TELLING_TABLES, ...MARK_TABLES, ...EDGE_WEIGHT_TABLES, ...EDGE_MOTION_TABLES, ...CODE_LINK_TABLES, ...INCIDENT_TABLES, ...NODE_LINK_TABLES, ...AGENT_LINK_VIEWS, ...SHARE_VIEWS, ...EMBED_VIEWS, ...PERMISSION_VIEWS, ...PLUGIN_VIEWS, ...LEGACY_LIST_VIEWS, ...NOT_SUBSCRIBED].sort()
+      [...LIST_TABLES, ...CORE_TABLES, ...COMPANION_TABLES, ...ROUTE_TABLES, ...ARCHITECTURE_TABLES, ...CHART_TABLES, ...ICON_TABLES, ...LIBRARY_VIEWS, ...TRACE_TABLES, ...CHANGE_NOTE_TABLES, ...THREAT_TABLES, ...TELLING_TABLES, ...FLOW_TABLES, ...MARK_TABLES, ...EDGE_WEIGHT_TABLES, ...EDGE_MOTION_TABLES, ...CODE_LINK_TABLES, ...INCIDENT_TABLES, ...NODE_LINK_TABLES, ...AGENT_LINK_VIEWS, ...SHARE_VIEWS, ...EMBED_VIEWS, ...PERMISSION_VIEWS, ...PLUGIN_VIEWS, ...LEGACY_LIST_VIEWS, ...NOT_SUBSCRIBED].sort()
     ).toEqual(inBindings);
   });
 
@@ -169,7 +170,7 @@ describe('board subscription', () => {
     const crash = vi.fn();
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
     subscribeBoard(conn, () => {}, crash);
-    expect(conn.subs).toHaveLength(15);
+    expect(conn.subs).toHaveLength(16);
     expect(conn.subs[13].queries).toEqual(['SELECT * FROM visible_node_link']);
     expect(conn.subs[3].queries).toEqual(['SELECT * FROM visible_chart']);
     expect(conn.subs[4].queries).toEqual(['SELECT * FROM visible_node_icon']);
@@ -182,6 +183,7 @@ describe('board subscription', () => {
     expect(conn.subs[11].queries).toEqual(['SELECT * FROM visible_session_remote', 'SELECT * FROM visible_code_ref_hash', 'SELECT * FROM visible_edge_evidence_hash']);
     expect(conn.subs[12].queries).toEqual(['SELECT * FROM visible_chart_anchor', 'SELECT * FROM visible_board_window', 'SELECT * FROM visible_board_lifetime', 'SELECT * FROM visible_incident']);
     expect(conn.subs[14].queries).toEqual(['SELECT * FROM visible_telling']);
+    expect(conn.subs[15].queries).toEqual(['SELECT * FROM visible_telling_color']);
     for (const [i, table] of [[3, 'visible_chart'], [4, 'visible_node_icon'], [5, 'visible_trace_playback'], [6, 'visible_change_note'], [7, 'visible_threat'], [8, 'visible_edge_weight'], [9, 'visible_edge_motion'], [10, 'visible_mark'], [11, 'visible_session_remote'], [12, 'visible_chart_anchor'], [14, 'visible_telling']] as const) {
       conn.subs[i].onError!({ event: new Error(`no such table: \`${table}\``) });
     }

@@ -281,9 +281,10 @@ describe('index.html DOM contract', () => {
   });
 
   it('exposes the Sub-project C style controls the editor wires', () => {
-    // six colours, and Default (an edge's '', edges only)
+    // nine hues at three strengths, Ink, and Default (an edge's '', edges only)
+    const hues = ['red', 'orange', 'yellow', 'green', 'teal', 'blue', 'purple', 'pink', 'gray'];
     expect([...doc.querySelectorAll('#tb-swatches .swatch')].map(b => b.getAttribute('data-color'))).toEqual([
-      'ink', 'blue', 'red', 'green', 'purple', 'gray', '',
+      ...hues.map(h => `${h}-soft`), ...hues, ...hues.map(h => `${h}-bold`), 'ink', '',
     ]);
     expect([...doc.querySelectorAll('#tb-size button')].map(b => b.getAttribute('data-size'))).toEqual([
       's',

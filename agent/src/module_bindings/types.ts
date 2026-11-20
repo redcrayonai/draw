@@ -969,6 +969,13 @@ export const Telling = __t.object("Telling", {
 });
 export type Telling = __Infer<typeof Telling>;
 
+export const TellingColor = __t.object("TellingColor", {
+  tellingId: __t.u64(),
+  boardId: __t.u64(),
+  color: __t.string(),
+});
+export type TellingColor = __Infer<typeof TellingColor>;
+
 export const Threat = __t.object("Threat", {
   id: __t.u64(),
   boardId: __t.u64(),
@@ -1106,6 +1113,9 @@ export type VisibleSessionRoute = __Infer<typeof VisibleSessionRoute>;
 
 export const VisibleTelling = __t.object("VisibleTelling", {});
 export type VisibleTelling = __Infer<typeof VisibleTelling>;
+
+export const VisibleTellingColor = __t.object("VisibleTellingColor", {});
+export type VisibleTellingColor = __Infer<typeof VisibleTellingColor>;
 
 export const VisibleThreat = __t.object("VisibleThreat", {});
 export type VisibleThreat = __Infer<typeof VisibleThreat>;

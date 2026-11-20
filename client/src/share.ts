@@ -103,7 +103,7 @@ export function setupShare(deps: ShareDeps): (state: ShareState | null) => void 
 
   btn.addEventListener('click', () => {
     opener = btn;
-    setOpen(pop.hidden);
+    setOpen(Boolean(pop.hidden));
   });
   // From the chip: open on what the link carries (or on the switch when no link is on); a second press closes.
   chip?.addEventListener('click', () => {

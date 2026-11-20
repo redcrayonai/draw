@@ -4,8 +4,8 @@ import { stepMs, tellingMs, type StepView, type Telling } from './telling';
 import type { TellingBarModel } from './telling-bar';
 
 const step = (nodes: string[], title: string) => ({ nodes, frame: [], title, body: 'short', source: '' });
-const devs: Telling = { id: 1n, audience: 'Developers', title: 'A request', steps: [step(['1'], 'Gateway'), step(['2'], 'Service'), step(['3'], 'Store')] };
-const ops: Telling = { id: 2n, audience: 'Operators', title: 'On call', steps: [step(['3'], 'Paged'), step(['1'], 'Fixed')] };
+const devs: Telling = { id: 1n, audience: 'Developers', title: 'A request', color: '', steps: [step(['1'], 'Gateway'), step(['2'], 'Service'), step(['3'], 'Store')] };
+const ops: Telling = { id: 2n, audience: 'Operators', title: 'On call', color: '', steps: [step(['3'], 'Paged'), step(['1'], 'Fixed')] };
 
 let frame: FrameRequestCallback | undefined;
 let now = 0;

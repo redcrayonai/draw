@@ -1,6 +1,6 @@
 /** Telling tools: the input shapes, reducer arguments and tool texts of the hosted MCP server (mcp/src/tools.ts). */
 import { z } from 'zod';
-import { MAX_AUDIENCE, MAX_STEP_BODY, MAX_STEP_NODES, MAX_STEP_SOURCE, MAX_STEP_TITLE, MAX_TELLING_STEPS, MAX_TELLING_TITLE } from '../../module/src/tellings';
+import { FLOW_COLORS, MAX_AUDIENCE, MAX_STEP_BODY, MAX_STEP_NODES, MAX_STEP_SOURCE, MAX_STEP_TITLE, MAX_TELLING_STEPS, MAX_TELLING_TITLE } from '../../module/src/tellings';
 
 const id = z.string().regex(/^\d+$/).describe('numeric id as a string');
 
@@ -19,6 +19,7 @@ export const tellingInput = {
   title: z.string().min(1).max(MAX_TELLING_TITLE),
   steps: z.array(step).min(1).max(MAX_TELLING_STEPS),
   author: z.string().optional(),
+  color: z.enum(['', ...FLOW_COLORS] as [string, ...string[]]).optional().describe(`makes this walk-through a flow in the board's legend: ${FLOW_COLORS.join('|')}, one flow per color on a board; "" makes it a plain walk-through again`),
 };
 
 export type TellingInput = z.infer<z.ZodObject<typeof tellingInput>>;
@@ -30,5 +31,5 @@ export function saveTellingArgs(boardId: bigint, input: TellingInput, author: st
 }
 
 export const SAVE_TELLING_DESCRIPTION =
-  'Save a walk-through of this board for one audience: ordered steps, each lighting 1 to 12 nodes with a short title and one sentence (body), and optionally where the claim comes from (source) and which nodes the view should frame (frame). Start from one node the audience already knows and add a few nodes per step. Saving again for the same audience replaces it. At most 12 steps and 6 audiences per board. Everyone who can view the board, including through a shared link, can read every field.';
+  'Save a walk-through of this board for one audience: ordered steps, each lighting 1 to 12 nodes with a short title and one sentence (body), and optionally where the claim comes from (source) and which nodes the view should frame (frame). Start from one node the audience already knows and add a few nodes per step. Saving again for the same audience replaces it. At most 12 steps and 6 audiences per board. To trace one flow through a larger system (checkout, sign-in), save it with a color and name it in audience ("Checkout"): the legend on the board lists it, paints the nodes and edges only that flow uses, and lets a reader show that flow alone and step through it. Give the steps in the order a request travels and keep red for a failure path. Everyone who can view the board, including through a shared link, can read every field.';
 export const REMOVE_TELLING_DESCRIPTION = "Remove this board's walk-through for one audience.";

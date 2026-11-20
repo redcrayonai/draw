@@ -77,7 +77,7 @@ function oklab(hex: string): number[] {
 
 const HOUSE = ['dark', 'light', 'brutal'];
 const PORTED = THEMES.map(t => t.id).filter(id => !HOUSE.includes(id));
-const FREEFORM = ['blue', 'red', 'green', 'purple', 'gray'];
+const FREEFORM = ['blue', 'red', 'green', 'purple', 'gray', 'orange', 'yellow', 'teal', 'pink'];
 
 describe('every theme', () => {
   it('has a token block in the CSS', () => {

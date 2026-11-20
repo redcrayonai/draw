@@ -37,7 +37,7 @@ vi.mock('../../agent/src/routes', async importOriginal => {
 
 const VENDOR = /spacetime|maincloud|bsatn|clockwork|\bstdb\b/i;
 const HOSTED = [
-  'get_board', 'create_node', 'move_node', 'update_node', 'resize_node', 'delete_node', 'create_edge', 'hide_node', 'hide_edge', 'set_edge_latency', 'play_trace', 'start_tap', 'create_branch', 'submit_branch', 'apply_board',
+  'get_board', 'create_node', 'move_node', 'update_node', 'resize_node', 'delete_node', 'create_edge', 'hide_node', 'hide_edge', 'set_edge_latency', 'update_edge', 'play_trace', 'start_tap', 'create_branch', 'submit_branch', 'apply_board',
   'delete_edge', 'describe_charts', 'create_chart', 'set_chart_data', 'get_chart', 'start_session', 'add_code_ref',
   'mark_checkpoint', 'plan_route', 'arrive', 'reroute', 'remove_code_ref', 'set_node_doc', 'set_selection', 'layout_board',
   'add_change_note', 'update_change_note', 'remove_change_note',
@@ -404,6 +404,81 @@ describe('set_time_window and pin_chart on the hosted server', () => {
   });
 });
 
+describe('colour on the hosted node and edge tools', () => {
+  const harness = (claim: Record<string, unknown> = { first: true }) => {
+    const calls: { reducer: string; args: Record<string, any> }[] = [];
+    const node = { id: 5n, boardId: 1n, label: 'Cart', sublabel: '', x: 0, y: 0, w: 160, h: 96, kind: 'service' };
+    const edges: Record<string, unknown>[] = [];
+    const db = {
+      stats: { dbCalls: 0, dbMs: 0, writes: 0 },
+      async read(q: { text: string }) {
+        if (q.text.includes('visible_board')) return [{ id: 1n, name: 'main' }];
+        if (q.text.includes('visible_node_icon') || q.text.includes('visible_code_ref')) return [];
+        if (q.text.includes('visible_node')) return q.text.includes('SELECT id FROM') ? [{ id: 1n }, { id: 2n }] : calls.length || q.text.includes('WHERE id') ? [node] : [];
+        if (q.text.includes('visible_edge')) return edges;
+        throw new Error(`unexpected read ${q.text}`);
+      },
+      async call(reducer: string, args: Record<string, any>) {
+        calls.push({ reducer, args });
+        if (reducer === 'create_edge') edges.push({ id: 77n, boardId: 1n, fromNode: args.fromNode, toNode: args.toNode, label: args.label, evidence: args.evidence });
+      },
+    };
+    const ledger = { claim: async () => claim, settle: async () => {} };
+    const t = { ctx: { db, ledger }, signal: new AbortController().signal, named: () => {}, deadline: Date.now() + 15_000 } as never;
+    return { calls, t };
+  };
+
+  it('a repeated create_edge makes no second edge and still colours the first: the colour write may be what failed', async () => {
+    const h = harness({ first: false, text: 'committed id=77', ageS: 4 });
+    const out = text(await TOOLS.create_edge.run(TOOLS.create_edge.input.parse({ board: '1', fromNode: '1', toNode: '2', label: 'charge', evidence: 'agent:user described it', color: 'blue' }) as never, h.t));
+    expect(out).toMatch(/^committed id=77 board=main/);
+    expect(h.calls).toEqual([{ reducer: 'update_edge_style', args: { edgeId: 77n, color: 'blue' } }]);
+  });
+
+  it('create_node and update_node pass a hue or a hue with a strength to the board', async () => {
+    let h = harness();
+    await TOOLS.create_node.run(TOOLS.create_node.input.parse({ board: '1', label: 'Cart', sublabel: '', x: 0, y: 0, w: 160, h: 96, token: 'ink', focal: false, color: 'teal-bold' }) as never, h.t);
+    expect(h.calls[0]).toMatchObject({ reducer: 'create_node', args: { color: 'teal-bold' } });
+    h = harness();
+    await TOOLS.update_node.run(TOOLS.update_node.input.parse({ board: '1', nodeId: '5', color: 'yellow' }) as never, h.t);
+    expect(h.calls).toEqual([{ reducer: 'update_node', args: { nodeId: 5n, color: 'yellow' } }]);
+  });
+
+  it('create_edge colours the edge it made, as a second write', async () => {
+    const h = harness();
+    const out = text(await TOOLS.create_edge.run(TOOLS.create_edge.input.parse({ board: '1', fromNode: '1', toNode: '2', label: 'charge', evidence: 'agent:user described it', color: 'blue' }) as never, h.t));
+    expect(out).toBe('committed id=77 board=main');
+    expect(h.calls.map(c => c.reducer)).toEqual(['create_edge', 'update_edge_style']);
+    expect(h.calls[1].args).toEqual({ edgeId: 77n, color: 'blue' });
+  });
+
+  it('update_edge recolours an existing edge, and "" takes the colour off', async () => {
+    const calls: { reducer: string; args: Record<string, any> }[] = [];
+    const db = {
+      stats: { dbCalls: 0, dbMs: 0, writes: 0 },
+      async read(q: { text: string }) {
+        if (q.text.includes('visible_board')) return [{ id: 1n, name: 'main' }];
+        if (q.text.includes('visible_edge')) return [{ id: 30n, boardId: 1n }];
+        throw new Error(`unexpected read ${q.text}`);
+      },
+      async call(reducer: string, args: Record<string, any>) { calls.push({ reducer, args }); },
+    };
+    const t = { ctx: { db }, signal: new AbortController().signal, named: () => {}, deadline: Date.now() + 15_000 } as never;
+    expect(text(await TOOLS.update_edge.run(TOOLS.update_edge.input.parse({ board: '1', edgeId: '30', color: 'teal' }) as never, t))).toBe('committed board=main');
+    await TOOLS.update_edge.run(TOOLS.update_edge.input.parse({ board: '1', edgeId: '30', color: '' }) as never, t);
+    expect(calls).toEqual([{ reducer: 'update_edge_style', args: { edgeId: 30n, color: 'teal' } }, { reducer: 'update_edge_style', args: { edgeId: 30n, color: '' } }]);
+    expect(TOOLS.update_edge.input.safeParse({ board: '1', edgeId: '30', color: 'teal-bold' }).success).toBe(false);
+    expect(TOOLS.update_edge.input.safeParse({ board: '1', edgeId: '30' }).success).toBe(false);
+  });
+
+  it('refuses a colour outside the palette, and a strength on an edge', () => {
+    const nodeInput = { board: '1', label: 'Cart', sublabel: '', x: 0, y: 0, w: 160, h: 96, token: 'ink', focal: false };
+    expect(TOOLS.create_node.input.safeParse({ ...nodeInput, color: 'magenta' }).success).toBe(false);
+    expect(TOOLS.create_node.input.safeParse({ ...nodeInput, color: 'pink-soft' }).success).toBe(true);
+    expect(TOOLS.create_edge.input.safeParse({ board: '1', fromNode: '1', toNode: '2', label: '', evidence: 'import', color: 'blue-bold' }).success).toBe(false);
+  });
+});
+
 describe('icons on the hosted create_node and update_node', () => {
   const harness = (iconRows: Record<string, unknown>[] = []) => {
     const calls: { reducer: string; args: Record<string, any> }[] = [];
@@ -482,7 +557,7 @@ describe('tellings on the hosted server', () => {
       stats: { dbCalls: 0, dbMs: 0, writes: 0 },
       async read(q: { text: string }) {
         if (q.text.includes('visible_board')) return [{ id: 1n, name: 'main' }];
-        if (q.text.includes('visible_session')) return [];
+        if (q.text.includes('visible_session') || q.text.includes('visible_telling')) return [];
         if (q.text.includes('visible_node')) return nodes.map(id => ({ id }));
         throw new Error(`unexpected read ${q.text}`);
       },
@@ -501,6 +576,36 @@ describe('tellings on the hosted server', () => {
     const { calls, t } = fake([2n]);
     expect(text(await TOOLS.save_telling.run(TOOLS.save_telling.input.parse(input) as never, t))).toBe('committed telling: Product, 1 steps board=main');
     expect(calls).toEqual([{ reducer: 'save_telling', args: { boardId: 1n, audience: 'Product', title: 'T', steps: '[{"nodes":["2"],"frame":[],"title":"A","body":"B","source":""}]', author: 'claude' } }]);
+  });
+
+  it('save_telling with a color makes the walk-through a flow, as a second write', async () => {
+    const { calls, t } = fake([2n]);
+    await TOOLS.save_telling.run(TOOLS.save_telling.input.parse({ ...input, audience: 'Checkout', color: 'blue' }) as never, t);
+    expect(calls.map(c => c.reducer)).toEqual(['save_telling', 'set_telling_color']);
+    expect(calls[1].args).toEqual({ boardId: 1n, audience: 'Checkout', color: 'blue' });
+    expect('color' in calls[0].args).toBe(false);
+    expect(TOOLS.save_telling.input.safeParse({ ...input, color: 'ink' }).success).toBe(false);
+  });
+
+  it('save_telling refuses a hue another flow has before it writes anything; the same flow may keep its own', async () => {
+    const calls: { reducer: string; args: Record<string, any> }[] = [];
+    const db = {
+      stats: { dbCalls: 0, dbMs: 0, writes: 0 },
+      async read(q: { text: string }) {
+        if (q.text.includes('visible_board')) return [{ id: 1n, name: 'main' }];
+        if (q.text.includes('visible_telling_color')) return [{ tellingId: 7n, boardId: 1n, color: 'blue' }];
+        if (q.text.includes('visible_telling')) return [{ id: 7n, audience: 'Checkout' }];
+        if (q.text.includes('visible_node')) return [{ id: 2n }];
+        throw new Error(`unexpected read ${q.text}`);
+      },
+      async call(reducer: string, args: Record<string, any>) { calls.push({ reducer, args }); },
+    };
+    const t = { ctx: { db }, signal: new AbortController().signal, named: () => {}, deadline: Date.now() + 15_000 } as never;
+    await expect(TOOLS.save_telling.run(TOOLS.save_telling.input.parse({ ...input, audience: 'Sign-in', color: 'blue' }) as never, t))
+      .rejects.toThrow('REJECTED: telling rule: blue already marks Checkout on this board; pick another color. Nothing was written. board=main');
+    expect(calls).toEqual([]);
+    await TOOLS.save_telling.run(TOOLS.save_telling.input.parse({ ...input, audience: ' checkout ', color: 'blue' }) as never, t);
+    expect(calls.map(c => c.reducer)).toEqual(['save_telling', 'set_telling_color']);
   });
 
   it('save_telling says who can read a walk-through', () => {

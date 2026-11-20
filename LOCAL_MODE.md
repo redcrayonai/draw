@@ -62,7 +62,7 @@ draw update --channel preview
 draw update --installer bun
 ```
 
-Stable updates use npm's `latest` channel. The updater checks that a release contains the shared runtime and a matching platform package before installing that exact version through npm or Bun with lifecycle scripts disabled. It will not replace Draw with the older hosted-only package. Direct archive installations can use a new archive or explicitly choose a package manager.
+Stable updates use npm's `latest` channel. The updater checks that a release contains the shared runtime and a matching platform package before installing that exact version through npm or Bun with lifecycle scripts disabled. It will not replace Draw with the older hosted-only package. Direct archive installations can use a new archive or explicitly choose a package manager. A package manager installs its own copy and leaves the archive copy in place; the updater names that copy so you can remove it or put the package manager's global bin directory first on `PATH`.
 
 An update does not restart running boards or agents. Start the new executable for subsequent sessions. Draw records which integration version you installed and tells you when to rerun `draw install <agent>`; this refreshes the agent's cached skills and launchers.
 

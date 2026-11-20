@@ -2,7 +2,7 @@ import { EventEmitter } from 'node:events';
 import { readFileSync } from 'node:fs';
 import { PassThrough } from 'node:stream';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { configureCodexPermissions, disableLegacyCodexIntegrations } from './codex-permissions';
+import { configureCodexPermissions, disableLegacyCodexIntegrations, readCodexUserConfig } from './codex-permissions';
 
 const { spawn } = vi.hoisted(() => ({ spawn: vi.fn() }));
 vi.mock('node:child_process', () => ({ spawn }));
@@ -36,6 +36,47 @@ function server(settings: Record<string, unknown> = {}, mode = 'local', override
   spawn.mockReturnValue(child);
   return { child, frames, write: () => frames.find(frame => frame.method === 'config/batchWrite')?.params };
 }
+
+it('reads only Codex user settings without loading marketplaces or writing config', async () => {
+  const config = {
+    marketplaces: { 'draw-binary': { source_type: 'local', source: '/missing/marketplace' } },
+    plugins: { 'draw@draw-binary': { enabled: false } },
+  };
+  const s = server({}, 'local', { 'config/read': {
+    config: { plugins: { 'draw@other': { enabled: true } } },
+    layers: [{ name: { type: 'user', file: '/mock/config.toml' }, version: 'user-version', config }],
+  } });
+  expect(await readCodexUserConfig()).toEqual(config);
+  expect(s.frames.map(frame => frame.method)).toEqual(['initialize', 'initialized', 'config/read']);
+});
+
+it('allows a slow user settings read after Codex initialization', async () => {
+  vi.useFakeTimers();
+  const s = server({}, 'local', { initialize: undefined, 'config/read': undefined });
+  const config = { plugins: { 'draw@draw-binary': { enabled: true } } };
+  const result = readCodexUserConfig();
+  // Attach a rejection handler before moving the clock past the old session deadline.
+  const observed = result.catch(error => error);
+  await vi.advanceTimersByTimeAsync(10_000);
+  s.child.stdout.write(JSON.stringify({ id: 1, result: {} }) + '\n');
+  await vi.advanceTimersByTimeAsync(20_000);
+  s.child.stdout.write(JSON.stringify({ id: 2, result: { layers: [
+    { name: { type: 'user', file: '/mock/config.toml' }, version: 'user-version', config },
+  ] } }) + '\n');
+  expect(await observed).toEqual(config);
+  expect(s.child.kill).toHaveBeenCalledOnce();
+});
+
+it('closes the Codex process when the settings read reaches its deadline', async () => {
+  vi.useFakeTimers();
+  const s = server({}, 'local', { 'config/read': undefined });
+  const pending = expect(readCodexUserConfig()).rejects.toThrow('UNCONFIRMED');
+  await vi.advanceTimersByTimeAsync(29_999);
+  expect(s.child.kill).not.toHaveBeenCalled();
+  await vi.advanceTimersByTimeAsync(1);
+  await pending;
+  expect(s.child.kill).toHaveBeenCalledOnce();
+});
 
 describe('Draw plugin permissions in Codex', () => {
   it('writes only plugin policy using the user layer version, without starting a conversation', async () => {
@@ -146,7 +187,7 @@ describe('Draw plugin permissions in Codex', () => {
     expect(s.child.kill).toHaveBeenCalledOnce();
   });
 
-  it('bounds the transaction and closes only its own child on timeout', async () => {
+  it('bounds initialization and closes only its own child on timeout', async () => {
     vi.useFakeTimers();
     const s = server({}, 'local', { initialize: undefined });
     const pending = expect(configureCodexPermissions('local', policy)).rejects.toThrow('UNCONFIRMED');

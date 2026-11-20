@@ -1,6 +1,6 @@
 import { execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import { chmodSync, cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, renameSync, rmSync, writeFileSync } from 'node:fs';
+import { chmodSync, cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, realpathSync, renameSync, rmSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { homedir } from 'node:os';
@@ -8,12 +8,14 @@ import { DEFAULT_ORIGIN } from './capture';
 import { installLocalCodex } from './local-install';
 import { localClaudeSettings } from './local-claude-hook';
 import { choosePermissionSet, permissionPath, savePermissions } from './permissions';
-import { configureCodexPermissions, disableLegacyCodexIntegrations } from './codex-permissions';
-import { disableLegacyClaudePlugins, disableLegacyPiIntegrations } from './native-agent-migration';
+import { configureCodexPermissions, disableLegacyCodexIntegrations, readCodexUserConfig } from './codex-permissions';
+import { disableLegacyClaudePlugins, disableLegacyPiIntegrations, uninstallNativePiPackage } from './native-agent-migration';
 import { installedUrl, packagedDefault, promptMcpUrl, resolveMcpUrl, validMcpUrl } from './hosted-url';
 
 type Agent = 'codex' | 'claude-code' | 'pi';
 type Mode = 'local' | 'hosted';
+const agents: readonly Agent[] = ['codex', 'claude-code', 'pi'];
+const nativePlugin = { name: 'draw', marketplace: 'draw-binary' };
 const quote = (value: string) => `'${value.replaceAll("'", "'\\''")}'`;
 function files(directory: string, prefix = ''): string[] {
   return readdirSync(join(directory, prefix), { withFileTypes: true }).flatMap(entry => {
@@ -23,7 +25,7 @@ function files(directory: string, prefix = ''): string[] {
 }
 
 export function prepareNativePlugin(root: string, destination: string, executable: string, version: string, agent: Agent, _legacyMode?: Mode, hostedUrl?: string) {
-  const name = 'draw', marketplace = 'draw-binary';
+  const { name, marketplace } = nativePlugin;
   const source = join(root, 'hosted-plugin');
   const paths = files(source).filter(file => !file.startsWith('skills/'));
   const contents = new Map(paths.map(file => [file, readFileSync(join(source, file))]));
@@ -141,6 +143,79 @@ export async function runNativePermissions(args: string[]) {
   const { defaults } = parseOptions(args, true);
   await setCodexPermissions(['local', 'hosted'], defaults, true);
   process.stderr.write('Draw permissions saved for Codex. Restart Codex to load updated tool approval settings.\n');
+  return 0;
+}
+
+async function uninstallCodex(active: string) {
+  const { name, marketplace } = nativePlugin;
+  const id = `${name}@${marketplace}`;
+  const config = await readCodexUserConfig();
+  const source = config.marketplaces?.[marketplace];
+  const installed = Object.hasOwn(config.plugins ?? {}, id);
+  if (source !== undefined && (source?.source_type !== 'local' ||
+      (source.source !== active && !(existsSync(active) && source.source === realpathSync(active))))) {
+    throw new Error(`REJECTED: ${marketplace} is registered from another source`);
+  }
+  execFileSync('codex', ['plugin', 'remove', id], { stdio: installed ? 'inherit' : 'pipe' });
+  if (source) execFileSync('codex', ['plugin', 'marketplace', 'remove', marketplace], { stdio: 'inherit' });
+  return installed || !!source;
+}
+
+function uninstallClaude(active: string) {
+  const { name, marketplace } = nativePlugin;
+  const id = `${name}@${marketplace}`;
+  const marketplaces = JSON.parse(execFileSync('claude', ['plugin', 'marketplace', 'list', '--json'], { encoding: 'utf8' }));
+  const existing = marketplaces.find((item: { name: string }) => item.name === marketplace);
+  if (existing && (existing.source !== 'directory' || existing.path !== active)) {
+    throw new Error(`REJECTED: ${marketplace} is registered from another source`);
+  }
+  const plugins = JSON.parse(execFileSync('claude', ['plugin', 'list', '--json'], { encoding: 'utf8' }));
+  const installed = plugins.some((plugin: { id: string; scope: string }) => plugin.id === id && plugin.scope === 'user');
+  if (installed) {
+    execFileSync('claude', ['plugin', 'uninstall', id, '--scope', 'user', '--keep-data'], { stdio: 'inherit' });
+  }
+  if (existing) {
+    try {
+      execFileSync('claude', ['plugin', 'marketplace', 'remove', marketplace, '--scope', 'user', '--json'], { encoding: 'utf8', stdio: 'pipe' });
+      return true;
+    } catch (error) {
+      let result;
+      try { result = JSON.parse(String((error as { stdout?: unknown }).stdout ?? '').trim().split('\n').at(-1)!); }
+      catch { throw error; }
+      if (result?.command !== 'marketplace-remove' || result.marketplace !== marketplace || result.failureCode !== 'not_configured') throw error;
+    }
+  }
+  return installed;
+}
+
+export async function runNativeUninstall(args: string[]) {
+  const target = agents.find(agent => agent === args[0]);
+  if (args.length > 1 || (args.length && !target)) throw new Error('REJECTED: usage: draw uninstall [codex|claude-code|pi]');
+  const directory = join(homedir(), '.redcrayon');
+  const failures: string[] = [];
+  let removed = false;
+  for (const agent of target ? [target] : agents) {
+    const active = join(directory, 'plugins', 'installed', `${agent}-hosted`);
+    const receipts = ['local', 'hosted', 'unified'].map(mode => join(directory, 'integrations', `${agent}-${mode}.json`));
+    if (!target && !existsSync(active) && !receipts.some(path => existsSync(path))) continue;
+    try {
+      const changed = agent === 'codex' ? await uninstallCodex(active)
+        : agent === 'claude-code' ? uninstallClaude(active)
+        : uninstallNativePiPackage(active);
+      for (const receipt of receipts) rmSync(receipt, { force: true });
+      if (!changed) continue;
+      const name = { codex: 'Codex', 'claude-code': 'Claude Code', pi: 'Pi' }[agent];
+      const restart = agent === 'codex' ? 'Fully quit and restart' : 'Restart';
+      process.stderr.write(`Removed the Draw integration from ${name}. ${restart} ${name} to apply the change.\n`);
+      removed = true;
+    } catch (error) {
+      if (target) throw error;
+      failures.push(`${agent}: ${error instanceof Error ? error.message : String(error)}`);
+    }
+  }
+  if (failures.length) throw new Error(failures.join('\n'));
+  if (!removed) process.stderr.write('No Draw integrations found.\n');
+  process.stderr.write('The Draw CLI is still installed. If you installed it with npm, remove it with:\n  npm uninstall -g @redcrayonai/draw\n');
   return 0;
 }
 

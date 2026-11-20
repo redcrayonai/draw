@@ -26,6 +26,8 @@ export interface TellingPlayer {
   key(e: KeyboardEvent): boolean;
   setBlocked(blocked: boolean): void;
   readonly isOpen: boolean;
+  /** The id of the telling on screen, or null. */
+  readonly current: bigint | null;
 }
 
 export function createTellingPlayer(deps: TellingPlayerDeps): TellingPlayer {
@@ -144,6 +146,7 @@ export function createTellingPlayer(deps: TellingPlayerDeps): TellingPlayer {
     },
     setBlocked(b) { blocked = b; clock?.setBlocked(b); },
     get isOpen() { return t !== null; },
+    get current() { return t?.id ?? null; },
   };
 }
 
