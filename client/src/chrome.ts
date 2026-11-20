@@ -83,7 +83,7 @@ export function initAccountBar(displayName: string, onSignOut: () => void): void
     name.setAttribute('aria-expanded', String(open));
   };
   name.addEventListener('click', () => {
-    setOpen(pop.hidden);
+    setOpen(Boolean(pop.hidden));
     if (!pop.hidden) button.focus();
   });
   dismissible(pop, name, () => setOpen(false));
@@ -303,7 +303,7 @@ export function setupTheme(): void {
     pop.hidden = !open;
     btn.setAttribute('aria-expanded', String(open));
   };
-  btn.addEventListener('click', () => setOpen(pop.hidden));
+  btn.addEventListener('click', () => setOpen(Boolean(pop.hidden)));
   pop.addEventListener('click', evt => {
     const opt = (evt.target as Element).closest<HTMLElement>('[data-theme-opt]');
     if (opt === null) return;
@@ -685,7 +685,7 @@ function setPresencePop(open: boolean): void {
 }
 
 popLabel?.addEventListener('click', () => {
-  setPresencePop(popEl.hidden);
+  setPresencePop(Boolean(popEl.hidden));
 });
 if (popEl) dismissible(popEl, popLabel, () => setPresencePop(false));
 

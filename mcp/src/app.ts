@@ -92,7 +92,7 @@ async function ipLimited(env: Env, request: Request): Promise<boolean> {
  * Content-Length to check first. undefined when it is over, when `spend` refuses
  * a chunk, or when `signal` aborts before the body ends.
  */
-export async function readCapped(request: Request, max: number, spend = (_bytes: number) => true, signal?: AbortSignal): Promise<Uint8Array | undefined> {
+export async function readCapped(request: Request, max: number, spend = (_bytes: number) => true, signal?: AbortSignal): Promise<Uint8Array<ArrayBuffer> | undefined> {
   if (Number(request.headers.get('content-length') ?? 0) > max) return undefined;
   if (!request.body) return new Uint8Array();
   const reader = request.body.getReader();

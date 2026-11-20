@@ -202,7 +202,7 @@ export function setupReview(deps: ReviewDeps): (model: ReviewModel) => void {
     if (open) paint(model);
     else deps.hoverNode(null);
   };
-  btn.addEventListener('click', () => setOpen(pop.hidden));
+  btn.addEventListener('click', () => setOpen(Boolean(pop.hidden)));
   dismissible(pop, btn, () => setOpen(false));
   return paint;
 }
