@@ -46,7 +46,7 @@ jobs:
         with:
           bun-version: 1.4.4
       - name: Install build and browser test dependencies
-        run: for p in agent client helper e2e mcp; do pnpm -C "$p" install --frozen-lockfile; done
+        run: for p in agent shared client helper e2e mcp; do pnpm -C "$p" install --frozen-lockfile; done
       - name: Check native hosted tool catalog
         run: agent/node_modules/.bin/tsx mcp/scripts/native-tools.ts --check
       - name: Build standalone executable and npm packages
