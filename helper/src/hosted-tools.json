@@ -923,8 +923,8 @@
           ]
         },
         "source": {
-          "description": "REQUIRED: the command and commit that produced the data, e.g. 'agent: npm run bench @ 1a2b3c4'",
-          "type": "string"
+          "type": "string",
+          "description": "REQUIRED: the command and commit that produced the data, e.g. 'agent: npm run bench @ 1a2b3c4'"
         }
       },
       "required": [
@@ -936,7 +936,8 @@
         "w",
         "h",
         "type",
-        "csv"
+        "csv",
+        "source"
       ],
       "additionalProperties": false
     }

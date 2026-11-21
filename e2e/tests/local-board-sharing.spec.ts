@@ -31,9 +31,12 @@ test('local board signs in and shares through the dashboard route', async ({ sta
   await expect.poll(() => accountTab.isClosed()).toBe(true);
   await expect(tab.getByRole('heading', { name: 'Share a copy of ' + board.name })).toBeVisible();
   await share.click();
+  board.name = 'Edited before confirmation';
   const remembered = local.waitForRequest(request => request.url().endsWith('/api/call') && request.postDataJSON().action === 'remember_shared_copy');
   await tab.getByRole('button', { name: 'Share a copy', exact: true }).click();
   await expect(tab.getByRole('heading', { name: 'Your shared copy is ready' })).toBeVisible();
   expect((await remembered).postDataJSON().board).toBe(board.slug);
+  await tab.getByRole('link', { name: 'Open shared copy' }).click();
+  await expect(tab.locator('#board-title')).toHaveText(board.name);
   expect(local.context().pages()).toHaveLength(2);
 });

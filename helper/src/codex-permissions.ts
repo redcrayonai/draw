@@ -1,5 +1,5 @@
 import { spawn } from 'node:child_process';
-import type { DrawPermissions } from './permissions';
+import type { PermissionMode, PermissionRecord } from './permissions';
 
 type Frame = Record<string, any>;
 const localTools = ['list_boards', 'open_board', 'read_board', 'apply_local_board', 'attach_conversation', 'read_code'];
@@ -101,50 +101,55 @@ async function writeConfig(rpc: Rpc, user: Frame, edits: Frame[]) {
 }
 
 /** Returns only denials owned by this installer; independent user denials must survive policy edits. */
-export async function configureCodexPermissions(
-  mode: 'local' | 'hosted', policy: DrawPermissions, previousManagedDisabledTools: string[] = [], migrateLocal = false,
-): Promise<string[]> {
-  if (!['local', 'hosted'].includes(mode) ||
-    (['boards', 'conversation', 'snippets', 'uploads'] as const).some(key => !(key === 'boards' || key === 'conversation' ? ['ask', 'allow', 'deny'] : ['ask', 'deny']).includes(policy[key]))) throw unavailable();
-  disabledTools(previousManagedDisabledTools);
+export async function configureCodexPermissions(choices: { mode: PermissionMode; record: PermissionRecord }[]) {
+  for (const { mode, record } of choices) {
+    if (!['local', 'hosted'].includes(mode) ||
+      (['boards', 'conversation', 'snippets', 'uploads'] as const).some(key => !(key === 'boards' || key === 'conversation' ? ['ask', 'allow', 'deny'] : ['ask', 'deny']).includes(record.permissions[key]))) throw unavailable();
+    disabledTools(record.managedDisabledTools);
+  }
   return withCodexConfig(async (read, user, rpc) => {
     const plugin = 'draw@draw-binary';
     const server = 'draw';
     const settings = (config: Frame, id = plugin, name = server) => object(object(object(object(config.plugins)[id]).mcp_servers)[name]);
     const effective = settings(object(read.config));
     const saved = settings(object(user.config));
-    const rename = (tool: string) => mode === 'local' && tool === 'apply_board' ? 'apply_local_board' : tool;
-    const previous = new Set(previousManagedDisabledTools.map(rename));
-    const legacy = migrateLocal ? [plugin, 'draw-local@draw-local-dev'].flatMap(id =>
-      [read.config, user.config].flatMap(config => disabledTools(settings(object(config), id, 'draw-local').disabled_tools).map(rename))) : [];
-    const current = [...disabledTools(saved.disabled_tools), ...disabledTools(effective.disabled_tools)];
-    if (migrateLocal) for (const tool of current) previous.delete(tool);
-    const existing = new Set([...legacy, ...current]);
-    const requested = policy.boards === 'deny' ? [...(mode === 'local' ? localTools : hostedTools)] : [
-      ...(policy.conversation === 'deny' ? [mode === 'local' ? 'attach_conversation' : 'start_chat'] : []),
-      ...(policy.snippets === 'deny' ? [mode === 'local' ? 'read_code' : 'add_code_ref'] : []),
-    ];
-    // Upload permission is enforced by the helper before capture; it has no separate MCP tool.
-    const managed = requested.filter(tool => previous.has(tool) || !existing.has(tool));
-    const disabled = [...new Set([...existing].filter(tool => !previous.has(tool)).concat(requested))];
+    let disabled = [...disabledTools(saved.disabled_tools), ...disabledTools(effective.disabled_tools)];
     const tools = { ...object(saved.tools), ...object(effective.tools) };
-    for (const [tool, settings] of Object.entries(tools)) {
-      if (!(mode === 'local' ? hostedTools : localTools).includes(tool)) tools[tool] = { ...object(settings), approval_mode: 'prompt' };
-    }
-    if (policy.boards === 'allow') {
-      const sourceTools = mode === 'local' ? ['read_code'] : ['add_code_ref', 'mark_checkpoint', 'arrive', 'create_edge', 'apply_board'];
-      const conversationTool = mode === 'local' ? 'attach_conversation' : 'start_chat';
-      for (const tool of mode === 'local' ? localTools : hostedTools) {
-        // Mixed source operations still prompt; future tools keep the prompt default.
-        const prompt = sourceTools.includes(tool) || (tool === conversationTool && policy.conversation !== 'allow');
-        tools[tool] = { ...object(tools[tool]), approval_mode: prompt ? 'prompt' : 'approve' };
+    const records = choices.map(({ mode, record }) => {
+      const policy = record.permissions;
+      const migrateLocal = mode === 'local' && !record.routed;
+      const rename = (tool: string) => mode === 'local' && tool === 'apply_board' ? 'apply_local_board' : tool;
+      const previous = new Set((record.managedDisabledTools ?? []).map(rename));
+      const legacy = migrateLocal ? [plugin, 'draw-local@draw-local-dev'].flatMap(id =>
+        [read.config, user.config].flatMap(config => disabledTools(settings(object(config), id, 'draw-local').disabled_tools).map(rename))) : [];
+      if (migrateLocal) for (const tool of disabled) previous.delete(tool);
+      const existing = new Set([...legacy, ...disabled]);
+      const requested = policy.boards === 'deny' ? [...(mode === 'local' ? localTools : hostedTools)] : [
+        ...(policy.conversation === 'deny' ? [mode === 'local' ? 'attach_conversation' : 'start_chat'] : []),
+        ...(policy.snippets === 'deny' ? [mode === 'local' ? 'read_code' : 'add_code_ref'] : []),
+      ];
+      // Upload permission is enforced by the helper before capture; it has no separate MCP tool.
+      const managed = requested.filter(tool => previous.has(tool) || !existing.has(tool));
+      disabled = [...new Set([...existing].filter(tool => !previous.has(tool)).concat(requested))];
+      for (const [tool, settings] of Object.entries(tools)) {
+        if (!(mode === 'local' ? hostedTools : localTools).includes(tool)) tools[tool] = { ...object(settings), approval_mode: 'prompt' };
       }
-    }
+      if (policy.boards === 'allow') {
+        const sourceTools = mode === 'local' ? ['read_code'] : ['add_code_ref', 'mark_checkpoint', 'arrive', 'create_edge', 'apply_board'];
+        const conversationTool = mode === 'local' ? 'attach_conversation' : 'start_chat';
+        for (const tool of mode === 'local' ? localTools : hostedTools) {
+          // Mixed source operations still prompt; future tools keep the prompt default.
+          const prompt = sourceTools.includes(tool) || (tool === conversationTool && policy.conversation !== 'allow');
+          tools[tool] = { ...object(tools[tool]), approval_mode: prompt ? 'prompt' : 'approve' };
+        }
+      }
+      return { mode, record: { ...record, managedDisabledTools: managed, routed: true } };
+    });
     const prefix = `plugins.${plugin}.mcp_servers.${server}`;
     const edits = Object.entries({ default_tools_approval_mode: 'prompt', disabled_tools: disabled, ...(Object.keys(tools).length ? { tools } : {}) })
       .map(([key, value]) => ({ keyPath: `${prefix}.${key}`, value, mergeStrategy: 'replace' }));
     await writeConfig(rpc, user, edits);
-    return managed;
+    return records;
   });
 }
 

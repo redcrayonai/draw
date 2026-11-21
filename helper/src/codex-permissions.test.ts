@@ -2,12 +2,26 @@ import { EventEmitter } from 'node:events';
 import { readFileSync } from 'node:fs';
 import { PassThrough } from 'node:stream';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { configureCodexPermissions, disableLegacyCodexIntegrations, readCodexUserConfig } from './codex-permissions';
+import type { DrawPermissions, PermissionMode } from './permissions';
+import { configureCodexPermissions as configureSet, disableLegacyCodexIntegrations, readCodexUserConfig } from './codex-permissions';
 
 const { spawn } = vi.hoisted(() => ({ spawn: vi.fn() }));
 vi.mock('node:child_process', () => ({ spawn }));
 const policy = { boards: 'ask', conversation: 'ask', snippets: 'deny', uploads: 'deny' } as const;
 afterEach(() => { vi.useRealTimers(); vi.clearAllMocks(); });
+
+async function configureCodexPermissions(mode: PermissionMode, permissions: DrawPermissions, managedDisabledTools: string[] = [], migrateLocal = false) {
+  const [choice] = await configureSet([{ mode, record: { permissions, managedDisabledTools, routed: !migrateLocal } }]);
+  return choice.record.managedDisabledTools;
+}
+
+it('applies local and hosted choices in one version-checked write', async () => {
+  const s = server();
+  const records = await configureSet([{ mode: 'local', record: { permissions: policy } }, { mode: 'hosted', record: { permissions: policy } }]);
+  expect(records.map(choice => choice.record.managedDisabledTools)).toEqual([['read_code'], ['add_code_ref']]);
+  expect(s.write().edits[1].value).toEqual(['read_code', 'add_code_ref']);
+  expect(s.frames.filter(frame => frame.method === 'config/batchWrite')).toHaveLength(1);
+});
 
 function server(settings: Record<string, unknown> = {}, mode = 'local', overrides: Record<string, unknown> = {}) {
   const child = Object.assign(new EventEmitter(), { stdin: new PassThrough(), stdout: new PassThrough(), kill: vi.fn() });

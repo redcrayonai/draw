@@ -42,7 +42,7 @@ The Versions save and restore case (`tests/board-versions.spec.ts`) needs an S3-
 To test an existing canvas, set its URL:
 
 ```sh
-E2E_BASE_URL=https://app-staging.example.com pnpm -C e2e test:staging
+E2E_BASE_URL=https://app-staging.example.com E2E_DASHBOARD_URL=https://dashboard-staging.example.com pnpm -C e2e test:staging
 ```
 
 These checks cover the dashboard’s `/local-board` route, node/edge reload, private locator denial, and guest sharing/revocation.

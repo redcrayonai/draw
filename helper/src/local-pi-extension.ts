@@ -13,26 +13,35 @@ export default function localPi(pi: Pi, helper = piHelperCommand(), beforeAttach
   if (!beforeAttach) pi.registerMcpServer('draw-local', { command, args: [...args, 'local-mcp', '--repo', process.cwd(), ...storeArgs], exposure: 'direct' });
   let active: { board: string; event(value: object): Promise<void>; close(): Promise<void> } | undefined;
   let sequence = 0, generation = 0;
-  const detach = async () => {
-    generation++;
-    const previous = active; active = undefined;
-    await previous?.close();
+  let transition = Promise.resolve();
+  let selected: string | undefined;
+  const select = (board?: string, context?: Context) => {
+    selected = board;
+    const current = ++generation;
+    const next = transition.then(async () => {
+      if (current !== generation) return;
+      await active?.close();
+      if (board && context && current === generation) await attach(board, context, current);
+    });
+    transition = next.catch(() => { if (current === generation) selected = undefined; });
+    return next;
   };
-  const attach = async (board: string, context: Context) => {
-    const closing = detach(), current = generation;
-    await closing;
-    if (current !== generation) return;
+  const attach = async (board: string, context: Context, current: number) => {
     beforeAttach?.();
     const endpoint = localEndpoint(['--repo', context.cwd, ...storeArgs]);
     const session = `pi:${context.sessionManager.getSessionId()}`, cancel = new AbortController();
     const call = (input: object, signal?: AbortSignal) => localCall(endpoint, { ...input, board, session }, signal);
     await call({ action: 'connect_local_agent', agent: 'pi', threadId: context.sessionManager.getSessionId(), cwd: context.cwd });
     if (current !== generation) { await call({ action: 'disconnect_local_agent' }); return; }
-    const close = async () => {
-      if (cancel.signal.aborted) return;
+    let closing: Promise<void> | undefined;
+    const close = () => {
+      if (closing) return closing;
       cancel.abort();
-      if (active?.close === close) active = undefined;
-      try { await call({ action: 'disconnect_local_agent' }); } catch { /* The server also expires missing clients. */ }
+      if (current === generation) selected = undefined;
+      closing = call({ action: 'disconnect_local_agent' }).catch(() => {}).then(() => {
+        if (active?.close === close) active = undefined;
+      });
+      return closing;
     };
     const fail = async (error: Error) => { context.ui.notify(`Board chat: ${error.message}`, 'error'); await close(); };
     let events = Promise.resolve();
@@ -60,14 +69,16 @@ export default function localPi(pi: Pi, helper = piHelperCommand(), beforeAttach
     })().catch(error => { if (!cancel.signal.aborted) return fail(error); });
   };
   pi.on('session_start', async (_event, context) => {
-    await detach();
-    if (configuredBoard) await attach(configuredBoard, context);
+    await select(configuredBoard, context);
   });
   pi.on('tool_result', async (event, context) => {
     if (configuredBoard || event.isError || !/^mcp__draw(?:[-_]local)?__(open_board|read_board)$/.test(event.toolName)) return;
     const board = hookResult(event.structuredContent ?? { content: event.content });
     if (!board || board.repo !== realpathSync(context.cwd)) return;
-    if (typeof board.slug === 'string' && board.slug !== active?.board && /^[A-Za-z0-9_-]{1,200}$/.test(board.slug)) await attach(board.slug, context);
+    if (typeof board.slug === 'string' && /^[A-Za-z0-9_-]{1,200}$/.test(board.slug)) {
+      if (board.slug === selected) return transition;
+      await select(board.slug, context);
+    }
   });
   pi.on('agent_start', () => active?.event({ type: 'state', state: 'working' }));
   pi.on('message_end', async message => {
@@ -80,6 +91,6 @@ export default function localPi(pi: Pi, helper = piHelperCommand(), beforeAttach
     }
   });
   pi.on('agent_settled', event => active?.event({ type: 'state', state: event.aborted ? 'stopped' : 'idle' }));
-  pi.on('session_shutdown', detach);
-  return { close: detach };
+  pi.on('session_shutdown', () => select());
+  return { close: () => select() };
 }

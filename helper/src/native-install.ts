@@ -133,10 +133,7 @@ function parseOptions(args: string[], permissionsOnly = false) {
 
 async function setCodexPermissions(modes: readonly Mode[], defaults: boolean, reconfigure = false) {
   const choices = await choosePermissionSet(modes, { defaults, reconfigure });
-  for (const { mode, record } of choices) {
-    const managedDisabledTools = await configureCodexPermissions(mode, record.permissions, record.managedDisabledTools, mode === 'local' && !record.routed);
-    savePermissions(mode, { ...record, managedDisabledTools, routed: true });
-  }
+  for (const { mode, record } of await configureCodexPermissions(choices)) savePermissions(mode, record);
 }
 
 export async function runNativePermissions(args: string[]) {

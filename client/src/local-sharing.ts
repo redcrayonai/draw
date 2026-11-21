@@ -21,7 +21,7 @@ export function mountLocalSharing(current: () => LocalBoard | undefined, call: <
   const copy = document.getElementById('shared-copy') as HTMLAnchorElement;
   let skipIntro = false, sharing = false, connected = false;
   let popup: Window | null = null;
-  let snapshot: ReturnType<typeof localCopy> | undefined, slug = '';
+  let snapshot: Promise<ReturnType<typeof localCopy>> | undefined, slug = '', name = '';
   let requestKey = '';
   function sync() {
     account.hidden = false;
@@ -55,7 +55,8 @@ export function mountLocalSharing(current: () => LocalBoard | undefined, call: <
     popup = next;
     dashboard = target;
     requestKey = crypto.randomUUID();
-    snapshot = sharing && board ? localCopy(board) : undefined;
+    snapshot = undefined;
+    name = sharing ? board!.name : '';
     slug = sharing ? board!.slug : '';
     dialog.close();
   }
@@ -92,9 +93,17 @@ export function mountLocalSharing(current: () => LocalBoard | undefined, call: <
     if (event.data?.type === 'draw.account') {
       connected = true;
       account.textContent = 'Account';
-      popup.postMessage({type: 'draw.ready', name: snapshot?.name}, dashboard);
+      popup.postMessage({type: 'draw.ready', name}, dashboard);
     }
-    if (event.data?.type === 'draw.copy' && snapshot) popup.postMessage({ type: 'draw.snapshot', snapshot, requestKey }, dashboard);
+    if (event.data?.type === 'draw.copy' && slug) {
+      const target = popup, origin = dashboard;
+      snapshot ??= call<LocalBoard>({ action: 'read_board', board: slug }).then(localCopy);
+      void snapshot.then(copy => {
+        if (popup === target) target.postMessage({ type: 'draw.snapshot', snapshot: copy, requestKey }, origin);
+      }, () => {
+        if (popup === target) { snapshot = undefined; say('Could not read the local board. Try sharing again.'); }
+      });
+    }
     if (event.data?.type === 'draw.shared' && snapshot && typeof event.data.href === 'string') {
       let url: URL;
       try { url = new URL(event.data.href); } catch { return; }

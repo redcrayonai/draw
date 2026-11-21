@@ -34,7 +34,7 @@ beforeEach(() => {
   executable = join(directory, "native tools' folder", 'draw $(never-execute)');
   vi.mocked(homedir).mockReturnValue(directory);
   vi.mocked(choosePermissionSet).mockReset().mockImplementation(async modes => modes.map(mode => ({ mode, editable: true, record: { permissions: { boards: 'ask', conversation: 'ask', snippets: 'deny', uploads: 'deny' }, managedDisabledTools: ['old_tool'] } })));
-  vi.mocked(configureCodexPermissions).mockReset().mockResolvedValue(['read_code']);
+  vi.mocked(configureCodexPermissions).mockReset().mockImplementation(async choices => choices.map(({ mode, record }) => ({ mode, record: { ...record, managedDisabledTools: ['read_code'], routed: true } })));
   vi.mocked(installLocalCodex).mockReset();
   vi.mocked(execFileSync).mockReset();
   vi.mocked(readCodexUserConfig).mockReset().mockResolvedValue({});
@@ -107,7 +107,7 @@ it.each([
 ])('reconfigures permissions without reinstalling (%j)', async (...args) => {
   expect(await runNativePermissions(args)).toBe(0);
   expect(choosePermissionSet).toHaveBeenCalledWith(['local', 'hosted'], { defaults: true, reconfigure: true });
-  expect(configureCodexPermissions).toHaveBeenCalledWith('hosted', expect.objectContaining({ snippets: 'deny' }), ['old_tool'], false);
+  expect(configureCodexPermissions).toHaveBeenCalledWith(expect.arrayContaining([expect.objectContaining({ mode: 'hosted', record: expect.objectContaining({ managedDisabledTools: ['old_tool'] }) })]));
   expect(savePermissions).toHaveBeenCalledWith('hosted', { permissions: { boards: 'ask', conversation: 'ask', snippets: 'deny', uploads: 'deny' }, managedDisabledTools: ['read_code'], routed: true });
   expect(installLocalCodex).not.toHaveBeenCalled();
   expect(cpSync).not.toHaveBeenCalled();
@@ -234,7 +234,7 @@ it('installs one skill with both transports and correctly relocated workflow ref
 it('configures both policies and replaces competing integrations only after successful installation', async () => {
   useBundledAssets();
   vi.mocked(installLocalCodex).mockImplementationOnce(() => {
-    expect(configureCodexPermissions).toHaveBeenCalledTimes(2);
+    expect(configureCodexPermissions).toHaveBeenCalledOnce();
     expect(savePermissions).toHaveBeenCalledTimes(2);
     expect(disableLegacyCodexIntegrations).not.toHaveBeenCalled();
   });
@@ -319,7 +319,7 @@ it('repairs the legacy placeholder from the packaged default and keeps unrelated
   expect(installedUrl()).toBe('https://test.example/mcp');
   expect(stderr.join('')).toContain('Replacing an unusable saved Draw endpoint');
   expect(JSON.stringify(json(join(active(), 'mcp.json')))).not.toContain('${');
-  expect(configureCodexPermissions).toHaveBeenCalledTimes(2); // permissions flow is untouched
+  expect(configureCodexPermissions).toHaveBeenCalledOnce(); // permissions flow is untouched
 });
 
 it('local mode ignores a bad REDCRAYON_MCP_URL and still writes a concrete URL', async () => {
