@@ -1948,6 +1948,9 @@ export const ensureGuestBoard = reducer(
     if (previous) ctx.db.guestBoard.identity.delete(ctx.sender);
     const board = insertBoard(ctx, 'Untitled board');
     initCallerBoard(ctx, board.id, board.name, 'guest');
+    // Where ensurePersonalWorkspace would put it on the next dashboard load: the workspace's plugins are here from the start.
+    const personal = workspaceHuman(ctx) && [...ctx.db.workspace.owner.filter(ctx.sender)].find((w: any) => w.personal);
+    if (personal) ctx.db.boardWorkspace.insert({ boardId: board.id, workspaceId: personal.id, defaultRole: 'none' });
     ctx.db.guestBoard.insert({ identity: ctx.sender, boardId: board.id });
   }
 );
