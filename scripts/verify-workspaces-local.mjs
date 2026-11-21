@@ -170,6 +170,26 @@ test('personal workspace onboarding preserves old board ownership and keeps a si
   await node(owner, B, 'personal owner still edits');
 });
 
+test('a board started on the canvas joins the personal workspace its maker already has', async () => {
+  const owner = person(), visitor = guest();
+  await ok(owner, 'ensure_guest_board', [NONE]);
+  const first = (await rows(owner, 'my_guest_board'))[0].boardId;
+  assert.equal((await permission(owner, first)).workspaceId, 0, 'no personal workspace yet: the board waits for onboarding');
+  await ok(owner, 'ensure_personal_workspace');
+  const personal = (await rows(owner, 'my_workspaces')).find(row => row.personal).id;
+  await ok(owner, 'ensure_guest_board', [{ some: true }]);
+  const fresh = (await rows(owner, 'my_guest_board'))[0].boardId;
+  assert.notEqual(fresh, first);
+  assert.equal((await permission(owner, fresh)).workspaceId, personal, 'in the workspace without a dashboard visit');
+  assert.equal((await permission(owner, fresh)).role, 'manager');
+  await node(owner, fresh, 'its maker still edits');
+  await ok(owner, 'ensure_guest_board', [NONE]);
+  assert.equal((await rows(owner, 'my_guest_board'))[0].boardId, fresh, 'a bare visit returns to it');
+  await ok(visitor, 'ensure_guest_board', [NONE]);
+  const theirs = (await rows(visitor, 'my_guest_board'))[0].boardId;
+  assert.equal((await sql(OWNER, `SELECT * FROM board_workspace WHERE board_id = ${theirs}`)).length, 0, 'a guest has no workspace');
+});
+
 test('a personal-board guest manager can share and edit without transferring ownership', async () => {
   const owner = person(), manager = person();
   await ok(owner, 'ensure_personal_workspace');
