@@ -89,3 +89,16 @@ it('reclaims stale activity slots so later boards can use traffic', async () => 
   const { value: board } = await call({ action: 'open_board', name: 'Next board' });
   await vi.waitFor(async () => expect((await call({ action: 'activity', board: board.slug, mapping: {}, events: [], flush: true })).status).toBe(200), { timeout: 2000 });
 });
+
+it('remembers the offline choice on disk and accepts only board links for the shared copy', async () => {
+  const { call } = await setup();
+  expect((await call({action: 'sharing_preference'})).value.skip).toBe(false);
+  await call({action: 'set_sharing_preference', skip: true});
+  expect((await call({action: 'sharing_preference'})).value.skip).toBe(true);
+  const {value: board} = await call({action:'open_board', name:'Original'});
+  const save = (href: string) => call({action:'remember_shared_copy', board:board.slug, href});
+  expect((await save('javascript:alert(1)')).status).not.toBe(200);
+  const href = 'https://canvas.example/#b=checkout';
+  expect((await save(href)).status).toBe(200);
+  expect((await call({action:'read_board', board:board.slug})).value.sharedCopy).toBe(href);
+});

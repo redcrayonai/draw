@@ -1930,6 +1930,55 @@ export const createRequestedBoard = reducer(
   }
 );
 
+// One transaction owns the graph, its audience and the retry receipt.
+export const shareLocalCopy = spacetimedb.procedure({
+  workspaceId: t.string(), requestKey: t.string(), linkToken: t.string(), snapshot: t.string(),
+}, t.string(), (ctx, input) => ctx.withTx(tx => {
+  if (!workspaceHuman(tx)) throw new SenderError('Sign in to share a board.');
+  if (!/^[1-9]\d{0,19}$/.test(input.workspaceId) || !/^[0-9a-f-]{36}$/.test(input.requestKey) ||
+      (input.linkToken && !isShareToken(input.linkToken))) throw new SenderError('Invalid sharing request.');
+  const workspaceId = BigInt(input.workspaceId);
+  if (!['member', 'owner', 'admin'].includes(membership(tx, workspaceId)?.role)) throw new SenderError('Choose a workspace where you can create boards.');
+  if (input.snapshot.length > 2_000_000) throw new SenderError('This diagram exceeds the sharing limit.');
+  const key = 'local:' + tx.sender.toHexString() + ':' + input.requestKey;
+  const previous = tx.db.boardCreation.requestKey.find(key);
+  if (previous) {
+    const board = tx.db.board.id.find(previous.boardId);
+    if (!previous.owner.isEqual(tx.sender) || !board || tx.db.boardWorkspace.boardId.find(board.id)?.workspaceId !== workspaceId || humanBoardRole(tx, board.id) !== 'manager') throw new SenderError('The previous copy is unavailable.');
+    const token = tx.db.linkShare.boardId.find(board.id)?.token ?? '';
+    if (token !== input.linkToken) throw new SenderError('This copy already exists with different link access. Open it from your workspace.');
+    return procedureJson({ slug: board.slug, token });
+  }
+  spendWrite(tx);
+  const copy = JSON.parse(input.snapshot);
+  assertBoardName(copy.name);
+  if (!Array.isArray(copy.nodes) || !Array.isArray(copy.edges) || copy.nodes.length > 5000 || copy.edges.length > 10000) throw new SenderError('Invalid diagram size.');
+  const board = insertBoard(tx, copy.name);
+  initCallerBoard(tx, board.id, copy.name, 'workspace');
+  assignBoardWorkspace(tx, board.id, workspaceId, tx.sender, input.linkToken ? 'none' : 'viewer');
+  const ids = new Map<string, bigint>();
+  for (const n of copy.nodes) {
+    if (typeof n.id !== 'string' || ids.has(n.id) || typeof n.label !== 'string' || typeof n.doc !== 'string' ||
+        !['service','datastore','external','boundary','note','text'].includes(n.kind) ||
+        ![n.x,n.y,n.w,n.h].every(v => Number.isFinite(v) && Math.abs(v) <= 2e6) || n.w < 16 || n.h < 16) throw new SenderError('Invalid diagram shape.');
+    const grid = (v: number) => Math.round(v / GRID) * GRID;
+    const node = insertNode(tx, { boardId: board.id, label: n.label, doc: n.doc, kind: n.kind, sublabel: '',
+      x: grid(n.x), y: grid(n.y), w: grid(n.w), h: grid(n.h), token: 'ink', focal: false });
+    if (n.icon) { assertIconFor(tx, board.id, n.kind, n.icon); tx.db.nodeIcon.insert({ boardId: board.id, nodeId: node.id, icon: n.icon }); }
+    ids.set(n.id, node.id);
+  }
+  for (const e of copy.edges) {
+    const fromNode = ids.get(e.from), toNode = ids.get(e.to);
+    if (!fromNode || !toNode || typeof e.label !== 'string' || !['both','forward','none'].includes(e.direction)) throw new SenderError('Invalid diagram connection.');
+    const edge = insertEdge(tx, {boardId: board.id, fromNode, toNode, label: e.label, evidence: `human:${tx.sender.toHexString()} (shared local diagram)` });
+    if (e.direction !== 'forward') tx.db.edge.id.update({...edge, relation: e.direction === 'both' ? 'bidirectional' : 'undirected'});
+  }
+  if (input.linkToken) tx.db.linkShare.insert({ boardId: board.id, token: input.linkToken, mode: 'view', createdBy: tx.sender, createdAt: tx.timestamp, includeThreats: false, includeCode: false });
+  refreshStats(tx, board.id);
+  tx.db.boardCreation.insert({ requestKey: key, owner: tx.sender, boardId: board.id });
+  return procedureJson({ slug: board.slug, token: input.linkToken });
+}));
+
 export const myBoardCreations = spacetimedb.view(
   { name: 'my_board_creations', public: true }, t.array(boardCreation.rowType),
   ctx => [...ctx.db.boardCreation.owner.filter(ctx.sender)]

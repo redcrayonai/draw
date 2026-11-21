@@ -4,6 +4,7 @@ import { ChatCore } from './chat';
 import { chatConnection } from './chat-bootstrap';
 import { origin } from './capture';
 import { piHelperCommand } from './pi-runtime';
+import { isLocalTool } from './router-names';
 import localPi from './local-pi-extension';
 
 type Context = {
@@ -18,10 +19,10 @@ type Pi = {
   registerMcpServer(name: string, config: any): void;
 };
 
-export function piCaptureHook(input: object, cwd: string, notify: (message: string) => void, helper = piHelperCommand()): Promise<Record<string, any>> {
+export function piCaptureHook(input: object, cwd: string, notify: (message: string) => void, helper = piHelperCommand(), endpoint?: string): Promise<Record<string, any>> {
   return new Promise((resolve, reject) => {
     const [command, ...args] = helper;
-    const child = spawn(command, [...args, 'hook'], { cwd, stdio: 'pipe' });
+    const child = spawn(command, [...args, 'hook'], { cwd, stdio: 'pipe', ...(endpoint && { env: { ...process.env, DRAW_ROUTER: '1', REDCRAYON_ORIGIN: new URL(endpoint).origin, REDCRAYON_MCP_URL: endpoint } }) });
     let stdout = '', stderr = '';
     const timer = setTimeout(() => child.kill(), 120_000);
     child.stdout.on('data', chunk => { stdout += chunk; });
@@ -39,7 +40,7 @@ export function piCaptureHook(input: object, cwd: string, notify: (message: stri
 }
 
 /** Loaded in the user's pi session: board messages never start another conversation. */
-export default function drawPi(pi: Pi, options?: { mode: 'local' | 'hosted' | 'unified'; executable: string }) {
+export default function drawPi(pi: Pi, options?: { mode: 'local' | 'hosted' | 'unified'; executable: string; endpoint?: string }) {
   const helper = options ? [options.executable] : piHelperCommand();
   const mode = options?.mode ?? process.env.DRAW_MODE;
   if (mode === 'local' || (!mode && process.env.DRAW_LOCAL_BOARD)) return localPi(pi, helper);
@@ -50,7 +51,9 @@ export default function drawPi(pi: Pi, options?: { mode: 'local' | 'hosted' | 'u
     close();
     pi.appendEntry('draw-chat', null);
   }) : undefined;
-  pi.registerMcpServer('draw', { url: process.env.REDCRAYON_MCP_URL || `${origin()}/mcp`, exposure: 'direct' });
+  const endpoint = options?.endpoint ?? (process.env.REDCRAYON_MCP_URL || `${origin()}/mcp`);
+  if (mode === 'unified' && options) pi.registerMcpServer('draw', { command: options.executable, args: ['mcp'], env: { REDCRAYON_MCP_URL: endpoint }, exposure: 'direct' });
+  else pi.registerMcpServer('draw', { url: process.env.REDCRAYON_MCP_URL || `${origin()}/mcp`, exposure: 'direct' });
   let sequence = 0;
   const attach = (chat: { token: string; board: string; origin: string }, ctx: Context) => {
     active?.close();
@@ -113,18 +116,18 @@ export default function drawPi(pi: Pi, options?: { mode: 'local' | 'hosted' | 'u
     }
   });
   pi.on('tool_call', async (event, ctx) => {
-    if (!/^mcp__draw__/.test(event.toolName)) return;
+    if (!/^mcp__draw__/.test(event.toolName) || isLocalTool(event.toolName.slice('mcp__draw__'.length))) return;
     try {
-      const answer = await piCaptureHook({ hook_event_name: 'PreToolUse', tool_name: event.toolName, tool_input: event.input, cwd: ctx.cwd }, ctx.cwd, message => ctx.ui.notify(message, 'info'), helper);
+      const answer = await piCaptureHook({ hook_event_name: 'PreToolUse', tool_name: event.toolName, tool_input: event.input, cwd: ctx.cwd }, ctx.cwd, message => ctx.ui.notify(message, 'info'), helper, options?.endpoint);
       if (answer.hookSpecificOutput?.updatedInput) Object.assign(event.input, answer.hookSpecificOutput.updatedInput);
     } catch (error) { return { block: true, reason: String(error) }; }
   });
   pi.on('tool_result', async (event, ctx) => {
-    if (event.isError || !/^mcp__draw__/.test(event.toolName)) return;
+    if (event.isError || !/^mcp__draw__/.test(event.toolName) || isLocalTool(event.toolName.slice('mcp__draw__'.length))) return;
     const chat = connection(event, ctx);
     const current = chat ? ++generation : generation;
     try {
-      await piCaptureHook({ hook_event_name: 'PostToolUse', tool_name: event.toolName, tool_input: event.input, tool_response: event.structuredContent ?? { content: event.content }, cwd: ctx.cwd }, ctx.cwd, message => ctx.ui.notify(message, 'info'), helper);
+      await piCaptureHook({ hook_event_name: 'PostToolUse', tool_name: event.toolName, tool_input: event.input, tool_response: event.structuredContent ?? { content: event.content }, cwd: ctx.cwd }, ctx.cwd, message => ctx.ui.notify(message, 'info'), helper, options?.endpoint);
     } catch (error) { ctx.ui.notify(String(error), 'warning'); }
     if (chat && current === generation) {
       await local?.close();

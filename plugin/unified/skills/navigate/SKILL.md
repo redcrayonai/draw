@@ -16,9 +16,9 @@ before calling tools, then read only the relevant workflow below.
    continue, reconnect, or respond to its feedback. Preserve its backend and
    identity; never copy it to another backend or create a replacement silently.
 2. **For a supplied link**, use the known board's backend when available.
-   Otherwise parse its URL hostname: `localhost`, IPv4 loopback (`127.0.0.0/8`),
-   and IPv6 loopback (`::1`) select local; a non-loopback board link selects
-   hosted. Do not match hostnames by substring. If a link conflicts with an
+   A local link has a device key, a local marker, or a UUID board slug.
+   Hosted development links can also use localhost. Use hosted for a hosted
+   board slug, share token, or numeric board ID. If a link conflicts with an
    explicit backend request, clarify before opening or changing a board.
 3. **For a new board**, choose hosted only when the user explicitly asks for a
    hosted or remote board. Otherwise choose local, including a bare board name,
@@ -26,17 +26,18 @@ before calling tools, then read only the relevant workflow below.
    authenticated account does not select hosted. A request to share a local
    board does not authorize uploading it.
 
-Use only the selected server for board operations. Local tools come from the
-`draw-local` MCP server (`open_board`, `read_board`, `apply_board`); hosted tools
-come from `draw` (`start_session`, `get_board`, `create_node`). Installed tool
-prefixes can vary: discover the server and its tools instead of guessing a
-prefix. Never send local slugs to hosted tools or hosted IDs to local tools.
+Use the single `draw` MCP server. Local operations use `list_boards`,
+`open_board`, `read_board`, `apply_local_board`, `read_code` and
+`attach_conversation`. Pass the absolute repository path as `repo`.
+For a local link, use its board slug with `read_board`. For a hosted link,
+pass the link to `start_session`; use the returned numeric id for hosted
+tools such as `get_board`, `create_node` and `apply_board`.
 
-If the selected server is missing, denied, or fails to open the requested board,
-report the failure and follow its workflow's recovery steps. Never silently
-fall back to the other backend. Local boards need no sign-in. Hosted sign-in
-uses the agent's existing Draw MCP connection and OAuth controls; do not invent
-a `draw login` command or ask for credentials in chat.
+The executable starts a local server when opening, reading or listing local boards.
+Only an explicit hosted operation opens the remote connection. Draw handles
+browser authorization and refresh. A person can also run `draw login`;
+never request tokens in chat. Report routing or permission failures and keep
+the requested destination.
 
 ## Read the selected workflow
 

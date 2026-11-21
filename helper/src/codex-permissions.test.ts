@@ -2,18 +2,32 @@ import { EventEmitter } from 'node:events';
 import { readFileSync } from 'node:fs';
 import { PassThrough } from 'node:stream';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { configureCodexPermissions, disableLegacyCodexIntegrations, readCodexUserConfig } from './codex-permissions';
+import type { DrawPermissions, PermissionMode } from './permissions';
+import { configureCodexPermissions as configureSet, disableLegacyCodexIntegrations, readCodexUserConfig } from './codex-permissions';
 
 const { spawn } = vi.hoisted(() => ({ spawn: vi.fn() }));
 vi.mock('node:child_process', () => ({ spawn }));
 const policy = { boards: 'ask', conversation: 'ask', snippets: 'deny', uploads: 'deny' } as const;
 afterEach(() => { vi.useRealTimers(); vi.clearAllMocks(); });
 
+async function configureCodexPermissions(mode: PermissionMode, permissions: DrawPermissions, managedDisabledTools: string[] = [], migrateLocal = false) {
+  const [choice] = await configureSet([{ mode, record: { permissions, managedDisabledTools, routed: !migrateLocal } }]);
+  return choice.record.managedDisabledTools;
+}
+
+it('applies local and hosted choices in one version-checked write', async () => {
+  const s = server();
+  const records = await configureSet([{ mode: 'local', record: { permissions: policy } }, { mode: 'hosted', record: { permissions: policy } }]);
+  expect(records.map(choice => choice.record.managedDisabledTools)).toEqual([['read_code'], ['add_code_ref']]);
+  expect(s.write().edits[1].value).toEqual(['read_code', 'add_code_ref']);
+  expect(s.frames.filter(frame => frame.method === 'config/batchWrite')).toHaveLength(1);
+});
+
 function server(settings: Record<string, unknown> = {}, mode = 'local', overrides: Record<string, unknown> = {}) {
   const child = Object.assign(new EventEmitter(), { stdin: new PassThrough(), stdout: new PassThrough(), kill: vi.fn() });
   const frames: any[] = [];
   const plugin = 'draw@draw-binary';
-  const name = mode === 'local' ? 'draw-local' : 'draw';
+  const name = 'draw';
   const config = { plugins: { [plugin]: { enabled: true, mcp_servers: { [name]: settings } } }, approval_policy: 'never', sandbox_mode: 'read-only' };
   const results: Record<string, any> = {
     initialize: {},
@@ -87,9 +101,9 @@ describe('Draw plugin permissions in Codex', () => {
     expect(s.write()).toEqual({
       filePath: '/mock/config.toml', expectedVersion: 'user-version',
       edits: [
-        { keyPath: 'plugins.draw@draw-binary.mcp_servers.draw-local.default_tools_approval_mode', value: 'prompt', mergeStrategy: 'replace' },
-        { keyPath: 'plugins.draw@draw-binary.mcp_servers.draw-local.disabled_tools', value: ['custom', 'read_code'], mergeStrategy: 'replace' },
-        { keyPath: 'plugins.draw@draw-binary.mcp_servers.draw-local.tools', value: { read_board: { approval_mode: 'prompt', output_token_limit: 1000 } }, mergeStrategy: 'replace' },
+        { keyPath: 'plugins.draw@draw-binary.mcp_servers.draw.default_tools_approval_mode', value: 'prompt', mergeStrategy: 'replace' },
+        { keyPath: 'plugins.draw@draw-binary.mcp_servers.draw.disabled_tools', value: ['custom', 'read_code'], mergeStrategy: 'replace' },
+        { keyPath: 'plugins.draw@draw-binary.mcp_servers.draw.tools', value: { read_board: { approval_mode: 'prompt', output_token_limit: 1000 } }, mergeStrategy: 'replace' },
       ],
     });
     expect(s.child.kill).toHaveBeenCalledOnce();
@@ -145,7 +159,7 @@ describe('Draw plugin permissions in Codex', () => {
 
   it.each(['local', 'hosted'] as const)('restores prompts for every %s tool when boards change from Allow to Ask', async mode => {
     const conversation = mode === 'local' ? 'attach_conversation' : 'start_chat';
-    const s = server({ tools: { [conversation]: { approval_mode: 'approve' }, get_board: { approval_mode: 'approve' } } }, mode);
+    const s = server({ tools: { [conversation]: { approval_mode: 'approve' }, future: { approval_mode: 'approve' } } }, mode);
     await configureCodexPermissions(mode, { ...policy, conversation: 'allow' });
     expect(s.write().edits[0].value).toBe('prompt');
     expect(Object.values(s.write().edits[2].value).every((tool: any) => tool.approval_mode === 'prompt')).toBe(true);
@@ -174,7 +188,7 @@ describe('Draw plugin permissions in Codex', () => {
   it('disables every local tool, including code and conversation, when boards are denied', async () => {
     const s = server();
     await configureCodexPermissions('local', { ...policy, boards: 'deny' });
-    expect(s.write().edits[1].value).toEqual(['list_boards', 'open_board', 'read_board', 'apply_board', 'attach_conversation', 'read_code']);
+    expect(s.write().edits[1].value).toEqual(['list_boards', 'open_board', 'read_board', 'apply_local_board', 'attach_conversation', 'read_code']);
   });
 
   it.each([
@@ -238,18 +252,18 @@ describe('unified Codex plugin migration', () => {
     const config = { plugins: { 'draw-local@draw-local-dev': legacy } };
     const before = JSON.stringify(config);
     const s = server({}, 'local', { 'config/read': readConfig(config) });
-    expect(await configureCodexPermissions('local', policy, ['read_code'])).toEqual(['read_code']);
-    expect(s.write().edits[1]).toEqual({ keyPath: 'plugins.draw@draw-binary.mcp_servers.draw-local.disabled_tools', value: ['attach_conversation', 'custom', 'read_code'], mergeStrategy: 'replace' });
+    expect(await configureCodexPermissions('local', policy, ['read_code'], true)).toEqual(['read_code']);
+    expect(s.write().edits[1]).toEqual({ keyPath: 'plugins.draw@draw-binary.mcp_servers.draw.disabled_tools', value: ['attach_conversation', 'custom', 'read_code'], mergeStrategy: 'replace' });
     expect(JSON.stringify(config)).toBe(before);
   });
 
   it('can release migrated managed denials without claiming or restoring manual denials', async () => {
     const config = { plugins: { 'draw-local@draw-local-dev': { mcp_servers: { 'draw-local': { disabled_tools: ['read_code', 'attach_conversation'] } } } } };
     const s = server({}, 'local', { 'config/read': readConfig(config) });
-    expect(await configureCodexPermissions('local', { ...policy, snippets: 'ask' }, ['read_code'])).toEqual([]);
+    expect(await configureCodexPermissions('local', { ...policy, snippets: 'ask' }, ['read_code'], true)).toEqual([]);
     expect(s.write().edits[1].value).toEqual(['attach_conversation']);
 
-    const migrated = { plugins: { ...config.plugins, 'draw@draw-binary': { mcp_servers: { 'draw-local': { disabled_tools: ['attach_conversation'] } } } } };
+    const migrated = { plugins: { ...config.plugins, 'draw@draw-binary': { mcp_servers: { draw: { disabled_tools: ['attach_conversation'] } } } } };
     const again = server({}, 'local', { 'config/read': readConfig(migrated) });
     expect(await configureCodexPermissions('local', { ...policy, snippets: 'ask' })).toEqual([]);
     expect(again.write().edits[1].value).toEqual(['attach_conversation']);

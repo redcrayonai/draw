@@ -15,6 +15,13 @@ async function viaAccess(context: BrowserContext) {
 }
 const test = base.extend({ context: async ({ context }, use) => { await use(await viaAccess(context)); } });
 
+test('deployed dashboard serves the local-board route', async ({ page }) => {
+  const dashboard = process.env.E2E_DASHBOARD_URL;
+  if (!dashboard) throw new Error('Set E2E_DASHBOARD_URL to the deployed dashboard origin');
+  const response = await page.goto(new URL('/local-board', dashboard).href);
+  expect(response?.status()).toBe(200);
+});
+
 test('deployed canvas retains nodes and edges after reload', async ({ page, baseURL }) => {
   const errors: string[] = [];
   page.on('pageerror', error => errors.push(error.message));

@@ -1,5 +1,6 @@
 import './style.css';
 import './local.css';
+import { mountLocalSharing } from './local-sharing';
 import { renderBoard, contentBounds } from './render';
 import { Viewport, chromeInsets } from './viewport';
 import { setupTheme, setTheme, setupRailToggle, showError } from './chrome';
@@ -23,6 +24,7 @@ const selection = new Set<bigint>();
 const selectedEdges = new Set<bigint>();
 const overrides = new Map<bigint, { x: number; y: number }>();
 let board: LocalBoard | undefined;
+const syncSharing = mountLocalSharing(() => board, call, message => { status.textContent = message; });
 let events: EventSource | undefined;
 let busy = false;
 let boardSelection = 0;
@@ -143,6 +145,7 @@ function selected() {
   return board.nodes.find(n => selection.has(BigInt(n.id))) ?? board.edges.find(e => selectedEdges.has(BigInt(e.id)));
 }
 function inspector() {
+  syncSharing();
   chat.render();
   renderRefs();
   const item = selected(); edit.hidden = !item;
@@ -197,7 +200,9 @@ async function open(slug: string) {
   drag = undefined; agentConnected = false;
   crayonUi.crayon.clear(); // drafts belong to the board they were drawn on
   traffic.reset();
-  history.replaceState(null, '', boardHref({ app: location.origin, slug, db: 'local', home: 'local' }));
+  const viewer = new URL(boardHref({ app: location.origin, slug, db: 'local', home: 'local' }));
+  viewer.search = location.search;
+  history.replaceState(null, '', viewer);
   selection.clear(); selectedEdges.clear(); overrides.clear(); render(); inspector();
   undo.length = 0; redo.length = 0;
   events?.close(); events = new EventSource(`/api/events?board=${encodeURIComponent(slug)}`);
@@ -279,7 +284,7 @@ svg.onkeydown = event => {
   if (delta) { event.preventDefault(); const item = selected(); if (item && 'x' in item) run(() => mutate([{ type: 'node.put', id: item.id, patch: { x: item.x + delta[0], y: item.y + delta[1] } }])); else viewport.panBy(delta[0], delta[1]); }
 };
 document.addEventListener('keydown', event => {
-  if (event.target instanceof Element && event.target.closest('input, textarea, select, [contenteditable]')) return;
+  if (event.target instanceof Element && event.target.closest('dialog, input, textarea, select, [contenteditable]')) return;
   // Circling a node leaves focus off the board, so its undo cannot rest on the board's own key handler (which has run when defaultPrevented).
   if (!event.defaultPrevented) undoCircle(event);
   if (event.metaKey || event.ctrlKey || event.altKey) return;
@@ -294,6 +299,7 @@ svg.addEventListener('wheel', event => { event.preventDefault(); viewport.zoomAt
 run(async () => {
   const hash = new URLSearchParams(location.hash.slice(1)); const key = hash.get('key');
   if (key) { const response = await fetch('/session', { method: 'POST', headers: { Authorization: `Bearer ${key}` } }); if (!response.ok) throw new Error('UNAVAILABLE: reopen the startup link'); hash.delete('key'); history.replaceState(null, '', `#${hash}`); }
+  syncSharing();
   const boards = await list(); const slug = hash.get('b') ?? boards[0]?.slug;
   if (slug) { await open(slug); element<HTMLSelectElement>('boards').value = slug; fit(); } else say('Create your first board');
   let polling = false;

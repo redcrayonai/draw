@@ -6,6 +6,7 @@ import { setTimeout as delay } from 'node:timers/promises';
 import { startLocal } from './local-server';
 import { localDirectory } from './local-path';
 import { localCall, localEndpoint } from './local-mcp';
+import { sharingInstance, localViewerUrl } from './hosted-url';
 import { localCommand } from './local-runtime';
 export async function runLocal(args: string[]) {
   const open = args.includes('--open');
@@ -24,7 +25,7 @@ export async function runLocal(args: string[]) {
     try {
       const endpoint = localEndpoint(['--repo', repo, '--store', directory]);
       await localCall(endpoint, { action: 'list_boards' }, AbortSignal.timeout(1000));
-      const url = `${endpoint.origin}/#local&key=${endpoint.token}`;
+      const url = localViewerUrl(`${endpoint.origin}/#local&key=${endpoint.token}`, sharingInstance());
       process.stderr.write(`Draw: ${url}\n`); if (open) openBrowser(url); return 0;
     } catch { /* A stale endpoint never permits bypassing the store's writer lock. */ }
   }
@@ -37,7 +38,7 @@ export async function runLocal(args: string[]) {
     let child: ReturnType<typeof spawn>;
     try {
       fchmodSync(fd, 0o600);
-      child = spawn(command, [...prefix, 'local', '--repo', repo, '--store', directory, '--port', String(port)], { detached: true, stdio: ['ignore', fd, fd] });
+      child = spawn(command, [...prefix, 'local', '--repo', repo, ...(options.has('--store') ? ['--store', directory] : []), '--port', String(port)], { detached: true, stdio: ['ignore', fd, fd] });
     } finally { closeSync(fd); }
     let failure: Error | undefined, ready = false;
     child.once('error', () => { failure = new Error(`UNAVAILABLE: could not launch the local server; see ${log}`); });
@@ -45,25 +46,27 @@ export async function runLocal(args: string[]) {
     try {
       const deadline = Date.now() + 10000;
       while (Date.now() < deadline) {
-        if (failure) throw failure;
         try {
           const endpoint = localEndpoint(['--repo', repo, '--store', directory]);
-          if (endpoint.pid !== child.pid) throw new Error('Waiting for this server');
+          if (options.has('--port') && endpoint.pid !== child.pid) throw new Error('Waiting for the requested server');
           await localCall(endpoint, { action: 'list_boards' }, AbortSignal.timeout(500));
-          const url = `${endpoint.origin}/#local&key=${endpoint.token}`;
+          const url = localViewerUrl(`${endpoint.origin}/#local&key=${endpoint.token}`, sharingInstance());
           ready = true; child.unref();
-          process.stderr.write(`Storage: ${directory}\nServer PID: ${child.pid}\nLog: ${log}\nDraw: ${url}\n`);
+          process.stderr.write(`Storage: ${directory}\nServer PID: ${endpoint.pid}\nLog: ${log}\nDraw: ${url}\n`);
           if (open) openBrowser(url);
           return 0;
         } catch { /* Wait for the child to publish a reachable endpoint. */ }
         await delay(100);
       }
-      throw new Error(`UNAVAILABLE: local server startup timed out; see ${log}`);
+      throw failure ?? new Error(`UNAVAILABLE: local server startup timed out; see ${log}`);
     } finally { if (!ready) child.kill('SIGTERM'); }
   }
-  const app = await startLocal({ repo, directory, port, assets });
-  process.stderr.write(`Storage: ${directory}\nDraw: ${app.url}\n`);
-  if (open) openBrowser(app.url);
+  const app = await startLocal({ repo, directory, port, assets,
+    preferenceFile: options.has('--store') ? undefined : join(dirname(directory), 'skip-sharing-intro'),
+  });
+  const url = localViewerUrl(app.url, sharingInstance());
+  process.stderr.write(`Storage: ${directory}\nDraw: ${url}\n`);
+  if (open) openBrowser(url);
   await new Promise<void>(resolve => {
     let closing = false;
     const close = () => { if (!closing) { closing = true; void app.close().then(resolve); } };

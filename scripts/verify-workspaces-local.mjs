@@ -1026,3 +1026,35 @@ test('moving a board into a shared workspace blanks the code text it stored unde
   await ok(creator, 'move_board_to_workspace', [B, await workspace(creator, 'consent-move')]);
   assert.deepEqual(await stored(), ['', ''], 'the move leaves no code text behind');
 });
+
+test('sharing a local diagram is atomic, audience-scoped and retryable', async () => {
+  const owner = person(), teammate = person(), outsider = person();
+  const W = await workspace(owner, 'local copies');
+  await member(owner, W, teammate);
+  const graph = { name: named('Checkout'), nodes: [{ id: '1', label: 'Orders', kind: 'datastore', icon: '', doc: 'Payment state', x: 1.7, y: -2, w: 160, h: 80 }], edges: [] };
+  graph.nodes.push({ ...graph.nodes[0], id: '2', kind: 'service', label: 'Checkout' });
+  graph.edges.push({ from: '2', to: '1', label: 'writes', direction: 'both' });
+  const key = randomUUID();
+  const args = (data, link = '', requestKey = key) => [String(W), requestKey, link, JSON.stringify(data)];
+  const share = (who, data) => call(who, 'share_local_copy', data);
+  assert.notEqual((await share(outsider, args(graph))).status, 200);
+  const broken = { ...graph, edges: [{ from: '1', to: 'missing', label: '', direction: 'forward' }] };
+  assert.notEqual((await share(owner, args(broken))).status, 200);
+  assert.ok(!(await rows(owner, 'my_boards')).some(row => row.name === graph.name));
+  const result = await share(owner, args(graph));
+  assert.equal(result.status, 200, result.text);
+  assert.deepEqual(await share(owner, args(graph)), result);
+  const boards = (await rows(owner, 'my_boards')).filter(row => row.name === graph.name);
+  assert.equal(boards.length, 1);
+  const [copiedEdge] = await boardRows(OWNER, 'edge', boards[0].boardId);
+  assert.equal(copiedEdge.relation, 'bidirectional');
+  assert.match(copiedEdge.evidence, /^human:[a-f0-9]{64} \(shared local diagram\)$/);
+  assert.equal((await permission(teammate, boards[0].boardId)).role, 'viewer');
+  assert.equal(await sees(outsider, boards[0].boardId), false);
+  const link = token();
+  const linked = await share(owner, args(graph, link, randomUUID()));
+  assert.equal(linked.status, 200, linked.text);
+  assert.equal(JSON.parse(JSON.parse(linked.text)).token, link);
+  await ok(outsider, 'open_shared_link', [link]);
+  assert.ok((await rows(outsider, 'my_boards')).some(row => row.linkToken === link && row.linkMode === 'view'));
+});

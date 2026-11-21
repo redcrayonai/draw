@@ -45,3 +45,27 @@
   .local-mode .zoom-cluster { bottom: 104px; }
   .local-float { max-height: calc(100% - 124px); }
 }
+#local-sharing { margin: auto; width: min(420px, calc(100% - 32px)); padding: 24px; color: var(--ink); background: var(--panel); border: 1px solid var(--border); border-radius: var(--r-lg); }
+#local-sharing::backdrop { background: rgb(0 0 0 / .3); }
+#local-sharing h2 { margin: 0; font-size: 22px; }
+#local-sharing p { margin-top: 12px; line-height: 1.5; color: var(--muted); }
+#local-sharing [hidden] { display: none; }
+#sharing-dashboard {
+  width: 100%;
+  min-height: 42px;
+  padding: 9px 12px;
+  font: inherit;
+  color: var(--ink);
+  background: var(--panel);
+  border: 1px solid var(--muted);
+  border-radius: var(--r-sm);
+}
+#sharing-dashboard:focus-visible { outline: 2px solid var(--sel); outline-offset: -2px; }
+#local-sharing #sharing-destination { margin-bottom: 6px; }
+#local-sharing label { display: block; margin-top: 18px; }
+#local-sharing .sharing-reminder { display: flex; align-items: center; gap: 8px; }
+.sharing-reminder input { margin: 0; accent-color: var(--sel); }
+.sharing-actions { margin-top: 20px; display: grid; gap: 8px; }
+.sharing-actions .ctl { min-height: 44px; justify-content: center; }
+#connect-local { background: var(--ink); color: var(--panel); }
+#stay-offline { border: 1px solid var(--muted); background: var(--panel-2); }

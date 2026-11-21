@@ -16,7 +16,7 @@ test('packaged local board: tool edits, browser drag, review, concurrent tab and
   const runtime = process.env.DRAW_LOCAL_NODE ?? process.execPath;
   const launch = native ? executable : runtime;
   const prefix = native ? [] : [executable];
-  const environment = { ...process.env };
+  const environment: NodeJS.ProcessEnv = { ...process.env, REDCRAYON_MCP_URL: 'https://mcp.team.example/mcp' };
   if (native) {
     // A single-file install must work without Node or Bun anywhere on PATH.
     mkdirSync(join(directory, 'path'));
@@ -62,6 +62,22 @@ test('packaged local board: tool edits, browser drag, review, concurrent tab and
     page.on('pageerror', error => errors.push(error.message));
     page.on('request', request => { if (!request.url().startsWith(endpoint.origin)) external.push(request.url()); });
     await page.goto(`${endpoint.origin}/#local&key=${endpoint.token}`);
+    await page.getByRole('button', { name: 'Sign in', exact: true }).click();
+    await expect(page.getByLabel('Where do you sign in to Draw?')).toBeVisible();
+    const address = page.getByLabel('Where do you sign in to Draw?');
+    await address.fill(environment.REDCRAYON_MCP_URL!);
+    await page.getByRole('button', { name: 'Sign in or create an account' }).click();
+    expect(await address.evaluate((element: HTMLInputElement) => element.validationMessage)).toContain('agent’s MCP endpoint');
+    const dashboard = 'https://dashboard.team.example';
+    await context.route(dashboard + '/**', route => route.fulfill({ body: '<p>Test dashboard</p>', contentType: 'text/html' }));
+    await page.getByLabel('Don’t remind me again').check();
+    await expect(page.locator('#skip-sharing')).toBeEnabled();
+    await page.locator('#sharing-dashboard').fill(dashboard);
+    const popup = page.waitForEvent('popup');
+    await page.getByRole('button', { name: 'Sign in or create an account' }).click();
+    const destination = await popup;
+    await expect(destination).toHaveURL(/^https:\/\/dashboard\.team\.example\/local-board#/);
+    await destination.close();
     await page.evaluate(() => document.fonts.ready);
     expect(await page.evaluate(() => document.fonts.check('12px Geist') && document.fonts.check('12px "Geist Mono"'))).toBe(true);
     await expect(page.locator('html')).toHaveAttribute('data-theme', 'material-light');
@@ -69,6 +85,13 @@ test('packaged local board: tool edits, browser drag, review, concurrent tab and
     await page.locator('[data-theme-opt="dark"]').click();
     await page.reload();
     await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark');
+    await page.getByRole('button', { name: 'Sign in', exact: true }).click();
+    await expect(page.getByRole('heading', { name: 'Choose your Draw dashboard' })).toBeVisible();
+    await expect(page.locator('#sharing-intro')).toBeHidden();
+    await expect(page.locator('#sharing-dashboard')).toBeFocused();
+    await page.keyboard.press('Tab');
+    await expect(page.getByRole('button', { name: 'Continue to sign in' })).toBeFocused();
+    await page.getByRole('button', { name: 'Stay offline' }).click();
     await page.getByRole('button', { name: 'Theme: Dark', exact: true }).click();
     await page.locator('[data-theme-opt="material-light"]').click();
     await expect(page.locator('#status')).toHaveText('Create your first board');

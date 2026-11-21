@@ -7,7 +7,7 @@ import { hookResult } from './hook-result';
 import { chatConnection, chatRequest } from './chat-bootstrap';
 import { chatSocketPath } from './chat-path';
 
-const LOCAL_BOARD_TOOL = '^mcp__(?:plugin_draw(?:[-_]local)?_)?draw[-_]local__(open_board|read_board)$';
+const LOCAL_BOARD_TOOL = '^mcp__(?:plugin_draw(?:[-_]local)?_)?draw(?:[-_]local)?__(open_board|read_board)$';
 const HOSTED_BOARD_TOOL = '^mcp__(plugin_draw_)?(?:draw|redcrayon)(-dev)?__(start_session|start_chat)$';
 const BOARD = /^[a-zA-Z0-9_-]{1,100}$/;
 

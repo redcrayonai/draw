@@ -11,6 +11,7 @@ import * as CreateBoardItemsProcedure from "../create_board_items_procedure";
 import * as ReadBoardSnapshotProcedure from "../read_board_snapshot_procedure";
 import * as RestoreBoardVersionProcedure from "../restore_board_version_procedure";
 import * as ServiceLoadProcedure from "../service_load_procedure";
+import * as ShareLocalCopyProcedure from "../share_local_copy_procedure";
 
 export type CaptureBoardVersionArgs = __Infer<typeof CaptureBoardVersionProcedure.params>;
 export type CaptureBoardVersionResult = __Infer<typeof CaptureBoardVersionProcedure.returnType>;
@@ -22,4 +23,6 @@ export type RestoreBoardVersionArgs = __Infer<typeof RestoreBoardVersionProcedur
 export type RestoreBoardVersionResult = __Infer<typeof RestoreBoardVersionProcedure.returnType>;
 export type ServiceLoadArgs = __Infer<typeof ServiceLoadProcedure.params>;
 export type ServiceLoadResult = __Infer<typeof ServiceLoadProcedure.returnType>;
+export type ShareLocalCopyArgs = __Infer<typeof ShareLocalCopyProcedure.params>;
+export type ShareLocalCopyResult = __Infer<typeof ShareLocalCopyProcedure.returnType>;
 

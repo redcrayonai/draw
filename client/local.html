@@ -12,7 +12,7 @@
           </svg>
         </button>
         <nav class="crumb" aria-label="Breadcrumb"><span class="crumb-root">Boards</span><span class="crumb-sep" aria-hidden="true">/</span><select id="boards" aria-label="Board"></select></nav><button id="new-board" class="icon-btn" aria-label="New board" title="New board">+</button></div>
-    <div class="header-actions"><span id="status" role="status">Connecting…</span><span class="live" title="Stored on this machine"><span class="live-dot" aria-hidden="true"></span>Local</span><span class="tb-div" aria-hidden="true"></span><button id="review-toggle" class="icon-btn" aria-label="Review" title="Review" aria-expanded="false" aria-controls="local-review"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round" aria-hidden="true"><path d="M2.75 13.25V11l7.5-7.5 2.25 2.25-7.5 7.5Z M10.25 3.5l1.5-1.5 2.25 2.25-1.5 1.5"/></svg></button><button id="act-theme" class="icon-btn" title="Theme" aria-label="Theme" aria-expanded="false" aria-controls="theme-pop">
+    <div class="header-actions"><button id="account-local" class="ctl" hidden>Sign in</button><button id="share-local" class="ctl" hidden>Share</button><a id="shared-copy" class="ctl" target="_blank" rel="noopener noreferrer" hidden>View shared copy ↗</a><span id="status" role="status">Connecting…</span><span class="live" title="Stored on this machine"><span class="live-dot" aria-hidden="true"></span>Local</span><span class="tb-div" aria-hidden="true"></span><button id="review-toggle" class="icon-btn" aria-label="Review" title="Review" aria-expanded="false" aria-controls="local-review"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round" aria-hidden="true"><path d="M2.75 13.25V11l7.5-7.5 2.25 2.25-7.5 7.5Z M10.25 3.5l1.5-1.5 2.25 2.25-1.5 1.5"/></svg></button><button id="act-theme" class="icon-btn" title="Theme" aria-label="Theme" aria-expanded="false" aria-controls="theme-pop">
           <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
             <path d="M8 1.75a6.25 6.25 0 1 0 6.25 6.25A4.9 4.9 0 0 1 8 1.75Z" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round" />
           </svg>
@@ -21,6 +21,14 @@
         <div id="theme-pop" role="group" aria-label="Theme" hidden></div>
         <button id="conversation-toggle" class="ctl" aria-label="Conversation" aria-expanded="false" aria-controls="local-conversation"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3" aria-hidden="true"><path d="M5 1v4m6-4v4M4 5h8v3a4 4 0 0 1-8 0Zm4 7v3"/></svg><span>Conversation</span></button></div>
   </header>
+  <dialog id="local-sharing" aria-labelledby="sharing-title">
+    <h2 id="sharing-title">Bring a teammate into the conversation</h2>
+    <p id="sharing-intro">Save a copy to your Draw workspace and share it with a teammate. Signing in keeps your original on this device.</p>
+    <label id="sharing-destination" for="sharing-dashboard"></label>
+    <input id="sharing-dashboard" type="url" placeholder="https://draw.example.com" hidden>
+    <label class="sharing-reminder"><input type="checkbox" id="skip-sharing"> Don’t remind me again</label>
+    <div class="sharing-actions"><button class="ctl" id="connect-local">Sign in or create an account</button><button class="ctl" id="stay-offline">Stay offline</button></div>
+  </dialog>
   <main id="canvas-wrap">
     <svg id="canvas" aria-label="Board canvas" tabindex="0"><g id="world"></g></svg>
     <aside id="rail" aria-label="Board panel"><div class="rail-head"><h2 class="rail-title">Board</h2><div class="local-history"><button id="undo" class="icon-btn" aria-label="Undo" title="Undo">↶</button><button id="redo" class="icon-btn" aria-label="Redo" title="Redo">↷</button></div></div><p id="access-line">Local board · saved on this machine</p><div id="local-activity"></div><p id="rail-hint">Choose a tool below to draw. Select a node to edit it.</p><div id="local-panel"><form id="edit" hidden><label>Label<input name="label"></label><label>Description<textarea name="description"></textarea></label><div id="geometry"><label>X<input name="x" type="number" step="any"></label><label>Y<input name="y" type="number" step="any"></label><label>Width<input name="w" type="number" step="any" min="16"></label><label>Height<input name="h" type="number" step="any" min="16"></label></div><button>Save</button><button type="button" id="delete">Delete</button></form></div></aside>

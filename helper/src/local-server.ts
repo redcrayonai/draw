@@ -7,6 +7,7 @@ import { isSecretFile, pathProblem } from '../../shared/capture';
 import { readSource } from '../../agent/src/local-deps';
 import { gitIsCitable } from '../../agent/src/git';
 import { boardHref } from '../../shared/board-link';
+import { sharingInstance } from './hosted-url';
 import { LocalChat } from './local-chat';
 import { standalone } from './local-runtime';
 import { LocalActivity } from './local-activity';
@@ -19,9 +20,10 @@ export function sendLocalEvent(response: Pick<ServerResponse, 'writableLength' |
   response.write(frame);
   return true;
 }
-export async function startLocal(options: { repo: string; directory: string; assets: string; port?: number }) {
+export async function startLocal(options: { repo: string; directory: string; assets: string; port?: number; preferenceFile?: string }) {
   const repo = realpathSync(options.repo);
   const store = new LocalStore(options.directory);
+  const preferenceFile = options.preferenceFile ?? join(options.directory, 'skip-sharing-intro');
   const token = randomBytes(32).toString('hex');
   const viewers = new Map<ServerResponse, string>();
   const activities = new Map<string, LocalActivity>();
@@ -70,6 +72,11 @@ export async function startLocal(options: { repo: string; directory: string; ass
         if (!input || typeof input !== 'object') unavailable('invalid request');
         let result: unknown;
         switch (input.action) {
+          case 'sharing_preference': result = { instance: sharingInstance(), skip: existsSync(preferenceFile) && readFileSync(preferenceFile, 'utf8') === '1' }; break;
+          case 'set_sharing_preference':
+            if (typeof input.skip !== 'boolean') throw new Error('REJECTED: invalid reminder preference');
+            atomicWrite(preferenceFile, input.skip ? '1' : '0'); result = {}; break;
+          case 'remember_shared_copy': store.rememberSharedCopy(input.board, input.href); broadcast(input.board); result = {}; break;
           case 'list_boards': result = store.list(); break;
           case 'open_board': result = withLink(store.create(input.name, repo)); break;
           case 'read_board': result = withLink(store.read(input.board)); break;
