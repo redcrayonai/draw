@@ -106,6 +106,18 @@ test('packaged local board: tool edits, browser drag, review, concurrent tab and
       if (direction === 'none') await expect(line).not.toHaveAttribute('marker-end');
       else await expect(line).toHaveAttribute('marker-end', /url/);
     }
+    // Colour: an edge takes a hue; a node's strength waits for a hue; a later save of another field leaves the colour alone.
+    const save = async () => { await page.getByRole('button', { name: 'Save', exact: true }).click(); await expect(page.locator('#status')).toHaveText('Saved'); };
+    await expect(page.locator('#edit select[name="tone"]')).toBeHidden();
+    await page.locator('#edit select[name="color"]').selectOption('teal'); await save();
+    await node.focus(); await node.press('Enter');
+    await expect(page.locator('#edit select[name="tone"]')).toBeDisabled();
+    await page.locator('#edit select[name="color"]').selectOption('blue');
+    await page.locator('#edit select[name="tone"]').selectOption('bold'); await save();
+    await expect(node).toHaveClass(/color-blue/); await expect(node).toHaveClass(/tone-bold/);
+    await page.locator('#edit textarea[name="description"]').fill('Entry point'); await save();
+    const colored = await call({ action: 'read_board', board: board.slug });
+    expect([colored.nodes[0].color, colored.nodes[0].description, colored.edges[0].color]).toEqual(['blue-bold', 'Entry point', 'teal']);
     const second = await context.newPage(); await second.goto(`${endpoint.origin}/#b=${board.slug}`);
     await expect(second.locator('[data-id="1"]')).toBeVisible();
     const box = (await node.boundingBox())!;
