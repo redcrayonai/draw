@@ -62,7 +62,7 @@ export async function runRouter(url: string) {
       const local = localNames.get(name);
       if (local) {
         enforceToolPermissions(local, 'local', input);
-        if (typeof input.repo !== 'string' || !isAbsolute(input.repo)) throw new Error('Pass the absolute repository path as repo.');
+        if (typeof input.repo !== 'string' || !isAbsolute(input.repo)) throw new Error('REJECTED: pass the absolute repository path as repo.');
         const args = ['--repo', input.repo];
         if (local === 'list_boards' || local === 'open_board' || local === 'read_board') {
           const [command, ...prefix] = localCommand();
@@ -72,7 +72,7 @@ export async function runRouter(url: string) {
         if (board?.url) board.url = localViewerUrl(board.url, sharingInstance(url));
         return { content: [{ type: 'text', text: JSON.stringify(board) }] };
       }
-      if (!hostedTools.some(t => t.name === name)) throw new Error('Unknown Draw tool.');
+      if (!hostedTools.some(t => t.name === name)) throw new Error('REJECTED: unknown Draw tool.');
       assertHostedArguments(input);
       enforceToolPermissions(name, 'hosted', input);
       connection ??= hostedClient(url).then(client => {
@@ -81,7 +81,7 @@ export async function runRouter(url: string) {
       }).catch(error => { connection = undefined; throw error; });
       return await (await connection).callTool({ name, arguments: input }, undefined, { signal, timeout: 180_000 });
     } catch (e) {
-      return { isError: true, content: [{ type: 'text', text: e instanceof Error ? e.message : 'Draw request failed.' }] };
+      return { isError: true, content: [{ type: 'text', text: e instanceof Error ? e.message : 'UNCONFIRMED: Draw request failed.' }] };
     }
   });
   await server.connect(new StdioServerTransport());

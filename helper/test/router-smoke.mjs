@@ -173,13 +173,16 @@ try {
     JSON.parse(await invoke('read_board', { repo, board: board.slug })).nodes[0].label,
     'Saved locally',
   );
-  assert.equal(
-    (await client.callTool({ name: 'start_session', arguments: { link: board.url } })).isError,
-    true,
-  );
   const cleanLocal = new URL(board.url);
   cleanLocal.hash = 'b=' + board.slug;
-  assert.equal((await client.callTool({ name: 'start_session', arguments: { link: cleanLocal.href } })).isError, true);
+  for (const [name, args] of [
+    ['list_boards', { repo: '.' }], ['unknown_tool', {}], ['get_board', { board: board.slug }],
+    ...[board.url, cleanLocal.href, board.slug, 'malformed link'].map(link => ['start_session', { link }]),
+  ]) {
+    const refused = await client.callTool({ name, arguments: args });
+    assert.equal(refused.isError, true);
+    assert.match(refused.content[0].text, /^REJECTED:/);
+  }
   assert.equal(requests, 0);
   await invoke('start_session', { link: 'http://localhost:5173/#b=0123456789abcdef1234' });
   assert.equal(await invoke('get_board', { board: '42' }), 'Hosted board 42');

@@ -1033,7 +1033,7 @@ test('sharing a local diagram is atomic, audience-scoped and retryable', async (
   await member(owner, W, teammate);
   const graph = { name: named('Checkout'), nodes: [{ id: '1', label: 'Orders', kind: 'datastore', icon: '', doc: 'Payment state', x: 1.7, y: -2, w: 160, h: 80 }], edges: [] };
   graph.nodes.push({ ...graph.nodes[0], id: '2', kind: 'service', label: 'Checkout' });
-  graph.edges.push({ from: '2', to: '1', label: 'writes', direction: 'both' });
+  for (const direction of ['both', 'both', 'none', 'none']) graph.edges.push({ from: '2', to: '1', label: 'writes', direction });
   const key = randomUUID();
   const args = (data, link = '', requestKey = key) => [String(W), requestKey, link, JSON.stringify(data)];
   const share = (who, data) => call(who, 'share_local_copy', data);
@@ -1046,9 +1046,14 @@ test('sharing a local diagram is atomic, audience-scoped and retryable', async (
   assert.deepEqual(await share(owner, args(graph)), result);
   const boards = (await rows(owner, 'my_boards')).filter(row => row.name === graph.name);
   assert.equal(boards.length, 1);
-  const [copiedEdge] = await boardRows(OWNER, 'edge', boards[0].boardId);
-  assert.equal(copiedEdge.relation, 'bidirectional');
-  assert.match(copiedEdge.evidence, /^human:[a-f0-9]{64} \(shared local diagram\)$/);
+  const copiedEdges = await boardRows(OWNER, 'edge', boards[0].boardId);
+  assert.deepEqual(copiedEdges.map(e => e.relation.replace(`edge:${e.id}:`, '')).sort(), ['bidirectional', 'bidirectional', 'undirected', 'undirected']);
+  const branchKey = token();
+  await ok(owner, 'create_architecture_proposal', [boards[0].boardId, named('parallel-edges'), branchKey]);
+  const branch = (await rows(OWNER, 'architecture_version')).find(row => row.requestKey === branchKey).boardId;
+  await ok(owner, 'submit_architecture_proposal', [branch]);
+  assert.deepEqual((await boardRows(OWNER, 'edge', branch)).map(e => e.relation).sort(), copiedEdges.map(e => e.relation).sort());
+  assert.match(copiedEdges[0].evidence, /^human:[a-f0-9]{64} \(shared local diagram\)$/);
   assert.equal((await permission(teammate, boards[0].boardId)).role, 'viewer');
   assert.equal(await sees(outsider, boards[0].boardId), false);
   const link = token();

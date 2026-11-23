@@ -1971,7 +1971,10 @@ export const shareLocalCopy = spacetimedb.procedure({
     const fromNode = ids.get(e.from), toNode = ids.get(e.to);
     if (!fromNode || !toNode || typeof e.label !== 'string' || !['both','forward','none'].includes(e.direction)) throw new SenderError('Invalid diagram connection.');
     const edge = insertEdge(tx, {boardId: board.id, fromNode, toNode, label: e.label, evidence: `human:${tx.sender.toHexString()} (shared local diagram)` });
-    if (e.direction !== 'forward') tx.db.edge.id.update({...edge, relation: e.direction === 'both' ? 'bidirectional' : 'undirected'});
+    if (e.direction !== 'forward') {
+      const direction = e.direction === 'both' ? 'bidirectional' : 'undirected';
+      tx.db.edge.id.update({ ...edge, relation: `edge:${edge.id}:${direction}` });
+    }
   }
   if (input.linkToken) tx.db.linkShare.insert({ boardId: board.id, token: input.linkToken, mode: 'view', createdBy: tx.sender, createdAt: tx.timestamp, includeThreats: false, includeCode: false });
   refreshStats(tx, board.id);

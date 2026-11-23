@@ -2906,3 +2906,14 @@ it('caches local arrow directions and restores hosted markers when the override 
   renderBoard(world, nodes, edges, mkState());
   expect(line.hasAttribute('marker-start')).toBe(false); expect(line.hasAttribute('marker-end')).toBe(true);
 });
+
+it.each([
+  ['bidirectional', true, true], ['edge:41:bidirectional', true, true],
+  ['undirected', false, false], ['edge:42:undirected', false, false],
+] as const)('renders arrowheads for the shared relation %s', (relation, start, end) => {
+  const world = mkWorld();
+  renderBoard(world, [mkNode(1), mkNode(2)], [{ ...mkEdge(1, 1, 2), relation }], mkState());
+  const line = world.querySelector('.edge-line')!;
+  expect(line.hasAttribute('marker-start')).toBe(start);
+  expect(line.hasAttribute('marker-end')).toBe(end);
+});
