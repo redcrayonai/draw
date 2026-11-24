@@ -2118,7 +2118,9 @@ export function renderBoard(
     const head = markerFor(evCls, state.overlay, selected, diffColor === 'added' ? 'green' : diffColor === 'removed' ? 'red' : diffColor === 'changed' ? 'blue' : reader?.status === 'stale' ? 'red' : edgeHue);
     // The overlay owns weight; with it off, a medium or bold edge takes a head of its weight.
     const marker = !state.overlay && weight !== undefined && WEIGHT_HEAD_PX.has(weight) ? `${head}-${weight}` : head;
-    const direction = state.edgeDirections?.get(edge.id);
+    const arrowRelation = /^(?:edge:\d+:)?(bidirectional|undirected)$/.exec(edge.relation)?.[1];
+    const direction = state.edgeDirections?.get(edge.id) ??
+      (arrowRelation === 'bidirectional' ? 'both' : arrowRelation === 'undirected' ? 'none' : undefined);
     if (marker !== e.marker || direction !== e.direction) {
       if (direction === 'none') e.line.removeAttribute('marker-end');
       else e.line.setAttribute('marker-end', `url(#${marker})`);

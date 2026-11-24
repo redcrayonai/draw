@@ -829,7 +829,7 @@ export const TOOLS: Record<string, ToolDef> = {
         type: z.string().describe(CHART_TYPES.join('|')),
         csv: z.string().describe('header row, then one row per data point'),
         options: chartOptions,
-        source: z.string().optional().describe("REQUIRED: the command and commit that produced the data, e.g. 'agent: npm run bench @ 1a2b3c4'"),
+        source: z.string().describe("REQUIRED: the command and commit that produced the data, e.g. 'agent: npm run bench @ 1a2b3c4'"),
       })
       .strict(),
     async run({ board, title, subtitle, x, y, w, h, type, csv, source, options: rawOptions }, t) {

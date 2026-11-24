@@ -43,6 +43,8 @@ copyFileSync(join(output, 'draw'), join(pack, 'draw'));
 copyFileSync(join(here, '../LICENSE'), join(pack, 'LICENSE'));
 for (const [source, name] of [
   ['licenses/Bun.md', 'Bun.md'],
+  ['node_modules/@modelcontextprotocol/sdk/LICENSE', 'mcp-sdk.txt'],
+  ['node_modules/mcp-remote/LICENSE', 'mcp-remote.txt'],
   ['node_modules/ws/LICENSE', 'ws.txt'],
   ['../client/public/assets/fonts/OFL-Geist.txt', 'Geist.txt'],
   ['../client/public/assets/fonts/OFL-Geist-Mono.txt', 'Geist-Mono.txt'],

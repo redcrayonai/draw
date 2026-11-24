@@ -6,7 +6,7 @@ import { createInterface } from 'node:readline/promises';
 export type PermissionMode = 'local' | 'hosted';
 export type Decision = 'ask' | 'deny';
 export type DrawPermissions = { boards: Decision | 'allow'; conversation: Decision | 'allow'; snippets: Decision; uploads: Decision };
-export type PermissionRecord = { permissions: DrawPermissions; managedDisabledTools?: string[] };
+export type PermissionRecord = { permissions: DrawPermissions; routed?: boolean; managedDisabledTools?: string[] };
 export class PermissionError extends Error {}
 export const DEFAULT_PERMISSIONS: DrawPermissions = { boards: 'allow', conversation: 'allow', snippets: 'deny', uploads: 'deny' };
 export const permissionPath = (mode: PermissionMode) => join(homedir(), '.redcrayon', 'permissions', `codex-${mode}.json`);
@@ -101,7 +101,7 @@ export async function choosePermissionSet(modes: readonly PermissionMode[], opti
 
 /** Explicit plugin launchers enforce their policy; Codex terminal fallbacks use the same saved policy. */
 export function runtimePermissions(mode: PermissionMode): DrawPermissions | undefined {
-  const path = process.env.DRAW_PERMISSION_FILE || undefined;
+  const path = (mode === 'hosted' && process.env.DRAW_HOSTED_PERMISSION_FILE) || process.env.DRAW_PERMISSION_FILE || undefined;
   if (!path && !process.env.CODEX_THREAD_ID) return undefined;
   const record = readPermissions(mode, path ?? permissionPath(mode));
   if (path && !record) throw new PermissionError('REJECTED: Draw permission settings are missing; reinstall the Codex integration.');

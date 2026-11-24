@@ -34,7 +34,7 @@ beforeEach(() => {
   executable = join(directory, "native tools' folder", 'draw $(never-execute)');
   vi.mocked(homedir).mockReturnValue(directory);
   vi.mocked(choosePermissionSet).mockReset().mockImplementation(async modes => modes.map(mode => ({ mode, editable: true, record: { permissions: { boards: 'ask', conversation: 'ask', snippets: 'deny', uploads: 'deny' }, managedDisabledTools: ['old_tool'] } })));
-  vi.mocked(configureCodexPermissions).mockReset().mockResolvedValue(['read_code']);
+  vi.mocked(configureCodexPermissions).mockReset().mockImplementation(async choices => choices.map(({ mode, record }) => ({ mode, record: { ...record, managedDisabledTools: ['read_code'], routed: true } })));
   vi.mocked(installLocalCodex).mockReset();
   vi.mocked(execFileSync).mockReset();
   vi.mocked(readCodexUserConfig).mockReset().mockResolvedValue({});
@@ -57,7 +57,7 @@ it.each(['codex', 'claude-code', 'pi'] as const)('prepares supported local manif
   const market = json(join(target, '.claude-plugin/marketplace.json'));
   expect(market.plugins[0].source).toEqual(agent === 'claude-code' ? './' : { source: 'local', path: '.' });
   expect(json(join(target, '.mcp.json'))).toEqual(json(join(target, 'mcp.json')));
-  expect(json(join(target, 'mcp.json')).mcpServers['draw-local']).toEqual({ type: 'stdio', command: executable, args: ['local-mcp', '--per-repo'], ...(agent === 'codex' ? { env: { DRAW_PERMISSION_FILE: permissionPath('local'), DRAW_PERMISSION_MODE: 'local' } } : {}) });
+  expect(json(join(target, 'mcp.json')).mcpServers.draw).toEqual({ type: 'stdio', command: executable, args: ['mcp'], env: { REDCRAYON_MCP_URL: 'https://test.example/mcp', ...(agent === 'codex' ? { DRAW_PERMISSION_FILE: permissionPath('local'), DRAW_PERMISSION_MODE: 'local', DRAW_HOSTED_PERMISSION_FILE: permissionPath('hosted') } : {}) } });
   for (const file of ['plugin.json', '.codex-plugin/plugin.json', '.claude-plugin/plugin.json']) expect(json(join(target, file))).toMatchObject({ name: 'draw', version: expect.stringMatching(/^1\.2\.3\+binary\.[a-f0-9]{16}$/) });
   if (agent === 'claude-code') {
     const hooks = json(join(target, 'hooks/hooks.json')).hooks;
@@ -70,7 +70,7 @@ it.each(['codex', 'claude-code', 'pi'] as const)('prepares supported local manif
 
 it.each(['codex', 'claude-code', 'pi'] as const)('keeps hosted MCP and native hook launchers for %s', agent => {
   const { target } = prepareNativePlugin(root, destination, executable, '1.2.3', agent, 'hosted');
-  expect(json(join(target, '.mcp.json')).mcpServers.draw.url).toBe('https://test.example/mcp');
+  expect(json(join(target, '.mcp.json')).mcpServers.draw.env.REDCRAYON_MCP_URL).toBe('https://test.example/mcp');
   expect(json(join(target, '.codex-plugin/plugin.json')).hooks).toBe('./codex/hooks.json');
   const originalHooks = json(join(root, 'hosted-plugin/codex/hooks.json'));
   const codexHooks = json(join(target, 'codex/hooks.json'));
@@ -107,8 +107,8 @@ it.each([
 ])('reconfigures permissions without reinstalling (%j)', async (...args) => {
   expect(await runNativePermissions(args)).toBe(0);
   expect(choosePermissionSet).toHaveBeenCalledWith(['local', 'hosted'], { defaults: true, reconfigure: true });
-  expect(configureCodexPermissions).toHaveBeenCalledWith('hosted', expect.objectContaining({ snippets: 'deny' }), ['old_tool']);
-  expect(savePermissions).toHaveBeenCalledWith('hosted', { permissions: { boards: 'ask', conversation: 'ask', snippets: 'deny', uploads: 'deny' }, managedDisabledTools: ['read_code'] });
+  expect(configureCodexPermissions).toHaveBeenCalledWith(expect.arrayContaining([expect.objectContaining({ mode: 'hosted', record: expect.objectContaining({ managedDisabledTools: ['old_tool'] }) })]));
+  expect(savePermissions).toHaveBeenCalledWith('hosted', { permissions: { boards: 'ask', conversation: 'ask', snippets: 'deny', uploads: 'deny' }, managedDisabledTools: ['read_code'], routed: true });
   expect(installLocalCodex).not.toHaveBeenCalled();
   expect(cpSync).not.toHaveBeenCalled();
 });
@@ -160,7 +160,7 @@ it.each(['local', 'hosted'] as const)('loads the pi wrapper with the native exec
   expect(manifest.pi).toEqual({ extensions: ['./pi/extension.mjs'], skills: ['./skills'] });
   const extension = await import(pathToFileURL(join(target, 'pi/extension.mjs')).href);
   const pi: any = {}; await extension.default(pi);
-  expect(pi.loaded).toEqual({ executable, mode: 'unified' });
+  expect(pi.loaded).toEqual({ executable, mode: 'unified', endpoint: 'https://test.example/mcp' });
   expect(process.env.DRAW_EXECUTABLE).toBe(''); expect(process.env.DRAW_MODE).toBe('');
 });
 
@@ -226,7 +226,7 @@ it('installs one skill with both transports and correctly relocated workflow ref
   expect(readdirSync(join(target, 'skills'))).toEqual(['navigate']);
   expect(readdirSync(join(target, 'skills/navigate/references')).sort()).toEqual(['handoff.md', 'hosted.md', 'local.md', 'make-it-make-sense.md', 'triage.md']);
   expect(readFileSync(join(target, 'skills/navigate/references/hosted.md'), 'utf8')).toContain('../../../references/review.md');
-  expect(Object.keys(json(join(target, 'mcp.json')).mcpServers).sort()).toEqual(['draw', 'draw-local']);
+  expect(Object.keys(json(join(target, 'mcp.json')).mcpServers).sort()).toEqual(['draw']);
   expect(prepareNativePlugin(root, destination, executable, '1.2.3', 'codex', 'local').target).toBe(target);
   expect(prepareNativePlugin(root, destination, executable, '1.2.3', 'codex', 'hosted').target).toBe(target);
 });
@@ -234,7 +234,7 @@ it('installs one skill with both transports and correctly relocated workflow ref
 it('configures both policies and replaces competing integrations only after successful installation', async () => {
   useBundledAssets();
   vi.mocked(installLocalCodex).mockImplementationOnce(() => {
-    expect(configureCodexPermissions).toHaveBeenCalledTimes(2);
+    expect(configureCodexPermissions).toHaveBeenCalledOnce();
     expect(savePermissions).toHaveBeenCalledTimes(2);
     expect(disableLegacyCodexIntegrations).not.toHaveBeenCalled();
   });
@@ -253,7 +253,7 @@ function useBundledAssets() {
 
 // ---------- hosted endpoint ----------
 const active = () => join(directory, '.redcrayon/plugins/installed/codex-hosted');
-const installedUrl = () => json(join(active(), '.mcp.json')).mcpServers.draw.url;
+const installedUrl = () => json(join(active(), '.mcp.json')).mcpServers.draw.env.REDCRAYON_MCP_URL;
 const tty = (on: boolean) => { for (const stream of [process.stdin, process.stderr]) Object.defineProperty(stream, 'isTTY', { value: on, configurable: true }); };
 let stderr: string[];
 beforeEach(() => {
@@ -319,7 +319,7 @@ it('repairs the legacy placeholder from the packaged default and keeps unrelated
   expect(installedUrl()).toBe('https://test.example/mcp');
   expect(stderr.join('')).toContain('Replacing an unusable saved Draw endpoint');
   expect(JSON.stringify(json(join(active(), 'mcp.json')))).not.toContain('${');
-  expect(configureCodexPermissions).toHaveBeenCalledTimes(2); // permissions flow is untouched
+  expect(configureCodexPermissions).toHaveBeenCalledOnce(); // permissions flow is untouched
 });
 
 it('local mode ignores a bad REDCRAYON_MCP_URL and still writes a concrete URL', async () => {
@@ -333,8 +333,8 @@ it.each([['claude-code'], ['pi']] as const)('writes the chosen URL into the %s p
   const a = prepareNativePlugin(root, destination, executable, '1.2.3', agent, undefined, 'https://a.example/mcp');
   const b = prepareNativePlugin(root, destination, executable, '1.2.3', agent, undefined, 'https://b.example/mcp');
   expect(a.target).not.toBe(b.target);
-  expect(json(join(a.target, '.mcp.json')).mcpServers.draw.url).toBe('https://a.example/mcp');
-  expect(json(join(b.target, 'mcp.json')).mcpServers.draw.url).toBe('https://b.example/mcp');
+  expect(json(join(a.target, '.mcp.json')).mcpServers.draw.env.REDCRAYON_MCP_URL).toBe('https://a.example/mcp');
+  expect(json(join(b.target, 'mcp.json')).mcpServers.draw.env.REDCRAYON_MCP_URL).toBe('https://b.example/mcp');
 });
 
 it.each([[['--url']], [['--url', 'https://a.example', '--url', 'https://b.example']], [['--url=']]])('rejects malformed %j', async args => {

@@ -1,0 +1,2578 @@
+[
+  {
+    "name": "get_board",
+    "title": "Get board",
+    "description": "Read the live board: all nodes and edges. Humans may be editing concurrently — re-read after your own edits or before relying on positions. On a session board the result includes session { checkpoint, headSha, coverage }, route { revision, waypoints, destinationId, arrived, complete, history } when planned, and, per node and edge, refs [{ id, symbol, path, startLine, endLine, checkpoint, status }] without snippets. Edges include evidenceStatus; stale source evidence needs a corrected citation. Edges with a latency carry latencyMs and latencySource. A chart node carries chart { type, source, rows, series, xRange?, warnings? } (never its CSV: get_chart reads that). A node with a library icon carries icon (its id, as create_node takes it). Flagged changes are under changeNotes [{ id, anchorId, kind, severity, title, refId, readers [{ refId, subject, status }], reviewed }]; a stale reader still reads the changed column. Flagged threats are under threats [{ id, anchorId, stage, severity, title, contained }]; only board members see them. A large board drops doc bodies, then hidden rows, then the highest ids, and says how many under omitted. Editorial rules (enforced where noted):\n- x/y/w/h divisible by 4 (enforced; violations are rejected, never rounded)\n- at most 2 focal nodes per board (enforced); accent color renders only on focal nodes\n- color groups nodes and edges that belong together (one flow, one team, one tier): one hue per group, the same hue on its edges, most of the board left uncolored. Keep red for danger. A bold node is a group's main step, at most one per group\n- token: ink (normal) | muted (infrastructure/secondary) | accent\n- deletion is the strongest edit; target density ~4/10 with generous whitespace\n- containers are large nodes drawn behind smaller ones: create big, move members inside\n- layout reads left→right: entry points left, services middle, data stores right; 48px+ gutters\n- up to about 5 nodes: after drawing, call layout_board unless a person has arranged the board; it places nodes left to right and fits boundaries\n- larger boards: skip layout_board and plan positions in layers, lined up so most edges run straight, 160px+ between nodes in a row, 80px+ between rows, under about 2,500px wide\n- one edge per flow; merge parallel edges only when they describe the same flow; never point an edge at a boundary",
+    "annotations": {
+      "readOnlyHint": true
+    },
+    "inputSchema": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "type": "object",
+      "properties": {
+        "board": {
+          "type": "string",
+          "pattern": "^\\d+$",
+          "description": "the board id start_session returned"
+        }
+      },
+      "required": [
+        "board"
+      ],
+      "additionalProperties": false
+    }
+  },
+  {
+    "name": "create_node",
+    "title": "Create node",
+    "description": "Create a node on the board. All of x, y, w, h must be divisible by 4. token: ink|muted|accent. kind: service|datastore|external|boundary|note|text (drives the visual grammar; defaults to service; for a chart use create_chart). text is a free heading: label only, markdown **bold** *italic* ~~strike~~ `code`, newlines break lines, size s|m|l = 14|20|28 px; give it a box about 0.6 × font px per character wide and 1.3 × font px per line tall. doc: optional, at most two sentences on what this component is and why it exists. Setting focal=true is rejected if 2 focal nodes already exist. Returns \"committed id=<n> board=<name>\". icon (optional): a library icon drawn above the label (beside a boundary's heading). Give one when the node is that kind of thing (an agent, a model, a queue) or that product or cloud (claude, aws); leave it out otherwise. Not on notes, charts or architecture boards. A node with an icon needs about 40 px more height (160x96 shows icon, label and sublabel). The board draws exactly the stored box: the label wraps to at most 2 lines inside w (16 px padding each side; ellipse and pill rows are narrower) and is cut off after that; the sublabel takes one line below it; a node with code refs keeps a row for its badge. At 15 px a label and sublabel need h=48 on one line and 68 on two. When the box cuts something off, the result says so and names the size that shows it: \"(label wraps to N lines; cut off below w=W — widen to W to show it in full)\", \"(sublabel cut off below w=W)\", \"(needs h=H to show label and sublabel)\".",
+    "inputSchema": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "type": "object",
+      "properties": {
+        "board": {
+          "type": "string",
+          "pattern": "^\\d+$",
+          "description": "the board id start_session returned"
+        },
+        "label": {
+          "type": "string"
+        },
+        "sublabel": {
+          "type": "string",
+          "description": "mono technical identifier, or empty string"
+        },
+        "x": {
+          "type": "integer",
+          "minimum": -9007199254740991,
+          "maximum": 9007199254740991,
+          "description": "integer, must be divisible by 4"
+        },
+        "y": {
+          "type": "integer",
+          "minimum": -9007199254740991,
+          "maximum": 9007199254740991,
+          "description": "integer, must be divisible by 4"
+        },
+        "w": {
+          "type": "integer",
+          "minimum": -9007199254740991,
+          "maximum": 9007199254740991,
+          "description": "integer, must be divisible by 4"
+        },
+        "h": {
+          "type": "integer",
+          "minimum": -9007199254740991,
+          "maximum": 9007199254740991,
+          "description": "integer, must be divisible by 4"
+        },
+        "token": {
+          "type": "string"
+        },
+        "focal": {
+          "type": "boolean"
+        },
+        "kind": {
+          "description": "service|datastore|external|boundary|note|text (charts: use create_chart)",
+          "type": "string"
+        },
+        "doc": {
+          "description": "at most two sentences: what this is and why",
+          "type": "string"
+        },
+        "icon": {
+          "description": "library icon id, one of agents: agent, orchestrator, subagent, model, tool, mcp-server, memory, knowledge-base, prompt, human, guardrail, evaluator; systems: queue, cache, scheduler, event, gateway, function, browser, sandbox; ai logos: claude, claude-code, openai, grok, mistral, hugging-face, openrouter, cursor, github-copilot, windsurf, devin, openclaw, hermes-agent, opencode; cloud logos: vercel, supabase, firebase, neon; aws: aws, aws-ec2, aws-lambda, aws-ecs, aws-eks, aws-fargate, aws-batch, aws-s3, aws-ebs, aws-efs, aws-glacier, aws-rds, aws-aurora, aws-dynamodb, aws-elasticache, aws-redshift, aws-documentdb, aws-opensearch, aws-sqs, aws-sns, aws-eventbridge, aws-kinesis, aws-msk, aws-step-functions, aws-api-gateway, aws-cloudfront, aws-route-53, aws-elb, aws-vpc, aws-iam, aws-cognito, aws-kms, aws-secrets-manager, aws-waf, aws-cloudwatch, aws-cloudtrail, aws-ecr, aws-codepipeline, aws-cloudformation, aws-bedrock, aws-sagemaker; microsoft azure: azure, azure-virtual-machines, azure-app-service, azure-functions, azure-aks, azure-container-apps, azure-container-instances, azure-storage-accounts, azure-blob-storage, azure-files, azure-managed-disks, azure-sql, azure-cosmos-db, azure-postgresql, azure-mysql, azure-cache, azure-synapse, azure-data-factory, azure-databricks, azure-service-bus, azure-event-grid, azure-event-hubs, azure-logic-apps, azure-api-management, azure-front-door, azure-cdn, azure-dns, azure-load-balancer, azure-application-gateway, azure-virtual-network, azure-firewall, azure-key-vault, azure-monitor, azure-log-analytics, azure-app-insights, azure-container-registry, azure-devops, azure-openai, azure-machine-learning, azure-static-web-apps; google cloud: google-cloud, gcp-compute-engine, gcp-cloud-run, gcp-cloud-functions, gcp-gke, gcp-app-engine, gcp-cloud-storage, gcp-filestore, gcp-persistent-disk, gcp-cloud-sql, gcp-spanner, gcp-alloydb, gcp-firestore, gcp-bigtable, gcp-memorystore, gcp-bigquery, gcp-dataflow, gcp-dataproc, gcp-pubsub, gcp-cloud-tasks, gcp-cloud-scheduler, gcp-workflows, gcp-apigee, gcp-api-gateway, gcp-load-balancing, gcp-cloud-cdn, gcp-cloud-dns, gcp-vpc, gcp-cloud-armor, gcp-iam, gcp-kms, gcp-secret-manager, gcp-logging, gcp-monitoring, gcp-artifact-registry, gcp-cloud-build, gcp-vertex-ai; cloudflare: cloudflare, cloudflare-cdn, cloudflare-workers, cloudflare-pages, cloudflare-r2, cloudflare-d1, cloudflare-kv, cloudflare-queues, cloudflare-durable-objects, cloudflare-dns, cloudflare-waf, cloudflare-zero-trust, cloudflare-tunnel, cloudflare-load-balancing, cloudflare-workers-ai; databases: postgres, mysql, mongodb, redis, valkey, keydb, dragonfly; kubernetes: kubernetes, k8s-pod, k8s-deployment, k8s-statefulset, k8s-daemonset, k8s-replicaset, k8s-job, k8s-cronjob, k8s-service, k8s-ingress, k8s-configmap, k8s-secret, k8s-pv, k8s-pvc, k8s-namespace, k8s-hpa, k8s-node, k8s-control-plane, k8s-network-policy, k8s-service-account; cncf: prometheus, envoy, helm, argo, flux, istio, linkerd, cilium, containerd, coredns, etcd, fluentd, jaeger, opentelemetry, harbor, keda, cert-manager, nats, open-policy-agent, knative",
+          "type": "string"
+        },
+        "color": {
+          "description": "ink|red|orange|yellow|green|teal|blue|purple|pink|gray; on a service or datastore also <hue>-soft (faded) or <hue>-bold (filled). Leave out for the plain look",
+          "type": "string",
+          "enum": [
+            "ink",
+            "red",
+            "orange",
+            "yellow",
+            "green",
+            "teal",
+            "blue",
+            "purple",
+            "pink",
+            "gray",
+            "ink-soft",
+            "ink-bold",
+            "red-soft",
+            "red-bold",
+            "orange-soft",
+            "orange-bold",
+            "yellow-soft",
+            "yellow-bold",
+            "green-soft",
+            "green-bold",
+            "teal-soft",
+            "teal-bold",
+            "blue-soft",
+            "blue-bold",
+            "purple-soft",
+            "purple-bold",
+            "pink-soft",
+            "pink-bold",
+            "gray-soft",
+            "gray-bold"
+          ]
+        }
+      },
+      "required": [
+        "board",
+        "label",
+        "sublabel",
+        "x",
+        "y",
+        "w",
+        "h",
+        "token",
+        "focal"
+      ],
+      "additionalProperties": false
+    }
+  },
+  {
+    "name": "move_node",
+    "title": "Move node",
+    "description": "Move a node (top-left corner). x and y must be divisible by 4. Returns texts ending in board=<name>, the board it acted on.",
+    "inputSchema": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "type": "object",
+      "properties": {
+        "board": {
+          "type": "string",
+          "pattern": "^\\d+$",
+          "description": "the board id start_session returned"
+        },
+        "nodeId": {
+          "type": "string",
+          "pattern": "^\\d+$",
+          "description": "numeric id as a string"
+        },
+        "x": {
+          "type": "integer",
+          "minimum": -9007199254740991,
+          "maximum": 9007199254740991,
+          "description": "integer, must be divisible by 4"
+        },
+        "y": {
+          "type": "integer",
+          "minimum": -9007199254740991,
+          "maximum": 9007199254740991,
+          "description": "integer, must be divisible by 4"
+        }
+      },
+      "required": [
+        "board",
+        "nodeId",
+        "x",
+        "y"
+      ],
+      "additionalProperties": false
+    }
+  },
+  {
+    "name": "layout_board",
+    "title": "Lay out board",
+    "description": "Lay out the board left to right: entry points left, data stores right, members kept inside their containers, room left for edge labels. Moves nodes and resizes containers (boundaries, and any non-chart node drawn around others) to fit their members; hidden nodes stay where they are; other node sizes do not change. Call it after a pass that added nodes or edges, before mark_checkpoint; skip it when a person has arranged the board or you planned the positions of a larger board, since it can make even a board of about 10 nodes very wide. If the result is more than about twice as wide as tall, arrange it by hand with resize_node. Returns \"committed layout: moved <n>, resized <m> board=<name>\".",
+    "inputSchema": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "type": "object",
+      "properties": {
+        "board": {
+          "type": "string",
+          "pattern": "^\\d+$",
+          "description": "the board id start_session returned"
+        }
+      },
+      "required": [
+        "board"
+      ],
+      "additionalProperties": false
+    }
+  },
+  {
+    "name": "update_node",
+    "title": "Update node",
+    "description": "Update any of label, sublabel, token, focal, kind, icon, color on a node. Omitted fields keep their current value; icon \"\" removes the icon. A chart cannot change kind and no node can become a chart; chart data changes with set_chart_data. icon (optional): a library icon drawn above the label (beside a boundary's heading). Give one when the node is that kind of thing (an agent, a model, a queue) or that product or cloud (claude, aws); leave it out otherwise. Not on notes, charts or architecture boards. A node with an icon needs about 40 px more height (160x96 shows icon, label and sublabel). The board draws exactly the stored box: the label wraps to at most 2 lines inside w (16 px padding each side; ellipse and pill rows are narrower) and is cut off after that; the sublabel takes one line below it; a node with code refs keeps a row for its badge. At 15 px a label and sublabel need h=48 on one line and 68 on two. When the box cuts something off, the result says so and names the size that shows it: \"(label wraps to N lines; cut off below w=W — widen to W to show it in full)\", \"(sublabel cut off below w=W)\", \"(needs h=H to show label and sublabel)\".",
+    "inputSchema": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "type": "object",
+      "properties": {
+        "board": {
+          "type": "string",
+          "pattern": "^\\d+$",
+          "description": "the board id start_session returned"
+        },
+        "nodeId": {
+          "type": "string",
+          "pattern": "^\\d+$",
+          "description": "numeric id as a string"
+        },
+        "label": {
+          "type": "string"
+        },
+        "sublabel": {
+          "type": "string"
+        },
+        "token": {
+          "type": "string"
+        },
+        "focal": {
+          "type": "boolean"
+        },
+        "kind": {
+          "description": "service|datastore|external|boundary|note|text (charts: use create_chart)",
+          "type": "string"
+        },
+        "icon": {
+          "description": "library icon id, as listed on create_node's icon parameter, or \"\" to remove the icon",
+          "type": "string"
+        },
+        "color": {
+          "description": "ink|red|orange|yellow|green|teal|blue|purple|pink|gray; on a service or datastore also <hue>-soft (faded) or <hue>-bold (filled). Leave out for the plain look",
+          "type": "string",
+          "enum": [
+            "ink",
+            "red",
+            "orange",
+            "yellow",
+            "green",
+            "teal",
+            "blue",
+            "purple",
+            "pink",
+            "gray",
+            "ink-soft",
+            "ink-bold",
+            "red-soft",
+            "red-bold",
+            "orange-soft",
+            "orange-bold",
+            "yellow-soft",
+            "yellow-bold",
+            "green-soft",
+            "green-bold",
+            "teal-soft",
+            "teal-bold",
+            "blue-soft",
+            "blue-bold",
+            "purple-soft",
+            "purple-bold",
+            "pink-soft",
+            "pink-bold",
+            "gray-soft",
+            "gray-bold"
+          ]
+        }
+      },
+      "required": [
+        "board",
+        "nodeId"
+      ],
+      "additionalProperties": false
+    }
+  },
+  {
+    "name": "resize_node",
+    "title": "Resize node",
+    "description": "Resize (and optionally reposition) a node. All of x, y, w, h must be divisible by 4; minimum size 64x48 (charts 224x144, free text 16x16). The board draws exactly the stored box: the label wraps to at most 2 lines inside w (16 px padding each side; ellipse and pill rows are narrower) and is cut off after that; the sublabel takes one line below it; a node with code refs keeps a row for its badge. At 15 px a label and sublabel need h=48 on one line and 68 on two. When the box cuts something off, the result says so and names the size that shows it: \"(label wraps to N lines; cut off below w=W — widen to W to show it in full)\", \"(sublabel cut off below w=W)\", \"(needs h=H to show label and sublabel)\".",
+    "inputSchema": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "type": "object",
+      "properties": {
+        "board": {
+          "type": "string",
+          "pattern": "^\\d+$",
+          "description": "the board id start_session returned"
+        },
+        "nodeId": {
+          "type": "string",
+          "pattern": "^\\d+$",
+          "description": "numeric id as a string"
+        },
+        "x": {
+          "type": "integer",
+          "minimum": -9007199254740991,
+          "maximum": 9007199254740991,
+          "description": "integer, must be divisible by 4"
+        },
+        "y": {
+          "type": "integer",
+          "minimum": -9007199254740991,
+          "maximum": 9007199254740991,
+          "description": "integer, must be divisible by 4"
+        },
+        "w": {
+          "type": "integer",
+          "minimum": -9007199254740991,
+          "maximum": 9007199254740991,
+          "description": "integer, must be divisible by 4"
+        },
+        "h": {
+          "type": "integer",
+          "minimum": -9007199254740991,
+          "maximum": 9007199254740991,
+          "description": "integer, must be divisible by 4"
+        }
+      },
+      "required": [
+        "board",
+        "nodeId",
+        "x",
+        "y",
+        "w",
+        "h"
+      ],
+      "additionalProperties": false
+    }
+  },
+  {
+    "name": "delete_node",
+    "title": "Delete node",
+    "description": "Delete a node; its edges are removed with it. Deletion is the strongest edit. Returns texts ending in board=<name>, the board it acted on.",
+    "annotations": {
+      "destructiveHint": true
+    },
+    "inputSchema": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "type": "object",
+      "properties": {
+        "board": {
+          "type": "string",
+          "pattern": "^\\d+$",
+          "description": "the board id start_session returned"
+        },
+        "nodeId": {
+          "type": "string",
+          "pattern": "^\\d+$",
+          "description": "numeric id as a string"
+        }
+      },
+      "required": [
+        "board",
+        "nodeId"
+      ],
+      "additionalProperties": false
+    }
+  },
+  {
+    "name": "create_edge",
+    "title": "Create edge",
+    "description": "Create a directed edge between two nodes. evidence is REQUIRED and validated: \"import\" | \"test-import\" | \"source:<path>:<line>\" | \"agent:<basis>\". For source: the path is repo-relative as git prints it, and <line> must be a unique nonblank line you read; the server captures its exact text from a capture of the file and registers the path on first use. On session boards, each checkpoint follows that text only while it occurs exactly once; edited, missing or duplicate text makes the evidence stale. \"agent:<basis>\" is only for a flow no code shows, such as a scenario the user describes: <basis> says what it rests on (e.g. \"agent:user described the topology\"), and the board draws it as an unverified agent claim. When code shows the flow, cite source. \"human:\" is refused: a person drawing on the canvas gets it. Returns \"committed id=<n> board=<name>\".",
+    "inputSchema": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "type": "object",
+      "properties": {
+        "board": {
+          "type": "string",
+          "pattern": "^\\d+$",
+          "description": "the board id start_session returned"
+        },
+        "fromNode": {
+          "type": "string",
+          "pattern": "^\\d+$",
+          "description": "numeric id as a string"
+        },
+        "toNode": {
+          "type": "string",
+          "pattern": "^\\d+$",
+          "description": "numeric id as a string"
+        },
+        "label": {
+          "type": "string"
+        },
+        "evidence": {
+          "type": "string"
+        },
+        "color": {
+          "description": "ink|red|orange|yellow|green|teal|blue|purple|pink|gray: the hue of the group or flow this edge belongs to. Leave out for the plain look; update_edge changes it later",
+          "type": "string",
+          "enum": [
+            "ink",
+            "red",
+            "orange",
+            "yellow",
+            "green",
+            "teal",
+            "blue",
+            "purple",
+            "pink",
+            "gray"
+          ]
+        },
+        "capture": {
+          "description": "Leave empty when the redcrayon plugin is installed; it fills this in. Otherwise run npx -y @redcrayonai/draw@1 capture … in the project and pass the id it prints.",
+          "type": "string",
+          "pattern": "^cap_[A-Za-z0-9]{22}$"
+        }
+      },
+      "required": [
+        "board",
+        "fromNode",
+        "toNode",
+        "label",
+        "evidence"
+      ],
+      "additionalProperties": false
+    }
+  },
+  {
+    "name": "hide_node",
+    "title": "Hide node",
+    "description": "Hide a node (and implicitly its edges) from the rendered board without deleting it. Always pass set: a short reason label (\"vendor libs\", \"schedulers\") — the chrome shows one toggleable chip per set. Use this instead of delete for imported rows. Returns texts ending in board=<name>, the board it acted on.",
+    "inputSchema": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "type": "object",
+      "properties": {
+        "board": {
+          "type": "string",
+          "pattern": "^\\d+$",
+          "description": "the board id start_session returned"
+        },
+        "nodeId": {
+          "type": "string",
+          "pattern": "^\\d+$",
+          "description": "numeric id as a string"
+        },
+        "hidden": {
+          "type": "boolean"
+        },
+        "set": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "board",
+        "nodeId",
+        "hidden"
+      ],
+      "additionalProperties": false
+    }
+  },
+  {
+    "name": "hide_edge",
+    "title": "Hide edge",
+    "description": "Hide or unhide an edge without deleting it. Pass set: a short reason label. Hiding an edge whose endpoints are both visible is an explicit editorial act. Returns texts ending in board=<name>, the board it acted on.",
+    "inputSchema": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "type": "object",
+      "properties": {
+        "board": {
+          "type": "string",
+          "pattern": "^\\d+$",
+          "description": "the board id start_session returned"
+        },
+        "edgeId": {
+          "type": "string",
+          "pattern": "^\\d+$",
+          "description": "numeric id as a string"
+        },
+        "hidden": {
+          "type": "boolean"
+        },
+        "set": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "board",
+        "edgeId",
+        "hidden"
+      ],
+      "additionalProperties": false
+    }
+  },
+  {
+    "name": "play_trace",
+    "title": "Play trace",
+    "description": "Replay one request on the board: every viewer sees dots run from each span's parent node to its own node, timed by the spans and slowed down to be watchable; error spans turn red. Map each span to a board node id first (service or operation to node). Spans carry only id, parent (a span id), node, startMs (from the trace start), durationMs and status; send no attributes, URLs or payloads. source: prod (a production trace from a monitoring tool), local (measured on this machine), estimate (built from reading the code). A new trace replaces the last one on this board. Returns \"committed trace: <n> spans, <total>ms board=<name>\". Returns texts ending in board=<name>, the board it acted on.",
+    "inputSchema": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "type": "object",
+      "properties": {
+        "board": {
+          "type": "string",
+          "pattern": "^\\d+$",
+          "description": "the board id start_session returned"
+        },
+        "spans": {
+          "minItems": 1,
+          "maxItems": 200,
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 64
+              },
+              "parent": {
+                "type": "string"
+              },
+              "node": {
+                "type": "string",
+                "pattern": "^\\d+$",
+                "description": "numeric id as a string"
+              },
+              "startMs": {
+                "type": "number",
+                "minimum": 0
+              },
+              "durationMs": {
+                "type": "number",
+                "minimum": 0
+              },
+              "status": {
+                "type": "string",
+                "enum": [
+                  "ok",
+                  "error"
+                ]
+              }
+            },
+            "required": [
+              "id",
+              "node",
+              "startMs",
+              "durationMs"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "source": {
+          "type": "string",
+          "enum": [
+            "prod",
+            "local",
+            "estimate"
+          ]
+        },
+        "title": {
+          "type": "string",
+          "maxLength": 120
+        }
+      },
+      "required": [
+        "board",
+        "spans",
+        "source"
+      ],
+      "additionalProperties": false
+    }
+  },
+  {
+    "name": "save_telling",
+    "title": "Save telling",
+    "description": "Save a walk-through of this board for one audience: ordered steps, each lighting 1 to 12 nodes with a short title and one sentence (body), and optionally where the claim comes from (source) and which nodes the view should frame (frame). Start from one node the audience already knows and add a few nodes per step. Saving again for the same audience replaces it. At most 12 steps and 6 audiences per board. To trace one flow through a larger system (checkout, sign-in), save it with a color and name it in audience (\"Checkout\"): the legend on the board lists it, paints the nodes and edges only that flow uses, and lets a reader show that flow alone and step through it. Give the steps in the order a request travels and keep red for a failure path. Everyone who can view the board, including through a shared link, can read every field. Returns texts ending in board=<name>, the board it acted on.",
+    "annotations": {
+      "idempotentHint": true
+    },
+    "inputSchema": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "type": "object",
+      "properties": {
+        "board": {
+          "type": "string",
+          "pattern": "^\\d+$",
+          "description": "the board id start_session returned"
+        },
+        "audience": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 40,
+          "description": "who this walk-through is for, e.g. \"Product\""
+        },
+        "title": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 120
+        },
+        "steps": {
+          "minItems": 1,
+          "maxItems": 12,
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "nodes": {
+                "minItems": 1,
+                "maxItems": 12,
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "pattern": "^\\d+$",
+                  "description": "numeric id as a string"
+                }
+              },
+              "frame": {
+                "maxItems": 12,
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "pattern": "^\\d+$",
+                  "description": "numeric id as a string"
+                }
+              },
+              "title": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 80
+              },
+              "body": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 280
+              },
+              "source": {
+                "type": "string",
+                "maxLength": 200
+              }
+            },
+            "required": [
+              "nodes",
+              "title",
+              "body"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "author": {
+          "type": "string"
+        },
+        "color": {
+          "description": "makes this walk-through a flow in the board's legend: red|orange|yellow|green|teal|blue|purple|pink|gray, one flow per color on a board; \"\" makes it a plain walk-through again",
+          "type": "string",
+          "enum": [
+            "",
+            "red",
+            "orange",
+            "yellow",
+            "green",
+            "teal",
+            "blue",
+            "purple",
+            "pink",
+            "gray"
+          ]
+        }
+      },
+      "required": [
+        "board",
+        "audience",
+        "title",
+        "steps"
+      ],
+      "additionalProperties": false
+    }
+  },
+  {
+    "name": "remove_telling",
+    "title": "Remove telling",
+    "description": "Remove this board's walk-through for one audience. Returns texts ending in board=<name>, the board it acted on.",
+    "annotations": {
+      "destructiveHint": true
+    },
+    "inputSchema": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "type": "object",
+      "properties": {
+        "board": {
+          "type": "string",
+          "pattern": "^\\d+$",
+          "description": "the board id start_session returned"
+        },
+        "audience": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 40,
+          "description": "who this walk-through is for, e.g. \"Product\""
+        }
+      },
+      "required": [
+        "board",
+        "audience"
+      ],
+      "additionalProperties": false
+    }
+  },
+  {
+    "name": "start_tap",
+    "title": "Start live tap",
+    "description": "Let the user watch live traffic on this board while they run their app locally. Returns a token and the command to run: npx -y @redcrayonai/draw@1 tap --token <token>, in the background, from the project root. Before running it, write .redcrayon/tap.json as { \"board\": \"<id>\", \"services\": { \"<service.name>\": \"<node id>\" } }, mapping each OpenTelemetry service to the node that draws it. Then tell the user to point their app's OTLP exporter at http://127.0.0.1:4318 (HTTP, not gRPC) and press Live on the board. The tap keeps raw telemetry on their machine and sends only per-edge rates, latencies and error counts while someone watches. The token lasts 12 hours. Returns texts ending in board=<name>, the board it acted on.",
+    "inputSchema": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "type": "object",
+      "properties": {
+        "board": {
+          "type": "string",
+          "pattern": "^\\d+$",
+          "description": "the board id start_session returned"
+        }
+      },
+      "required": [
+        "board"
+      ],
+      "additionalProperties": false
+    }
+  },
+  {
+    "name": "set_edge_latency",
+    "title": "Set edge latency",
+    "description": "Set the hop latency of an edge in milliseconds and where the number came from: prod (production traces from a monitoring tool), local (measured on this machine: browser timings, curl, tests), estimate (read from the code). Never pass an estimate as prod or local; the board draws estimates differently. latencyMs -1 clears it. Returns texts ending in board=<name>, the board it acted on.",
+    "inputSchema": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "type": "object",
+      "properties": {
+        "board": {
+          "type": "string",
+          "pattern": "^\\d+$",
+          "description": "the board id start_session returned"
+        },
+        "edgeId": {
+          "type": "string",
+          "pattern": "^\\d+$",
+          "description": "numeric id as a string"
+        },
+        "latencyMs": {
+          "type": "number"
+        },
+        "source": {
+          "type": "string",
+          "enum": [
+            "prod",
+            "local",
+            "estimate"
+          ]
+        }
+      },
+      "required": [
+        "board",
+        "edgeId",
+        "latencyMs"
+      ],
+      "additionalProperties": false
+    }
+  },
+  {
+    "name": "update_edge",
+    "title": "Update edge",
+    "description": "Change the color of an existing edge: the hue of the group or flow it belongs to, or \"\" for the plain look. Label and evidence do not change: to change those, delete the edge and create it again. Returns texts ending in board=<name>, the board it acted on.",
+    "annotations": {
+      "idempotentHint": true
+    },
+    "inputSchema": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "type": "object",
+      "properties": {
+        "board": {
+          "type": "string",
+          "pattern": "^\\d+$",
+          "description": "the board id start_session returned"
+        },
+        "edgeId": {
+          "type": "string",
+          "pattern": "^\\d+$",
+          "description": "numeric id as a string"
+        },
+        "color": {
+          "type": "string",
+          "enum": [
+            "",
+            "ink",
+            "red",
+            "orange",
+            "yellow",
+            "green",
+            "teal",
+            "blue",
+            "purple",
+            "pink",
+            "gray"
+          ],
+          "description": "ink|red|orange|yellow|green|teal|blue|purple|pink|gray, or \"\" for the plain look"
+        }
+      },
+      "required": [
+        "board",
+        "edgeId",
+        "color"
+      ],
+      "additionalProperties": false
+    }
+  },
+  {
+    "name": "delete_edge",
+    "title": "Delete edge",
+    "description": "Delete an edge by id. Returns texts ending in board=<name>, the board it acted on.",
+    "annotations": {
+      "destructiveHint": true
+    },
+    "inputSchema": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "type": "object",
+      "properties": {
+        "board": {
+          "type": "string",
+          "pattern": "^\\d+$",
+          "description": "the board id start_session returned"
+        },
+        "edgeId": {
+          "type": "string",
+          "pattern": "^\\d+$",
+          "description": "numeric id as a string"
+        }
+      },
+      "required": [
+        "board",
+        "edgeId"
+      ],
+      "additionalProperties": false
+    }
+  },
+  {
+    "name": "describe_charts",
+    "title": "Describe charts",
+    "description": "List the chart types and what each needs: purpose, columns, options with their defaults, row and series limits, what the reader sees, and a valid example CSV. Pass type for one; omit it for all 11. Call it before create_chart. It reads no board. timeseries: Use for one to five measurements over time, such as p99 latency before and after a change; bars: Use to compare one to five measurements across categories or time buckets, such as requests per hour by region; toplist: Use to rank items by one value, such as the slowest endpoints by p99 latency; pie: Use to show how a whole splits into a few parts, such as sessions by client; treemap: Use to show the size of many parts of a whole, optionally in up to 5 groups, such as cost by service; table: Use for exact values across a few columns, such as per-host CPU, memory and latency; stat: Use for one headline number with its change and trend, such as weekly availability; waterfall: Use for one trace: spans with parents, start times and durations, such as a slow checkout request; scatter: Use to show how two measurements relate across many items, such as p99 latency against payload size per endpoint; schedule: Use for work laid out in time across a few lanes, such as a migration plan by team or an on-call rotation; kanban: Use for work items by stage, such as the open tasks of a migration by status, optionally in swim lanes by team.",
+    "annotations": {
+      "readOnlyHint": true
+    },
+    "inputSchema": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "type": "object",
+      "properties": {
+        "type": {
+          "description": "timeseries|bars|toplist|pie|treemap|table|stat|waterfall|scatter|schedule|kanban",
+          "type": "string"
+        }
+      },
+      "additionalProperties": false
+    }
+  },
+  {
+    "name": "create_chart",
+    "title": "Create chart",
+    "description": "Create a chart on the board from numbers you measured, such as perf before and after a change. Never invent numbers. Call describe_charts first for the columns, options and an example of each type. type: timeseries|bars|toplist|pie|treemap|table|stat|waterfall|scatter|schedule|kanban. x, y, w, h must be divisible by 4; a chart is at least 224x144. title is drawn as the label, subtitle as one line under it (or empty string). csv: the first row names the columns; at most 32768 bytes. options: a JSON object, or omit it for the defaults. source is REQUIRED: the command and commit that produced the numbers, e.g. 'agent: npm run bench @ 1a2b3c4'. source 'sample' is reserved for library examples; say where the data came from. agents cannot use a human: source; say what produced the data (for example 'agent: npm run bench @ <sha>'). The CSV and source are checked before anything is written: a problem answers \"REJECTED: <sentence> board=<name>\". Returns \"committed id=<n> (<rows> rows; series: <names>; x: <first> → <last>; <warnings>) board=<name>\". Read the warnings: they say what was folded or cut.",
+    "inputSchema": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "type": "object",
+      "properties": {
+        "board": {
+          "type": "string",
+          "pattern": "^\\d+$",
+          "description": "the board id start_session returned"
+        },
+        "title": {
+          "type": "string",
+          "description": "what the chart shows, drawn as the node label"
+        },
+        "subtitle": {
+          "type": "string",
+          "description": "one line under the title (scope or unit), or empty string"
+        },
+        "x": {
+          "type": "integer",
+          "minimum": -9007199254740991,
+          "maximum": 9007199254740991,
+          "description": "integer, must be divisible by 4"
+        },
+        "y": {
+          "type": "integer",
+          "minimum": -9007199254740991,
+          "maximum": 9007199254740991,
+          "description": "integer, must be divisible by 4"
+        },
+        "w": {
+          "type": "integer",
+          "minimum": -9007199254740991,
+          "maximum": 9007199254740991,
+          "description": "integer, must be divisible by 4"
+        },
+        "h": {
+          "type": "integer",
+          "minimum": -9007199254740991,
+          "maximum": 9007199254740991,
+          "description": "integer, must be divisible by 4"
+        },
+        "type": {
+          "type": "string",
+          "description": "timeseries|bars|toplist|pie|treemap|table|stat|waterfall|scatter|schedule|kanban"
+        },
+        "csv": {
+          "type": "string",
+          "description": "header row, then one row per data point"
+        },
+        "options": {
+          "description": "JSON object of options for the type (see describe_charts); omit for the defaults",
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "object",
+              "propertyNames": {
+                "type": "string"
+              },
+              "additionalProperties": {}
+            }
+          ]
+        },
+        "source": {
+          "type": "string",
+          "description": "REQUIRED: the command and commit that produced the data, e.g. 'agent: npm run bench @ 1a2b3c4'"
+        }
+      },
+      "required": [
+        "board",
+        "title",
+        "subtitle",
+        "x",
+        "y",
+        "w",
+        "h",
+        "type",
+        "csv",
+        "source"
+      ],
+      "additionalProperties": false
+    }
+  },
+  {
+    "name": "set_chart_data",
+    "title": "Set chart data",
+    "description": "Change a chart's type, csv, options or source. Omitted fields keep their stored value; the merged result is checked like create_chart. When the numbers change, pass source to say where the new data came from: an omitted source is refused on sample data or a person's data, and otherwise keeps the stored one. An options-only change keeps the source. agents cannot use a human: source; say what produced the data (for example 'agent: npm run bench @ <sha>'). Returns \"committed (<rows> rows; series: <names>; …) board=<name>\".",
+    "inputSchema": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "type": "object",
+      "properties": {
+        "board": {
+          "type": "string",
+          "pattern": "^\\d+$",
+          "description": "the board id start_session returned"
+        },
+        "nodeId": {
+          "type": "string",
+          "pattern": "^\\d+$",
+          "description": "numeric id as a string"
+        },
+        "type": {
+          "description": "timeseries|bars|toplist|pie|treemap|table|stat|waterfall|scatter|schedule|kanban",
+          "type": "string"
+        },
+        "csv": {
+          "type": "string"
+        },
+        "options": {
+          "description": "JSON object of options for the type (see describe_charts); omit for the defaults",
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "object",
+              "propertyNames": {
+                "type": "string"
+              },
+              "additionalProperties": {}
+            }
+          ]
+        },
+        "source": {
+          "description": "the command and commit that produced the data, e.g. 'agent: npm run bench @ 1a2b3c4'",
+          "type": "string"
+        }
+      },
+      "required": [
+        "board",
+        "nodeId"
+      ],
+      "additionalProperties": false
+    }
+  },
+  {
+    "name": "get_chart",
+    "title": "Get chart",
+    "description": "Read one chart's stored data: JSON { board, nodeId, type, options, source, csv }. get_board shows only a summary.",
+    "annotations": {
+      "readOnlyHint": true
+    },
+    "inputSchema": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "type": "object",
+      "properties": {
+        "board": {
+          "type": "string",
+          "pattern": "^\\d+$",
+          "description": "the board id start_session returned"
+        },
+        "nodeId": {
+          "type": "string",
+          "pattern": "^\\d+$",
+          "description": "numeric id as a string"
+        }
+      },
+      "required": [
+        "board",
+        "nodeId"
+      ],
+      "additionalProperties": false
+    }
+  },
+  {
+    "name": "pin_chart",
+    "title": "Pin chart",
+    "description": "Pin a chart to the edge or component it measures, e.g. a latency chart on the failing hop; the board draws a leader from the chart to it. Pass exactly one of edge or node; pinning again moves the pin; unpin: true removes it. Returns texts ending in board=<name>, the board it acted on.",
+    "inputSchema": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "type": "object",
+      "properties": {
+        "board": {
+          "type": "string",
+          "pattern": "^\\d+$",
+          "description": "the board id start_session returned"
+        },
+        "chart": {
+          "type": "string",
+          "pattern": "^\\d+$",
+          "description": "numeric id as a string"
+        },
+        "edge": {
+          "type": "string",
+          "pattern": "^\\d+$",
+          "description": "numeric id as a string"
+        },
+        "node": {
+          "type": "string",
+          "pattern": "^\\d+$",
+          "description": "numeric id as a string"
+        },
+        "unpin": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "board",
+        "chart"
+      ],
+      "additionalProperties": false
+    }
+  },
+  {
+    "name": "set_time_window",
+    "title": "Set time window",
+    "description": "Set the board's shared time window: every viewer's time-axis charts show only start to end, so everyone looks at the same minutes. start and end: ISO 8601 (2026-10-09T14:30:00Z) or epoch milliseconds, at most 31 days apart. clear: true removes it and charts show all their data. Returns texts ending in board=<name>, the board it acted on.",
+    "inputSchema": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "type": "object",
+      "properties": {
+        "board": {
+          "type": "string",
+          "pattern": "^\\d+$",
+          "description": "the board id start_session returned"
+        },
+        "start": {
+          "type": "string"
+        },
+        "end": {
+          "type": "string"
+        },
+        "clear": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "board"
+      ],
+      "additionalProperties": false
+    }
+  },
+  {
+    "name": "open_incident",
+    "title": "Open incident",
+    "description": "Open an incident board: an ephemeral copy of a board (nodes, edges, charts and their pins) with no focal nodes, its time window 15 minutes either side of since. Work an incident there, never on the lasting board. On a board that already is an incident board, returns that board. Calling it again with the same board and title returns the same open incident. since: when the problem started, ISO 8601 or epoch milliseconds; leave it out when unknown. Returns JSON { board, id, url, opened, window }: pass id as board on every later tool, relay url to the user once when opened is true, and check window ({ start, end } in UTC, or null) against what the user said.",
+    "inputSchema": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "type": "object",
+      "properties": {
+        "board": {
+          "type": "string",
+          "pattern": "^\\d+$",
+          "description": "the board id start_session returned"
+        },
+        "title": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 90,
+          "pattern": "^[^\\x00-\\x1f\\x7f]+$",
+          "description": "what is wrong, one short line"
+        },
+        "since": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "board",
+        "title"
+      ],
+      "additionalProperties": false
+    }
+  },
+  {
+    "name": "start_session",
+    "title": "Start session",
+    "description": "Open this task's board and return its id; pass that id as board on every other tool. Pass name (use the git branch unless told otherwise) to open your own board of that name, created on first call; or link (a board link the user gave you) to draw on that board. Returns JSON { board, id, url, seat, session, checkpoint?, repoRoot?, baseSha?, note?, chat? }: relay url to the user once, verbatim, before any other tool call. If the board asks to link the agent, confirm that once on the board. session is true when code refs and checkpoints work on the board (a capture of your checkout is needed for that); note says why when they do not. seat is your name for wait_for_marks and reply_to_mark. chat contains private connection metadata for the local conversation runtime; the plugin connects it automatically.",
+    "inputSchema": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "type": "object",
+      "properties": {
+        "name": {
+          "description": "board name: one short line (at most 100 characters), e.g. the git branch",
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 100,
+          "pattern": "^[^\\x00-\\x1f\\x7f]+$"
+        },
+        "link": {
+          "description": "a board link, e.g. the url a previous start_session returned",
+          "type": "string"
+        },
+        "capture": {
+          "description": "Leave empty when the redcrayon plugin is installed; it fills this in. Otherwise run npx -y @redcrayonai/draw@1 capture … in the project and pass the id it prints.",
+          "type": "string",
+          "pattern": "^cap_[A-Za-z0-9]{22}$"
+        }
+      },
+      "additionalProperties": false
+    }
+  },
+  {
+    "name": "create_branch",
+    "title": "Create branch",
+    "description": "Branch a board into a copy you can edit and submit for review: board = any board you own or were granted (or an imported snapshot; open its link with start_session first), name = the branch. The copy keeps every node, edge, icon, chart, hide set and code ref; the board itself does not change until the owner merges. You may submit the branch (submit_branch); only the owner accepts, rejects or merges, in the canvas. Calling it again with the same board and name returns the same branch. Returns JSON { board, id, url, base }: pass id as board on every later tool, and relay url to the user once.",
+    "inputSchema": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "type": "object",
+      "properties": {
+        "board": {
+          "type": "string",
+          "pattern": "^\\d+$",
+          "description": "the board id start_session returned"
+        },
+        "name": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 100,
+          "pattern": "^[^\\x00-\\x1f\\x7f]+$",
+          "description": "branch name: one short line"
+        }
+      },
+      "required": [
+        "board",
+        "name"
+      ],
+      "additionalProperties": false
+    }
+  },
+  {
+    "name": "submit_branch",
+    "title": "Submit branch",
+    "description": "Send a branch (a board create_branch returned) to its owner for review. Do this once the branch says what you intend; the owner accepts, rejects or merges it in the canvas, never you. A later graph edit returns it to draft; submit again after. Returns \"committed board=<name>\". Returns texts ending in board=<name>, the board it acted on.",
+    "inputSchema": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "type": "object",
+      "properties": {
+        "board": {
+          "type": "string",
+          "pattern": "^\\d+$",
+          "description": "the board id start_session returned"
+        }
+      },
+      "required": [
+        "board"
+      ],
+      "additionalProperties": false
+    }
+  },
+  {
+    "name": "add_code_ref",
+    "title": "Add code ref",
+    "description": "Attach a code ref (symbol + path + line range + snippet) to a node or edge on a session board. The server takes the snippet from a capture of your file; you never paste code. For .ts .tsx .mts .cts .js .jsx .mjs .cjs name the symbol and never pass startLine/endLine (a range is rejected): the server resolves the symbol to its lines now and re-finds it by name at every mark_checkpoint. Addressable: top-level function, class, interface, type, enum, namespace by bare name; class and interface members as Class.member; enum members as Enum.member, namespace members as NS.member, the default export as default and its members as default.member, CommonJS exports.x, module.exports and module.exports.member; a const resolves to its whole variable statement; overload signatures resolve together with their implementation; the range excludes leading JSDoc. Nested, local and object-literal declarations are not addressable: cite the enclosing declaration instead. For other file types startLine and endLine are required (1-based, inclusive). Snippets are capped at 60 lines / 4000 chars. The symbol (its last dotted segment) must occur in the captured lines. author: your subagent name, or omit. One ref per node or edge, path and symbol: adding it again answers \"already attached id=<n> <path>:<start>-<end> board=<name>\" and writes nothing. Result: \"committed id=<n> <path>:<start>-<end> board=<name>\".",
+    "inputSchema": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "type": "object",
+      "properties": {
+        "board": {
+          "type": "string",
+          "pattern": "^\\d+$",
+          "description": "the board id start_session returned"
+        },
+        "targetKind": {
+          "type": "string",
+          "enum": [
+            "node",
+            "edge"
+          ]
+        },
+        "targetId": {
+          "type": "string",
+          "pattern": "^\\d+$",
+          "description": "numeric id as a string"
+        },
+        "path": {
+          "type": "string",
+          "description": "repo-relative path as git ls-files prints it"
+        },
+        "symbol": {
+          "type": "string",
+          "minLength": 1,
+          "pattern": "[^.]$",
+          "description": "e.g. gitHead, Editor.handles, startSession"
+        },
+        "startLine": {
+          "type": "integer",
+          "exclusiveMinimum": 0,
+          "maximum": 9007199254740991
+        },
+        "endLine": {
+          "type": "integer",
+          "exclusiveMinimum": 0,
+          "maximum": 9007199254740991
+        },
+        "author": {
+          "type": "string"
+        },
+        "capture": {
+          "description": "Leave empty when the redcrayon plugin is installed; it fills this in. Otherwise run npx -y @redcrayonai/draw@1 capture … in the project and pass the id it prints.",
+          "type": "string",
+          "pattern": "^cap_[A-Za-z0-9]{22}$"
+        }
+      },
+      "required": [
+        "board",
+        "targetKind",
+        "targetId",
+        "path",
+        "symbol"
+      ],
+      "additionalProperties": false
+    }
+  },
+  {
+    "name": "mark_checkpoint",
+    "title": "Mark checkpoint",
+    "description": "Record a checkpoint on a session board. Call it immediately before every git commit and before your final answer; it must be the last board write of the session. First re-anchors every code ref whose file changed since capture, and source evidence on edges; then computes coverage against the session baseSha: changed = diffed ∪ untracked files; a file is covered when an ok ref on this board intersects one of its diff hunks; exclude = [{ reason, glob }] groups uncovered paths you deliberately left off. Returns JSON { board, checkpoint, headSha, coverage: { changed, uncovered, excluded, deleted }, reanchor: { shifted, drifted, stale, ambiguous, restored }, citedPaths, notes? }. Act on it: draw or exclude what is uncovered; replace stale/ambiguous refs with remove_code_ref + add_code_ref under a corrected name; replace stale edge citations. restored lists refs and evidence that are ok again — no action needed. changeNotes? { staleReaders [{ note, ref, path, line }], unconfirmed [path] } appears when there is something to do: fix each stale reader (its code still reads a changed column), then checkpoint again; an unconfirmed path is a changed migration file no change note cites: add_change_note for it, or exclude it.",
+    "inputSchema": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "type": "object",
+      "properties": {
+        "board": {
+          "type": "string",
+          "pattern": "^\\d+$",
+          "description": "the board id start_session returned"
+        },
+        "exclude": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "reason": {
+                "type": "string"
+              },
+              "glob": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "reason",
+              "glob"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "capture": {
+          "description": "Leave empty when the redcrayon plugin is installed; it fills this in. Otherwise run npx -y @redcrayonai/draw@1 capture … in the project and pass the id it prints.",
+          "type": "string",
+          "pattern": "^cap_[A-Za-z0-9]{22}$"
+        }
+      },
+      "required": [
+        "board"
+      ],
+      "additionalProperties": false
+    }
+  },
+  {
+    "name": "plan_route",
+    "title": "Plan route",
+    "description": "Plan the ordered waypoint nodes on a session board. All start pending; the final node is the destination. Route order is separate from evidence edges and never changes labels or styling. An identical plan is safe to retry; use reroute to change an existing plan. Node writes update focus but only arrive advances progress.",
+    "inputSchema": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "type": "object",
+      "properties": {
+        "board": {
+          "type": "string",
+          "pattern": "^\\d+$",
+          "description": "the board id start_session returned"
+        },
+        "nodeIds": {
+          "minItems": 1,
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^\\d+$",
+            "description": "numeric id as a string"
+          }
+        }
+      },
+      "required": [
+        "board",
+        "nodeIds"
+      ],
+      "additionalProperties": false
+    }
+  },
+  {
+    "name": "arrive",
+    "title": "Arrive",
+    "description": "Arrive at the next pending waypoint. Re-anchor code refs and evidence and compute git coverage, then commit one checkpoint, route progress, history and your focus together. The previous waypoint becomes done and this waypoint becomes current. Retrying the current arrival returns its original checkpoint without a write. Older done arrivals and out-of-order arrivals reject.",
+    "inputSchema": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "type": "object",
+      "properties": {
+        "board": {
+          "type": "string",
+          "pattern": "^\\d+$",
+          "description": "the board id start_session returned"
+        },
+        "nodeId": {
+          "type": "string",
+          "pattern": "^\\d+$",
+          "description": "numeric id as a string"
+        },
+        "exclude": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "reason": {
+                "type": "string"
+              },
+              "glob": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "reason",
+              "glob"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "capture": {
+          "description": "Leave empty when the redcrayon plugin is installed; it fills this in. Otherwise run npx -y @redcrayonai/draw@1 capture … in the project and pass the id it prints.",
+          "type": "string",
+          "pattern": "^cap_[A-Za-z0-9]{22}$"
+        }
+      },
+      "required": [
+        "board",
+        "nodeId"
+      ],
+      "additionalProperties": false
+    }
+  },
+  {
+    "name": "reroute",
+    "title": "Reroute",
+    "description": "Change pending waypoints while preserving done/current stops. Give a nonempty reason for the history. First removes pending IDs named in remove or add, then inserts add entries in argument order. Each index is zero-based within the remaining pending list at that insertion. Absent removals have no effect; an unchanged reroute adds no history. The final resulting waypoint is the destination.",
+    "inputSchema": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "type": "object",
+      "properties": {
+        "board": {
+          "type": "string",
+          "pattern": "^\\d+$",
+          "description": "the board id start_session returned"
+        },
+        "add": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "nodeId": {
+                "type": "string",
+                "pattern": "^\\d+$",
+                "description": "numeric id as a string"
+              },
+              "index": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 4294967295
+              }
+            },
+            "required": [
+              "nodeId",
+              "index"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "remove": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^\\d+$",
+            "description": "numeric id as a string"
+          }
+        },
+        "reason": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "required": [
+        "board",
+        "reason"
+      ],
+      "additionalProperties": false
+    }
+  },
+  {
+    "name": "remove_code_ref",
+    "title": "Remove code ref",
+    "description": "Delete one code ref by id (ids come from get_board refs or the add_code_ref result). Use it to replace a stale or ambiguous ref without deleting its node: remove_code_ref, then add_code_ref with the corrected symbol. Refused while the ref is a change note's main ref: add_code_ref the migration again under another symbol, update_change_note with its refId, then remove_code_ref the old one. Returns texts ending in board=<name>, the board it acted on.",
+    "annotations": {
+      "destructiveHint": true
+    },
+    "inputSchema": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "type": "object",
+      "properties": {
+        "board": {
+          "type": "string",
+          "pattern": "^\\d+$",
+          "description": "the board id start_session returned"
+        },
+        "refId": {
+          "type": "string",
+          "pattern": "^\\d+$",
+          "description": "numeric id as a string"
+        }
+      },
+      "required": [
+        "board",
+        "refId"
+      ],
+      "additionalProperties": false
+    }
+  },
+  {
+    "name": "add_change_note",
+    "title": "Add change note",
+    "description": "Flag a migration or another big or risky change so the reviewer sees it on the board: the anchor node shows a tag (and, with schema, the table shape), and readers show whether their code was updated. Use it only for changes a reviewer must not miss: schema migrations, dropped or renamed columns, data loss, breaking APIs. First add_code_ref the migration file (refId) and every reader you found by searching the code for the column (readers). Each reader's code ref must contain its subject's column or an alias, or the call is refused; add aliases for ORM names (createdAt for created_at). Step lines must lie inside the ref. mark_checkpoint then reports readers that still read a changed column. Returns \"committed id=<n>\". Returns texts ending in board=<name>, the board it acted on.",
+    "inputSchema": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "type": "object",
+      "properties": {
+        "board": {
+          "type": "string",
+          "pattern": "^\\d+$",
+          "description": "the board id start_session returned"
+        },
+        "anchorId": {
+          "type": "string",
+          "pattern": "^\\d+$",
+          "description": "the node the change is about, e.g. the datastore"
+        },
+        "kind": {
+          "type": "string",
+          "enum": [
+            "migration",
+            "breaking-api",
+            "data-loss",
+            "dependency"
+          ],
+          "description": "migration (others: breaking-api, data-loss, dependency)"
+        },
+        "severity": {
+          "type": "string",
+          "enum": [
+            "destructive",
+            "notable"
+          ],
+          "description": "destructive: drops or rewrites data, or cannot be undone; notable: a reviewer must still see it"
+        },
+        "title": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 80,
+          "description": "short, e.g. \"Migration 0042\""
+        },
+        "summary": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200,
+          "description": "one plain line: what changes, and what cannot be undone"
+        },
+        "refId": {
+          "type": "string",
+          "pattern": "^\\d+$",
+          "description": "the code ref of the migration file itself (add_code_ref it first)"
+        },
+        "steps": {
+          "description": "the migration's steps in order, each a line range inside the ref; mark the one that cannot be undone irreversible",
+          "maxItems": 12,
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "label": {
+                "type": "string",
+                "minLength": 1
+              },
+              "startLine": {
+                "type": "integer",
+                "exclusiveMinimum": 0,
+                "maximum": 9007199254740991
+              },
+              "endLine": {
+                "type": "integer",
+                "exclusiveMinimum": 0,
+                "maximum": 9007199254740991
+              },
+              "irreversible": {
+                "type": "boolean"
+              }
+            },
+            "required": [
+              "label",
+              "startLine",
+              "endLine"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "schema": {
+          "description": "the table's columns after the change; change: added | dropped | renamed | null for unchanged",
+          "type": "object",
+          "properties": {
+            "table": {
+              "type": "string",
+              "minLength": 1
+            },
+            "columns": {
+              "minItems": 1,
+              "maxItems": 200,
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "name": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "type": {
+                    "type": "string"
+                  },
+                  "change": {
+                    "anyOf": [
+                      {
+                        "type": "string",
+                        "enum": [
+                          "added",
+                          "dropped",
+                          "renamed"
+                        ]
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  }
+                },
+                "required": [
+                  "name",
+                  "type",
+                  "change"
+                ],
+                "additionalProperties": false
+              }
+            }
+          },
+          "required": [
+            "table",
+            "columns"
+          ],
+          "additionalProperties": false
+        },
+        "subjects": {
+          "description": "what readers depend on, e.g. { table: \"customers\", column: \"name\" }; aliases are other names code uses for it (ORM fields)",
+          "maxItems": 16,
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "table": {
+                "type": "string",
+                "minLength": 1
+              },
+              "column": {
+                "type": "string",
+                "minLength": 1
+              },
+              "aliases": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "minLength": 1
+                }
+              }
+            },
+            "required": [
+              "table",
+              "column"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "readers": {
+          "description": "code refs (add_code_ref) of code that reads a subject; subject is its index in subjects",
+          "maxItems": 32,
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "refId": {
+                "type": "string",
+                "pattern": "^\\d+$",
+                "description": "numeric id as a string"
+              },
+              "subject": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 9007199254740991
+              }
+            },
+            "required": [
+              "refId",
+              "subject"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "author": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "board",
+        "anchorId",
+        "kind",
+        "severity",
+        "title",
+        "summary",
+        "refId"
+      ],
+      "additionalProperties": false
+    }
+  },
+  {
+    "name": "update_change_note",
+    "title": "Update change note",
+    "description": "Change a change note by id (ids come from get_board changeNotes or the add_change_note result). Fields left out keep their value; readers, when given, replaces the list (readers already listed keep their status). Use it to point refId at a replacement code ref before removing the old one, and to add readers you found later. Changing severity, steps, schema, subjects or refId clears a review. Returns texts ending in board=<name>, the board it acted on.",
+    "inputSchema": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "type": "object",
+      "properties": {
+        "board": {
+          "type": "string",
+          "pattern": "^\\d+$",
+          "description": "the board id start_session returned"
+        },
+        "noteId": {
+          "type": "string",
+          "pattern": "^\\d+$",
+          "description": "numeric id as a string"
+        },
+        "kind": {
+          "type": "string",
+          "enum": [
+            "migration",
+            "breaking-api",
+            "data-loss",
+            "dependency"
+          ],
+          "description": "migration (others: breaking-api, data-loss, dependency)"
+        },
+        "severity": {
+          "type": "string",
+          "enum": [
+            "destructive",
+            "notable"
+          ],
+          "description": "destructive: drops or rewrites data, or cannot be undone; notable: a reviewer must still see it"
+        },
+        "title": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 80,
+          "description": "short, e.g. \"Migration 0042\""
+        },
+        "summary": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200,
+          "description": "one plain line: what changes, and what cannot be undone"
+        },
+        "refId": {
+          "type": "string",
+          "pattern": "^\\d+$",
+          "description": "the code ref of the migration file itself (add_code_ref it first)"
+        },
+        "steps": {
+          "description": "the migration's steps in order, each a line range inside the ref; mark the one that cannot be undone irreversible",
+          "maxItems": 12,
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "label": {
+                "type": "string",
+                "minLength": 1
+              },
+              "startLine": {
+                "type": "integer",
+                "exclusiveMinimum": 0,
+                "maximum": 9007199254740991
+              },
+              "endLine": {
+                "type": "integer",
+                "exclusiveMinimum": 0,
+                "maximum": 9007199254740991
+              },
+              "irreversible": {
+                "type": "boolean"
+              }
+            },
+            "required": [
+              "label",
+              "startLine",
+              "endLine"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "schema": {
+          "description": "the table's columns after the change; change: added | dropped | renamed | null for unchanged",
+          "type": "object",
+          "properties": {
+            "table": {
+              "type": "string",
+              "minLength": 1
+            },
+            "columns": {
+              "minItems": 1,
+              "maxItems": 200,
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "name": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "type": {
+                    "type": "string"
+                  },
+                  "change": {
+                    "anyOf": [
+                      {
+                        "type": "string",
+                        "enum": [
+                          "added",
+                          "dropped",
+                          "renamed"
+                        ]
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  }
+                },
+                "required": [
+                  "name",
+                  "type",
+                  "change"
+                ],
+                "additionalProperties": false
+              }
+            }
+          },
+          "required": [
+            "table",
+            "columns"
+          ],
+          "additionalProperties": false
+        },
+        "subjects": {
+          "description": "what readers depend on, e.g. { table: \"customers\", column: \"name\" }; aliases are other names code uses for it (ORM fields)",
+          "maxItems": 16,
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "table": {
+                "type": "string",
+                "minLength": 1
+              },
+              "column": {
+                "type": "string",
+                "minLength": 1
+              },
+              "aliases": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "minLength": 1
+                }
+              }
+            },
+            "required": [
+              "table",
+              "column"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "readers": {
+          "description": "code refs (add_code_ref) of code that reads a subject; subject is its index in subjects",
+          "maxItems": 32,
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "refId": {
+                "type": "string",
+                "pattern": "^\\d+$",
+                "description": "numeric id as a string"
+              },
+              "subject": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 9007199254740991
+              }
+            },
+            "required": [
+              "refId",
+              "subject"
+            ],
+            "additionalProperties": false
+          }
+        }
+      },
+      "required": [
+        "board",
+        "noteId"
+      ],
+      "additionalProperties": false
+    }
+  },
+  {
+    "name": "remove_change_note",
+    "title": "Remove change note",
+    "description": "Delete one change note by id (ids come from get_board changeNotes). The code refs it names stay. Returns texts ending in board=<name>, the board it acted on.",
+    "annotations": {
+      "destructiveHint": true
+    },
+    "inputSchema": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "type": "object",
+      "properties": {
+        "board": {
+          "type": "string",
+          "pattern": "^\\d+$",
+          "description": "the board id start_session returned"
+        },
+        "noteId": {
+          "type": "string",
+          "pattern": "^\\d+$",
+          "description": "numeric id as a string"
+        }
+      },
+      "required": [
+        "board",
+        "noteId"
+      ],
+      "additionalProperties": false
+    }
+  },
+  {
+    "name": "add_threat",
+    "title": "Add threat",
+    "description": "Flag a service, datastore or external node as vulnerable or compromised so the reviewer sees its blast radius on the board: the node shows a hazard marker, and opening it plays the damage over the drawn edges. Use stage compromised when a SIEM alert says the node was attacked; use stage vulnerable for a scanner finding (Trivy, Grype). A scan lists hundreds of CVEs: add only critical or high findings that have a fix or are on the KEV list, at most 10 per node; one call is one CVE or one alert. Severity is critical, high, medium or low in lower-case: map a scanner UNKNOWN to low. The anchor must be a service, datastore or external node on this board, and only board members can see or change threats, or the call is refused. Title is 1 to 120 characters and summary 1 to 200; flags are at most 6 tags of 24 characters; source url must start with https://. Returns \"committed id=<n>\". Returns texts ending in board=<name>, the board it acted on.",
+    "inputSchema": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "type": "object",
+      "properties": {
+        "board": {
+          "type": "string",
+          "pattern": "^\\d+$",
+          "description": "the board id start_session returned"
+        },
+        "anchorId": {
+          "type": "string",
+          "pattern": "^\\d+$",
+          "description": "the service, datastore or external node that is affected"
+        },
+        "stage": {
+          "type": "string",
+          "enum": [
+            "vulnerable",
+            "compromised"
+          ],
+          "description": "compromised: a SIEM alert says it was attacked; vulnerable: a scanner says it could be"
+        },
+        "severity": {
+          "type": "string",
+          "enum": [
+            "critical",
+            "high",
+            "medium",
+            "low"
+          ],
+          "description": "critical, high, medium or low (lower-case; map a scanner UNKNOWN to low)"
+        },
+        "title": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 120,
+          "description": "the CVE id or alert name, e.g. \"CVE-2026-31337\""
+        },
+        "summary": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200,
+          "description": "one plain line: what is wrong and how it can be used"
+        },
+        "cvss": {
+          "description": "CVSS score, e.g. \"9.8\"",
+          "type": "string",
+          "maxLength": 8
+        },
+        "package": {
+          "description": "the affected package and range, e.g. \"jsonwebtoken < 9.0.3\"",
+          "type": "string",
+          "maxLength": 120
+        },
+        "fixedIn": {
+          "description": "the first fixed version, e.g. \"9.0.3\"",
+          "type": "string",
+          "maxLength": 40
+        },
+        "flags": {
+          "description": "short tags, e.g. [\"KEV\", \"exploit public\"]",
+          "maxItems": 6,
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 24
+          }
+        },
+        "source": {
+          "description": "where the finding came from, e.g. { system: \"Splunk\", ref: \"notable #48213\" }; url must start with https://",
+          "type": "object",
+          "properties": {
+            "system": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 200
+            },
+            "ref": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 200
+            },
+            "url": {
+              "type": "string",
+              "maxLength": 200,
+              "format": "starts_with",
+              "pattern": "^https:\\/\\/.*"
+            }
+          },
+          "required": [
+            "system",
+            "ref"
+          ],
+          "additionalProperties": false
+        },
+        "author": {
+          "type": "string",
+          "maxLength": 80
+        }
+      },
+      "required": [
+        "board",
+        "anchorId",
+        "stage",
+        "severity",
+        "title",
+        "summary"
+      ],
+      "additionalProperties": false
+    }
+  },
+  {
+    "name": "wait_for_marks",
+    "title": "Wait for marks",
+    "description": "Take the review marks people sent on this board: waits up to about 10 s, claims every open mark for your seat, and returns them grouped by shared files. Returns JSON { board, groups: [{ files, marks: [{ mark, claimGen, node, label, note, doc, refs }] }] }, or the text \"no marks yet; call wait_for_marks again with the same seat\". Marks in one group touch the same files: give a group to one subagent. Answer each mark with reply_to_mark, passing its claimGen. A mark you hold stays yours for 15 minutes while you keep calling this tool or reply_to_mark. Returns texts ending in board=<name>, the board it acted on.",
+    "inputSchema": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "type": "object",
+      "properties": {
+        "board": {
+          "type": "string",
+          "pattern": "^\\d+$",
+          "description": "the board id start_session returned"
+        },
+        "seat": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9]{16}$",
+          "description": "the seat start_session returned"
+        }
+      },
+      "required": [
+        "board",
+        "seat"
+      ],
+      "additionalProperties": false
+    }
+  },
+  {
+    "name": "watch_marks",
+    "title": "Watch for marks",
+    "description": "Get a command that waits in the background for the review marks people send on this board. Returns JSON { board, token, command, expires_in_hours }. Right after drawing, run the command as a background shell task named \"Waiting for your red crayon marks on <board name>\". Its first line says why it exited. \"N mark(s) claimed\": it claimed marks for your seat; call wait_for_marks with the same seat, answer every mark with reply_to_mark, then start the command again. \"idle:\": start it again. \"stopped:\" (nobody had the board open for 10 minutes): do not restart it; tell the person to open the board and say \"review my marks\" to resume. The token lasts 12 hours. Returns texts ending in board=<name>, the board it acted on.",
+    "inputSchema": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "type": "object",
+      "properties": {
+        "board": {
+          "type": "string",
+          "pattern": "^\\d+$",
+          "description": "the board id start_session returned"
+        },
+        "seat": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9]{16}$",
+          "description": "the seat start_session returned"
+        }
+      },
+      "required": [
+        "board",
+        "seat"
+      ],
+      "additionalProperties": false
+    }
+  },
+  {
+    "name": "start_chat",
+    "title": "Start board chat",
+    "description": "Connect this conversation to the board so the person running you can talk to it there. start_session already returns connection metadata for automatic plugin setup; use this to reconnect or refresh it. Returns JSON { board, token, origin, command, expires_in_hours }. Pass the metadata to the local conversation runtime. The command is a fallback for integrations that stream a long-running command: each \"Board chat:\" line is a message from the person running you. Your runtime carries replies back automatically. Returns texts ending in board=<name>, the board it acted on.",
+    "inputSchema": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "type": "object",
+      "properties": {
+        "board": {
+          "type": "string",
+          "pattern": "^\\d+$",
+          "description": "the board id start_session returned"
+        }
+      },
+      "required": [
+        "board"
+      ],
+      "additionalProperties": false
+    }
+  },
+  {
+    "name": "reply_to_mark",
+    "title": "Reply to mark",
+    "description": "Answer a mark you took with wait_for_marks: status fixed (you changed the code) or kept (you left it, and say why). Pass the seat, the mark id and the claimGen wait_for_marks gave you; reply is 1 to 400 characters; files lists the paths you changed (at most 20). If it says the mark was reclaimed, another agent has it: drop it. Returns texts ending in board=<name>, the board it acted on.",
+    "inputSchema": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "type": "object",
+      "properties": {
+        "board": {
+          "type": "string",
+          "pattern": "^\\d+$",
+          "description": "the board id start_session returned"
+        },
+        "seat": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9]{16}$",
+          "description": "the seat start_session returned"
+        },
+        "mark": {
+          "type": "string",
+          "pattern": "^\\d+$",
+          "description": "numeric id as a string"
+        },
+        "claimGen": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991,
+          "description": "the claimGen wait_for_marks returned for this mark"
+        },
+        "status": {
+          "type": "string",
+          "enum": [
+            "fixed",
+            "kept"
+          ]
+        },
+        "reply": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 400
+        },
+        "files": {
+          "maxItems": 20,
+          "type": "array",
+          "items": {
+            "type": "string",
+            "maxLength": 300
+          },
+          "description": "paths you changed"
+        }
+      },
+      "required": [
+        "board",
+        "seat",
+        "mark",
+        "claimGen",
+        "status",
+        "reply",
+        "files"
+      ],
+      "additionalProperties": false
+    }
+  },
+  {
+    "name": "list_marks",
+    "title": "List marks",
+    "description": "List the review marks on this board with their status (sent, claimed, fixed or kept) and replies; round limits it to one round. Returns JSON { board, marks: [{ mark, node, label, note, round, status, reply, files }] }. Returns texts ending in board=<name>, the board it acted on.",
+    "annotations": {
+      "readOnlyHint": true
+    },
+    "inputSchema": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "type": "object",
+      "properties": {
+        "board": {
+          "type": "string",
+          "pattern": "^\\d+$",
+          "description": "the board id start_session returned"
+        },
+        "round": {
+          "description": "only this round",
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 9007199254740991
+        }
+      },
+      "required": [
+        "board"
+      ],
+      "additionalProperties": false
+    }
+  },
+  {
+    "name": "update_threat",
+    "title": "Update threat",
+    "description": "Change a threat by id (ids come from get_board threats or the add_threat result). Fields left out keep their value. The stage can rise to compromised, never fall: a compromised threat cannot go back to vulnerable, so remove it and add a new one. Returns texts ending in board=<name>, the board it acted on.",
+    "inputSchema": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "type": "object",
+      "properties": {
+        "board": {
+          "type": "string",
+          "pattern": "^\\d+$",
+          "description": "the board id start_session returned"
+        },
+        "threatId": {
+          "type": "string",
+          "pattern": "^\\d+$",
+          "description": "numeric id as a string"
+        },
+        "stage": {
+          "type": "string",
+          "enum": [
+            "vulnerable",
+            "compromised"
+          ],
+          "description": "compromised: a SIEM alert says it was attacked; vulnerable: a scanner says it could be"
+        },
+        "severity": {
+          "type": "string",
+          "enum": [
+            "critical",
+            "high",
+            "medium",
+            "low"
+          ],
+          "description": "critical, high, medium or low (lower-case; map a scanner UNKNOWN to low)"
+        },
+        "title": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 120,
+          "description": "the CVE id or alert name, e.g. \"CVE-2026-31337\""
+        },
+        "summary": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200,
+          "description": "one plain line: what is wrong and how it can be used"
+        },
+        "cvss": {
+          "description": "CVSS score, e.g. \"9.8\"",
+          "type": "string",
+          "maxLength": 8
+        },
+        "package": {
+          "description": "the affected package and range, e.g. \"jsonwebtoken < 9.0.3\"",
+          "type": "string",
+          "maxLength": 120
+        },
+        "fixedIn": {
+          "description": "the first fixed version, e.g. \"9.0.3\"",
+          "type": "string",
+          "maxLength": 40
+        },
+        "flags": {
+          "description": "short tags, e.g. [\"KEV\", \"exploit public\"]",
+          "maxItems": 6,
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 24
+          }
+        },
+        "source": {
+          "description": "where the finding came from, e.g. { system: \"Splunk\", ref: \"notable #48213\" }; url must start with https://",
+          "type": "object",
+          "properties": {
+            "system": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 200
+            },
+            "ref": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 200
+            },
+            "url": {
+              "type": "string",
+              "maxLength": 200,
+              "format": "starts_with",
+              "pattern": "^https:\\/\\/.*"
+            }
+          },
+          "required": [
+            "system",
+            "ref"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "required": [
+        "board",
+        "threatId"
+      ],
+      "additionalProperties": false
+    }
+  },
+  {
+    "name": "remove_threat",
+    "title": "Remove threat",
+    "description": "Delete one threat by id (ids come from get_board threats). Use it when the finding was wrong. Returns texts ending in board=<name>, the board it acted on.",
+    "annotations": {
+      "destructiveHint": true
+    },
+    "inputSchema": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "type": "object",
+      "properties": {
+        "board": {
+          "type": "string",
+          "pattern": "^\\d+$",
+          "description": "the board id start_session returned"
+        },
+        "threatId": {
+          "type": "string",
+          "pattern": "^\\d+$",
+          "description": "numeric id as a string"
+        }
+      },
+      "required": [
+        "board",
+        "threatId"
+      ],
+      "additionalProperties": false
+    }
+  },
+  {
+    "name": "set_node_doc",
+    "title": "Set node doc",
+    "description": "Replace a node's doc: at most two sentences on what the component is and why it exists. Other fields are untouched. Returns texts ending in board=<name>, the board it acted on.",
+    "inputSchema": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "type": "object",
+      "properties": {
+        "board": {
+          "type": "string",
+          "pattern": "^\\d+$",
+          "description": "the board id start_session returned"
+        },
+        "nodeId": {
+          "type": "string",
+          "pattern": "^\\d+$",
+          "description": "numeric id as a string"
+        },
+        "doc": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "board",
+        "nodeId",
+        "doc"
+      ],
+      "additionalProperties": false
+    }
+  },
+  {
+    "name": "set_selection",
+    "title": "Set selection",
+    "description": "Show the user which node(s) you are working on: renders as your dashed selection outline through presence. Pass [] to clear when you finish. Returns texts ending in board=<name>, the board it acted on.",
+    "inputSchema": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "type": "object",
+      "properties": {
+        "board": {
+          "type": "string",
+          "pattern": "^\\d+$",
+          "description": "the board id start_session returned"
+        },
+        "nodeIds": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^\\d+$",
+            "description": "numeric id as a string"
+          }
+        }
+      },
+      "required": [
+        "board",
+        "nodeIds"
+      ],
+      "additionalProperties": false
+    }
+  },
+  {
+    "name": "apply_board",
+    "title": "Apply board",
+    "description": "Create nodes, then their edges, then optionally lay out the board in one call (1-16 operations, including layout). nodes take create_node fields except board, plus a unique key (a letter followed by up to 39 letters, digits, underscores or hyphens). Nodes must differ in label, sublabel, x or y. edges take create_edge fields except board; fromNode and toNode accept existing numeric ids or \"$key\" for a node in this batch. Each source edge needs its own capture; the plugin fills these in. Independent creates run up to 3 at a time; edges run one at a time when any edge cites source. Each operation has the same checks and counts as one tool call. Set layout=true only on a board of about 5 nodes or fewer that a person has not arranged; give a larger board planned x and y instead. When time is short it asks for a separate layout_board call. Returns JSON { complete, nodes: { key: id }, edges: [id or null], results }. edges matches input order; null means no confirmed id. results lists attempted operations in input order, nodes then edges then layout. This is not a transaction: a failure stops later operations after in-flight calls settle and returns completed ids. Call get_board before retrying; do not repeat the whole batch blindly.",
+    "inputSchema": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "type": "object",
+      "properties": {
+        "board": {
+          "type": "string",
+          "pattern": "^\\d+$",
+          "description": "the board id start_session returned"
+        },
+        "nodes": {
+          "default": [],
+          "maxItems": 16,
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "label": {
+                "type": "string"
+              },
+              "sublabel": {
+                "type": "string",
+                "description": "mono technical identifier, or empty string"
+              },
+              "x": {
+                "type": "integer",
+                "minimum": -9007199254740991,
+                "maximum": 9007199254740991,
+                "description": "integer, must be divisible by 4"
+              },
+              "y": {
+                "type": "integer",
+                "minimum": -9007199254740991,
+                "maximum": 9007199254740991,
+                "description": "integer, must be divisible by 4"
+              },
+              "w": {
+                "type": "integer",
+                "minimum": -9007199254740991,
+                "maximum": 9007199254740991,
+                "description": "integer, must be divisible by 4"
+              },
+              "h": {
+                "type": "integer",
+                "minimum": -9007199254740991,
+                "maximum": 9007199254740991,
+                "description": "integer, must be divisible by 4"
+              },
+              "token": {
+                "type": "string"
+              },
+              "focal": {
+                "type": "boolean"
+              },
+              "kind": {
+                "description": "service|datastore|external|boundary|note|text (charts: use create_chart)",
+                "type": "string"
+              },
+              "doc": {
+                "description": "at most two sentences: what this is and why",
+                "type": "string"
+              },
+              "icon": {
+                "description": "library icon id, one of agents: agent, orchestrator, subagent, model, tool, mcp-server, memory, knowledge-base, prompt, human, guardrail, evaluator; systems: queue, cache, scheduler, event, gateway, function, browser, sandbox; ai logos: claude, claude-code, openai, grok, mistral, hugging-face, openrouter, cursor, github-copilot, windsurf, devin, openclaw, hermes-agent, opencode; cloud logos: vercel, supabase, firebase, neon; aws: aws, aws-ec2, aws-lambda, aws-ecs, aws-eks, aws-fargate, aws-batch, aws-s3, aws-ebs, aws-efs, aws-glacier, aws-rds, aws-aurora, aws-dynamodb, aws-elasticache, aws-redshift, aws-documentdb, aws-opensearch, aws-sqs, aws-sns, aws-eventbridge, aws-kinesis, aws-msk, aws-step-functions, aws-api-gateway, aws-cloudfront, aws-route-53, aws-elb, aws-vpc, aws-iam, aws-cognito, aws-kms, aws-secrets-manager, aws-waf, aws-cloudwatch, aws-cloudtrail, aws-ecr, aws-codepipeline, aws-cloudformation, aws-bedrock, aws-sagemaker; microsoft azure: azure, azure-virtual-machines, azure-app-service, azure-functions, azure-aks, azure-container-apps, azure-container-instances, azure-storage-accounts, azure-blob-storage, azure-files, azure-managed-disks, azure-sql, azure-cosmos-db, azure-postgresql, azure-mysql, azure-cache, azure-synapse, azure-data-factory, azure-databricks, azure-service-bus, azure-event-grid, azure-event-hubs, azure-logic-apps, azure-api-management, azure-front-door, azure-cdn, azure-dns, azure-load-balancer, azure-application-gateway, azure-virtual-network, azure-firewall, azure-key-vault, azure-monitor, azure-log-analytics, azure-app-insights, azure-container-registry, azure-devops, azure-openai, azure-machine-learning, azure-static-web-apps; google cloud: google-cloud, gcp-compute-engine, gcp-cloud-run, gcp-cloud-functions, gcp-gke, gcp-app-engine, gcp-cloud-storage, gcp-filestore, gcp-persistent-disk, gcp-cloud-sql, gcp-spanner, gcp-alloydb, gcp-firestore, gcp-bigtable, gcp-memorystore, gcp-bigquery, gcp-dataflow, gcp-dataproc, gcp-pubsub, gcp-cloud-tasks, gcp-cloud-scheduler, gcp-workflows, gcp-apigee, gcp-api-gateway, gcp-load-balancing, gcp-cloud-cdn, gcp-cloud-dns, gcp-vpc, gcp-cloud-armor, gcp-iam, gcp-kms, gcp-secret-manager, gcp-logging, gcp-monitoring, gcp-artifact-registry, gcp-cloud-build, gcp-vertex-ai; cloudflare: cloudflare, cloudflare-cdn, cloudflare-workers, cloudflare-pages, cloudflare-r2, cloudflare-d1, cloudflare-kv, cloudflare-queues, cloudflare-durable-objects, cloudflare-dns, cloudflare-waf, cloudflare-zero-trust, cloudflare-tunnel, cloudflare-load-balancing, cloudflare-workers-ai; databases: postgres, mysql, mongodb, redis, valkey, keydb, dragonfly; kubernetes: kubernetes, k8s-pod, k8s-deployment, k8s-statefulset, k8s-daemonset, k8s-replicaset, k8s-job, k8s-cronjob, k8s-service, k8s-ingress, k8s-configmap, k8s-secret, k8s-pv, k8s-pvc, k8s-namespace, k8s-hpa, k8s-node, k8s-control-plane, k8s-network-policy, k8s-service-account; cncf: prometheus, envoy, helm, argo, flux, istio, linkerd, cilium, containerd, coredns, etcd, fluentd, jaeger, opentelemetry, harbor, keda, cert-manager, nats, open-policy-agent, knative",
+                "type": "string"
+              },
+              "color": {
+                "description": "ink|red|orange|yellow|green|teal|blue|purple|pink|gray; on a service or datastore also <hue>-soft (faded) or <hue>-bold (filled). Leave out for the plain look",
+                "type": "string",
+                "enum": [
+                  "ink",
+                  "red",
+                  "orange",
+                  "yellow",
+                  "green",
+                  "teal",
+                  "blue",
+                  "purple",
+                  "pink",
+                  "gray",
+                  "ink-soft",
+                  "ink-bold",
+                  "red-soft",
+                  "red-bold",
+                  "orange-soft",
+                  "orange-bold",
+                  "yellow-soft",
+                  "yellow-bold",
+                  "green-soft",
+                  "green-bold",
+                  "teal-soft",
+                  "teal-bold",
+                  "blue-soft",
+                  "blue-bold",
+                  "purple-soft",
+                  "purple-bold",
+                  "pink-soft",
+                  "pink-bold",
+                  "gray-soft",
+                  "gray-bold"
+                ]
+              },
+              "key": {
+                "type": "string",
+                "pattern": "^[A-Za-z][A-Za-z0-9_-]{0,39}$"
+              }
+            },
+            "required": [
+              "label",
+              "sublabel",
+              "x",
+              "y",
+              "w",
+              "h",
+              "token",
+              "focal",
+              "key"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "edges": {
+          "default": [],
+          "maxItems": 16,
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "fromNode": {
+                "type": "string",
+                "pattern": "^(?:\\d+|\\$[A-Za-z][A-Za-z0-9_-]{0,39})$"
+              },
+              "toNode": {
+                "type": "string",
+                "pattern": "^(?:\\d+|\\$[A-Za-z][A-Za-z0-9_-]{0,39})$"
+              },
+              "label": {
+                "type": "string"
+              },
+              "evidence": {
+                "type": "string"
+              },
+              "color": {
+                "description": "ink|red|orange|yellow|green|teal|blue|purple|pink|gray: the hue of the group or flow this edge belongs to. Leave out for the plain look; update_edge changes it later",
+                "type": "string",
+                "enum": [
+                  "ink",
+                  "red",
+                  "orange",
+                  "yellow",
+                  "green",
+                  "teal",
+                  "blue",
+                  "purple",
+                  "pink",
+                  "gray"
+                ]
+              },
+              "capture": {
+                "description": "Leave empty when the redcrayon plugin is installed; it fills this in. Otherwise run npx -y @redcrayonai/draw@1 capture … in the project and pass the id it prints.",
+                "type": "string",
+                "pattern": "^cap_[A-Za-z0-9]{22}$"
+              }
+            },
+            "required": [
+              "fromNode",
+              "toNode",
+              "label",
+              "evidence"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "layout": {
+          "default": false,
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "board"
+      ],
+      "additionalProperties": false
+    }
+  }
+]

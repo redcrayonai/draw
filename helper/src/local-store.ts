@@ -108,6 +108,7 @@ export function applyLocal(board: LocalBoard, operation: LocalOperation) {
 type StoreData = { version: 1; boards: LocalBoard[] };
 function validateStoredBoard(board: LocalBoard) {
   if (!board || typeof board !== 'object' || !Array.isArray(board.nodes) || !Array.isArray(board.edges) || !Array.isArray(board.notes) || !Array.isArray(board.feedback) || !Number.isSafeInteger(board.revision) || board.revision < 0 || !Number.isSafeInteger(board.nextId) || board.nextId < 1) reject('invalid stored board');
+  if (board.sharedCopy !== undefined && !validCopyLink(board.sharedCopy)) reject('invalid stored shared copy link');
   text(board.name, 200); text(board.repo, 4096); text(board.slug, 100);
   if (!isAbsolute(board.repo) || !/^[a-zA-Z0-9_-]+$/.test(board.slug)) reject('invalid stored board identity');
   const ids = new Set<string>();
@@ -128,6 +129,13 @@ function validateStoredBoard(board: LocalBoard) {
     if (messages.has(feedback.id) || !/^[a-zA-Z0-9_-]+$/.test(feedback.id) || !['saved', 'pending', 'delivered', 'uncertain', 'answered'].includes(feedback.state)) reject('invalid stored delivery');
     messages.add(feedback.id);
   }
+}
+function validCopyLink(value: string) {
+  try {
+    const url = new URL(value);
+    return !url.username && !url.password && url.pathname === '/' && /^#b=[a-zA-Z0-9_-]+$/.test(url.hash) &&
+      (url.protocol === 'https:' || (url.protocol === 'http:' && ['localhost','127.0.0.1','[::1]'].includes(url.hostname)));
+  } catch { return false; }
 }
 export class LocalStore {
   private data: StoreData = { version: 1, boards: [] };
@@ -179,6 +187,14 @@ export class LocalStore {
     board.revision++;
     this.commit({ version: 1, boards: this.data.boards.map(b => b.slug === slug ? board : b) });
     return structuredClone(board);
+  }
+  rememberSharedCopy(slug: string, href: string) {
+    text(href, 4096);
+    if (!validCopyLink(href)) reject('invalid shared copy link');
+    const board = this.read(slug);
+    if (board.sharedCopy === href) return;
+    board.sharedCopy = href;
+    this.replace(board);
   }
   attach(slug: string, conversation: NonNullable<LocalBoard['conversation']>) {
     const board = this.read(slug); board.conversation = conversation; this.replace(board); return board;

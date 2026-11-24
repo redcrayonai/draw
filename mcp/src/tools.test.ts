@@ -955,6 +955,10 @@ describe('create_edge on the hosted server: the cited line stays out unless the 
 
 describe('create_chart round trips', () => {
   const input = { board: '1', title: 'Latency', subtitle: 'ms', x: 0, y: 0, w: 320, h: 200, type: 'bars', csv: 'route,p50\n/a,12', source: 'agent: bench @ abc123' };
+  it('requires chart provenance in the tool input', () => {
+    expect(TOOLS.create_chart.input.safeParse({ ...input, source: undefined }).success).toBe(false);
+  });
+
   const setup = (opts: { missing?: boolean; first?: boolean; lost?: boolean; readFails?: boolean; holdBoard?: boolean } = {}) => {
     const nodes: Record<string, unknown>[] = [];
     let boardRead = false;

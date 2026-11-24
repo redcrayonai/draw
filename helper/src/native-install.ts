@@ -4,6 +4,7 @@ import { chmodSync, cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, re
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { homedir } from 'node:os';
+import { DEFAULT_ORIGIN } from './capture';
 import { installLocalCodex } from './local-install';
 import { localClaudeSettings } from './local-claude-hook';
 import { choosePermissionSet, permissionPath, savePermissions } from './permissions';
@@ -29,12 +30,12 @@ export function prepareNativePlugin(root: string, destination: string, executabl
   const paths = files(source).filter(file => !file.startsWith('skills/'));
   const contents = new Map(paths.map(file => [file, readFileSync(join(source, file))]));
   contents.set('skills/navigate/SKILL.md', readFileSync(join(root, 'unified/skills/navigate/SKILL.md')));
-  contents.set('skills/navigate/references/local.md', readFileSync(join(root, 'skills/local/SKILL.md')));
+  contents.set('skills/navigate/references/local.md', Buffer.from(readFileSync(join(root, 'skills/local/SKILL.md'), 'utf8').replaceAll('apply_board', 'apply_local_board').replace('mcpServers.draw-local', 'mcpServers.draw').replace('before `local-mcp`', 'before `mcp`')));
   for (const skill of ['navigate', 'handoff', 'triage', 'make-it-make-sense']) {
     contents.set(`skills/navigate/references/${skill === 'navigate' ? 'hosted' : skill}.md`, Buffer.from(readFileSync(join(source, `skills/${skill}/SKILL.md`), 'utf8').replaceAll('../../references/', '../../../references/')));
   }
   const permissionEnv = agent === 'codex' ? { DRAW_PERMISSION_FILE: permissionPath('local'), DRAW_PERMISSION_MODE: 'local' } : undefined;
-  const hash = createHash('sha256').update(JSON.stringify({ executable, version, agent, mode: 'unified', ...(permissionEnv ? { permissionEnv, hostedPolicy: permissionPath('hosted'), enforcement: 2 } : {}), ...(hostedUrl ? { hostedUrl } : {}) }));
+  const hash = createHash('sha256').update(JSON.stringify({ executable, version, agent, mode: 'router-v1', ...(permissionEnv ? { permissionEnv, hostedPolicy: permissionPath('hosted'), enforcement: 2 } : {}), ...(hostedUrl ? { hostedUrl } : {}) }));
   for (const [file, data] of contents) hash.update(file).update(data);
   if (agent === 'pi') hash.update(readFileSync(join(root, 'pi-extension.mjs')));
   const id = hash.digest('hex').slice(0, 16), target = join(destination, id);
@@ -57,11 +58,11 @@ export function prepareNativePlugin(root: string, destination: string, executabl
     // The marketplace source stays local and uses each agent's supported schema.
     json('.claude-plugin/marketplace.json', { name: marketplace, owner: { name: 'Red Crayon' }, plugins: [{ name, source: agent === 'claude-code' ? './' : { source: 'local', path: '.' } }] });
     const environment = permissionEnv ? `case "$1" in\n  capture|hook|chat|chat-hook|tap|marks|doctor) export DRAW_PERMISSION_FILE=${quote(permissionPath('hosted'))} DRAW_PERMISSION_MODE=hosted ;;\n  *) export DRAW_PERMISSION_FILE=${quote(permissionPath('local'))} DRAW_PERMISSION_MODE=local ;;\nesac\n` : '';
-    write('bin/draw', `#!/bin/sh\n${environment}exec ${quote(executable)} "$@"\n`, true);
-    const config = JSON.parse(readFileSync(join(source, '.mcp.json'), 'utf8'));
-    // A concrete URL, so the version (and the agent's cache of it) changes with the endpoint.
-    if (hostedUrl) config.mcpServers.draw.url = hostedUrl;
-    config.mcpServers['draw-local'] = { type: 'stdio', command: executable, args: ['local-mcp', '--per-repo'], ...(permissionEnv ? { env: permissionEnv } : {}) };
+    const sourceConfig = JSON.parse(readFileSync(join(source, '.mcp.json'), 'utf8'));
+    const endpoint = hostedUrl ?? packagedDefault(sourceConfig);
+    write('bin/draw', `#!/bin/sh\n${environment}export REDCRAYON_MCP_URL=${quote(endpoint)} REDCRAYON_ORIGIN=${quote(new URL(endpoint).origin)} DRAW_ROUTER=1\nexec ${quote(executable)} "$@"\n`, true);
+    const env = { ...permissionEnv, ...(permissionEnv && { DRAW_HOSTED_PERMISSION_FILE: permissionPath('hosted') }), REDCRAYON_MCP_URL: endpoint };
+    const config = { mcpServers: { draw: { type: 'stdio', command: executable, args: ['mcp'], env } } };
     json('mcp.json', config); json('.mcp.json', config);
     if (agent === 'claude-code') {
       const hosted = JSON.parse(readFileSync(join(temp, 'hooks/hooks.json'), 'utf8'));
@@ -79,7 +80,7 @@ export function prepareNativePlugin(root: string, destination: string, executabl
     }
     if (agent === 'pi') {
       write('pi/pi-extension.mjs', readFileSync(join(root, 'pi-extension.mjs')));
-      write('pi/extension.mjs', `export default async function(pi) {\n  const extension = await import('./pi-extension.mjs');\n  return extension.default(pi, ${JSON.stringify({ mode: 'unified', executable })});\n}\n`);
+      write('pi/extension.mjs', `export default async function(pi) {\n  const extension = await import('./pi-extension.mjs');\n  return extension.default(pi, ${JSON.stringify({ mode: 'unified', executable, endpoint })});\n}\n`);
       json('package.json', { name: '@redcrayonai/draw-integration', version, pi: { extensions: ['./pi/extension.mjs'], skills: ['./skills'] } });
     }
     json('draw-runtime.json', { version, protocol: 1, agent, mode: 'unified', executable });
@@ -110,8 +111,9 @@ function verifyCodexCache(target: string, marketplace: string, name: string, url
   const version = JSON.parse(readFileSync(join(target, '.codex-plugin/plugin.json'), 'utf8')).version;
   const file = join(process.env.CODEX_HOME || join(homedir(), '.codex'), 'plugins', 'cache', marketplace, name, version, '.mcp.json');
   if (!existsSync(file)) return; // shortcut: Codex cache layout is not a contract, so an absent copy is not an error
-  const loaded = JSON.parse(readFileSync(file, 'utf8'))?.mcpServers?.draw?.url;
-  if (loaded !== url) throw new Error(`UNAVAILABLE: Codex loaded ${loaded} instead of ${url}; Codex is still on the new install; run \`codex plugin marketplace remove ${marketplace}\`, then draw install codex again.`);
+  const loaded = installedUrl(dirname(file)).url;
+  const servers = JSON.parse(readFileSync(file, 'utf8')).mcpServers;
+  if (Object.keys(servers ?? {}).length !== 1 || servers?.draw?.type !== 'stdio' || loaded !== url) throw new Error(`UNAVAILABLE: Codex loaded ${loaded} instead of ${url}; Codex is still on the new install; run \`codex plugin marketplace remove ${marketplace}\`, then draw install codex again.`);
 }
 
 function parseOptions(args: string[], permissionsOnly = false) {
@@ -131,10 +133,7 @@ function parseOptions(args: string[], permissionsOnly = false) {
 
 async function setCodexPermissions(modes: readonly Mode[], defaults: boolean, reconfigure = false) {
   const choices = await choosePermissionSet(modes, { defaults, reconfigure });
-  for (const { mode, record } of choices) {
-    const managedDisabledTools = await configureCodexPermissions(mode, record.permissions, record.managedDisabledTools);
-    savePermissions(mode, { ...record, managedDisabledTools });
-  }
+  for (const { mode, record } of await configureCodexPermissions(choices)) savePermissions(mode, record);
 }
 
 export async function runNativePermissions(args: string[]) {
@@ -230,9 +229,9 @@ export async function runNativeInstall(args: string[], version: string) {
   try {
     resolved = resolveMcpUrl({
       flag, env: local && !validMcpUrl(process.env.REDCRAYON_MCP_URL) ? undefined : process.env.REDCRAYON_MCP_URL, installed: installed.url,
-      fallback: packagedDefault(JSON.parse(readFileSync(join(root, 'hosted-plugin', '.mcp.json'), 'utf8'))),
+      fallback: () => packagedDefault(JSON.parse(readFileSync(join(root, 'hosted-plugin', '.mcp.json'), 'utf8'))),
     });
-  } catch (error) { if (!local || flag !== undefined) throw error; }
+  } catch (error) { if (!local || flag !== undefined) throw error; resolved = { url: DEFAULT_ORIGIN + '/mcp', source: 'local development' }; }
   // Prompt only for a person at a terminal; --url and local mode never wait for input.
   const ask = flag === undefined && !local && !!process.stdin.isTTY && !!process.stderr.isTTY;
   const hostedUrl = ask ? await promptMcpUrl(resolved!.url) : resolved?.url;
@@ -267,6 +266,6 @@ export async function runNativeInstall(args: string[], version: string) {
   renameSync(temporary, receipt);
   for (const mode of ['local', 'hosted']) rmSync(join(receipts, `${agent}-${mode}.json`), { force: true });
   const restart = agent === 'pi' ? 'Restart Pi' : agent === 'codex' ? 'Fully quit and restart Codex' : 'Restart Claude Code';
-  process.stderr.write(`Draw installed for ${agent}.${local || !hostedUrl ? '' : ` Hosted endpoint: ${hostedUrl}`}\n${restart} so it loads the new settings, then ask it to create a Draw board. New boards are local by default; for a hosted board ask for one explicitly or give a hosted board link. ${agent === 'codex' ? 'Codex' : 'Your agent'} opens a browser to sign in the first time a hosted tool runs; sign in again if the endpoint changed. The endpoint is fixed at install time; to change it, run draw install ${agent} --url <https://...> again.\n`);
+  process.stderr.write(`Draw installed for ${agent}.${local || !hostedUrl ? '' : ` Hosted endpoint: ${hostedUrl}`}\n${restart} so it loads the new settings, then ask it to create a Draw board. New boards are local by default; for a hosted board ask for one explicitly or give a hosted board link. Draw opens a browser to sign in the first time a hosted tool runs; sign in again if the endpoint changed. The endpoint is fixed at install time; to change it, run draw install ${agent} --url <https://...> again.\n`);
   return 0;
 }
