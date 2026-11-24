@@ -442,7 +442,7 @@ test('hosted plugin release configures and scans the packed plugin and marketpla
     return result.stdout;
   };
   try {
-    for (const name of ['plugin', '.claude-plugin', 'helper/src', 'helper/build.mjs', 'helper/package.json', 'agent/src', 'shared']) {
+    for (const name of ['plugin', '.claude-plugin', 'helper/src', 'helper/build.mjs', 'helper/package.json', 'agent/src', 'shared', 'module/src/colors.ts']) {
       mkdirSync(dirname(join(dir, name)), { recursive: true });
       cpSync(join(root, name), join(dir, name), {
         recursive: true,

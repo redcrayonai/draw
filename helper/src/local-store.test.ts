@@ -103,6 +103,18 @@ describe('local authoritative store', () => {
     reopened.mutate(board.slug, 3, [{ type: 'node.put', id: '1', patch: { icon: 'cache' } }]);
     expect(reopened.mutate(board.slug, 4, [{ type: 'node.put', id: '1', patch: { kind: 'note' } }]).nodes[0]).not.toHaveProperty('icon');
   });
+  it('keeps a color on a node and an edge through undo, takes it off with an empty one, and refuses an unknown one', () => {
+    const { store, board } = setup();
+    store.mutate(board.slug, 0, [{ type: 'node.put', patch: { label: 'A', color: 'blue-bold' } }, { type: 'node.put', patch: { label: 'B' } }]);
+    const drawn = store.mutate(board.slug, 1, [{ type: 'edge.put', patch: { from: '1', to: '2', color: 'teal' } }]);
+    expect([drawn.nodes[0].color, drawn.nodes[1], drawn.edges[0].color]).toEqual(['blue-bold', expect.not.objectContaining({ color: expect.anything() }), 'teal']);
+    const restored = store.mutate(board.slug, 2, [{ type: 'graph.restore', nodes: drawn.nodes, edges: drawn.edges }]);
+    expect([restored.nodes[0].color, restored.edges[0].color]).toEqual(['blue-bold', 'teal']);
+    expect(() => store.mutate(board.slug, 3, [{ type: 'node.put', id: '1', patch: { color: 'mauve' } }])).toThrow('REJECTED: invalid color');
+    expect(() => store.mutate(board.slug, 3, [{ type: 'edge.put', id: '3', patch: { color: 'teal-bold' } }])).toThrow('REJECTED: invalid color');
+    const plain = store.mutate(board.slug, 3, [{ type: 'node.put', id: '1', patch: { color: '' } }, { type: 'edge.put', id: '3', patch: { color: '' } }]);
+    expect(plain.nodes[0]).not.toHaveProperty('color'); expect(plain.edges[0]).not.toHaveProperty('color');
+  });
   it('loads a store whose icon came from a newer version, and still edits and undoes on that board', () => {
     const { directory, store, board } = setup();
     const placed = store.mutate(board.slug, 0, [{ type: 'node.put', patch: { label: 'Bus', icon: 'event' } }]);

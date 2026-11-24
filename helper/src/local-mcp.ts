@@ -5,6 +5,7 @@ import { localDirectory } from './local-path';
 import { localLines } from './local-lines';
 import { enforceToolPermissions } from './permissions';
 import { LOCAL_ICONS, LOCAL_REQUEST_BYTES } from '../../shared/local';
+import { HUES } from '../../module/src/colors';
 
 const str = { type: 'string' };
 const board = { board: str };
@@ -14,7 +15,7 @@ export const localTools = [
   { name: 'list_boards', description: 'List local architecture boards.', inputSchema: schema({}, []) },
   { name: 'open_board', description: 'Create a named board in this repository.', inputSchema: schema({ name: str }, ['name']) },
   { name: 'read_board', description: 'Read the latest graph, revision, code references and review notes. Read before editing.', inputSchema: schema(board, ['board']) },
-  { name: 'apply_board', description: `Atomically edit the board at the revision read. Supported operations: node.put and edge.put (optional existing id and patch); element.delete (id); note.add (target, text); note.reply (id, text); note.resolve (id, resolved). A node patch may set icon to one of ${LOCAL_ICONS.join(', ')} ('' removes it). Omit position fields when updating nodes to preserve user layout. New IDs are assigned by the server. Read the result before referencing a newly created element.`, inputSchema: schema({ ...board, revision: { type: 'integer', minimum: 0 }, operations: { type: 'array', minItems: 1, maxItems: 200, items: { type: 'object' } } }, ['board', 'revision', 'operations']) },
+  { name: 'apply_board', description: `Atomically edit the board at the revision read. Supported operations: node.put and edge.put (optional existing id and patch); element.delete (id); note.add (target, text); note.reply (id, text); note.resolve (id, resolved). A node patch may set icon to one of ${LOCAL_ICONS.join(', ')} ('' removes it). A node or edge patch may set color to one of ${HUES.join(', ')}; a service or datastore node also takes <hue>-soft (faded) or <hue>-bold (filled); '' gives back the plain look. Omit position fields when updating nodes to preserve user layout. New IDs are assigned by the server. Read the result before referencing a newly created element.`, inputSchema: schema({ ...board, revision: { type: 'integer', minimum: 0 }, operations: { type: 'array', minItems: 1, maxItems: 200, items: { type: 'object' } } }, ['board', 'revision', 'operations']) },
   { name: 'read_code', description: 'Inspect an in-repository code reference. Protected files cannot be read.', inputSchema: schema({ ...board, ref: schema({ path: str, start: { type: 'integer', minimum: 1 }, end: { type: 'integer', minimum: 1 } }, ['path', 'start', 'end']) }, ['board', 'ref']) },
 ];
 export function localEndpoint(args: string[]) {

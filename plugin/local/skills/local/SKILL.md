@@ -92,10 +92,13 @@ A stale revision means read again and reconcile; never overwrite newer edits.
 
 - `node.put`: optional existing `id`, plus `patch` containing `label`,
   `description`, `x`, `y`, `w`, `h`, `kind` (`service` or `datastore`), `refs`,
-  or `icon` (an id the tool description lists, such as `queue` or `agent`;
-  `""` removes it).
+  `icon` (an id the tool description lists, such as `queue` or `agent`;
+  `""` removes it), or `color` (a hue the tool description lists, such as
+  `blue`; on a service or datastore also `blue-soft` or `blue-bold`; `""`
+  removes it).
 - `edge.put`: optional existing `id`, plus `patch` with `from`, `to`, `label`,
-  `description`, `direction` (`forward`, `both`, `none`), or `refs`.
+  `description`, `direction` (`forward`, `both`, `none`), `refs`, or `color` (a hue; `""`
+  removes it).
 - `element.delete` with `id`.
 - `note.add` with `target` and `text`; `note.reply` with `id` and `text`;
   `note.resolve` with `id` and `resolved`.

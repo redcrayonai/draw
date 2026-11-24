@@ -6,6 +6,7 @@ import { setupTheme, setTheme, setupRailToggle, showError } from './chrome';
 import { themeById } from '../../shared/themes';
 import type { Node, Edge } from './module_bindings/types';
 import { LOCAL_ICONS, type LocalBoard, type LocalNode, type LocalOperation } from '../../shared/local';
+import { HUES, colorParts } from '../../module/src/colors';
 import { ICON_NODE_H, ICON_NODE_W, iconSpec } from '../../module/src/node-icons';
 import { mountCrayon } from './crayon';
 import { LibraryPopover } from './library-popover';
@@ -110,6 +111,18 @@ function undoCircle(event: KeyboardEvent) {
 const directionLabel = document.createElement('label'); directionLabel.textContent = 'Direction';
 const direction = document.createElement('select'); direction.name = 'direction';
 direction.append(new Option('Forward', 'forward'), new Option('Both ways', 'both'), new Option('No arrows', 'none')); directionLabel.append(direction); edit.prepend(directionLabel);
+// Colour: a hue on anything, plus a strength on the two kinds that draw one. Sent only when changed here, so a colour
+// saved by a newer version survives an edit of the other fields.
+const hueLabel = document.createElement('label'); hueLabel.textContent = 'Color';
+const hue = document.createElement('select'); hue.name = 'color';
+hue.append(new Option('Plain', ''), ...HUES.map(h => new Option(h[0].toUpperCase() + h.slice(1), h))); hueLabel.append(hue);
+const toneLabel = document.createElement('label'); toneLabel.textContent = 'Color strength';
+const tone = document.createElement('select'); tone.name = 'tone';
+tone.append(new Option('Outline', ''), new Option('Soft', 'soft'), new Option('Bold', 'bold')); toneLabel.append(tone);
+let colorTouched = false;
+// A strength without a hue paints nothing, so it waits for one.
+hue.onchange = tone.onchange = () => { colorTouched = true; tone.disabled = !hue.value; };
+edit.querySelector('button')!.before(hueLabel, toneLabel);
 const reloadFields = document.createElement('button'); reloadFields.type = 'button'; reloadFields.textContent = 'Reload fields';
 reloadFields.onclick = () => { editorDirty = false; inspector(); }; edit.append(reloadFields);
 async function call<T>(input: unknown): Promise<T> {
@@ -120,12 +133,12 @@ async function call<T>(input: unknown): Promise<T> {
 }
 function run(task: () => Promise<unknown>) { void task().catch(error => say(error.message)); }
 function nodes(): Node[] {
-  return (board?.nodes ?? []).map(n => ({ ...n, id: BigInt(n.id), boardId: 0n, sublabel: '', token: 'ink', focal: false, doc: n.description, hidden: false, imported: false, shape: n.kind === 'datastore' ? 'cylinder' : 'rect', color: '', strokeStyle: 'solid', size: 'm', sourceKey: '' }));
+  return (board?.nodes ?? []).map(n => ({ ...n, id: BigInt(n.id), boardId: 0n, sublabel: '', token: 'ink', focal: false, doc: n.description, hidden: false, imported: false, shape: n.kind === 'datastore' ? 'cylinder' : 'rect', color: n.color ?? '', strokeStyle: 'solid', size: 'm', sourceKey: '' }));
 }
 function render() {
   element('hud-zoom').textContent = `${Math.round(viewport.scale * 100)}%`;
   if (!board) return;
-  const edges: Edge[] = board.edges.map(e => ({ id: BigInt(e.id), boardId: 0n, fromNode: BigInt(e.from), toNode: BigInt(e.to), label: e.label, evidence: '', hidden: false, imported: false, color: '', strokeStyle: 'solid', evidenceSnippet: '', evidenceStatus: '', relation: e.direction === 'none' ? 'association' : 'calls', latencyMs: -1, latencySource: '' }));
+  const edges: Edge[] = board.edges.map(e => ({ id: BigInt(e.id), boardId: 0n, fromNode: BigInt(e.from), toNode: BigInt(e.to), label: e.label, evidence: '', hidden: false, imported: false, color: e.color ?? '', strokeStyle: 'solid', evidenceSnippet: '', evidenceStatus: '', relation: e.direction === 'none' ? 'association' : 'calls', latencyMs: -1, latencySource: '' }));
   renderBoard(world, nodes(), edges, { selection, selectedEdges, overrides, handles: new Set(), edgeTarget: null, ghosts: new Set(), ghostEdges: new Set(), ghostSetNames: new Map(), overlay: false, codeOverlay: false, refsByNode: new Map(), scale: viewport.scale, edgeDirections: new Map(board.edges.map(e => [BigInt(e.id), e.direction])), live: traffic.live, icons: new Map(board.nodes.flatMap(n => n.icon && localIcons.has(n.icon) ? [[BigInt(n.id), n.icon] as const] : [])) }); // an icon from a newer version draws as none
   traffic.sync(); crayonUi.sync();
   for (const item of world.querySelectorAll<SVGGElement>('.node[data-id]')) {
@@ -159,6 +172,9 @@ function inspector() {
     element('geometry').hidden = !('x' in item);
     directionLabel.hidden = 'x' in item;
     if ('direction' in item) direction.value = item.direction;
+    const parts = colorParts(item.color ?? '');
+    hue.value = parts.hue; tone.value = parts.tone; tone.disabled = !hue.value; colorTouched = false;
+    toneLabel.hidden = !('kind' in item && (item.kind === 'service' || item.kind === 'datastore'));
   }
   const container = element('notes'); container.replaceChildren();
   for (const note of board?.notes ?? []) {
@@ -233,7 +249,7 @@ async function restore(backwards: boolean) {
 }
 element('undo').onclick = () => run(() => restore(true));
 element('redo').onclick = () => run(() => restore(false));
-edit.onsubmit = event => { event.preventDefault(); run(async () => { const item = selected(); if (!item) return; const inputVersion = editorInput, identity = editorId; const values = new FormData(edit); const patch = { label: String(values.get('label')), description: String(values.get('description')) }; await mutate(['x' in item ? { type: 'node.put', id: item.id, patch: { ...patch, x: Number(values.get('x')), y: Number(values.get('y')), w: Number(values.get('w')), h: Number(values.get('h')) } } : { type: 'edge.put', id: item.id, patch: { ...patch, direction: direction.value as 'forward' | 'both' | 'none' } }], editorRevision); if (editorInput === inputVersion && editorId === identity) { editorDirty = false; inspector(); } }); };
+edit.onsubmit = event => { event.preventDefault(); run(async () => { const item = selected(); if (!item) return; const inputVersion = editorInput, identity = editorId; const values = new FormData(edit); const patch = { label: String(values.get('label')), description: String(values.get('description')), ...(colorTouched && { color: hue.value && !toneLabel.hidden && tone.value ? `${hue.value}-${tone.value}` : hue.value }) }; await mutate(['x' in item ? { type: 'node.put', id: item.id, patch: { ...patch, x: Number(values.get('x')), y: Number(values.get('y')), w: Number(values.get('w')), h: Number(values.get('h')) } } : { type: 'edge.put', id: item.id, patch: { ...patch, direction: direction.value as 'forward' | 'both' | 'none' } }], editorRevision); if (editorInput === inputVersion && editorId === identity) { editorDirty = false; inspector(); } }); };
 let noteInput = 0;
 element<HTMLFormElement>('note').oninput = () => { noteInput++; };
 element<HTMLFormElement>('note').onsubmit = event => { event.preventDefault(); const form = event.currentTarget as HTMLFormElement, submitted = noteInput; run(async () => { const item = selected(); if (!item) { say('Select an element for the note'); return; } await mutate([{ type: 'note.add', target: item.id, text: String(new FormData(form).get('text')) }]); if (noteInput === submitted) form.reset(); }); };
