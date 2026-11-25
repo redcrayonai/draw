@@ -290,6 +290,25 @@ describe('account menu', () => {
     expect(document.activeElement).toBe(name);
     actions.remove();
   });
+
+  it('links to the dashboard and account settings above sign out', () => {
+    const actions = document.createElement('div');
+    actions.className = 'header-actions';
+    document.body.append(actions);
+    chrome.initAccountBar('Ada', vi.fn(), {
+      dashboard: chrome.dashboardHref('https://dash.example', 'rc-dev'),
+      settings: chrome.dashboardHref('https://dash.example', 'rc-dev', undefined, '/settings'),
+    });
+    const items = [...document.querySelectorAll<HTMLElement>('#account-pop [role="menuitem"]')];
+    expect(items.map(item => [item.textContent, item.getAttribute('href')])).toEqual([
+      ['Dashboard', 'https://dash.example/dashboard?db=rc-dev'],
+      ['Account Settings', 'https://dash.example/settings?db=rc-dev'],
+      ['Sign Out', null],
+    ]);
+    document.getElementById('account-name')!.click();
+    expect(document.activeElement).toBe(items[0]);
+    actions.remove();
+  });
 });
 
 describe('presence popover dismissal', () => {

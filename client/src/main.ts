@@ -151,8 +151,8 @@ let intentionalDisconnect = false;
 let reconnectScheduled = false;
 let authLoading: Promise<Auth> | undefined;
 
-function dashboardLink(): string | undefined {
-  const href = dashboardHref(config.dashboardUrl, config.db, config.defaultDb);
+function dashboardLink(path?: string): string | undefined {
+  const href = dashboardHref(config.dashboardUrl, config.db, config.defaultDb, path);
   return href ? auth?.authenticatedHref(href) ?? href : undefined;
 }
 
@@ -403,7 +403,7 @@ async function boot(conn: DbConnection, identityHex: string, signedIn: boolean):
       currentConn?.disconnect();
       location.assign(guestHomeHref());
     };
-    initAccountBar(auth.displayName(), () => void doSignOut());
+    initAccountBar(auth.displayName(), () => void doSignOut(), { dashboard: boardsHref, settings: dashboardLink('/settings') });
   }
   // Anonymous but sign-in available: offered in the header and the Connect
   // dialog, never as a gate.
