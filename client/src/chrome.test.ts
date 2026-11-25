@@ -301,9 +301,9 @@ describe('account menu', () => {
     });
     const items = [...document.querySelectorAll<HTMLElement>('#account-pop [role="menuitem"]')];
     expect(items.map(item => [item.textContent, item.getAttribute('href')])).toEqual([
-      ['dashboard', 'https://dash.example/dashboard?db=rc-dev'],
-      ['account settings', 'https://dash.example/settings?db=rc-dev'],
-      ['sign out', null],
+      ['Dashboard', 'https://dash.example/dashboard?db=rc-dev'],
+      ['Account Settings', 'https://dash.example/settings?db=rc-dev'],
+      ['Sign Out', null],
     ]);
     document.getElementById('account-name')!.click();
     expect(document.activeElement).toBe(items[0]);

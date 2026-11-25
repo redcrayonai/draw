@@ -25,7 +25,7 @@ const agentNode = (stack: Stack, token: string, B: number, label: string) =>
 // sign out sits in the menu the name opens
 const accountBarSignOut = async (page: Page) => {
   await page.locator('#account-name').click();
-  await page.locator('#account-bar').getByRole('menuitem', { name: 'sign out', exact: true }).click();
+  await page.locator('#account-bar').getByRole('menuitem', { name: 'Sign Out', exact: true }).click();
 };
 
 /** Selects the node and returns the inspector, which lists its code refs. */

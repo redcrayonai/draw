@@ -75,9 +75,9 @@ export function initAccountBar(displayName: string, onSignOut: () => void, links
   pop.hidden = true;
   const button = document.createElement('button');
   button.setAttribute('role', 'menuitem');
-  button.textContent = 'sign out';
+  button.textContent = 'Sign Out';
   button.addEventListener('click', onSignOut);
-  for (const [text, href] of [['dashboard', links.dashboard], ['account settings', links.settings]] as const) {
+  for (const [text, href] of [['Dashboard', links.dashboard], ['Account Settings', links.settings]] as const) {
     if (href === undefined) continue;
     const link = document.createElement('a');
     link.setAttribute('role', 'menuitem');
