@@ -48,8 +48,8 @@ export function showNotice(message: string): void {
   }, NOTICE_MS);
 }
 
-// Signed-in account menu in the header actions: your name opens it, sign out is inside.
-export function initAccountBar(displayName: string, onSignOut: () => void): void {
+// Signed-in account menu in the header actions: your name opens it; dashboard links (when configured) and sign out are inside.
+export function initAccountBar(displayName: string, onSignOut: () => void, links: { dashboard?: string; settings?: string } = {}): void {
   const actions = document.querySelector('.header-actions') as HTMLElement;
   let bar = document.getElementById('account-bar') as HTMLSpanElement | null;
   if (!bar) {
@@ -77,6 +77,14 @@ export function initAccountBar(displayName: string, onSignOut: () => void): void
   button.setAttribute('role', 'menuitem');
   button.textContent = 'sign out';
   button.addEventListener('click', onSignOut);
+  for (const [text, href] of [['dashboard', links.dashboard], ['account settings', links.settings]] as const) {
+    if (href === undefined) continue;
+    const link = document.createElement('a');
+    link.setAttribute('role', 'menuitem');
+    link.textContent = text;
+    link.href = href;
+    pop.append(link);
+  }
   pop.append(button);
   const setOpen = (open: boolean): void => {
     pop.hidden = !open;
@@ -84,7 +92,7 @@ export function initAccountBar(displayName: string, onSignOut: () => void): void
   };
   name.addEventListener('click', () => {
     setOpen(Boolean(pop.hidden));
-    if (!pop.hidden) button.focus();
+    if (!pop.hidden) pop.querySelector<HTMLElement>('[role="menuitem"]')!.focus();
   });
   dismissible(pop, name, () => setOpen(false));
   bar.append(name, pop);
@@ -106,15 +114,15 @@ export function initSignInButton(onSignIn: () => void): void {
 }
 
 /**
- * The dashboard's board list on this page's database, or undefined (no link).
+ * A dashboard page (the board list by default) on this page's database, or undefined (no link).
  * `db` is forwarded unless it is `home`, like the dashboard's canvasHref.
  */
-export function dashboardHref(base: string | undefined, db: string, home?: string): string | undefined {
+export function dashboardHref(base: string | undefined, db: string, home?: string, path = '/dashboard'): string | undefined {
   if (!base) {
     return undefined;
   }
   try {
-    const url = new URL('/dashboard', base);
+    const url = new URL(path, base);
     return setDb(url, db, home).toString();
   } catch {
     return undefined; // a malformed VITE_DASHBOARD_URL costs the link, never the boot
